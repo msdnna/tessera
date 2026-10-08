@@ -1,11 +1,11 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 
-// Deleting a channel or a routing rule used to go through window.confirm. It now
-// goes through an n-popconfirm like every other destructive action — so what's
-// worth locking down is that the API call sits behind the confirmation and that
-// the prompt names what's about to disappear.
+// Deleting a channel or a routing rule used to go through window.confirm, then
+// an n-popconfirm. Since v2 (#3106) it is the two-step item of the row's «⋯»
+// ActionMenu — so what's worth locking down is that the API call sits behind
+// the second press and that the armed item names what's about to disappear.
 
 const chApi = { list: vi.fn(), remove: vi.fn(), update: vi.fn() }
 const rtApi = { list: vi.fn(), remove: vi.fn(), update: vi.fn() }
@@ -27,29 +27,6 @@ vi.mock('@/utils/device', () => ({
 const themeState = { timezone: '' }
 vi.mock('@/stores/theme', () => ({ useThemeStore: () => themeState }))
 
-// The real popconfirm teleports its body out and only mounts it once the popover
-// opens — neither the prompt text nor the confirm button is reachable from the
-// wrapper. `global.stubs` can't reach it either: the component is an import
-// binding inside <script setup>, not a name-registered child. So swap it at the
-// module boundary and leave the rest of Naive alone. The stub renders the
-// trigger and the prompt side by side; clicking the trigger must NOT delete.
-vi.mock('naive-ui', async (importOriginal) => {
-  const actual = await importOriginal()
-  return {
-    ...actual,
-    NPopconfirm: {
-      name: 'NPopconfirm',
-      props: ['positiveText', 'positiveButtonProps'],
-      emits: ['positive-click'],
-      template: `<div class="pc">
-        <span class="pc-trigger"><slot name="trigger" /></span>
-        <span class="pc-text"><slot /></span>
-        <button class="pc-ok" @click="$emit('positive-click')" />
-      </div>`,
-    },
-  }
-})
-
 const CHANNELS = [
   { id: 'ch1', type: 'email', label: 'Почта', enabled: true, config: {} },
   { id: 'ch2', type: 'webhook', label: '', enabled: true, config: {} },
@@ -63,56 +40,72 @@ async function mountSettings(routes = ROUTES) {
   rtApi.list.mockResolvedValue({ data: routes })
   prefsApi.get.mockResolvedValue({ data: {} })
   const NotificationSettings = (await import('@/components/NotificationSettings.vue')).default
-  const w = mount(NotificationSettings)
+  const w = mount(NotificationSettings, { attachTo: document.body })
   await flushPromises()
   return w
 }
 
-describe('NotificationSettings.vue — удаление через поповер', () => {
+// The menu teleports to <body>; its rows are reached through the document.
+const $ = (sel) => document.body.querySelector(sel)
+async function click(el) {
+  el.dispatchEvent(new MouseEvent('click', { bubbles: true }))
+  await flushPromises()
+}
+async function openMenu(w, testid, index = 0) {
+  await w.findAll(`[data-testid="${testid}"]`)[index].trigger('click')
+  await flushPromises()
+}
+
+describe('NotificationSettings.vue — удаление двухшаговым пунктом меню', () => {
+  let w
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
   })
+  afterEach(() => {
+    w?.unmount()
+    document.body.innerHTML = ''
+  })
 
-  it('прячет корзину канала за поповер и не удаляет до подтверждения', async () => {
-    const w = await mountSettings()
-    const popconfirms = w.findAll('.pc')
-    // one per channel + one per route
-    expect(popconfirms).toHaveLength(CHANNELS.length + ROUTES.length)
-    // the trash button lives inside the popconfirm's trigger slot, not standalone
-    expect(popconfirms[0].find('.pc-trigger button').exists()).toBe(true)
-
-    await popconfirms[0].find('.pc-trigger button').trigger('click')
-    await flushPromises()
+  it('удаляет канал только со второго нажатия', async () => {
+    w = await mountSettings()
+    chApi.remove.mockResolvedValue({})
+    await openMenu(w, 'notif-channel-menu', 0)
+    await click($('[data-testid="notif-menu-remove"]'))
     expect(chApi.remove).not.toHaveBeenCalled()
-
-    await popconfirms[0].find('.pc-ok').trigger('click')
-    await flushPromises()
+    await click($('[data-testid="notif-menu-remove-armed"]'))
     expect(chApi.remove).toHaveBeenCalledWith('ch1')
   })
 
-  it('называет канал в тексте подтверждения и предупреждает о правилах', async () => {
-    const w = await mountSettings()
-    const texts = w.findAll('.pc-text').map((t) => t.text())
-    // ch1 is referenced by one route → the prompt has to say so
-    expect(texts[0]).toContain('Почта')
-    expect(texts[0]).toContain('в 1 правиле')
-    // ch2 has no label → falls back to the type's display name, and no route hint
-    expect(texts[1]).toContain('Webhook')
-    expect(texts[1]).not.toContain('правил')
+  it('называет канал во взведённом пункте и предупреждает о правилах', async () => {
+    w = await mountSettings()
+    await openMenu(w, 'notif-channel-menu', 0)
+    await click($('[data-testid="notif-menu-remove"]'))
+    // ch1 is referenced by one route → the armed item has to say so
+    const armed = $('[data-testid="notif-menu-remove-armed"]').textContent
+    expect(armed).toContain('Почта')
+    expect(armed).toContain('в 1 правиле')
   })
 
-  it('прячет корзину правила маршрутизации за тот же поповер', async () => {
-    const w = await mountSettings()
-    const routePc = w.findAll('.pc').at(-1)
-    expect(routePc.find('.pc-text').text()).toContain('Удалить правило маршрутизации?')
+  it('без правил подставляет имя типа и не пугает правилами', async () => {
+    w = await mountSettings()
+    await openMenu(w, 'notif-channel-menu', 1)
+    await click($('[data-testid="notif-menu-remove"]'))
+    const armed = $('[data-testid="notif-menu-remove-armed"]').textContent
+    expect(armed).toContain('Webhook')
+    expect(armed).not.toContain('правил')
+  })
 
-    await routePc.find('.pc-trigger button').trigger('click')
-    await flushPromises()
+  it('удаляет правило маршрутизации тем же двухшаговым пунктом', async () => {
+    w = await mountSettings()
+    rtApi.remove.mockResolvedValue({})
+    await openMenu(w, 'notif-route-menu', 0)
+    await click($('[data-testid="notif-menu-remove"]'))
+    expect($('[data-testid="notif-menu-remove-armed"]').textContent).toContain(
+      'Удалить правило маршрутизации?',
+    )
     expect(rtApi.remove).not.toHaveBeenCalled()
-
-    await routePc.find('.pc-ok').trigger('click')
-    await flushPromises()
+    await click($('[data-testid="notif-menu-remove-armed"]'))
     expect(rtApi.remove).toHaveBeenCalledWith('rt1')
   })
 })
@@ -146,7 +139,7 @@ describe('NotificationSettings.vue — виды событий в правиле
         position: 1,
       },
     ])
-    const title = w.findAll('.item-title').at(-1).text()
+    const title = w.findAll('.ns-rule-title').at(-1).text()
     expect(title).toBe('Приглашение в конференцию')
     expect(title).not.toContain('conference_invite')
   })
@@ -171,7 +164,7 @@ describe('NotificationSettings.vue — часовой пояс тихих час
     const w = await mountSettings()
     prefsApi.update.mockResolvedValue({ data: {} })
 
-    await w.find('.row-end button').trigger('click')
+    await w.vm.savePrefs()
     await flushPromises()
 
     expect(prefsApi.update).toHaveBeenCalledTimes(1)
@@ -183,9 +176,34 @@ describe('NotificationSettings.vue — часовой пояс тихих час
     const w = await mountSettings()
     prefsApi.update.mockResolvedValue({ data: {} })
 
-    await w.find('.row-end button').trigger('click')
+    await w.vm.savePrefs()
     await flushPromises()
 
     expect(prefsApi.update.mock.calls[0][0].quiet_tz).toBe('Asia/Yekaterinburg')
+  })
+})
+
+// The mockup's «сохраняется сразу»: the schedule defaults have no save button
+// any more — a change is written on its own, once, after a short debounce.
+describe('NotificationSettings.vue — автосохранение расписания', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+    vi.useFakeTimers()
+  })
+  afterEach(() => vi.useRealTimers())
+
+  it('сохраняет изменение без кнопки и не сохраняет загрузку', async () => {
+    const w = await mountSettings()
+    prefsApi.update.mockResolvedValue({ data: {} })
+    vi.advanceTimersByTime(1000)
+    expect(prefsApi.update).not.toHaveBeenCalled()
+
+    await w.find('[data-testid="notif-quiet"] .n-switch').trigger('click')
+    vi.advanceTimersByTime(600)
+    await flushPromises()
+    expect(prefsApi.update).toHaveBeenCalledTimes(1)
+    expect(prefsApi.update.mock.calls[0][0].quiet_enabled).toBe(true)
+    w.unmount()
   })
 })

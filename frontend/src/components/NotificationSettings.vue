@@ -1,29 +1,33 @@
 <script setup>
-import { ref, reactive, computed, onMounted, watch, nextTick } from 'vue'
+// Settings → «Уведомления» (v2, #3106, mockup SettingsPage). Same model as
+// before — external channels, routing rules checked top to bottom, per-user
+// schedule defaults — on v2 surfaces:
+//   · channels are cards with their switch, the rest of a channel's actions in
+//     a «⋯» ActionMenu (deletion is its two-step item, naming the rules that
+//     still deliver there);
+//   · the channel and rule editors are popover forms at the button that opened
+//     them, not centred modals; the template editor stays a window — it is a
+//     two-pane editor with a live preview, tier 2;
+//   · the schedule defaults save themselves (the mockup: «сохраняется сразу»),
+//     like the switches already did.
+// The mockup's event × channel matrix is a different model from our first-match
+// rules; the rules are kept and drawn as rows (see #3106).
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { NButton, NIcon, NInput, NModal, NSelect, NSpin, NSwitch, NTooltip } from 'naive-ui'
 import {
-  NInput,
-  NButton,
-  NSelect,
-  NSwitch,
-  NIcon,
-  NModal,
-  NCard,
-  NTag,
-  NSpin,
-  NPopconfirm,
-} from 'naive-ui'
-import {
-  MailOutline,
-  PaperPlaneOutline,
-  GlobeOutline,
   AddOutline,
-  TrashOutline,
   CreateOutline,
+  EllipsisHorizontal,
   FlashOutline,
-  ShareSocialOutline,
-  PhonePortraitOutline,
+  GlobeOutline,
+  MailOutline,
+  MoonOutline,
   NotificationsOutline,
+  PaperPlaneOutline,
+  PhonePortraitOutline,
+  ShareSocialOutline,
+  TimeOutline,
 } from '@vicons/ionicons5'
 import {
   notificationChannels as chApi,
@@ -35,11 +39,16 @@ import { resolvedTimezone } from '@/utils/format'
 import { useFormat } from '@/composables/useFormat'
 import { workspaceName } from '@/utils/defaultNames'
 import { humanizeError } from '@/utils/errors'
+import { softFill } from '@/utils/gradient'
+import { stubTask } from '@/utils/featureStubs'
 import { useAuthStore } from '@/stores/auth'
-import EmptyState from '@/components/EmptyState.vue'
-import SecretInput from '@/components/SecretInput.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useThemeStore } from '@/stores/theme'
+import SecretInput from '@/components/SecretInput.vue'
+import ActionMenu from '@/components/kit/ActionMenu.vue'
+import PopoverForm from '@/components/kit/PopoverForm.vue'
+import FormField from '@/components/kit/FormField.vue'
+import '@/components/settings/settings.css'
 
 const { t } = useI18n()
 const auth = useAuthStore()
@@ -47,17 +56,9 @@ const wsStore = useWorkspacesStore()
 const theme = useThemeStore()
 const { formatTime } = useFormat()
 
-// Half-hour time-of-day options (minutes since midnight) for the quiet window.
-//
-// The labels go through the user's clock preference like every other time this
-// app prints: hand-built "23:00" left the two quiet-window selects on a 24-hour
-// clock for a user who had asked for a 12-hour one everywhere else. Computed for
-// the same reason the option lists below are (#2799) — a constant array would
-// freeze the labels in the language and preference of the first render.
-//
-// The value stays minutes-since-midnight (the wire format); only the label moves.
-// `timeZone: null` because these are wall-clock times of day, not instants: the
-// zone they are evaluated in is `quiet_tz`, sent separately.
+// Half-hour options (minutes since midnight) for the quiet window. Labels go
+// through the user's clock preference; `timeZone: null` — wall-clock times of
+// day, evaluated in `quiet_tz` on the server.
 const TIME_OPTIONS = computed(() =>
   Array.from({ length: 48 }, (_, i) => {
     const m = i * 30
@@ -73,28 +74,32 @@ const routes = ref([])
 const loading = ref(true)
 const loadError = ref('')
 
-// Channel type registry — extend here as the backend gains senders. Only the
-// icon lives here; the label is looked up per render, so switching the UI
-// language relabels the selects instead of leaving them on the first language
-// the component saw (#2799).
-const TYPE_ICONS = {
-  email: MailOutline,
-  telegram: PaperPlaneOutline,
-  webhook: GlobeOutline,
-  shoutrrr: ShareSocialOutline,
-  device: PhonePortraitOutline,
+// Channel type registry — icon and tone; the label is looked up per render so a
+// language switch relabels it (#2799). A channel's tone colours its badge; a
+// switched-off channel is drawn neutral.
+const TYPES = {
+  email: { icon: MailOutline, tone: '#f0a020' },
+  telegram: { icon: PaperPlaneOutline, tone: '#2aa3d8' },
+  webhook: { icon: GlobeOutline, tone: '' },
+  shoutrrr: { icon: ShareSocialOutline, tone: '#7c5cff' },
+  device: { icon: PhonePortraitOutline, tone: '#3aa675' },
 }
-const CHANNEL_TYPES = Object.keys(TYPE_ICONS)
+const CHANNEL_TYPES = Object.keys(TYPES)
 function typeLabel(type) {
-  return TYPE_ICONS[type] ? t(`settings.notifications.channelType.${type}`) : type
+  return TYPES[type] ? t(`settings.notifications.channelType.${type}`) : type
 }
-// `device` channels auto-register per client and aren't manually addable.
+// `device` channels register themselves per client and aren't addable by hand.
 const typeOptions = computed(() =>
   CHANNEL_TYPES.filter((v) => v !== 'device').map((value) => ({ value, label: typeLabel(value) })),
 )
 const allTypeOptions = computed(() =>
   CHANNEL_TYPES.map((value) => ({ value, label: typeLabel(value) })),
 )
+function badgeStyle(c) {
+  const tone = TYPES[c.type]?.tone
+  if (!tone || !c.enabled) return {}
+  return { background: softFill(tone), color: tone }
+}
 
 const myDeviceId = getDeviceId()
 const notifPermission = ref(notificationsSupported() ? Notification.permission : 'unsupported')
@@ -103,14 +108,8 @@ async function requestNotifPermission() {
   notifPermission.value = await Notification.requestPermission()
 }
 
-// Every kind the server actually routes (backend internal/notify/locale.go
-// `kinds`), in that file's order. A kind missing here is not merely absent from
-// the picker: kindLabel falls through to the raw key, so a rule that carries it
-// prints `conference_invite` in Latin in the middle of a Russian summary — and
-// the kind can neither be routed to a channel on its own nor excluded from one,
-// because the only rule that catches it is the catch-all «пусто = любые».
-// `test` is deliberately not here: it is the subject of the probe a user sends
-// to check a channel, never a stored notification to route.
+// Every kind the server routes (backend internal/notify/locale.go `kinds`), in
+// that order. `test` is not here: it is the probe, never a stored notification.
 const EVENT_KINDS = [
   'assigned',
   'comment',
@@ -127,9 +126,6 @@ function kindLabel(kind) {
   return EVENT_KINDS.includes(kind) ? t(`settings.notifications.kind.${kind}`) : kind
 }
 
-// Minute presets for the schedule selects. The values are the contract with the
-// backend; only the labels are translated, and — like every option table here —
-// they are rebuilt per render rather than frozen at import.
 const LEAD_VALUES = [0, 15, 30, 60, 180, 1440, 2880]
 const REPEAT_VALUES = [0, 60, 180, 360, 1440]
 const DIGEST_VALUES = [0, 5, 15, 30, 60]
@@ -143,7 +139,6 @@ const DIGEST_OPTIONS = computed(() =>
   DIGEST_VALUES.map((value) => ({ value, label: t(`settings.notifications.digest.${value}`) })),
 )
 const kindOptions = computed(() => EVENT_KINDS.map((value) => ({ value, label: kindLabel(value) })))
-
 const wsOptions = computed(() =>
   (wsStore.list || []).map((w) => ({ value: w.id, label: workspaceName(w) })),
 )
@@ -151,7 +146,7 @@ const channelOptions = computed(() =>
   channels.value.map((c) => ({ value: c.id, label: channelTitle(c) })),
 )
 
-// per-user scheduling defaults (due dates + reminders)
+// ── schedule defaults (due dates + reminders), saved as they change ──
 const prefs = reactive({
   due_enabled: true,
   due_lead_minutes: 60,
@@ -163,8 +158,10 @@ const prefs = reactive({
   quiet_tz: '',
   digest_minutes: 0,
 })
-const prefsSaving = ref(false)
-const prefsSaved = ref(false)
+const prefsError = ref('')
+// Set while the server's answer is copied back in, so that copy is not taken
+// for an edit and saved again.
+let applying = true
 
 async function load() {
   loading.value = true
@@ -173,32 +170,46 @@ async function load() {
     const [c, r, p] = await Promise.all([chApi.list(), rtApi.list(), prefsApi.get()])
     channels.value = c.data || []
     routes.value = r.data || []
+    applying = true
     Object.assign(prefs, p.data || {})
+    await nextTick()
+    applying = false
   } catch (e) {
     loadError.value = e.message
   } finally {
     loading.value = false
   }
 }
+
 async function savePrefs() {
-  prefsSaving.value = true
+  prefsError.value = ''
   try {
-    // Track the user's timezone so the quiet window is evaluated in their local
-    // time. The profile setting is empty by default, and an empty zone is UTC to
-    // the scanner — not «по вашему часовому поясу», as the hint under the window
-    // promises — so resolve the blank to the browser's own zone, which is the one
-    // every time on this screen is already rendered in.
+    // Quiet hours run on the server's clock in `quiet_tz`; an empty profile zone
+    // would be UTC there, not «по вашему часовому поясу» as the hint promises —
+    // so send the browser's own zone, the one this screen renders in.
     prefs.quiet_tz = resolvedTimezone(theme.timezone) || prefs.quiet_tz
     const res = await prefsApi.update({ ...prefs })
+    applying = true
     Object.assign(prefs, res.data || {})
-    prefsSaved.value = true
-    setTimeout(() => (prefsSaved.value = false), 2000)
+    await nextTick()
+    applying = false
   } catch (e) {
-    loadError.value = e.message
-  } finally {
-    prefsSaving.value = false
+    applying = false
+    prefsError.value = e.message
   }
 }
+let prefsTimer = null
+watch(
+  prefs,
+  () => {
+    if (applying) return
+    clearTimeout(prefsTimer)
+    prefsTimer = setTimeout(savePrefs, 500)
+  },
+  { deep: true },
+)
+defineExpose({ savePrefs })
+
 onMounted(() => {
   if (!wsStore.list?.length) wsStore.load?.()
   load()
@@ -211,92 +222,105 @@ function channelName(id) {
   const c = channels.value.find((x) => x.id === id)
   return c ? channelTitle(c) : '—'
 }
-// The backend scrubs the deleted channel out of `channel_ids`, so the rules stay
-// editable — but a rule that named only this channel is left delivering nowhere.
-// Worth saying up front rather than letting it go quiet.
+// What the channel points at, under its title.
+function channelDetail(c) {
+  const cfg = c.config || {}
+  return cfg.address || cfg.chat_id || cfg.url || ''
+}
+// The server scrubs a deleted channel out of `channel_ids`, so a rule that named
+// only this channel is left delivering nowhere — said before the deletion.
 function usedInRoutesHint(c) {
   const n = routes.value.filter((r) => (r.channel_ids || []).includes(c.id)).length
   if (!n) return ''
-  return ` ${t('settings.notifications.confirm.channelUsedIn', n, { named: { n } })}`
+  return t('settings.notifications.confirm.channelUsedIn', n, { named: { n } })
 }
-// This browser's own device channel (for the «это устройство» badge + permission).
 function isThisDevice(c) {
   return c.type === 'device' && c.config?.device_id === myDeviceId
 }
 
-// ── channel editor ───────────────────────────────────────────
-const chModal = ref(false)
-const chEditing = ref(null) // null = create
-const chForm = reactive({
-  type: 'email',
-  label: '',
-  config: {},
-  secret: {},
-  template: '',
-  enabled: true,
-  hasSecret: false, // a secret is already stored on the server
-  clearSecret: false, // erase the stored secret on save
-})
-const chSaving = ref(false)
-const chErr = ref('')
-
-function openChannelNew() {
-  chEditing.value = null
-  Object.assign(chForm, {
-    type: 'email',
-    label: '',
-    config: { address: auth.user?.email || '' },
-    secret: {},
-    template: '',
-    enabled: true,
-    hasSecret: false,
-    clearSecret: false,
-  })
-  chErr.value = ''
-  chModal.value = true
+// ── «⋯» menus ──
+const menu = reactive({ show: false, anchor: null, kind: '', item: null, busy: false })
+const failed = ref('')
+function openMenu(kind, item, e) {
+  menu.kind = kind
+  menu.item = item
+  menu.anchor = e.currentTarget
+  failed.value = ''
+  menu.show = true
 }
-function openChannelEdit(c) {
-  chEditing.value = c
-  Object.assign(chForm, {
-    type: c.type,
-    label: c.label || '',
-    config: { ...(c.config || {}) },
-    secret: {},
-    template: c.template || '',
-    enabled: c.enabled,
-    hasSecret: c.has_secret === true,
-    clearSecret: false,
-  })
-  chErr.value = ''
-  chModal.value = true
-}
-async function saveChannel() {
-  chSaving.value = true
-  chErr.value = ''
-  try {
-    const payload = {
-      type: chForm.type,
-      label: chForm.label,
-      config: chForm.config,
-      secret: chForm.secret,
-      clear_secret: chForm.clearSecret,
-      template: chForm.template,
-      enabled: chForm.enabled,
+const menuItems = computed(() => {
+  const it = menu.item
+  if (!it) return []
+  if (menu.kind === 'channel') {
+    const items = []
+    if (isThisDevice(it) && notifPermission.value === 'default') {
+      items.push({
+        key: 'allow',
+        label: t('settings.notifications.channels.allow'),
+        icon: NotificationsOutline,
+      })
     }
-    if (chEditing.value) await chApi.update(chEditing.value.id, payload)
-    else await chApi.create(payload)
-    chModal.value = false
-    await load()
-  } catch (e) {
-    chErr.value = e.message
-  } finally {
-    chSaving.value = false
+    if (it.type !== 'device') {
+      items.push({
+        key: 'test',
+        label: t('settings.notifications.channels.test'),
+        icon: FlashOutline,
+      })
+    }
+    items.push({ key: 'edit', label: t('common.action.edit'), icon: CreateOutline })
+    items.push({ gap: true })
+    items.push(
+      deleteItem(
+        t('settings.notifications.confirm.deleteChannel', { name: channelTitle(it) }),
+        usedInRoutesHint(it),
+      ),
+    )
+    return items
+  }
+  return [
+    { key: 'edit', label: t('common.action.edit'), icon: CreateOutline },
+    { gap: true },
+    deleteItem(t('settings.notifications.confirm.deleteRoute'), ''),
+  ]
+})
+function deleteItem(title, sub) {
+  const item = {
+    key: 'remove',
+    label: t('common.action.delete'),
+    danger: true,
+    confirm: { title, sub: sub || t('settings.notifications.confirm.irreversible') },
+  }
+  if (menu.busy) item.busy = true
+  else if (failed.value) item.failed = { title: t('common.menu.failed'), sub: failed.value }
+  return item
+}
+async function onMenu(key) {
+  const it = menu.item
+  if (!it) return
+  if (key === 'allow') return requestNotifPermission()
+  if (key === 'test') return testChannel(it)
+  if (key === 'edit') {
+    const anchor = menu.anchor
+    if (menu.kind === 'channel') openChannelEdit(it, anchor)
+    else openRouteEdit(it, anchor)
+    return
+  }
+  if (key === 'remove') {
+    menu.busy = true
+    failed.value = ''
+    try {
+      if (menu.kind === 'channel') await chApi.remove(it.id)
+      else await rtApi.remove(it.id)
+      menu.show = false
+      await load()
+    } catch (e) {
+      failed.value = humanizeError(e)
+    } finally {
+      menu.busy = false
+    }
   }
 }
-async function removeChannel(c) {
-  await chApi.remove(c.id)
-  await load()
-}
+
 async function toggleChannel(c) {
   await chApi.update(c.id, {
     type: c.type,
@@ -308,15 +332,13 @@ async function toggleChannel(c) {
   await load()
 }
 
-// test sends are per-channel; track transient state by id
 const testState = reactive({})
 async function testChannel(c) {
   testState[c.id] = { pending: true }
   try {
     const res = await chApi.test(c.id)
     // A probe that went through can still carry a warning (no SMTP on the
-    // server). It arrives as a sentinel, like every refusal — the interceptor
-    // never sees it, since the call succeeded, so translate it here.
+    // server) — a sentinel the interceptor never saw, so translate it here.
     const warning = res.data?.warning
     testState[c.id] = {
       ok: true,
@@ -328,7 +350,79 @@ async function testChannel(c) {
   }
 }
 
-// ── template editor (separate modal) ─────────────────────────
+// ── channel editor (popover form) ──
+const chForm = reactive({
+  show: false,
+  anchor: null,
+  editing: null,
+  type: 'email',
+  label: '',
+  config: {},
+  secret: {},
+  template: '',
+  enabled: true,
+  hasSecret: false,
+  clearSecret: false,
+  saving: false,
+  error: '',
+})
+function openChannelNew(e) {
+  Object.assign(chForm, {
+    anchor: e.currentTarget,
+    editing: null,
+    type: 'email',
+    label: '',
+    config: { address: auth.user?.email || '' },
+    secret: {},
+    template: '',
+    enabled: true,
+    hasSecret: false,
+    clearSecret: false,
+    error: '',
+  })
+  chForm.show = true
+}
+function openChannelEdit(c, anchor) {
+  Object.assign(chForm, {
+    anchor,
+    editing: c,
+    type: c.type,
+    label: c.label || '',
+    config: { ...(c.config || {}) },
+    secret: {},
+    template: c.template || '',
+    enabled: c.enabled,
+    hasSecret: c.has_secret === true,
+    clearSecret: false,
+    error: '',
+  })
+  chForm.show = true
+}
+async function saveChannel() {
+  chForm.saving = true
+  chForm.error = ''
+  try {
+    const payload = {
+      type: chForm.type,
+      label: chForm.label,
+      config: chForm.config,
+      secret: chForm.secret,
+      clear_secret: chForm.clearSecret,
+      template: chForm.template,
+      enabled: chForm.enabled,
+    }
+    if (chForm.editing) await chApi.update(chForm.editing.id, payload)
+    else await chApi.create(payload)
+    chForm.show = false
+    await load()
+  } catch (e) {
+    chForm.error = e.message
+  } finally {
+    chForm.saving = false
+  }
+}
+
+// ── template editor (a window: two panes and a live preview) ──
 const tplModal = ref(false)
 const tplDraft = ref('')
 const tplPreview = ref('')
@@ -336,10 +430,8 @@ const tplError = ref('')
 const taRef = ref(null)
 const hlRef = ref(null)
 
-// Go template actions, not vue-i18n ones. They stay in code rather than in the
-// bundle for two reasons: they are a backend contract, identical in every
-// language, and a literal `{{ }}` in a message would be eaten by vue-i18n's own
-// interpolation. Only the descriptions are translated.
+// Go template actions — a backend contract, identical in every language, and a
+// literal `{{ }}` in a message would be eaten by vue-i18n's interpolation.
 const TEMPLATE_TOKENS = [
   ['text', '{{.Text}}'],
   ['title', '{{.Title}}'],
@@ -362,26 +454,22 @@ const TEMPLATE_FIELDS = computed(() =>
     desc: t(`settings.notifications.template.field.${key}`),
   })),
 )
-
 function escapeHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
 }
-// Highlight {{ ... }} template actions over the (escaped) source for the backdrop.
 const highlighted = computed(() => {
   const h = escapeHtml(tplDraft.value || '').replace(
     /\{\{[^}]*\}\}/g,
     (m) => `<span class="tok">${m}</span>`,
   )
-  return h.endsWith('\n') ? h + ' ' : h // keep the last empty line visible
+  return h.endsWith('\n') ? h + ' ' : h
 })
-
 function syncScroll() {
   if (hlRef.value && taRef.value) {
     hlRef.value.scrollTop = taRef.value.scrollTop
     hlRef.value.scrollLeft = taRef.value.scrollLeft
   }
 }
-
 let tplTimer = null
 function schedulePreview() {
   clearTimeout(tplTimer)
@@ -400,7 +488,6 @@ async function runPreview() {
     tplError.value = e.message
   }
 }
-
 function openTemplate() {
   tplDraft.value = chForm.template || ''
   tplPreview.value = ''
@@ -426,51 +513,50 @@ function applyTemplate() {
   chForm.template = tplDraft.value
   tplModal.value = false
 }
-function clearTemplate() {
-  tplDraft.value = ''
-}
 watch(tplDraft, schedulePreview)
 
-// ── route editor ─────────────────────────────────────────────
-const rtModal = ref(false)
-const rtEditing = ref(null)
+// ── rule editor (popover form) ──
 const rtForm = reactive({
+  show: false,
+  anchor: null,
+  editing: null,
   kinds: [],
   workspace_id: null,
   channel_ids: [],
   mute: false,
   enabled: true,
+  saving: false,
+  error: '',
 })
-const rtSaving = ref(false)
-const rtErr = ref('')
-
-function openRouteNew() {
-  rtEditing.value = null
+function openRouteNew(e) {
   Object.assign(rtForm, {
+    anchor: e.currentTarget,
+    editing: null,
     kinds: [],
     workspace_id: null,
     channel_ids: [],
     mute: false,
     enabled: true,
+    error: '',
   })
-  rtErr.value = ''
-  rtModal.value = true
+  rtForm.show = true
 }
-function openRouteEdit(r) {
-  rtEditing.value = r
+function openRouteEdit(r, anchor) {
   Object.assign(rtForm, {
+    anchor,
+    editing: r,
     kinds: r.matcher?.kinds || [],
     workspace_id: r.matcher?.workspace_id || null,
     channel_ids: r.channel_ids || [],
     mute: r.options?.mute || false,
     enabled: r.enabled,
+    error: '',
   })
-  rtErr.value = ''
-  rtModal.value = true
+  rtForm.show = true
 }
 async function saveRoute() {
-  rtSaving.value = true
-  rtErr.value = ''
+  rtForm.saving = true
+  rtForm.error = ''
   try {
     const matcher = {}
     if (rtForm.kinds.length) matcher.kinds = rtForm.kinds
@@ -481,20 +567,16 @@ async function saveRoute() {
       options: { mute: rtForm.mute },
       enabled: rtForm.enabled,
     }
-    if (rtEditing.value)
-      await rtApi.update(rtEditing.value.id, { ...payload, position: rtEditing.value.position })
+    if (rtForm.editing)
+      await rtApi.update(rtForm.editing.id, { ...payload, position: rtForm.editing.position })
     else await rtApi.create(payload)
-    rtModal.value = false
+    rtForm.show = false
     await load()
   } catch (e) {
-    rtErr.value = e.message
+    rtForm.error = e.message
   } finally {
-    rtSaving.value = false
+    rtForm.saving = false
   }
-}
-async function removeRoute(r) {
-  await rtApi.remove(r.id)
-  await load()
 }
 async function toggleRoute(r) {
   await rtApi.update(r.id, {
@@ -507,14 +589,13 @@ async function toggleRoute(r) {
   await load()
 }
 
-// Two keys rather than a conditional suffix glued onto one: the timezone lands
-// mid-sentence in some languages, and a bare « (Europe/Moscow)» appended to a
-// finished sentence cannot be moved by a translator.
+// Two keys rather than a suffix: the zone lands mid-sentence in some languages.
 const quietHint = computed(() =>
   theme.timezone
     ? t('settings.notifications.schedule.quietHintTz', { tz: theme.timezone })
     : t('settings.notifications.schedule.quietHint'),
 )
+const quietExceptionsTask = stubTask('notifications.quietExceptions')
 
 function kindsSummary(r) {
   const ks = r.matcher?.kinds
@@ -532,120 +613,115 @@ function wsSummary(r) {
 </script>
 
 <template>
-  <section class="card">
-    <div class="head">
-      <h2>{{ t('settings.notifications.title') }}</h2>
-    </div>
-    <p class="hint">{{ t('settings.notifications.hint') }}</p>
+  <div class="ns" data-testid="notification-settings">
+    <p class="st-hint ns-lead">{{ t('settings.notifications.hint') }}</p>
 
     <n-spin v-if="loading" size="small" />
-    <div v-else-if="loadError" class="err">{{ loadError }}</div>
+    <div v-else-if="loadError" class="st-err">{{ loadError }}</div>
     <template v-else>
       <!-- Channels -->
-      <div class="block">
-        <div class="block-head">
-          <span class="block-title">{{ t('settings.notifications.channels.title') }}</span>
-          <n-button size="tiny" dashed @click="openChannelNew">
-            <template #icon><n-icon :component="AddOutline" /></template>
-            {{ t('settings.notifications.channels.add') }}
-          </n-button>
-        </div>
-        <empty-state
-          v-if="!channels.length"
-          :icon="NotificationsOutline"
-          :text="t('settings.notifications.channels.empty')"
-          size="small"
-        />
-        <div v-for="c in channels" :key="c.id" class="item" :class="{ off: !c.enabled }">
-          <n-icon :component="TYPE_ICONS[c.type] || GlobeOutline" class="item-ico" />
-          <div class="item-main">
-            <div class="item-title">
-              {{ channelTitle(c) }}
-              <n-tag v-if="c.verified" size="tiny" type="success" round :bordered="false">
-                {{ t('settings.notifications.channels.verified') }}
-              </n-tag>
-              <n-tag v-if="isThisDevice(c)" size="tiny" type="info" round :bordered="false">
-                {{ t('settings.notifications.channels.thisDevice') }}
-              </n-tag>
+      <div class="ns-channels" data-testid="notif-channels">
+        <article
+          v-for="c in channels"
+          :key="c.id"
+          class="ns-ch"
+          :class="{ off: !c.enabled }"
+          data-testid="notif-channel"
+        >
+          <div class="ns-ch-top">
+            <span class="ns-badge" :style="badgeStyle(c)">
+              <n-icon :component="TYPES[c.type]?.icon || GlobeOutline" :size="17" />
+            </span>
+            <div class="ns-ch-main">
+              <div class="ns-ch-title">
+                <span class="ns-ch-name">{{ channelTitle(c) }}</span>
+                <span v-if="c.verified" class="ns-tag ok">{{
+                  t('settings.notifications.channels.verified')
+                }}</span>
+                <span v-if="isThisDevice(c)" class="ns-tag">{{
+                  t('settings.notifications.channels.thisDevice')
+                }}</span>
+              </div>
+              <div class="ns-ch-sub">
+                {{ typeLabel(c.type)
+                }}<template v-if="channelDetail(c)"> · {{ channelDetail(c) }}</template>
+              </div>
             </div>
-            <div class="item-sub">{{ typeLabel(c.type) }}</div>
-            <div v-if="isThisDevice(c) && notifPermission !== 'granted'" class="item-test bad">
-              <template v-if="notifPermission === 'denied'">
-                {{ t('settings.notifications.channels.permDenied') }}
-              </template>
-              <template v-else>{{ t('settings.notifications.channels.permNeeded') }}</template>
-            </div>
-            <div
-              v-if="testState[c.id]"
-              class="item-test"
-              :class="testState[c.id].ok ? 'ok' : 'bad'"
+            <button
+              type="button"
+              class="ns-more static"
+              :aria-label="t('common.action.more')"
+              data-testid="notif-channel-menu"
+              @click="openMenu('channel', c, $event)"
             >
-              <template v-if="testState[c.id].pending">{{
-                t('settings.notifications.channels.testing')
-              }}</template>
-              <template v-else>{{ testState[c.id].msg }}</template>
-            </div>
+              <n-icon :component="EllipsisHorizontal" :size="16" />
+            </button>
+            <n-switch
+              :value="c.enabled"
+              size="small"
+              :aria-label="channelTitle(c)"
+              @update:value="() => toggleChannel(c)"
+            />
           </div>
-          <div class="item-actions">
-            <n-switch :value="c.enabled" size="small" @update:value="() => toggleChannel(c)" />
-            <n-button
-              v-if="isThisDevice(c) && notifPermission === 'default'"
-              size="tiny"
-              tertiary
-              @click="requestNotifPermission"
-            >
-              <template #icon><n-icon :component="NotificationsOutline" /></template>
-              {{ t('settings.notifications.channels.allow') }}
-            </n-button>
-            <n-button v-if="c.type !== 'device'" size="tiny" tertiary @click="testChannel(c)">
-              <template #icon><n-icon :component="FlashOutline" /></template>
-              {{ t('settings.notifications.channels.test') }}
-            </n-button>
-            <n-button size="tiny" quaternary @click="openChannelEdit(c)">
-              <template #icon><n-icon :component="CreateOutline" /></template>
-            </n-button>
-            <n-popconfirm
-              :positive-button-props="{ type: 'error' }"
-              :positive-text="t('common.action.delete')"
-              @positive-click="removeChannel(c)"
-            >
-              <template #trigger>
-                <n-button size="tiny" quaternary>
-                  <template #icon><n-icon :component="TrashOutline" /></template>
-                </n-button>
-              </template>
-              {{ t('settings.notifications.confirm.deleteChannel', { name: channelTitle(c) })
-              }}{{ usedInRoutesHint(c) }}
-            </n-popconfirm>
+          <div v-if="isThisDevice(c) && notifPermission !== 'granted'" class="ns-line bad">
+            <template v-if="notifPermission === 'denied'">
+              {{ t('settings.notifications.channels.permDenied') }}
+            </template>
+            <template v-else>{{ t('settings.notifications.channels.permNeeded') }}</template>
           </div>
-        </div>
+          <div v-if="testState[c.id]" class="ns-line" :class="testState[c.id].ok ? 'ok' : 'bad'">
+            <template v-if="testState[c.id].pending">{{
+              t('settings.notifications.channels.testing')
+            }}</template>
+            <template v-else>{{ testState[c.id].msg }}</template>
+          </div>
+        </article>
+        <button
+          type="button"
+          class="ns-ch ns-add"
+          data-testid="notif-channel-add"
+          @click="openChannelNew"
+        >
+          <n-icon :component="AddOutline" :size="18" />
+          {{ t('settings.notifications.channels.add') }}
+        </button>
       </div>
 
-      <!-- Routes -->
-      <div class="block">
-        <div class="block-head">
-          <span class="block-title">{{ t('settings.notifications.routes.title') }}</span>
-          <n-button size="tiny" dashed :disabled="!channels.length" @click="openRouteNew">
-            <template #icon><n-icon :component="AddOutline" /></template>
-            {{ t('settings.notifications.routes.add') }}
-          </n-button>
+      <!-- Rules -->
+      <section class="st-card ns-rules" data-testid="notif-routes">
+        <div class="st-card-head">
+          <span class="st-card-title">{{ t('settings.notifications.routes.title') }}</span>
+          <span class="st-card-aside">
+            <n-button
+              size="small"
+              secondary
+              :disabled="!channels.length"
+              data-testid="notif-route-add"
+              @click="openRouteNew"
+            >
+              <template #icon><n-icon :component="AddOutline" /></template>
+              {{ t('settings.notifications.routes.add') }}
+            </n-button>
+          </span>
         </div>
-        <p class="hint sub">{{ t('settings.notifications.routes.hint') }}</p>
-        <empty-state
-          v-if="!routes.length"
-          :icon="ShareSocialOutline"
-          :text="t('settings.notifications.routes.empty')"
-          size="small"
-        />
-        <div v-for="r in routes" :key="r.id" class="item" :class="{ off: !r.enabled }">
-          <div class="item-main">
-            <div class="item-title">{{ kindsSummary(r) }}</div>
-            <div class="item-sub">
-              <template v-if="r.options?.mute">
-                <n-tag size="tiny" type="warning" round :bordered="false">{{
-                  t('settings.notifications.routes.muted')
-                }}</n-tag>
-              </template>
+        <p class="st-hint">{{ t('settings.notifications.routes.hint') }}</p>
+        <p v-if="!routes.length" class="ns-empty">
+          {{ t('settings.notifications.routes.empty') }}
+        </p>
+        <div
+          v-for="(r, i) in routes"
+          :key="r.id"
+          class="ns-rule"
+          :class="{ off: !r.enabled }"
+          data-testid="notif-route"
+        >
+          <span class="ns-rule-n">{{ i + 1 }}</span>
+          <div class="ns-rule-main">
+            <div class="ns-rule-title">{{ kindsSummary(r) }}</div>
+            <div class="ns-rule-sub">
+              <span v-if="r.options?.mute" class="ns-tag warn">{{
+                t('settings.notifications.routes.muted')
+              }}</span>
               <template v-else>
                 →
                 {{
@@ -656,242 +732,291 @@ function wsSummary(r) {
               · {{ wsSummary(r) }}
             </div>
           </div>
-          <div class="item-actions">
-            <n-switch :value="r.enabled" size="small" @update:value="() => toggleRoute(r)" />
-            <n-button size="tiny" quaternary @click="openRouteEdit(r)">
-              <template #icon><n-icon :component="CreateOutline" /></template>
-            </n-button>
-            <n-popconfirm
-              :positive-button-props="{ type: 'error' }"
-              :positive-text="t('common.action.delete')"
-              @positive-click="removeRoute(r)"
-            >
-              <template #trigger>
-                <n-button size="tiny" quaternary>
-                  <template #icon><n-icon :component="TrashOutline" /></template>
-                </n-button>
-              </template>
-              {{ t('settings.notifications.confirm.deleteRoute') }}
-            </n-popconfirm>
-          </div>
+          <n-switch
+            :value="r.enabled"
+            size="small"
+            :aria-label="kindsSummary(r)"
+            @update:value="() => toggleRoute(r)"
+          />
+          <button
+            type="button"
+            class="ns-more static"
+            :aria-label="t('common.action.more')"
+            data-testid="notif-route-menu"
+            @click="openMenu('route', r, $event)"
+          >
+            <n-icon :component="EllipsisHorizontal" :size="16" />
+          </button>
         </div>
-      </div>
+      </section>
 
-      <!-- Scheduling defaults (due dates + reminders) -->
-      <div class="block">
-        <div class="block-head">
-          <span class="block-title">{{ t('settings.notifications.schedule.title') }}</span>
-        </div>
-        <p class="hint sub">{{ t('settings.notifications.schedule.hint') }}</p>
-        <label class="sched-row">
-          <n-switch v-model:value="prefs.due_enabled" size="small" />
-          <span>{{ t('settings.notifications.schedule.dueEnabled') }}</span>
-        </label>
-        <div class="grid2">
-          <label class="field">
-            <span>{{ t('settings.notifications.schedule.lead') }}</span>
-            <n-select
-              v-model:value="prefs.due_lead_minutes"
-              :options="LEAD_OPTIONS"
-              :disabled="!prefs.due_enabled"
-            />
+      <!-- Schedule defaults -->
+      <div class="ns-sched">
+        <section class="st-card" data-testid="notif-schedule">
+          <div class="st-card-head">
+            <n-icon :component="TimeOutline" :size="16" class="ns-head-ic" />
+            <span class="st-card-title">{{ t('settings.notifications.schedule.title') }}</span>
+          </div>
+          <p class="st-hint">{{ t('settings.notifications.schedule.hint') }}</p>
+          <label class="st-toggle">
+            <span class="st-toggle-l">{{ t('settings.notifications.schedule.dueEnabled') }}</span>
+            <n-switch v-model:value="prefs.due_enabled" size="small" />
           </label>
-          <label class="field">
-            <span>{{ t('settings.notifications.schedule.repeat') }}</span>
-            <n-select
-              v-model:value="prefs.due_repeat_minutes"
-              :options="REPEAT_OPTIONS"
-              :disabled="!prefs.due_enabled"
-            />
-          </label>
-        </div>
-        <label class="sched-row">
-          <n-switch v-model:value="prefs.reminder_enabled" size="small" />
-          <span>{{ t('settings.notifications.schedule.reminderEnabled') }}</span>
-        </label>
-        <label class="field">
-          <span>{{ t('settings.notifications.schedule.digest') }}</span>
-          <n-select v-model:value="prefs.digest_minutes" :options="DIGEST_OPTIONS" />
-        </label>
-        <p class="hint">{{ t('settings.notifications.schedule.digestHint') }}</p>
-        <label class="sched-row">
-          <n-switch v-model:value="prefs.quiet_enabled" size="small" />
-          <span>{{ t('settings.notifications.schedule.quiet') }}</span>
-        </label>
-        <template v-if="prefs.quiet_enabled">
-          <div class="grid2">
-            <label class="field">
-              <span>{{ t('settings.notifications.schedule.quietFrom') }}</span>
-              <n-select v-model:value="prefs.quiet_start_minutes" :options="TIME_OPTIONS" />
+          <div class="st-grid2">
+            <label class="st-field">
+              <span class="st-label">{{ t('settings.notifications.schedule.lead') }}</span>
+              <n-select
+                v-model:value="prefs.due_lead_minutes"
+                :options="LEAD_OPTIONS"
+                :disabled="!prefs.due_enabled"
+              />
             </label>
-            <label class="field">
-              <span>{{ t('settings.notifications.schedule.quietTo') }}</span>
-              <n-select v-model:value="prefs.quiet_end_minutes" :options="TIME_OPTIONS" />
+            <label class="st-field">
+              <span class="st-label">{{ t('settings.notifications.schedule.repeat') }}</span>
+              <n-select
+                v-model:value="prefs.due_repeat_minutes"
+                :options="REPEAT_OPTIONS"
+                :disabled="!prefs.due_enabled"
+              />
             </label>
           </div>
-          <p class="hint">{{ quietHint }}</p>
-        </template>
-        <div class="row-end">
-          <transition name="fade">
-            <span v-if="prefsSaved" class="saved-tick">{{ t('common.state.saved') }}</span>
-          </transition>
-          <n-button size="small" type="primary" :loading="prefsSaving" @click="savePrefs">
-            {{ t('common.action.save') }}
-          </n-button>
-        </div>
+          <label class="st-toggle">
+            <span class="st-toggle-l">{{
+              t('settings.notifications.schedule.reminderEnabled')
+            }}</span>
+            <n-switch v-model:value="prefs.reminder_enabled" size="small" />
+          </label>
+          <label class="st-field">
+            <span class="st-label">{{ t('settings.notifications.schedule.digest') }}</span>
+            <n-select v-model:value="prefs.digest_minutes" :options="DIGEST_OPTIONS" />
+          </label>
+          <p class="st-hint">{{ t('settings.notifications.schedule.digestHint') }}</p>
+        </section>
+
+        <section class="st-card" data-testid="notif-quiet">
+          <label class="st-toggle">
+            <n-icon :component="MoonOutline" :size="16" class="ns-head-ic" />
+            <span class="st-toggle-l ns-quiet-title">{{
+              t('settings.notifications.schedule.quiet')
+            }}</span>
+            <n-switch v-model:value="prefs.quiet_enabled" size="small" />
+          </label>
+          <div class="ns-quiet" :class="{ off: !prefs.quiet_enabled }">
+            <n-select
+              v-model:value="prefs.quiet_start_minutes"
+              :options="TIME_OPTIONS"
+              :disabled="!prefs.quiet_enabled"
+              :aria-label="t('settings.notifications.schedule.quietFrom')"
+            />
+            <span class="ns-dash">–</span>
+            <n-select
+              v-model:value="prefs.quiet_end_minutes"
+              :options="TIME_OPTIONS"
+              :disabled="!prefs.quiet_enabled"
+              :aria-label="t('settings.notifications.schedule.quietTo')"
+            />
+          </div>
+          <p class="st-hint">{{ quietHint }}</p>
+          <n-tooltip :delay="300">
+            <template #trigger>
+              <label class="st-toggle st-stub" data-testid="notif-quiet-exceptions">
+                <span class="st-toggle-l">{{
+                  t('settings.notifications.schedule.quietExceptions')
+                }}</span>
+                <span class="st-soon">{{ t('common.stub.badge') }}</span>
+              </label>
+            </template>
+            {{ t('common.stub.soon', { n: quietExceptionsTask }) }}
+          </n-tooltip>
+          <div v-if="prefsError" class="st-err">{{ prefsError }}</div>
+        </section>
       </div>
     </template>
 
-    <!-- Channel editor modal -->
-    <n-modal v-model:show="chModal">
-      <n-card
-        class="modal"
-        :title="
-          chEditing
-            ? t('settings.notifications.channelForm.editTitle')
-            : t('settings.notifications.channelForm.newTitle')
-        "
-        closable
-        @close="chModal = false"
+    <ActionMenu
+      v-model:show="menu.show"
+      :anchor="() => menu.anchor"
+      placement="bottom-end"
+      :width="300"
+      :header="
+        menu.item
+          ? menu.kind === 'channel'
+            ? channelTitle(menu.item)
+            : kindsSummary(menu.item)
+          : ''
+      "
+      :items="menuItems"
+      testid="notif-menu"
+      @select="onMenu"
+    />
+
+    <PopoverForm
+      v-model:show="chForm.show"
+      :anchor="() => chForm.anchor"
+      placement="bottom-start"
+      :offset="{ x: 0, y: 6 }"
+      :width="380"
+      :title="
+        chForm.editing
+          ? t('settings.notifications.channelForm.editTitle')
+          : t('settings.notifications.channelForm.newTitle')
+      "
+      :primary="t('common.action.save')"
+      :busy="chForm.saving"
+      hint="tab"
+      testid="notif-channel-form"
+      @submit="saveChannel"
+    >
+      <FormField :label="t('settings.notifications.channelForm.type')">
+        <n-select
+          v-model:value="chForm.type"
+          :options="chForm.editing ? allTypeOptions : typeOptions"
+          :disabled="!!chForm.editing"
+        />
+      </FormField>
+      <FormField :label="t('settings.notifications.channelForm.label')">
+        <input
+          v-model="chForm.label"
+          class="kf-input"
+          :placeholder="t('settings.notifications.channelForm.labelPlaceholder')"
+        />
+      </FormField>
+      <FormField
+        v-if="chForm.type === 'email'"
+        :label="t('settings.notifications.channelForm.address')"
       >
-        <div class="form">
-          <label class="field">
-            <span>{{ t('settings.notifications.channelForm.type') }}</span>
-            <n-select
-              v-model:value="chForm.type"
-              :options="chEditing ? allTypeOptions : typeOptions"
-              :disabled="!!chEditing"
-            />
-          </label>
-          <label class="field">
-            <span>{{ t('settings.notifications.channelForm.label') }}</span>
-            <n-input
-              v-model:value="chForm.label"
-              :placeholder="t('settings.notifications.channelForm.labelPlaceholder')"
-            />
-          </label>
-
-          <!-- email -->
-          <template v-if="chForm.type === 'email'">
-            <label class="field">
-              <span>{{ t('settings.notifications.channelForm.address') }}</span>
-              <n-input
-                v-model:value="chForm.config.address"
-                :placeholder="t('settings.notifications.channelForm.addressPlaceholder')"
-              />
-            </label>
-          </template>
-
-          <!-- telegram -->
-          <template v-else-if="chForm.type === 'telegram'">
-            <label class="field">
-              <span>{{ t('settings.notifications.channelForm.chatId') }}</span>
-              <n-input
-                v-model:value="chForm.config.chat_id"
-                :placeholder="t('settings.notifications.channelForm.chatIdPlaceholder')"
-              />
-            </label>
-            <label class="field">
-              <span>{{ t('settings.notifications.channelForm.botToken') }}</span>
-              <n-input
-                v-model:value="chForm.secret.bot_token"
-                type="password"
-                show-password-on="click"
-                :placeholder="
-                  chEditing
-                    ? t('settings.notifications.channelForm.keepSecret')
-                    : t('settings.notifications.channelForm.botTokenPlaceholder')
-                "
-              />
-            </label>
-            <p class="hint">{{ t('settings.notifications.channelForm.telegramHint') }}</p>
-          </template>
-
-          <!-- device (auto-registered client) -->
-          <template v-else-if="chForm.type === 'device'">
-            <p class="hint">{{ t('settings.notifications.channelForm.deviceHint') }}</p>
-          </template>
-
-          <!-- shoutrrr (generic) -->
-          <template v-else-if="chForm.type === 'shoutrrr'">
-            <label class="field">
-              <span>{{ t('settings.notifications.channelForm.serviceUrl') }}</span>
-              <n-input
-                v-model:value="chForm.secret.url"
-                type="password"
-                show-password-on="click"
-                :placeholder="
-                  chEditing
-                    ? t('settings.notifications.channelForm.keepSecret')
-                    : t('settings.notifications.channelForm.serviceUrlPlaceholder')
-                "
-              />
-            </label>
-            <p class="hint">{{ t('settings.notifications.channelForm.shoutrrrHint') }}</p>
-          </template>
-
-          <!-- webhook -->
-          <template v-else-if="chForm.type === 'webhook'">
-            <label class="field">
-              <span>{{ t('settings.notifications.channelForm.url') }}</span>
-              <n-input
-                v-model:value="chForm.config.url"
-                :placeholder="t('settings.notifications.channelForm.urlPlaceholder')"
-              />
-            </label>
-            <label class="field">
-              <span>{{ t('settings.notifications.channelForm.method') }}</span>
-              <n-input
-                v-model:value="chForm.config.method"
-                :placeholder="t('settings.notifications.channelForm.methodPlaceholder')"
-              />
-            </label>
-            <label class="field">
-              <span>{{ t('settings.notifications.channelForm.authHeader') }}</span>
-              <SecretInput
-                v-model:value="chForm.secret.auth_header"
-                v-model:cleared="chForm.clearSecret"
-                :stored="chEditing ? chForm.hasSecret : false"
-                :placeholder="t('settings.notifications.channelForm.authHeaderPlaceholder')"
-                :stored-placeholder="t('settings.notifications.channelForm.keepSecret')"
-              />
-            </label>
-          </template>
-
-          <div class="field">
-            <span>{{ t('settings.notifications.template.title') }}</span>
-            <div class="tpl-row">
-              <code class="tpl-inline">{{ chForm.template || templateDefaultHint }}</code>
-              <n-button size="tiny" tertiary @click="openTemplate">{{
-                t('common.action.edit')
-              }}</n-button>
-            </div>
-          </div>
-
-          <div v-if="chErr" class="err">{{ chErr }}</div>
+        <input
+          v-model="chForm.config.address"
+          class="kf-input"
+          :placeholder="t('settings.notifications.channelForm.addressPlaceholder')"
+        />
+      </FormField>
+      <template v-else-if="chForm.type === 'telegram'">
+        <FormField :label="t('settings.notifications.channelForm.chatId')">
+          <input
+            v-model="chForm.config.chat_id"
+            class="kf-input"
+            :placeholder="t('settings.notifications.channelForm.chatIdPlaceholder')"
+          />
+        </FormField>
+        <FormField
+          :label="t('settings.notifications.channelForm.botToken')"
+          :message="t('settings.notifications.channelForm.telegramHint')"
+        >
+          <n-input
+            v-model:value="chForm.secret.bot_token"
+            type="password"
+            show-password-on="click"
+            :placeholder="
+              chForm.editing
+                ? t('settings.notifications.channelForm.keepSecret')
+                : t('settings.notifications.channelForm.botTokenPlaceholder')
+            "
+          />
+        </FormField>
+      </template>
+      <p v-else-if="chForm.type === 'device'" class="st-hint">
+        {{ t('settings.notifications.channelForm.deviceHint') }}
+      </p>
+      <FormField
+        v-else-if="chForm.type === 'shoutrrr'"
+        :label="t('settings.notifications.channelForm.serviceUrl')"
+        :message="t('settings.notifications.channelForm.shoutrrrHint')"
+      >
+        <n-input
+          v-model:value="chForm.secret.url"
+          type="password"
+          show-password-on="click"
+          :placeholder="
+            chForm.editing
+              ? t('settings.notifications.channelForm.keepSecret')
+              : t('settings.notifications.channelForm.serviceUrlPlaceholder')
+          "
+        />
+      </FormField>
+      <template v-else-if="chForm.type === 'webhook'">
+        <FormField :label="t('settings.notifications.channelForm.url')">
+          <input
+            v-model="chForm.config.url"
+            class="kf-input"
+            :placeholder="t('settings.notifications.channelForm.urlPlaceholder')"
+          />
+        </FormField>
+        <FormField :label="t('settings.notifications.channelForm.method')">
+          <input
+            v-model="chForm.config.method"
+            class="kf-input"
+            :placeholder="t('settings.notifications.channelForm.methodPlaceholder')"
+          />
+        </FormField>
+        <FormField :label="t('settings.notifications.channelForm.authHeader')">
+          <SecretInput
+            v-model:value="chForm.secret.auth_header"
+            v-model:cleared="chForm.clearSecret"
+            :stored="chForm.editing ? chForm.hasSecret : false"
+            :placeholder="t('settings.notifications.channelForm.authHeaderPlaceholder')"
+            :stored-placeholder="t('settings.notifications.channelForm.keepSecret')"
+          />
+        </FormField>
+      </template>
+      <FormField :label="t('settings.notifications.template.title')">
+        <div class="ns-tpl-row">
+          <code class="ns-tpl-inline">{{ chForm.template || templateDefaultHint }}</code>
+          <n-button size="small" secondary @click="openTemplate">{{
+            t('common.action.edit')
+          }}</n-button>
         </div>
-        <template #footer>
-          <div class="row-end">
-            <n-button @click="chModal = false">{{ t('common.action.cancel') }}</n-button>
-            <n-button type="primary" :loading="chSaving" @click="saveChannel">{{
-              t('common.action.save')
-            }}</n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
+      </FormField>
+      <div v-if="chForm.error" class="st-err" role="alert">{{ chForm.error }}</div>
+    </PopoverForm>
 
-    <!-- Template editor modal -->
-    <n-modal v-model:show="tplModal">
-      <n-card
-        class="modal tpl-modal"
-        :title="t('settings.notifications.template.title')"
-        closable
-        @close="tplModal = false"
-      >
-        <div class="tpl-grid">
-          <div class="tpl-left">
-            <div class="editor">
+    <PopoverForm
+      v-model:show="rtForm.show"
+      :anchor="() => rtForm.anchor"
+      placement="bottom-end"
+      :offset="{ x: 0, y: 6 }"
+      :width="380"
+      :title="
+        rtForm.editing
+          ? t('settings.notifications.routeForm.editTitle')
+          : t('settings.notifications.routeForm.newTitle')
+      "
+      :primary="t('common.action.save')"
+      :busy="rtForm.saving"
+      hint="tab"
+      testid="notif-route-form"
+      @submit="saveRoute"
+    >
+      <FormField :label="t('settings.notifications.routeForm.kinds')">
+        <n-select v-model:value="rtForm.kinds" :options="kindOptions" multiple clearable />
+      </FormField>
+      <FormField :label="t('settings.notifications.routeForm.workspace')">
+        <n-select
+          v-model:value="rtForm.workspace_id"
+          :options="wsOptions"
+          clearable
+          :placeholder="t('settings.notifications.routeForm.workspacePlaceholder')"
+        />
+      </FormField>
+      <label class="st-toggle">
+        <span class="st-toggle-l">{{ t('settings.notifications.routeForm.mute') }}</span>
+        <n-switch v-model:value="rtForm.mute" size="small" />
+      </label>
+      <FormField v-if="!rtForm.mute" :label="t('settings.notifications.routeForm.channels')">
+        <n-select v-model:value="rtForm.channel_ids" :options="channelOptions" multiple />
+      </FormField>
+      <div v-if="rtForm.error" class="st-err" role="alert">{{ rtForm.error }}</div>
+    </PopoverForm>
+
+    <!-- Template editor: tier 2 — over the channel form, hence the z-index. -->
+    <n-modal v-model:show="tplModal" :z-index="2100">
+      <div class="ns-tpl-win" role="dialog" aria-modal="true">
+        <header class="ns-tpl-head">
+          <span class="ns-tpl-title">{{ t('settings.notifications.template.title') }}</span>
+        </header>
+        <div class="ns-tpl-grid">
+          <div class="ns-tpl-left">
+            <div class="ns-editor">
               <!-- safe: `highlighted` HTML-escapes the source before wrapping {{…}} in spans -->
               <!-- eslint-disable-next-line vue/no-v-html -->
               <pre ref="hlRef" class="hl" v-html="highlighted"></pre>
@@ -904,297 +1029,339 @@ function wsSummary(r) {
                 @scroll="syncScroll"
               ></textarea>
             </div>
-            <div class="tpl-preview">
-              <div class="tpl-preview-head">
+            <div class="ns-tpl-preview">
+              <div class="ns-tpl-preview-head">
                 {{ t('settings.notifications.template.preview') }}
               </div>
-              <div v-if="tplError" class="err mono">{{ tplError }}</div>
+              <div v-if="tplError" class="st-err mono">{{ tplError }}</div>
               <pre v-else class="prev mono">{{ tplPreview }}</pre>
             </div>
           </div>
-          <div class="tpl-hints">
-            <div class="hints-title">{{ t('settings.notifications.template.fields') }}</div>
+          <div class="ns-tpl-hints">
+            <div class="ns-hints-title">{{ t('settings.notifications.template.fields') }}</div>
             <button
               v-for="f in TEMPLATE_FIELDS"
               :key="f.token"
               type="button"
-              class="hint-field"
+              class="ns-hint-field"
               @click="insertField(f.token)"
             >
               <code>{{ f.token }}</code>
               <span>{{ f.desc }}</span>
             </button>
-            <p class="hint">{{ syntaxHint }}</p>
+            <p class="st-hint">{{ syntaxHint }}</p>
           </div>
         </div>
-        <template #footer>
-          <div class="row-end">
-            <n-button quaternary @click="clearTemplate">{{
-              t('settings.notifications.template.reset')
-            }}</n-button>
-            <n-button @click="tplModal = false">{{ t('common.action.cancel') }}</n-button>
-            <n-button type="primary" @click="applyTemplate">{{
-              t('settings.notifications.template.apply')
-            }}</n-button>
-          </div>
-        </template>
-      </n-card>
+        <footer class="ns-tpl-foot">
+          <n-button quaternary @click="tplDraft = ''">{{
+            t('settings.notifications.template.reset')
+          }}</n-button>
+          <span class="ns-grow" />
+          <n-button secondary @click="tplModal = false">{{ t('common.action.cancel') }}</n-button>
+          <n-button type="primary" @click="applyTemplate">{{
+            t('settings.notifications.template.apply')
+          }}</n-button>
+        </footer>
+      </div>
     </n-modal>
-
-    <!-- Route editor modal -->
-    <n-modal v-model:show="rtModal">
-      <n-card
-        class="modal"
-        :title="
-          rtEditing
-            ? t('settings.notifications.routeForm.editTitle')
-            : t('settings.notifications.routeForm.newTitle')
-        "
-        closable
-        @close="rtModal = false"
-      >
-        <div class="form">
-          <label class="field">
-            <span>{{ t('settings.notifications.routeForm.kinds') }}</span>
-            <n-select v-model:value="rtForm.kinds" :options="kindOptions" multiple clearable />
-          </label>
-          <label class="field">
-            <span>{{ t('settings.notifications.routeForm.workspace') }}</span>
-            <n-select
-              v-model:value="rtForm.workspace_id"
-              :options="wsOptions"
-              clearable
-              :placeholder="t('settings.notifications.routeForm.workspacePlaceholder')"
-            />
-          </label>
-          <label class="field mute">
-            <n-switch v-model:value="rtForm.mute" size="small" />
-            <span>{{ t('settings.notifications.routeForm.mute') }}</span>
-          </label>
-          <label v-if="!rtForm.mute" class="field">
-            <span>{{ t('settings.notifications.routeForm.channels') }}</span>
-            <n-select v-model:value="rtForm.channel_ids" :options="channelOptions" multiple />
-          </label>
-          <div v-if="rtErr" class="err">{{ rtErr }}</div>
-        </div>
-        <template #footer>
-          <div class="row-end">
-            <n-button @click="rtModal = false">{{ t('common.action.cancel') }}</n-button>
-            <n-button type="primary" :loading="rtSaving" @click="saveRoute">{{
-              t('common.action.save')
-            }}</n-button>
-          </div>
-        </template>
-      </n-card>
-    </n-modal>
-  </section>
+  </div>
 </template>
 
 <style scoped>
-.head {
+.ns {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
+  flex-direction: column;
+  gap: 14px;
 }
-.card h2 {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--t-text1);
-  margin: 0;
+.ns-lead {
+  margin-top: -8px;
 }
-.block {
+.ns-channels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: 12px;
+}
+.ns-ch {
   display: flex;
   flex-direction: column;
   gap: 8px;
-}
-.block-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.block-title {
-  font-size: 13px;
-  font-weight: 600;
+  min-width: 0;
+  padding: 14px;
+  border-radius: var(--t-r-pop);
+  background: var(--t-col);
   color: var(--t-text1);
 }
-.item {
+.ns-ch-top {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid var(--t-border);
-  border-radius: 10px;
-  background: var(--t-surface2, transparent);
+  min-width: 0;
 }
-.item.off {
-  opacity: 0.55;
-}
-.item-ico {
-  font-size: 20px;
-  color: var(--t-text2);
+.ns-badge {
   flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
+  color: var(--t-text2);
 }
-.item-main {
+.ns-ch-main {
   flex: 1;
   min-width: 0;
 }
-.item-title {
+.ns-ch-title {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--t-text1);
+  min-width: 0;
 }
-.item-sub {
-  font-size: 12px;
-  color: var(--t-text3);
+.ns-ch-name {
+  font-size: 14px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ns-ch-sub {
   margin-top: 2px;
-}
-.item-test {
   font-size: 12px;
-  margin-top: 3px;
+  color: var(--t-text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.item-test.ok {
-  color: #18a058;
+.ns-ch.off .ns-ch-name,
+.ns-ch.off .ns-ch-sub {
+  color: var(--t-text3);
 }
-.item-test.bad {
-  color: #e0533d;
-}
-.item-actions {
-  display: flex;
-  align-items: center;
-  gap: 6px;
+.ns-tag {
   flex: none;
+  padding: 1px 7px;
+  border-radius: var(--t-r-pill);
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font-size: 10.5px;
+  font-weight: 650;
 }
-.hint {
+.ns-tag.ok {
+  background: color-mix(in srgb, #3aa675 16%, var(--t-pill));
+  color: #3aa675;
+}
+.ns-tag.warn {
+  background: color-mix(in srgb, #f0a020 16%, var(--t-pill));
+  color: #c98612;
+}
+.ns-line {
   font-size: 12px;
-  color: var(--t-text3);
-  margin: 0;
+  line-height: 1.4;
 }
-.hint.sub {
-  margin-top: -2px;
+.ns-line.ok {
+  color: #3aa675;
 }
-.err {
-  font-size: 12px;
-  color: #e0533d;
+.ns-line.bad {
+  color: var(--t-error);
 }
-.modal {
-  width: 460px;
-  max-width: 92vw;
-}
-.form {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-.field {
-  display: flex;
-  flex-direction: column;
-  gap: 5px;
-}
-.field > span {
-  font-size: 12px;
-  color: var(--t-text3);
-}
-.field.mute {
-  flex-direction: row;
+/* «⋯» — revealed on hover/focus on a pointer device, always there on touch. */
+.ns-more {
+  flex: none;
+  display: inline-flex;
   align-items: center;
-  gap: 8px;
-}
-.field.mute > span {
-  font-size: 13px;
-  color: var(--t-text1);
-}
-.row-end {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  gap: 10px;
-}
-.sched-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: var(--t-text1);
-}
-.grid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-}
-.saved-tick {
-  font-size: 13px;
-  color: #18a058;
-}
-.fade-enter-active,
-.fade-leave-active {
-  transition: opacity 0.3s ease;
-}
-.fade-enter-from,
-.fade-leave-to {
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
   opacity: 0;
 }
-@media (max-width: 560px) {
-  .grid2 {
-    grid-template-columns: 1fr;
+.ns-ch:hover .ns-more,
+.ns-rule:hover .ns-more,
+.ns-more:focus-visible {
+  opacity: 1;
+}
+.ns-more:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.ns-more:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+@media (hover: none) {
+  .ns-more {
+    opacity: 1;
   }
 }
-.tpl-row {
+.ns-add {
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 64px;
+  border: 0;
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--t-col);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 13.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ns-add:hover {
+  background: var(--t-col);
+  color: var(--t-text1);
+}
+.ns-add:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
+}
+.ns-rules {
+  gap: 10px;
+}
+.ns-empty {
+  margin: 0;
+  padding: 14px;
+  border-radius: var(--t-r-card);
+  background: var(--t-card);
+  font-size: 13px;
+  color: var(--t-text3);
+}
+.ns-rule {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: 48px;
+  padding: 6px 8px 6px 12px;
+  border-radius: 12px;
+  background: var(--t-card);
+}
+.ns-rule.off {
+  opacity: 0.6;
+}
+.ns-rule-n {
+  flex: none;
+  width: 18px;
+  font-size: 12px;
+  font-weight: 650;
+  color: var(--t-text3);
+  font-variant-numeric: tabular-nums;
+}
+.ns-rule-main {
+  flex: 1;
+  min-width: 0;
+}
+.ns-rule-title {
+  font-size: 13.5px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.ns-rule-sub {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.ns-sched {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+  gap: 14px;
+  align-items: start;
+}
+.ns-head-ic {
+  flex: none;
+  color: var(--t-text3);
+}
+.ns-quiet-title {
+  font-weight: 650;
+}
+.ns-quiet {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-.tpl-inline {
+.ns-quiet.off {
+  opacity: 0.6;
+}
+.ns-dash {
+  color: var(--t-text3);
+}
+.ns-tpl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ns-tpl-inline {
   flex: 1;
   min-width: 0;
+  padding: 7px 10px;
+  border-radius: 9px;
+  background: var(--t-input-bg);
+  color: var(--t-text2);
   font-family: ui-monospace, monospace;
   font-size: 12px;
-  color: var(--t-text2);
-  background: var(--t-surface-alt);
-  border: 1px solid var(--t-border);
-  border-radius: 6px;
-  padding: 5px 8px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-/* template editor modal */
-.tpl-modal {
-  width: 720px;
-  max-width: 94vw;
+/* template editor window */
+.ns-tpl-win {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: min(760px, 94vw);
+  padding: 18px 20px;
+  border-radius: var(--t-r-col);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-drag);
+  color: var(--t-text1);
+  --t-surface: var(--t-pop);
 }
-.tpl-grid {
+.ns-tpl-title {
+  font-size: 15px;
+  font-weight: 650;
+}
+.ns-tpl-grid {
   display: grid;
-  grid-template-columns: 1fr 220px;
+  grid-template-columns: 1fr 230px;
   gap: 14px;
 }
-.tpl-left {
+.ns-tpl-left {
   display: flex;
   flex-direction: column;
   gap: 10px;
   min-width: 0;
 }
-.editor {
+.ns-editor {
   position: relative;
-  height: 170px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
+  height: 180px;
   overflow: hidden;
-  background: var(--t-surface-alt);
+  border-radius: var(--t-r-ctl);
+  background: var(--t-input-bg);
+}
+.ns-editor:focus-within {
+  box-shadow: 0 0 0 2px var(--t-primary);
 }
 .hl,
 .ta {
-  margin: 0;
-  padding: 10px;
-  border: 0;
-  box-sizing: border-box;
   position: absolute;
   inset: 0;
+  box-sizing: border-box;
   width: 100%;
   height: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  border: 0;
   font-family: ui-monospace, 'JetBrains Mono', monospace;
   font-size: 13px;
   line-height: 1.5;
@@ -1216,21 +1383,24 @@ function wsSummary(r) {
 .ta {
   overflow: auto;
   resize: none;
+  outline: 0;
   background: transparent;
   color: transparent;
   caret-color: var(--t-text1);
   z-index: 1;
 }
-.tpl-preview {
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  padding: 8px 10px;
-  background: var(--t-surface);
+.ns-tpl-preview {
+  padding: 10px 12px;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-col);
 }
-.tpl-preview-head {
-  font-size: 11px;
-  color: var(--t-text3);
+.ns-tpl-preview-head {
   margin-bottom: 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .mono {
   font-family: ui-monospace, monospace;
@@ -1238,46 +1408,60 @@ function wsSummary(r) {
 }
 .prev {
   margin: 0;
+  min-height: 18px;
   white-space: pre-wrap;
   word-break: break-word;
   color: var(--t-text1);
-  min-height: 18px;
 }
-.tpl-hints {
+.ns-tpl-hints {
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.hints-title {
+.ns-hints-title {
   font-size: 12px;
-  font-weight: 600;
-  color: var(--t-text1);
+  font-weight: 650;
+  color: var(--t-text2);
 }
-.hint-field {
+.ns-hint-field {
   display: flex;
   flex-direction: column;
   gap: 1px;
+  padding: 6px 9px;
+  border: 0;
+  border-radius: 7px;
+  background: var(--t-col);
   text-align: left;
-  background: var(--t-surface-alt);
-  border: 1px solid var(--t-border);
-  border-radius: 6px;
-  padding: 5px 8px;
+  font: inherit;
   cursor: pointer;
 }
-.hint-field:hover {
-  border-color: var(--t-primary);
+.ns-hint-field:hover {
+  background: var(--t-hover);
 }
-.hint-field code {
+.ns-hint-field code {
   font-family: ui-monospace, monospace;
   font-size: 12px;
   color: var(--t-primary);
 }
-.hint-field span {
+.ns-hint-field span {
   font-size: 11px;
   color: var(--t-text3);
 }
+.ns-tpl-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.ns-grow {
+  flex: 1;
+}
+@media (max-width: 900px) {
+  .ns-sched {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
 @media (max-width: 560px) {
-  .tpl-grid {
+  .ns-tpl-grid {
     grid-template-columns: 1fr;
   }
 }
