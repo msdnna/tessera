@@ -66,8 +66,11 @@ export function parseChord(text) {
   return chord
 }
 
+// Palette-only commands (`form.*`, `go.milestones`) have no `keys`: they parse
+// to no chords, so a hint renders nothing and the dispatcher never matches them.
 export function parseKeys(keys) {
-  return keys.trim().split(/\s+/).map(parseChord)
+  const text = typeof keys === 'string' ? keys.trim() : ''
+  return text ? text.split(/\s+/).map(parseChord) : []
 }
 
 // matchChord tests one event against one chord. Returns null on a miss, or

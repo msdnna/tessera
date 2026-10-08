@@ -112,6 +112,7 @@ export function handleKeydown(e) {
   const done = []
   for (const p of pool) {
     const seq = sequenceOf(p.id)
+    if (!seq.length) continue
     const hit = matchChord(seq[p.step], e)
     if (!hit) continue
     const args = hit.arg === undefined ? p.args : [...p.args, hit.arg]
