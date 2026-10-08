@@ -797,27 +797,6 @@ body {
   display: none !important;
 }
 
-/* Sidebar spotlight (#2749): the target nav item nods toward the arrow as it
-   lands. Global because the hint overlay (SidebarSpotlight.vue) toggles the
-   class on a Sidebar nav-link in a different component's scope. */
-@keyframes sl-nudge {
-  0%,
-  100% {
-    transform: translateX(0);
-  }
-  50% {
-    transform: translateX(4px);
-  }
-}
-.nav-link.sl-nudge {
-  animation: sl-nudge 1.1s ease-in-out 2;
-}
-@media (prefers-reduced-motion: reduce) {
-  .nav-link.sl-nudge {
-    animation: none;
-  }
-}
-
 /* Get Started guide (#2753): TourOverlay marks the elements it currently points
    at. Sidebar row buttons ("+" on a project) are opacity: 0 until the row is
    hovered, so without this the arrow would land on nothing visible. Global and

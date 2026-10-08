@@ -32,8 +32,8 @@ import Topbar from './Topbar.vue'
 import MobileTopbar from './mobile/MobileTopbar.vue'
 import MobileTabBar from './mobile/MobileTabBar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
-import WhatsNewModal from './WhatsNewModal.vue'
-import SidebarSpotlight from './SidebarSpotlight.vue'
+import WhatsNewV2 from './tour/WhatsNewV2.vue'
+import SpotlightHint from './tour/SpotlightHint.vue'
 import TourOverlay from './TourOverlay.vue'
 import HelpDrawer from './help/HelpDrawer.vue'
 import HelpCenterModal from './help/HelpCenterModal.vue'
@@ -566,10 +566,11 @@ watch(
       @resolved="conflicts.load()"
     />
 
-    <!-- "Что нового" after an update, then one-at-a-time sidebar spotlight hints
-         with an animated arrow to the new section (#2749). -->
-    <WhatsNewModal />
-    <SidebarSpotlight />
+    <!-- «Что нового» after an update (v2: WhatsNewV2, with the «Что изменилось»
+         mini-tour for v1 users), then one-at-a-time spotlight hints at any
+         element (#2749 → #3000). -->
+    <WhatsNewV2 />
+    <SpotlightHint />
 
     <!-- The «Начало работы» tour (#2753, chapters since #3000). Inert until the
          tour store is started — by the autostart, the checklist, «Обучение». -->
