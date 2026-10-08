@@ -10,31 +10,24 @@
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { CAPS, cap } from '@/utils/keyCaps'
-import { NModal, NIcon } from 'naive-ui'
 import {
-  CloseOutline,
   InformationCircleOutline,
   PricetagsOutline,
   TrailSignOutline,
   TimeOutline,
   PeopleOutline,
   GitBranchOutline,
-  OpenOutline,
 } from '@vicons/ionicons5'
 import { useProjectWindowStore, TABS } from '@/stores/projectWindow'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useBoardViewStore } from '@/stores/boardView'
-import { useShortcuts } from '@/composables/useShortcuts'
 import { useResponsive } from '@/composables/useResponsive'
-import { useOverlayBack } from '@/composables/useOverlayBack'
 import { workspaces as wsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
-import { isTypingTarget } from '@/utils/keys'
+import LargeWindow from '../kit/LargeWindow.vue'
 import ProjectIcon from '../ProjectIcon.vue'
 import ShortcutKeys from '../ShortcutKeys.vue'
-import Kbd from '../Kbd.vue'
 import ProjectGeneralTab from './ProjectGeneralTab.vue'
 import ProjectTagsTab from './ProjectTagsTab.vue'
 import ProjectStagesTab from './ProjectStagesTab.vue'
@@ -54,7 +47,6 @@ const show = computed({
     if (!v) close()
   },
 })
-useOverlayBack(show, () => close())
 
 const project = computed(() => ws.projects.find((p) => p.id === win.projectId) || null)
 // The project vanished (deleted here or elsewhere) — nothing left to set up.
@@ -102,15 +94,38 @@ const TAB_ICONS = {
   stages: TrailSignOutline,
   estimation: TimeOutline,
 }
-const tabs = computed(() =>
-  TABS.map((key, i) => ({
+// The tabs, then the workspace windows that also concern the project — as
+// doors (they are windows of their own; this one steps aside).
+const navItems = computed(() => [
+  ...TABS.map((key) => ({
     key,
     icon: TAB_ICONS[key],
     label: t(`project.window.tab.${key}`),
     count: key === 'tags' ? counts.value.tags : key === 'stages' ? counts.value.stages : null,
-    digit: String(i + 1),
   })),
-)
+  { heading: t('project.window.outside'), desktop: true },
+  {
+    key: 'members',
+    out: true,
+    desktop: true,
+    icon: PeopleOutline,
+    label: t('project.window.members'),
+    count: counts.value.members,
+    onClick: () => openOutside('members'),
+  },
+  {
+    key: 'gitlab',
+    out: true,
+    desktop: true,
+    icon: GitBranchOutline,
+    label: 'GitLab',
+    onClick: () => openOutside('gitlab'),
+  },
+])
+const tab = computed({
+  get: () => win.tab,
+  set: (key) => pickTab(key),
+})
 
 // Focus goes to the first row of the tab — not on a phone, where a focused
 // field would pull the keyboard up over the window.
@@ -165,32 +180,10 @@ function openOutside(name) {
   dialogs.open(name)
 }
 
+// Esc: whatever the tab holds open first (LargeWindow asks), then the window.
+// The frame owns the keys (1–4, Esc), the Back button and the scrim.
 const paneRef = ref(null)
-function onEsc() {
-  if (paneRef.value?.escape?.()) return
-  close()
-}
-
-// ⌘, toggles; 1–4 switch tabs; Esc steps out one layer at a time.
-// Only while this window is the top layer — it may sit over the task modal
-// («Управлять тегами…» in its tag picker).
-const topmost = () => {
-  if (!show.value || typeof document === 'undefined') return false
-  if (document.querySelector('.n-dropdown-menu')) return false
-  const mods = document.querySelectorAll('.n-modal-container .n-modal')
-  const top = mods[mods.length - 1]
-  return !!top && (top.classList.contains('pw-card') || !!top.querySelector('.pw-card'))
-}
-useShortcuts(
-  {
-    'project.close': onEsc,
-    'project.tab': (d, e) => {
-      const i = Number(d) - 1
-      if (i >= 0 && i < TABS.length && !isTypingTarget(e?.target)) pickTab(TABS[i])
-    },
-  },
-  { when: topmost },
-)
+const paneEscape = () => !!paneRef.value?.escape?.()
 
 watch(show, (on) => {
   if (on) focusPane()
@@ -198,139 +191,61 @@ watch(show, (on) => {
 </script>
 
 <template>
-  <n-modal
+  <LargeWindow
     v-model:show="show"
-    :auto-focus="false"
-    :close-on-esc="false"
-    :mask-closable="true"
-    transform-origin="center"
+    v-model:section="tab"
+    :title="project ? project.name : ''"
+    :sub="t('project.window.title')"
+    :foot-hint="t('project.window.tabsHint')"
+    :items="navItems"
+    :escape="paneEscape"
+    :restore-focus="false"
+    testid="project-window"
+    close-testid="project-window-close"
+    tab-testid="project-tab"
   >
-    <div
-      v-if="project"
-      class="pw-card"
-      :class="{ 'pw-mobile': isMobile }"
-      role="dialog"
-      aria-modal="true"
-      :aria-label="t('project.window.title')"
-      data-testid="project-window"
-    >
-      <header class="pw-head">
-        <span class="pw-badge" :class="{ bare: iconMode }" :style="boxStyle">
-          <ProjectIcon :icon="project.icon" :initials="initials" :size="14" :color="glyphColor" />
-        </span>
-        <span class="pw-name">{{ project.name }}</span>
-        <span class="pw-sub">{{ t('project.window.title') }}</span>
-        <span class="pw-grow" />
-        <ShortcutKeys v-if="!isMobile" id="project.window" class="pw-kbd" />
-        <button
-          type="button"
-          class="pw-close"
-          :title="t('common.action.close')"
-          data-testid="project-window-close"
-          @click="close"
-        >
-          <n-icon :component="CloseOutline" :size="18" />
-        </button>
-        <Kbd v-if="!isMobile">{{ CAPS.escape }}</Kbd>
-      </header>
+    <template #badge>
+      <span v-if="project" class="pw-badge" :class="{ bare: iconMode }" :style="boxStyle">
+        <ProjectIcon :icon="project.icon" :initials="initials" :size="14" :color="glyphColor" />
+      </span>
+    </template>
+    <template #aside>
+      <ShortcutKeys v-if="!isMobile" id="project.window" class="pw-kbd" />
+    </template>
 
-      <div class="pw-body">
-        <nav class="pw-tabs" :aria-label="t('project.window.title')">
-          <button
-            v-for="tb in tabs"
-            :key="tb.key"
-            type="button"
-            class="pw-tab"
-            :class="{ active: win.tab === tb.key }"
-            :data-testid="`project-tab-${tb.key}`"
-            @click="pickTab(tb.key)"
-          >
-            <n-icon :component="tb.icon" :size="16" class="pw-tab-ic" />
-            <span class="pw-tab-l">{{ tb.label }}</span>
-            <span v-if="tb.count != null" class="pw-tab-n">{{ tb.count }}</span>
-          </button>
-          <template v-if="!isMobile">
-            <div class="pw-tabs-h">{{ t('project.window.outside') }}</div>
-            <button type="button" class="pw-tab" @click="openOutside('members')">
-              <n-icon :component="PeopleOutline" :size="16" class="pw-tab-ic" />
-              <span class="pw-tab-l">{{ t('project.window.members') }}</span>
-              <span v-if="counts.members != null" class="pw-tab-n">{{ counts.members }}</span>
-              <n-icon :component="OpenOutline" :size="13" class="pw-tab-out" />
-            </button>
-            <button type="button" class="pw-tab" @click="openOutside('gitlab')">
-              <n-icon :component="GitBranchOutline" :size="16" class="pw-tab-ic" />
-              <span class="pw-tab-l">GitLab</span>
-              <n-icon :component="OpenOutline" :size="13" class="pw-tab-out" />
-            </button>
-            <span class="pw-grow" />
-            <div class="pw-tabs-foot">
-              <Kbd>{{ cap(1) }}</Kbd
-              ><span>–</span><Kbd>{{ cap(4) }}</Kbd>
-              <span>{{ t('project.window.tabsHint') }}</span>
-            </div>
-          </template>
-        </nav>
-
-        <section class="pw-pane">
-          <ProjectGeneralTab
-            v-if="win.tab === 'general'"
-            ref="paneRef"
-            :project="project"
-            @changed="markChanged"
-            @deleted="close"
-          />
-          <ProjectTagsTab
-            v-else-if="win.tab === 'tags'"
-            ref="paneRef"
-            :project="project"
-            :initial-filter="win.filter"
-            @count="setCount('tags', $event)"
-            @changed="markChanged"
-          />
-          <ProjectStagesTab
-            v-else-if="win.tab === 'stages'"
-            ref="paneRef"
-            :project="project"
-            @count="setCount('stages', $event)"
-            @changed="markChanged"
-            @open-stage="navigate"
-          />
-          <ProjectEstimationTab v-else ref="paneRef" :project="project" @changed="markChanged" />
-        </section>
-      </div>
-    </div>
-  </n-modal>
+    <template v-if="project">
+      <ProjectGeneralTab
+        v-if="win.tab === 'general'"
+        ref="paneRef"
+        :project="project"
+        @changed="markChanged"
+        @deleted="close"
+      />
+      <ProjectTagsTab
+        v-else-if="win.tab === 'tags'"
+        ref="paneRef"
+        :project="project"
+        :initial-filter="win.filter"
+        @count="setCount('tags', $event)"
+        @changed="markChanged"
+      />
+      <ProjectStagesTab
+        v-else-if="win.tab === 'stages'"
+        ref="paneRef"
+        :project="project"
+        @count="setCount('stages', $event)"
+        @changed="markChanged"
+        @open-stage="navigate"
+      />
+      <ProjectEstimationTab v-else ref="paneRef" :project="project" @changed="markChanged" />
+    </template>
+  </LargeWindow>
 </template>
 
 <style scoped>
-/* 1080×760, radius 18, the pop level, the drag shadow — as the task modal. */
-.pw-card {
-  display: flex;
-  flex-direction: column;
-  width: min(1080px, 96vw);
-  height: min(760px, 92vh);
-  border-radius: var(--t-r-col);
-  background: var(--t-pop);
-  box-shadow: var(--t-sh-drag);
-  color: var(--t-text1);
-  --t-surface: var(--t-pop);
-}
-.pw-card.pw-mobile {
-  width: 100vw;
-  height: 100dvh;
-  max-height: none;
-  border-radius: 0;
-}
-.pw-head {
-  flex: none;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px 18px 10px 20px;
-  min-width: 0;
-}
+/* The project's own badge stands in for the frame's tile: its colour and icon
+   (a glyph in its colour when the project shows the icon bare). */
 .pw-badge {
-  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -338,152 +253,8 @@ watch(show, (on) => {
   height: 24px;
   border-radius: 7px;
   color: #fff;
-  font-size: 10px;
-  font-weight: 700;
 }
 .pw-badge.bare {
   color: var(--t-text1);
-}
-.pw-name {
-  font-size: 15px;
-  font-weight: 650;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  min-width: 0;
-}
-.pw-sub {
-  flex: none;
-  font-size: 13px;
-  color: var(--t-text2);
-}
-.pw-grow {
-  flex: 1;
-}
-.pw-close {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: var(--t-r-ctl);
-  background: transparent;
-  color: var(--t-text2);
-  cursor: pointer;
-}
-.pw-close:hover {
-  background: var(--t-hover);
-  color: var(--t-text1);
-}
-.pw-close:focus-visible {
-  outline: 2px solid var(--t-primary);
-  outline-offset: 1px;
-}
-.pw-body {
-  flex: 1;
-  min-height: 0;
-  display: grid;
-  grid-template-columns: 220px minmax(0, 1fr);
-  gap: 28px;
-  padding: 0 12px 12px;
-}
-.pw-mobile .pw-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  padding: 0 0 0;
-}
-/* The sunken tab column — --t-sub, radius 14 (mockup ProjectWin). */
-.pw-tabs {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  padding: 8px;
-  border-radius: 14px;
-  background: var(--t-sub);
-  min-height: 0;
-}
-.pw-mobile .pw-tabs {
-  flex-direction: row;
-  overflow-x: auto;
-  border-radius: 0;
-  padding: 6px 10px;
-  scrollbar-width: none;
-}
-.pw-tab {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  height: 34px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 9px;
-  background: transparent;
-  color: var(--t-text1);
-  font: inherit;
-  font-size: 13.5px;
-  text-align: left;
-  cursor: pointer;
-  flex: none;
-}
-.pw-tab:hover {
-  background: var(--t-hover);
-}
-.pw-tab:focus-visible {
-  outline: none;
-  box-shadow: inset 0 0 0 2px var(--t-primary);
-}
-.pw-tab.active {
-  background: var(--t-active);
-  font-weight: 650;
-}
-.pw-tab-ic {
-  color: var(--t-text2);
-  flex: none;
-}
-.pw-tab.active .pw-tab-ic :deep([stroke='currentColor']) {
-  stroke: url(#t-accent-grad-svg);
-}
-.pw-tab.active .pw-tab-ic {
-  color: var(--t-primary);
-}
-.pw-tab-l {
-  flex: 1;
-  white-space: nowrap;
-}
-.pw-tab-n {
-  font-size: 12px;
-  color: var(--t-text3);
-  font-variant-numeric: tabular-nums;
-}
-.pw-tab-out {
-  color: var(--t-text3);
-}
-.pw-tabs-h {
-  margin: 14px 10px 6px;
-  font-size: 11px;
-  font-weight: 650;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--t-text3);
-}
-.pw-tabs-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 8px;
-  font-size: 11.5px;
-  color: var(--t-text3);
-}
-.pw-pane {
-  min-height: 0;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-}
-.pw-mobile .pw-pane {
-  flex: 1;
-  padding: 0 14px 14px;
 }
 </style>

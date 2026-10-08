@@ -233,7 +233,8 @@
       "settings": "Settings",
       "admin": "Administration",
       "notifications": "Notifications",
-      "meet": "Conferences"
+      "meet": "Conferences",
+      "window": "Large windows"
     },
     "nav": {
       "palette": "Search and commands",
@@ -246,7 +247,8 @@
       "goRail": "Focus the spaces rail",
       "goStage": "The board’s milestone page",
       "goNotifications": "Notifications under the bell",
-      "help": "Help centre"
+      "help": "Help centre",
+      "goJobs": "Background jobs"
     },
     "board": {
       "addTask": "Task in the hovered column",
@@ -356,9 +358,7 @@
       "move": "Move the view up / down"
     },
     "project": {
-      "window": "«Project» window of the current project",
-      "tab": "Window tabs: General · Tags · Milestones · Estimation",
-      "close": "Close the window"
+      "window": "«Project» window of the current project"
     },
     "tags": {
       "select": "Select a tag row · a range",
@@ -424,6 +424,35 @@
       "cam": "In a call: camera",
       "leave": "Leave the call",
       "minimize": "Fold the call into the mini window and back"
+    },
+    "win": {
+      "section": "Window sections",
+      "close": "Close a menu, an edit or the window",
+      "filter": "Filter the section",
+      "new": "New row in the section"
+    },
+    "gitlab": {
+      "sync": "GitLab: sync now"
+    },
+    "journal": {
+      "retry": "Journal: retry a failed push",
+      "resolve": "Journal: resolve the conflict"
+    },
+    "conflict": {
+      "pick": "Conflict: base · Tessera · GitLab",
+      "merge": "Conflict: merge by hand",
+      "task": "Conflict: next or previous task",
+      "apply": "Conflict: apply and push"
+    },
+    "jobs": {
+      "stop": "Job: stop"
+    },
+    "members": {
+      "invite": "Members: invite"
+    },
+    "commands": {
+      "edit": "Commands: edit the row, save",
+      "move": "Commands: reorder"
     }
   },
   "palette": {

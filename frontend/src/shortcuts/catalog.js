@@ -36,6 +36,7 @@ export const GROUPS = [
   'view',
   'views',
   'project',
+  'window',
   'stage',
   'inbox',
   'notifications',
@@ -55,6 +56,9 @@ export const CATALOG = [
   // The page of the stage the open board is scoped to (#2993).
   { id: 'nav.goStage', keys: 'g e', group: 'nav' },
   { id: 'nav.goMine', keys: 'g m', group: 'nav', command: 'HomeOutline' },
+  // Background jobs (#2975, JobsWin) — administrators only; the window itself
+  // registers nothing for anyone else.
+  { id: 'nav.goJobs', keys: 'g j', group: 'nav' },
   { id: 'nav.sidebar', keys: '[', group: 'nav', command: 'EyeOutline' },
   { id: 'nav.shortcuts', keys: '?', group: 'nav', command: 'KeypadOutline' },
   // The help centre (#3107, PackageE «HelpWin»); `modal` so F1 closes it too.
@@ -268,12 +272,45 @@ export const CATALOG = [
   // switch its tabs. The tag table's keys are caught by the table itself (they
   // only mean something on its rows); these entries list them.
   { id: 'project.window', keys: 'mod+,', group: 'project', command: 'SettingsOutline' },
-  { id: 'project.tab', keys: 'digit', group: 'project', digit: '1–4', modal: true },
-  { id: 'project.close', keys: 'escape', modal: true, prio: 2 },
   { id: 'tags.select', group: 'project', display: [['space'], ['shift', '↑/↓']] },
   { id: 'tags.rename', group: 'project', display: [['enter'], ['f2']] },
   { id: 'tags.new', group: 'project', display: [['n'], ['/']] },
   { id: 'tags.bulk', group: 'project', display: [['m'], ['c'], ['backspace']] },
+
+  // ── large windows (#2975, kit/LargeWindow): the frame's own keys — digits
+  // switch the sections of its navigation column, Esc steps out a layer at a
+  // time — and the keys of the windows of package F. Each answers only while
+  // its window is the top layer (`when`), so one letter can mean different
+  // things in two windows (R: retry a push in the journal, run a worker in the
+  // jobs). Keys caught by a list itself (↑↓, ↵, ⌥↑↓) are display rows.
+  { id: 'win.section', keys: 'digit', group: 'window', digit: '1–9', modal: true },
+  { id: 'win.close', keys: 'escape', group: 'window', modal: true, prio: 2 },
+  { id: 'win.filter', keys: '/', group: 'window', modal: true },
+  { id: 'win.new', keys: 'n', group: 'window', modal: true },
+  { id: 'gitlab.sync', keys: 'shift+s', group: 'window', modal: true },
+  { id: 'journal.retry', keys: 'r', group: 'window', modal: true },
+  { id: 'journal.resolve', keys: 'c', group: 'window', modal: true },
+  { id: 'conflict.pick', group: 'window', display: [['B'], ['T'], ['G']] },
+  { id: 'conflict.base', keys: 'b', modal: true },
+  { id: 'conflict.ours', keys: 't', modal: true },
+  { id: 'conflict.theirs', keys: 'g', modal: true },
+  { id: 'conflict.merge', keys: 'm', group: 'window', modal: true },
+  {
+    id: 'conflict.task',
+    group: 'window',
+    display: [
+      ['mod', '['],
+      ['mod', ']'],
+    ],
+  },
+  { id: 'conflict.prev', keys: 'mod+[', modal: true },
+  { id: 'conflict.next', keys: 'mod+]', modal: true },
+  { id: 'conflict.apply', keys: 'mod+enter', group: 'window', modal: true },
+  { id: 'jobs.stop', keys: 'shift+backspace', group: 'window', modal: true },
+  { id: 'jobs.run', keys: 'r', modal: true },
+  { id: 'members.invite', keys: 'i', group: 'window', modal: true },
+  { id: 'commands.edit', group: 'window', display: [['enter']] },
+  { id: 'commands.move', group: 'window', display: [['alt', '↑/↓']] },
 
   // ── «Входящие» (#2997): caught by the panel's list itself while it has the
   // focus (they mean something only on its records); listed for the sheet.

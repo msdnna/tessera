@@ -54,6 +54,23 @@ export const FEATURE_STUBS = {
   'meet.reactions': 3054,
   'meet.recurrence': 3052,
   'meet.stage': 3053,
+  // Large windows (#2975, package F). Members: roles and permissions, owner
+  // transfer, groups, guests (#3063); resend / extend an invitation and a
+  // reusable invite link (#3035).
+  'members.roles': 3063,
+  'members.inviteLink': 3035,
+  // GitLab: several projects on one board, OAuth connection, the token's
+  // expiry (#3065); label → stage rules, rule switches and counters, the
+  // conflict policy, «Отложить» in the resolver (#3066); import and export
+  // (#3068).
+  'gitlab.connections': 3065,
+  'gitlab.rules': 3066,
+  'gitlab.importExport': 3068,
+  // Background jobs: history, steps and progress, the live log, the queue
+  // (#3067).
+  'jobs.history': 3067,
+  // Workspace commands: palette macros and task templates (#3069).
+  'commands.macros': 3069,
 }
 
 export function stubTask(key) {

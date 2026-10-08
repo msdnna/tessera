@@ -214,5 +214,8 @@
     "deleting": "Deleting…",
     "retry": "retry",
     "failed": "Couldn't delete"
+  },
+  "window": {
+    "sections": "sections"
   }
 }
