@@ -51,3 +51,77 @@
 .v-binder-follower-container:has(.n-base-select-menu) {
   z-index: 2200 !important;
 }
+
+/* A plain v2 button with an optional key cap at its end (#3107): the actions of
+   an empty state, the 404, the reconnect overlay, a notification row. Quiet by
+   default (the control level), `.primary` on the accent gradient, `.danger` on
+   the red one. 32px tall, the control radius. */
+.kit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 32px;
+  padding: 0 12px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 10px;
+  background: var(--t-ctl);
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    box-shadow 0.12s ease;
+}
+.kit-btn:hover {
+  background: var(--t-hover);
+}
+.kit-btn:has(.kbd) {
+  padding-right: 6px;
+}
+.kit-btn.primary {
+  background: var(--t-accent-grad);
+  color: #fff;
+  font-weight: 600;
+}
+.kit-btn.danger {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #e0533d 86%, #000),
+    #e0533d 50%,
+    color-mix(in srgb, #e0533d 86%, #fff)
+  );
+  color: #fff;
+  font-weight: 600;
+}
+.kit-btn.primary:hover {
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--t-primary) 40%, transparent);
+}
+.kit-btn.danger:hover {
+  box-shadow: 0 4px 14px color-mix(in srgb, #e0533d 40%, transparent);
+}
+.kit-btn.primary .kbd,
+.kit-btn.danger .kbd {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  box-shadow: none;
+}
+.kit-btn.small {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.kit-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.kit-btn:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
+}

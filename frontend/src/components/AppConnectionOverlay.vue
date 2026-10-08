@@ -9,11 +9,19 @@
 //               keeps the full-screen glyph + retry.
 // Driven by the shared `connection` reactive (api interceptors feed it). Offline
 // wins over the bar. Nothing renders on the common fast path.
-import { computed } from 'vue'
+//
+// v2 (#3107 — PackageE «Нет соединения»): the offline state is a card on the
+// scrim over the current screen — nothing under it is torn down, and it closes
+// by itself the moment any request reaches the server again (useConnection).
+// «Повторить сейчас» (↵) reloads.
+import { computed, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NButton } from 'naive-ui'
-import { CloudOfflineOutline, RefreshOutline } from '@vicons/ionicons5'
+import { NIcon } from 'naive-ui'
+import { CloudOfflineOutline } from '@vicons/ionicons5'
 import { connection } from '@/composables/useConnection'
+import { CAPS } from '@/utils/keyCaps'
+import Kbd from './Kbd.vue'
+import './kit/kit.css'
 
 const { t } = useI18n()
 const active = computed(() => connection.active && !connection.offline)
@@ -21,6 +29,22 @@ const active = computed(() => connection.active && !connection.offline)
 function retry() {
   window.location.reload()
 }
+
+// ↵ retries while the card is up — it is the only thing on screen to do.
+function onKey(e) {
+  if (e.key !== 'Enter' || e.defaultPrevented) return
+  e.preventDefault()
+  retry()
+}
+watch(
+  () => connection.offline,
+  (off) => {
+    if (off) window.addEventListener('keydown', onKey, true)
+    else window.removeEventListener('keydown', onKey, true)
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => window.removeEventListener('keydown', onKey, true))
 </script>
 
 <template>
@@ -38,17 +62,16 @@ function retry() {
 
   <!-- Server unreachable — error + retry. -->
   <transition name="conn-fade">
-    <div v-if="connection.offline" class="conn-overlay">
-      <div class="conn-box">
-        <span class="conn-disc">
+    <div v-if="connection.offline" class="conn-overlay" data-testid="connection-offline">
+      <div class="conn-box" role="alertdialog" :aria-label="t('app.connection.offlineTitle')">
+        <span class="conn-tile">
           <n-icon :component="CloudOfflineOutline" class="conn-icon" />
         </span>
         <div class="conn-title">{{ t('app.connection.offlineTitle') }}</div>
         <div class="conn-sub">{{ t('app.connection.offlineSub') }}</div>
-        <n-button type="primary" class="conn-retry" @click="retry">
-          <template #icon><n-icon :component="RefreshOutline" /></template>
-          {{ t('app.connection.retry') }}
-        </n-button>
+        <button type="button" class="kit-btn conn-retry" @click="retry">
+          {{ t('app.connection.retry') }}<Kbd>{{ CAPS.enter }}</Kbd>
+        </button>
       </div>
     </div>
   </transition>
@@ -111,42 +134,49 @@ function retry() {
   align-items: center;
   justify-content: center;
   padding: 24px;
-  background: color-mix(in srgb, var(--t-bg) 72%, transparent);
-  backdrop-filter: blur(6px);
+  background: var(--t-scrim);
 }
+/* The card: popover level, the large-surface radius, the popover shadow. */
 .conn-box {
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 18px;
-  max-width: 360px;
+  gap: 8px;
+  width: 100%;
+  max-width: 340px;
+  box-sizing: border-box;
+  padding: 26px 24px 22px;
+  border-radius: 18px;
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
 }
-.conn-disc {
+.conn-tile {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 64px;
-  height: 64px;
-  border-radius: 50%;
-  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
+  width: 56px;
+  height: 56px;
+  margin-bottom: 6px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
   color: var(--t-primary);
 }
 .conn-icon {
-  font-size: 32px;
+  font-size: 26px;
 }
 .conn-title {
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 17px;
+  font-weight: 700;
   color: var(--t-text1);
 }
 .conn-sub {
   font-size: 13px;
   line-height: 1.5;
-  color: var(--t-text3);
+  color: var(--t-text2);
 }
 .conn-retry {
-  margin-top: 4px;
+  margin-top: 10px;
 }
 
 .conn-fade-enter-active,

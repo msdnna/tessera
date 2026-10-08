@@ -84,3 +84,23 @@ export function passwordError(pw) {
     ? t('common.auth.validation.passwordTooShort')
     : t('common.auth.validation.passwordTooLong', { bytes: MAX_PASSWORD_BYTES })
 }
+
+/**
+ * A rough strength of a password for the meter under the field (v2, #3107):
+ * 0 — nothing typed or it cannot be stored, 1 weak … 4 strong. Length does most
+ * of the work (it is what makes a password hard to guess), a mix of letter case,
+ * digits and symbols adds a step. Advice only — the server's rule is
+ * `passwordProblem`, and a "weak" password that passes it is still accepted.
+ *
+ * @param {string} pw
+ * @returns {0|1|2|3|4}
+ */
+export function passwordStrength(pw) {
+  const s = String(pw ?? '')
+  if (!s || passwordProblem(s)) return s ? 1 : 0
+  const n = passwordChars(s)
+  const kinds = [/\p{Ll}/u, /\p{Lu}/u, /\d/, /[^\p{L}\d]/u].filter((re) => re.test(s)).length
+  let score = n >= 16 ? 3 : n >= 12 ? 2 : 1
+  if (kinds >= 3) score += 1
+  return Math.min(4, score)
+}

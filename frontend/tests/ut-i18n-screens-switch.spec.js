@@ -77,13 +77,13 @@ afterEach(async () => {
 describe('404 screen', () => {
   it('falls back to the catalogue instead of a Russian prop default', async () => {
     const w = track(mount(NotFoundView, { global: { stubs: { RouterLink: true } } }))
-    expect(w.text()).toContain('Страница не найдена')
+    expect(w.text()).toContain('Такой страницы нет')
 
     await setI18nLocale('en')
     // Before the fix the default was the Russian wording, so `title || $t(…)`
     // never reached the catalogue and this stayed Russian.
-    expect(w.text()).toContain('Page not found')
-    expect(w.text()).not.toContain('Страница не найдена')
+    expect(w.text()).toContain('There is no such page')
+    expect(w.text()).not.toContain('Такой страницы нет')
   })
 
   it('still honours an explicit override', async () => {

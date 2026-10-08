@@ -2,6 +2,7 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { LogoGitlab } from '@vicons/ionicons5'
 import AuthLayout from '@/components/AuthLayout.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
 import { invitePath } from '@/utils/inviteRoute'
@@ -42,7 +43,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <auth-layout :title="$t('common.auth.oauth.title')">
+  <auth-layout
+    :title="$t('common.auth.oauth.title')"
+    :subtitle="$t('common.auth.oauth.subtitle')"
+    :icon="LogoGitlab"
+    tone="#fc6d26"
+  >
     <div class="oauth-wait">
       <loader-overlay :show="true" contained :messages="[$t('common.auth.oauth.finishing')]" />
     </div>

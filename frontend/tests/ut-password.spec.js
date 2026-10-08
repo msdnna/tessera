@@ -15,6 +15,7 @@ import {
   passwordChars,
   passwordError,
   passwordProblem,
+  passwordStrength,
 } from '@/utils/password'
 
 // 37 Cyrillic letters = 74 bytes. The reachable case, and the one every inline
@@ -110,5 +111,25 @@ describe('the constants are the server-side ones', () => {
   it('pins both bounds so a drift is a failing test, not a 500', () => {
     expect(MIN_PASSWORD_CHARS).toBe(8)
     expect(MAX_PASSWORD_BYTES).toBe(72)
+  })
+})
+
+// The meter under a new-password field (#3107): advice only, never a rule.
+describe('passwordStrength', () => {
+  it('is 0 for nothing and 1 for a password the server would refuse', () => {
+    expect(passwordStrength('')).toBe(0)
+    expect(passwordStrength('short')).toBe(1)
+  })
+
+  it('grows with length and with a mix of kinds', () => {
+    expect(passwordStrength('abcdefgh')).toBe(1)
+    expect(passwordStrength('abcdefghijkl')).toBe(2)
+    expect(passwordStrength('abcdefghijklmnop')).toBe(3)
+    expect(passwordStrength('Abcdefgh1')).toBe(2)
+    expect(passwordStrength('Sprint42-design!')).toBe(4)
+  })
+
+  it('counts Cyrillic letters by case like any other alphabet', () => {
+    expect(passwordStrength('Пароль2026')).toBe(2)
   })
 })

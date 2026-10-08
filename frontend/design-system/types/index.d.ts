@@ -571,8 +571,12 @@ export declare function MarkdownEditor(props: MarkdownEditorProps): ReactElement
 export interface EmptyStateProps extends IslandHostProps {
   /** ionicons5 export name (default FileTrayOutline). */
   icon?: string
+  /** Bold line over the text (17/700; 14/650 when small). */
+  title?: string
   text?: string
   size?: 'small' | 'medium'
+  /** The tile's hue — a hex or CSS colour; the accent when omitted. */
+  tone?: string
 }
 export declare function EmptyState(props: EmptyStateProps): ReactElement
 

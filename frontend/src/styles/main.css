@@ -391,36 +391,54 @@ body {
   display: none !important;
 }
 
-/* ── Auth screens (login / register) ────────────────────────────────────────
-   The form sits inside a centred card on the themed background (AuthLayout),
-   with a soft blurred brand-purple glow drifting behind it. The form is slotted
-   in, so its controls inherit Naive's themed defaults — only a few card-level
-   tweaks live here. */
-/* Notes (verify / recover / forgot landing text) — centre them in the card. */
+/* ── Auth screens (v2, #3107) ─────────────────────────────────────────────────
+   The form is slotted into AuthLayout's glass card, so its controls inherit
+   Naive's themed defaults (sizes from the layout's nested config provider) —
+   only the card-level pieces live here. No lines anywhere: the «или» between
+   the password form and GitLab is a word, not a rule. */
+/* State text (the e-mail check, the invitation, the link that was sent). */
 .auth .note {
-  text-align: center;
+  margin: 0;
   color: var(--t-text2);
+  font-size: 13.5px;
+  line-height: 1.55;
 }
 /* Browser autofill paints its own pale-blue background + dark text, which
-   clashes with the themed inputs (most visibly in dark mode). Mask it: keep the
-   themed text colour and a flat inset matching the input surface (white in
-   light, surfaceAlt in dark — that's what the Naive Input override uses). */
+   clashes with the themed inputs. Mask it with the field's own surface. */
 .auth .n-input .n-input__input-el:-webkit-autofill,
 .auth .n-input .n-input__input-el:-webkit-autofill:hover,
 .auth .n-input .n-input__input-el:-webkit-autofill:focus {
-  -webkit-text-fill-color: var(--t-text2);
-  caret-color: var(--t-text2);
-  -webkit-box-shadow: 0 0 0 1000px var(--t-surface) inset;
+  -webkit-text-fill-color: var(--t-text1);
+  caret-color: var(--t-text1);
+  -webkit-box-shadow: 0 0 0 1000px var(--t-input-bg) inset;
   transition: background-color 9999s ease-in-out 0s;
-  border-radius: 8px;
+  border-radius: 10px;
 }
-[data-theme='dark'] .auth .n-input .n-input__input-el:-webkit-autofill,
-[data-theme='dark'] .auth .n-input .n-input__input-el:-webkit-autofill:hover,
-[data-theme='dark'] .auth .n-input .n-input__input-el:-webkit-autofill:focus {
-  -webkit-box-shadow: 0 0 0 1000px var(--t-surface-alt) inset;
+.auth .n-form-item-label {
+  font-weight: 600;
+  color: var(--t-text2);
+}
+/* A label with a link at its right end («Пароль … Забыли пароль?»). */
+.auth .n-form-item-label__text {
+  flex: 1;
+}
+.auth-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  width: 100%;
+}
+.auth-label-row a {
+  font-weight: 500;
+  color: var(--t-text2);
+  text-decoration: none;
+}
+.auth-label-row a:hover {
+  color: var(--t-primary);
 }
 .auth-foot {
-  margin-top: 18px;
+  margin-top: 16px;
   text-align: center;
   font-size: 13px;
   color: var(--t-text3);
@@ -433,21 +451,65 @@ body {
 .auth-foot a:hover {
   text-decoration: underline;
 }
-/* Inline form-error banner inside the card. */
+/* «← Ко входу»: a quiet way back, the arrow riding the text. */
+.auth-back a {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-weight: 500;
+  color: var(--t-text2);
+}
+.auth-back a:hover {
+  color: var(--t-primary);
+  text-decoration: none;
+}
+/* A button right under a state's text. */
+.auth .auth-gap {
+  margin-top: 18px;
+}
+/* «или» between the password form and the GitLab button. */
+.auth-or {
+  margin: 14px 0 12px;
+  text-align: center;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+/* Inline form error inside the card — a soft red surface, no outline. */
 .auth-error {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
   margin: 0 0 16px;
   padding: 10px 12px;
   border-radius: 10px;
-  background: color-mix(in srgb, #e0533d 14%, var(--t-surface));
-  border: 1px solid color-mix(in srgb, #e0533d 38%, transparent);
-  color: #e0533d;
+  background: color-mix(in srgb, #e0533d 14%, transparent);
+  color: color-mix(in srgb, #e0533d 82%, var(--t-text1));
   font-size: 13px;
-  line-height: 1.4;
-  text-align: center;
+  line-height: 1.45;
 }
-/* Submit button keeps the global filled-primary brand gradient — just spacing. */
-.auth .n-button--primary-type {
-  margin-top: 4px;
+.auth-error .n-icon {
+  flex: none;
+  margin-top: 1px;
+}
+/* The submit: full width, 42px, a key cap at the end of its label. */
+.auth .auth-submit .kbd {
+  margin-left: 8px;
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  box-shadow: none;
+}
+.auth .auth-submit.n-button--disabled .kbd {
+  opacity: 0.6;
+}
+/* The secondary button (GitLab): a neutral control surface. */
+.auth .auth-alt {
+  --n-color: var(--t-ctl) !important;
+  --n-color-hover: var(--t-hover) !important;
+  --n-color-pressed: var(--t-hover) !important;
+  --n-border: none !important;
+  --n-border-hover: none !important;
+  --n-border-pressed: none !important;
+  --n-border-focus: none !important;
 }
 
 /* ── Route / view transitions ────────────────────────────────────────────────

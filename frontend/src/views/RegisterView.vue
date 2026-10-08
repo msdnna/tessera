@@ -2,11 +2,14 @@
 import { ref, onMounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
-import { LogoGitlab } from '@vicons/ionicons5'
+import { LogoGitlab, AlertCircleOutline } from '@vicons/ionicons5'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
+import PasswordMeter from '@/components/PasswordMeter.vue'
+import Kbd from '@/components/Kbd.vue'
+import { CAPS } from '@/utils/keyCaps'
 import { passwordError } from '@/utils/password'
 import { loginRouteForInvite, inviteOutcomeRoute } from '@/utils/inviteRoute'
 import { stashPendingInvite } from '@/utils/pendingInvite'
@@ -90,8 +93,14 @@ async function submit() {
 </script>
 
 <template>
-  <auth-layout :title="$t('common.auth.register.title')">
-    <div v-if="formError" class="auth-error">{{ formError }}</div>
+  <auth-layout
+    :title="$t('common.auth.register.title')"
+    :subtitle="$t('common.auth.register.subtitle')"
+  >
+    <div v-if="formError" class="auth-error" role="alert">
+      <n-icon :component="AlertCircleOutline" :size="16" />
+      <span>{{ formError }}</span>
+    </div>
     <n-form @submit.prevent="submit">
       <n-form-item
         :label="$t('common.auth.register.name')"
@@ -101,8 +110,10 @@ async function submit() {
         <n-input
           v-model:value="name"
           :placeholder="$t('common.auth.register.namePlaceholder')"
+          :input-props="{ autocomplete: 'name' }"
           data-testid="register-name"
           @input="errors.name = ''"
+          @keyup.enter="submit"
         />
       </n-form-item>
       <n-form-item
@@ -113,8 +124,10 @@ async function submit() {
         <n-input
           v-model:value="email"
           :placeholder="$t('common.auth.login.emailPlaceholder')"
+          :input-props="{ autocomplete: 'email' }"
           data-testid="register-email"
           @input="errors.email = ''"
+          @keyup.enter="submit"
         />
       </n-form-item>
       <n-form-item
@@ -127,26 +140,28 @@ async function submit() {
           type="password"
           show-password-on="click"
           :placeholder="$t('common.auth.register.passwordPlaceholder')"
+          :input-props="{ autocomplete: 'new-password' }"
           data-testid="register-password"
           @input="errors.password = ''"
           @keyup.enter="submit"
         />
       </n-form-item>
+      <PasswordMeter v-if="!errors.password" :value="password" />
       <n-button
         type="primary"
+        size="large"
         block
+        class="auth-submit"
         data-testid="register-submit"
         :loading="loading"
         @click="submit"
       >
-        {{ $t('common.auth.register.submit') }}
+        {{ $t('common.auth.register.submit') }}<Kbd>{{ CAPS.enter }}</Kbd>
       </n-button>
     </n-form>
     <template v-if="gitlabEnabled">
-      <div class="auth-or">
-        <span>{{ $t('common.auth.login.or') }}</span>
-      </div>
-      <n-button block @click="registerWithGitlab">
+      <div class="auth-or">{{ $t('common.auth.login.or') }}</div>
+      <n-button block size="large" class="auth-alt" @click="registerWithGitlab">
         <template #icon><n-icon :component="LogoGitlab" /></template>
         {{ $t('common.auth.register.gitlab') }}
       </n-button>
@@ -163,24 +178,3 @@ async function submit() {
     </div>
   </auth-layout>
 </template>
-
-<style scoped>
-.auth-or {
-  display: flex;
-  align-items: center;
-  text-align: center;
-  margin: 14px 0 12px;
-  color: var(--t-text-3, #8a8a99);
-  font-size: 12px;
-}
-.auth-or::before,
-.auth-or::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--t-border, rgba(140, 140, 160, 0.25));
-}
-.auth-or span {
-  padding: 0 10px;
-}
-</style>

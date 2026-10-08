@@ -78,7 +78,8 @@
     "everywhere": "Search everywhere",
     "failed": "Search failed",
     "more": "Showing the first {n} — narrow the search",
-    "hint": "Searches task numbers, titles and descriptions, note titles and text, document titles and help articles"
+    "hint": "Searches task numbers, titles and descriptions, note titles and text, document titles and help articles",
+    "nothingHint": "Searched tasks, notes, documents and help"
   },
   "members": {
     "title": "Workspace members",
@@ -147,7 +148,10 @@
     "server": "Server address",
     "themeLight": "Light theme",
     "themeDark": "Dark theme",
-    "languageSwitchTo": "Switch to {lang}"
+    "languageSwitchTo": "Switch to {lang}",
+    "theme": "Theme",
+    "build": "Tessera {version} · {host}",
+    "serverPlaceholder": "https://tessera.example.com"
   },
   "home": {
     "greeting": "Hi, {name} 👋",
@@ -203,8 +207,9 @@
     }
   },
   "notFound": {
-    "title": "Page not found",
-    "text": "There is no such page, or it has been moved."
+    "title": "There is no such page",
+    "text": "It may have been renamed or moved to another workspace.",
+    "back": "Back"
   },
   "keys": {
     "then": "then",

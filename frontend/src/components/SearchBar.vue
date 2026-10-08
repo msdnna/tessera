@@ -340,7 +340,12 @@ function gotoHelp(h) {
           </div>
         </template>
         <div v-else-if="!helpHits.length" class="empty">
-          <empty-state :icon="SearchOutline" :text="t('shell.search.nothing')" size="small" />
+          <empty-state
+            :icon="SearchOutline"
+            :title="t('shell.search.nothing')"
+            :text="t('shell.search.nothingHint')"
+            size="small"
+          />
         </div>
       </template>
       <!-- Everything else (boards, people, commands) lives in the palette. -->
