@@ -17,7 +17,6 @@ import {
   RepeatOutline,
   TimeOutline,
   TrailSignOutline,
-  SettingsOutline,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi, boards as boardsApi, projects as projApi, gitlab as glApi } from '@/api'
 import { storeToRefs } from 'pinia'
@@ -26,7 +25,7 @@ import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useBoardViewStore } from '@/stores/boardView'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { priorityLabel, priorityOptions as priorityOptionList } from '@/utils/priority'
-import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
+import { hueGrad, softFill, readableHue } from '@/utils/gradient'
 import { buildTagGroups, matchTagByName } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { resolvedTimezone } from '@/utils/format'
@@ -75,6 +74,7 @@ import TaskInboxSection from './task/TaskInboxSection.vue'
 import TaskRelationsTab from './task/TaskRelationsTab.vue'
 import TaskFilesTab from './task/TaskFilesTab.vue'
 import TaskDocumentsTab from './task/TaskDocumentsTab.vue'
+import TagPicker from './task/TagPicker.vue'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -150,10 +150,9 @@ const boardInfo = ref(null) // { name, projectId } for the breadcrumb
 const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
 // ── rich detail (#8): comments, relations, files, journal
-// Open an existing description on the Preview tab; an empty one on Write.
-// The editor itself lives in TaskDescriptionTab (in the left column for modal/
-// fullscreen, or the first tab in the sidebar layout — #2745).
-const descInitialMode = ref('write')
+// The description reads as prose and opens its editor in place (TaskDescriptionTab,
+// #3113) — on a click on the text or ⇧E.
+const descTab = ref(null)
 
 // ── wide-screen only: hide the properties panel to give the content the whole
 // width (the «⋯» menu). Persisted in localStorage (non-critical UX state). In the
@@ -313,14 +312,13 @@ const doneColumnId = ref(null) // boards.done_column_id — target of the «clos
 const completed = ref(false)
 const selectedTags = ref([])
 const selectedAssignees = ref([])
-const newTagName = ref('')
 // «Управлять тегами…» (#2990): the picker closes and the project window opens on
 // its tag table, filtered by what was typed.
 const projectWindow = useProjectWindowStore()
-function manageTags() {
+function manageTags(typed = '') {
   const pid = projectId.value || boardInfo.value?.projectId
   if (!pid) return
-  const filter = newTagName.value.trim()
+  const filter = (typed || '').trim()
   fieldOpen.value = ''
   projectWindow.open(pid, 'tags', { filter })
 }
@@ -377,16 +375,12 @@ function onEstShow(shown) {
 const tagObjs = computed(() =>
   selectedTags.value.map((id) => tags.value.find((t) => t.id === id)).filter(Boolean),
 )
-// Picker tags grouped by prefix (friendly name); a single prefix-less bucket
-// renders flat without a header.
-const tagPickerGroups = computed(() =>
-  buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value),
-)
-const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
-// Flat picker set — what a typed name is matched against, so the answer covers
+// The pickable tags — what a typed name is matched against, so the answer covers
 // exactly the tags the reader could have clicked instead (GitLab meta-prefixed
-// tags are hidden here on purpose: attaching one desyncs from the field it drives).
-const tagPickerFlat = computed(() => tagPickerGroups.value.flatMap((g) => g.tags))
+// tags are left out on purpose: attaching one desyncs from the field it drives).
+const tagPickerFlat = computed(() =>
+  buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value).flatMap((g) => g.tags),
+)
 
 // The tags trigger shows as many WHOLE tag chips as fit on one line, then "+N"
 // (shared with the stacked card row via useTagFit — which also re-observes the
@@ -471,7 +465,6 @@ async function loadDetail() {
     title.value = t.title
     description.value = t.description || ''
     descSaved.value = description.value
-    descInitialMode.value = t.description ? 'preview' : 'write'
     priority.value = t.priority || 0
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
     startTs.value = t.start_date ? new Date(t.start_date).getTime() : null
@@ -803,13 +796,8 @@ async function closeTask() {
 // editor (above) before creating. On success the task becomes a synced issue task.
 const glCreating = ref(false)
 const glTemplates = ref([])
-const glTemplate = ref(null)
-const glTemplateOptions = computed(() =>
-  glTemplates.value.map((t) => ({ label: t.name, value: t.name })),
-)
 async function loadGlTemplates(mine) {
   glTemplates.value = []
-  glTemplate.value = null
   if (!gitlabFetchTemplates.value || !wsId.value) return
   try {
     const res = await glApi.issueTemplates(wsId.value, gitlabIntegrationId.value)
@@ -950,22 +938,21 @@ async function toggleTag(id) {
   }
 }
 const creatingTag = ref(false)
-async function createTag() {
-  const n = newTagName.value.trim()
+// The tag picker's «Создать тег» (#3113): resolves true once the tag is on the
+// task, so the picker can clear its query.
+async function createTag(name) {
+  const n = (name || '').trim()
   // The guard is what makes a second Enter harmless: the field is cleared only once
   // the tag is on the task, so an impatient repeat used to send a second create —
   // and the second one came back «имя занято» about the tag the first had just made.
-  if (!n || creatingTag.value) return
+  if (!n || creatingTag.value) return false
   // A name the project already carries is a request for THAT tag, not for a twin:
-  // the grid above is not filtered by what's typed, so on a long tag list typing the
-  // name is the way to reach it. Creating was a dead end — the server refuses the
-  // duplicate (409) and the task stays untagged.
+  // the server refuses the duplicate (409) and the task would stay untagged.
   const existing = matchTagByName(tagPickerFlat.value, n)
   if (existing) {
-    newTagName.value = ''
     if (selectedTags.value.includes(existing.id)) message.info(t('task.tags.alreadyOn'))
     else await toggleTag(existing.id)
-    return
+    return true
   }
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
   creatingTag.value = true
@@ -976,10 +963,11 @@ async function createTag() {
     })
     await tasksApi.addTag(props.taskId, res.data.id)
     selectedTags.value = [...selectedTags.value, res.data.id]
-    newTagName.value = ''
     emit('changed')
+    return true
   } catch (e) {
     message.error(e.message)
+    return false
   } finally {
     creatingTag.value = false
   }
@@ -1198,6 +1186,9 @@ function keysLive() {
   if (!props.show || !task.value || typeof document === 'undefined') return false
   if (document.querySelectorAll('.n-modal-container .n-modal').length > 1) return false
   if (document.querySelector('.n-dropdown-menu')) return false
+  // A kit layer (a menu, the tag picker) or the description's editor holds the
+  // keyboard (#3113).
+  if (document.querySelector('.kit-layer')) return false
   return !fieldOpen.value
 }
 const canEdit = () => !ro.value
@@ -1236,6 +1227,7 @@ useShortcuts(
     'task.due': () => openField('due'),
     'task.tags': () => openField('tags'),
     'task.subtask': () => canEdit() && subtasksTab.value?.startAdd(),
+    'task.editDesc': () => canEdit() && descTab.value?.startEdit(),
     // «Напоминания и заметки» (#2998): reminders and notes are the reader's own,
     // so a read-only task still takes them — only an archived one doesn't.
     'task.remind': () => !ro.value && inboxSection.value?.startRemind(),
@@ -1313,10 +1305,15 @@ useShortcuts(
             <div class="tm-scroll">
               <div v-if="ro" class="tm-ro-banner">
                 <span>{{ t('task.footer.readonly') }}</span>
-                <n-button size="small" type="primary" @click="emit('restore', taskId)">
-                  <template #icon><n-icon :component="ArrowUndoOutline" /></template>
+                <button
+                  type="button"
+                  class="kit-btn primary small"
+                  data-testid="task-ro-restore"
+                  @click="emit('restore', taskId)"
+                >
+                  <n-icon :component="ArrowUndoOutline" :size="14" />
                   {{ t('task.action.restore') }}
-                </n-button>
+                </button>
               </div>
 
               <!-- status · shift right · complete · when it last changed -->
@@ -1801,105 +1798,62 @@ useShortcuts(
                       :data-tour-set="tagObjs.length ? '' : null"
                     >
                       <span class="plabel">{{ t('task.field.tags') }}</span>
-                      <n-popover
-                        :show="fieldOpen === 'tags'"
-                        trigger="click"
-                        placement="bottom-start"
-                        @update:show="setField('tags', $event)"
+                      <button
+                        ref="tagsValEl"
+                        class="val tags-val"
+                        data-testid="task-tags-open"
+                        @click="setField('tags', fieldOpen !== 'tags')"
                       >
-                        <template #trigger>
-                          <button ref="tagsValEl" class="val tags-val">
-                            <template v-if="tagObjs.length">
-                              <TagPill
-                                v-for="tg in tagObjs.slice(0, visibleTagCount)"
-                                :key="tg.id"
-                                class="chip"
-                                :tag="tg"
-                                :prefix-names="tagPrefixNames"
-                                variant="outline"
-                              />
-                              <span
-                                v-if="visibleTagCount < tagObjs.length"
-                                class="chip chip-more"
-                                :style="{
-                                  color: tagText(tagObjs[0].color),
-                                  background: softFill(tagObjs[0].color),
-                                }"
-                                >+{{ tagObjs.length - visibleTagCount }}</span
-                              >
-                              <!-- invisible measurement row: natural chip widths, never
-                                 sliced. Same component + props as above, else the scope
-                                 segment wouldn't be measured and the fit would lie. -->
-                              <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
-                                <TagPill
-                                  v-for="tg in tagObjs"
-                                  :key="`m${tg.id}`"
-                                  class="chip"
-                                  :tag="tg"
-                                  :prefix-names="tagPrefixNames"
-                                  variant="outline"
-                                />
-                              </span>
-                            </template>
-                            <span v-else class="muted">{{ t('task.value.tagsNone') }}</span>
-                          </button>
-                        </template>
-                        <PopMenu>
-                          <div class="chip-groups">
-                            <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
-                              <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
-                              <div class="chip-grid">
-                                <button
-                                  v-for="tg in g.tags"
-                                  :key="tg.id"
-                                  class="tagchip"
-                                  :class="{ on: selectedTags.includes(tg.id) }"
-                                  :style="
-                                    selectedTags.includes(tg.id)
-                                      ? {
-                                          background: hueGrad(tg.color),
-                                          color: onColor(tg.color),
-                                          borderColor: 'transparent',
-                                        }
-                                      : {
-                                          background: softFill(tg.color),
-                                          color: tagText(tg.color),
-                                          borderColor: (tg.color || '#888') + '66',
-                                        }
-                                  "
-                                  @click="toggleTag(tg.id)"
-                                >
-                                  <TagPill
-                                    :tag="tg"
-                                    :prefix-names="tagPrefixNames"
-                                    variant="inherit"
-                                    :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
-                                  />
-                                </button>
-                              </div>
-                            </div>
-                          </div>
-                          <n-input
-                            v-model:value="newTagName"
-                            size="tiny"
-                            :placeholder="t('task.tags.newPlaceholder')"
-                            @keydown.esc.stop="fieldOpen = ''"
-                            @keyup.enter="createTag"
+                        <template v-if="tagObjs.length">
+                          <TagPill
+                            v-for="tg in tagObjs.slice(0, visibleTagCount)"
+                            :key="tg.id"
+                            class="chip"
+                            :tag="tg"
+                            :prefix-names="tagPrefixNames"
+                            variant="outline"
                           />
-                          <!-- The project's tag table (#2990): the «Проект» window on
-                               «Теги», filtered by what was typed here. -->
-                          <button
-                            type="button"
-                            class="menu-item tags-manage"
-                            data-testid="task-tags-manage"
-                            @click="manageTags"
+                          <span
+                            v-if="visibleTagCount < tagObjs.length"
+                            class="chip chip-more"
+                            :style="{
+                              color: tagText(tagObjs[0].color),
+                              background: softFill(tagObjs[0].color),
+                            }"
+                            >+{{ tagObjs.length - visibleTagCount }}</span
                           >
-                            <n-icon :component="SettingsOutline" :size="14" class="vico" />
-                            <span class="grow">{{ t('task.tags.manage') }}</span>
-                            <span class="muted">{{ t('task.tags.manageWhere') }}</span>
-                          </button>
-                        </PopMenu>
-                      </n-popover>
+                          <!-- invisible measurement row: natural chip widths, never
+                             sliced. Same component + props as above, else the scope
+                             segment wouldn't be measured and the fit would lie. -->
+                          <span ref="tagsMeasureEl" class="tags-measure" aria-hidden="true">
+                            <TagPill
+                              v-for="tg in tagObjs"
+                              :key="`m${tg.id}`"
+                              class="chip"
+                              :tag="tg"
+                              :prefix-names="tagPrefixNames"
+                              variant="outline"
+                            />
+                          </span>
+                        </template>
+                        <span v-else class="muted">{{ t('task.value.tagsNone') }}</span>
+                      </button>
+                      <TagPicker
+                        :show="fieldOpen === 'tags'"
+                        :anchor="() => tagsValEl"
+                        :tags="tags"
+                        :selected="selectedTags"
+                        :prefix-names="tagPrefixNames"
+                        :locked-prefixes="metaTagPrefixes"
+                        :creating="creatingTag"
+                        :create="createTag"
+                        :can-manage="!!(projectId || boardInfo?.projectId)"
+                        key-id="task.tags"
+                        testid="task-tag-picker"
+                        @update:show="setField('tags', $event)"
+                        @toggle="toggleTag"
+                        @manage="manageTags"
+                      />
                       <ShortcutKeys id="task.tags" class="pkey" />
                     </div>
 
@@ -1997,6 +1951,7 @@ useShortcuts(
                     v-model:relations="relations"
                     :task-id="taskId"
                     :ws-id="wsId"
+                    :readonly="ro"
                     @changed="emit('changed')"
                     @open-related="openRelated"
                   />
@@ -2005,25 +1960,26 @@ useShortcuts(
                     <div class="tp-sec" data-testid="tab-documents">
                       {{ t('task.panel.documents') }}
                     </div>
-                    <TaskDocumentsTab v-model:links="docLinks" @open-document="openDocument" />
+                    <TaskDocumentsTab
+                      v-model:links="docLinks"
+                      :task-id="taskId"
+                      :readonly="ro"
+                      @open-document="openDocument"
+                    />
                   </template>
                 </aside>
               </Teleport>
 
               <TaskDescriptionTab
+                ref="descTab"
                 v-model="description"
-                v-model:template-value="glTemplate"
                 class="tm-desc"
                 data-tour="tm-description"
                 :data-tour-set="descSaved ? '' : null"
                 :readonly="ro"
                 :members="mentionItems"
                 :task-id="taskId"
-                :initial-mode="descInitialMode"
-                :show-template="
-                  !!(task && !task.gitlab && gitlabFetchTemplates && glTemplates.length)
-                "
-                :template-options="glTemplateOptions"
+                :templates="task && !task.gitlab && gitlabFetchTemplates ? glTemplates : []"
                 @apply-template="applyGlTemplate"
                 @attachments-changed="reloadAttachments"
                 @blur="saveDesc"
@@ -2101,13 +2057,16 @@ useShortcuts(
                   v-if="activityMode === 'files'"
                   v-model:attachments="attachments"
                   :task-id="taskId"
+                  :readonly="ro"
                   @changed="emit('changed')"
                 />
               </section>
             </div>
             <!-- The comments composer is teleported here: pinned under the column,
                  outside its scroll (TaskCommentsTab, composer-to). -->
-            <div v-show="!ro" ref="composerEl" class="tm-composer" />
+            <!-- Hidden with «Файлы»: the composer is teleported out of the comments
+                 tab, so the tab's own v-show never reached it (#3113). -->
+            <div v-show="!ro && activityMode !== 'files'" ref="composerEl" class="tm-composer" />
           </div>
           <div v-show="wide && !rightHidden" ref="sideEl" class="tm-side" />
         </div>
@@ -2591,17 +2550,6 @@ useShortcuts(
 }
 /* Tags trigger: one line; only the chips that wholly fit are rendered (+ a
    measured "+N"); the measurement row is invisible. */
-.tags-manage {
-  margin-top: 6px;
-  width: 100%;
-  border: 0;
-  background: transparent;
-  font: inherit;
-  text-align: left;
-}
-.tags-manage .muted {
-  font-size: 11.5px;
-}
 .tags-val {
   overflow: hidden;
   flex-wrap: nowrap;
@@ -2791,39 +2739,6 @@ a.menu-item {
   gap: 6px;
   align-items: center;
   margin-top: 8px;
-}
-.chip-groups {
-  max-height: 320px;
-  overflow-y: auto;
-  max-width: 260px;
-}
-.chip-grp-head {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.6;
-  margin: 6px 0 4px;
-}
-.chip-group:first-child .chip-grp-head {
-  margin-top: 0;
-}
-.chip-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 8px;
-  max-width: 260px;
-}
-.tagchip {
-  font-size: 12px;
-  padding: 2px 9px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  cursor: pointer;
-}
-.tagchip.on {
-  font-weight: 600;
 }
 /* Read-only (archive) modal: property values become display-only. */
 .props.tm-ro :is(button, .n-select, .n-tag, [role='button']) {

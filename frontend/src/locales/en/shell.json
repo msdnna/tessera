@@ -358,7 +358,8 @@
       "prev": "Previous task",
       "close": "Close the task",
       "remind": "Remind about the task (1–3, D — date)",
-      "note": "A note on the task"
+      "note": "A note on the task",
+      "editDesc": "Edit the description"
     },
     "chart": {
       "today": "Jump to today",

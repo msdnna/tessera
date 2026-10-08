@@ -214,6 +214,9 @@ export const CATALOG = [
   { id: 'task.due', keys: 'd', modal: true },
   { id: 'task.tags', keys: 'l', modal: true },
   { id: 'task.subtask', keys: 'shift+n', modal: true },
+  // The description's editor (#3113). E is «Выполнить» here, as on the card, so
+  // the stage page's E for «Изменить» moves up a shift.
+  { id: 'task.editDesc', keys: 'shift+e', group: 'task', modal: true },
   // «Напоминания и заметки» of the open task (#2998): ⇧R offers the quick
   // moments (then 1–3 or D), ⇧M opens the capture with the task filled in.
   { id: 'task.remind', keys: 'shift+r', group: 'task', modal: true },

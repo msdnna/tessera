@@ -4,10 +4,11 @@
 // context is, next to the clause it is about, and this side is where you find
 // out which documents mention this task and open them.
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopconfirm } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import { CloseOutline, DocumentTextOutline } from '@vicons/ionicons5'
 import { documents as docsApi } from '@/api'
 import EmptyState from '../EmptyState.vue'
+import ArmButton from '../kit/ArmButton.vue'
 
 const props = defineProps({
   links: { type: Array, default: () => [] },
@@ -57,19 +58,14 @@ async function unlink(id) {
           {{ l.quote || t('task.docs.fragment') }}
         </span>
       </button>
-      <n-popconfirm
+      <ArmButton
         v-if="!readonly"
-        :positive-button-props="{ type: 'error' }"
-        :positive-text="t('task.docs.unlinkYes')"
-        @positive-click="unlink(l.id)"
-      >
-        <template #trigger>
-          <button class="c-act" :title="t('task.docs.unlink')">
-            <n-icon :component="CloseOutline" />
-          </button>
-        </template>
-        {{ t('task.docs.unlinkConfirm') }}
-      </n-popconfirm>
+        :icon="CloseOutline"
+        :title="t('task.docs.unlink')"
+        :confirm="t('task.arm.unlink')"
+        testid="doc-unlink"
+        @confirm="unlink(l.id)"
+      />
     </div>
     <EmptyState
       v-if="!links.length"

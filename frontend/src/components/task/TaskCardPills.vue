@@ -26,7 +26,7 @@ import { storeToRefs } from 'pinia'
 import { tasks as tasksApi, projects as projectsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { priorityLabel, priorityOptions as buildPriorityOptions } from '@/utils/priority'
-import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
+import { hueGrad, softFill, readableHue } from '@/utils/gradient'
 import { buildTagGroups, matchTagByName } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { useFormat } from '@/composables/useFormat'
@@ -46,12 +46,14 @@ import UserAvatar from '../UserAvatar.vue'
 import DueEditor from '../DueEditor.vue'
 import RichContent from '../RichContent.vue'
 import TagPill from '../TagPill.vue'
+import TagPicker from './TagPicker.vue'
 import ReminderPill from './ReminderPill.vue'
 import { useThemeStore } from '@/stores/theme'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useInboxStore } from '@/stores/inbox'
+import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useTagFit } from '@/composables/useTagFit'
 
 const props = defineProps({
@@ -129,18 +131,23 @@ const hasAnyPill = computed(
         glAssignees.value.length)),
 )
 
-// Picker tags grouped by prefix (friendly name); a single prefix-less bucket
-// renders flat without a header.
-const tagPickerGroups = computed(() =>
-  buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value),
-)
-const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
-// Flat picker set — what a typed name is matched against, so the answer covers
+// The pickable tags — what a typed name is matched against, so the answer covers
 // exactly the tags the reader could have clicked instead (GitLab meta-prefixed
-// tags are hidden here on purpose: attaching one desyncs from the field it drives).
-const tagPickerFlat = computed(() => tagPickerGroups.value.flatMap((g) => g.tags))
-const newTagName = ref('')
+// tags are left out on purpose: attaching one desyncs from the field it drives).
+const tagPickerFlat = computed(() =>
+  buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value).flatMap((g) => g.tags),
+)
 const creatingTag = ref(false)
+// The v2 tag picker (#3113), anchored at whichever tag pill this card draws.
+const tagOpen = ref(false)
+const tagBtn = ref(null)
+// «Управлять тегами…»: the project window on «Теги», filtered by what was typed.
+const projectWindow = useProjectWindowStore()
+function manageTags(typed = '') {
+  if (!projectId.value) return
+  tagOpen.value = false
+  projectWindow.open(projectId.value, 'tags', { filter: (typed || '').trim() })
+}
 
 const taskTags = computed(() => (props.task.tag_ids || []).map((id) => tagsMap[id]).filter(Boolean))
 // Stacked tags row: fit as many chips as the row width allows, rest → +N.
@@ -382,22 +389,20 @@ const toggleTag = (id) =>
   run(() =>
     hasTag(id) ? tasksApi.removeTag(props.task.id, id) : tasksApi.addTag(props.task.id, id),
   )
-async function createTag() {
-  const n = newTagName.value.trim()
+// Resolves true once the tag is on the task — the picker clears its query then.
+async function createTag(name) {
+  const n = (name || '').trim()
   // The guard is what makes a second Enter harmless: the field is cleared only once
   // the tag is on the task, so an impatient repeat used to send a second create —
   // and the second one came back «имя занято» about the tag the first had just made.
-  if (!n || creatingTag.value) return
+  if (!n || creatingTag.value) return false
   // A name the project already carries is a request for THAT tag, not for a twin:
-  // the grid above is not filtered by what's typed, so on a long tag list typing the
-  // name is the way to reach it. Creating was a dead end — the server refuses the
-  // duplicate (409) and the task stays untagged.
+  // the server refuses the duplicate (409) and the task would stay untagged.
   const existing = matchTagByName(tagPickerFlat.value, n)
   if (existing) {
-    newTagName.value = ''
     if (hasTag(existing.id)) message.info(t('task.tags.alreadyOn'))
     else await run(() => tasksApi.addTag(props.task.id, existing.id))
-    return
+    return true
   }
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
   // The name is cleared only once both calls are through: a create that landed
@@ -416,7 +421,7 @@ async function createTag() {
   } finally {
     creatingTag.value = false
   }
-  if (ok) newTagName.value = ''
+  return !!ok
 }
 async function toggleAssignee(uid) {
   const adding = !isAssigned(uid)
@@ -635,140 +640,115 @@ const toggleGlAssignee = (m) =>
       </div>
     </n-popover>
 
-    <!-- tags: stacked when >1; hover previews full list, click opens picker -->
+    <!-- tags: stacked when >1; hover previews the full list, a click opens the
+         v2 tag picker (#3113) -->
     <n-popover
       v-if="show('tags') && (showEmpty || taskTags.length || stackFields)"
-      trigger="click"
-      placement="bottom-start"
+      trigger="hover"
+      :disabled="taskTags.length < 2 || tagOpen"
+      placement="top-start"
     >
       <template #trigger>
-        <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
-          <template #trigger>
-            <!-- Three mutually exclusive shapes, one anchor: whichever renders is
-                 the tag pill the guide points at (#2759). -->
-            <button
-              v-if="!stackFields && !taskTags.length"
-              class="pill"
-              data-tour="card-tags"
-              @click.stop
-            >
-              <n-icon :component="PricetagOutline" :size="13" />
-            </button>
-            <button
-              v-else-if="!stackFields"
-              class="pill tag-pill"
-              data-tour="card-tags"
-              @click.stop
-            >
-              <!-- v2 (#2954): the first tag in its own outline pill, the rest
-                   counted as plain «+N» text beside it. -->
-              <TagPill class="tname" :tag="taskTags[0]" :prefix-names="tagPrefixNames" />
-              <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
-            </button>
-            <!-- stacked: leading tag icon + outlined-oval chips that fit on the
-                 row, rest → +N (same behaviour as the task modal). -->
-            <button
-              v-else
-              class="pill"
-              :title="t('task.field.tags')"
-              data-tour="card-tags"
-              @click.stop
-            >
-              <n-icon
-                :component="PricetagOutline"
-                :size="13"
-                :style="taskTags.length ? { color: tagText(taskTags[0].color) } : {}"
-              />
-              <span v-if="taskTags.length" ref="stagValEl" class="stag-val">
-                <TagPill
-                  v-for="tag in taskTags.slice(0, visibleTagCount)"
-                  :key="tag.id"
-                  class="mchip"
-                  :tag="tag"
-                  :prefix-names="tagPrefixNames"
-                  variant="outline"
-                />
-                <span
-                  v-if="visibleTagCount < taskTags.length"
-                  class="mchip chip-more"
-                  :style="{
-                    color: tagText(taskTags[0].color),
-                    background: softFill(taskTags[0].color),
-                  }"
-                  >+{{ taskTags.length - visibleTagCount }}</span
-                >
-                <!-- measurement copies must be the same component with the same
-                     props, or the scope segment wouldn't be measured (useTagFit). -->
-                <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
-                  <TagPill
-                    v-for="tag in taskTags"
-                    :key="`m${tag.id}`"
-                    class="mchip"
-                    :tag="tag"
-                    :prefix-names="tagPrefixNames"
-                    variant="outline"
-                  />
-                </span>
-              </span>
-              <span v-else class="pill-text sf-empty">—</span>
-            </button>
-          </template>
-          <div class="preview">
+        <!-- Three mutually exclusive shapes, one anchor: whichever renders is
+             the tag pill the guide points at (#2759). -->
+        <button
+          v-if="!stackFields && !taskTags.length"
+          ref="tagBtn"
+          class="pill"
+          data-tour="card-tags"
+          @click.stop="!readonly && (tagOpen = !tagOpen)"
+        >
+          <n-icon :component="PricetagOutline" :size="13" />
+        </button>
+        <button
+          v-else-if="!stackFields"
+          ref="tagBtn"
+          class="pill tag-pill"
+          data-tour="card-tags"
+          @click.stop="!readonly && (tagOpen = !tagOpen)"
+        >
+          <!-- v2 (#2954): the first tag in its own outline pill, the rest
+               counted as plain «+N» text beside it. -->
+          <TagPill class="tname" :tag="taskTags[0]" :prefix-names="tagPrefixNames" />
+          <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
+        </button>
+        <!-- stacked: leading tag icon + outlined-oval chips that fit on the
+             row, rest → +N (same behaviour as the task modal). -->
+        <button
+          v-else
+          ref="tagBtn"
+          class="pill"
+          :title="t('task.field.tags')"
+          data-tour="card-tags"
+          @click.stop="!readonly && (tagOpen = !tagOpen)"
+        >
+          <n-icon
+            :component="PricetagOutline"
+            :size="13"
+            :style="taskTags.length ? { color: tagText(taskTags[0].color) } : {}"
+          />
+          <span v-if="taskTags.length" ref="stagValEl" class="stag-val">
             <TagPill
-              v-for="tag in taskTags"
+              v-for="tag in taskTags.slice(0, visibleTagCount)"
               :key="tag.id"
-              class="chip"
+              class="mchip"
               :tag="tag"
               :prefix-names="tagPrefixNames"
-              variant="ghost"
+              variant="outline"
             />
-          </div>
-        </n-popover>
+            <span
+              v-if="visibleTagCount < taskTags.length"
+              class="mchip chip-more"
+              :style="{
+                color: tagText(taskTags[0].color),
+                background: softFill(taskTags[0].color),
+              }"
+              >+{{ taskTags.length - visibleTagCount }}</span
+            >
+            <!-- measurement copies must be the same component with the same
+                 props, or the scope segment wouldn't be measured (useTagFit). -->
+            <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
+              <TagPill
+                v-for="tag in taskTags"
+                :key="`m${tag.id}`"
+                class="mchip"
+                :tag="tag"
+                :prefix-names="tagPrefixNames"
+                variant="outline"
+              />
+            </span>
+          </span>
+          <span v-else class="pill-text sf-empty">—</span>
+        </button>
       </template>
-      <PopMenu class="tagmenu">
-        <div class="chip-groups">
-          <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
-            <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
-            <div class="chip-grid">
-              <button
-                v-for="tag in g.tags"
-                :key="tag.id"
-                class="tagchip"
-                :class="{ on: hasTag(tag.id) }"
-                :style="
-                  hasTag(tag.id)
-                    ? {
-                        background: hueGrad(tag.color),
-                        color: onColor(tag.color),
-                        borderColor: 'transparent',
-                      }
-                    : {
-                        background: softFill(tag.color),
-                        color: tagText(tag.color),
-                        borderColor: (tag.color || '#888') + '66',
-                      }
-                "
-                @click="toggleTag(tag.id)"
-              >
-                <TagPill
-                  :tag="tag"
-                  :prefix-names="tagPrefixNames"
-                  variant="inherit"
-                  :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-        <n-input
-          v-model:value="newTagName"
-          size="tiny"
-          :placeholder="t('task.tags.newPlaceholder')"
-          @keyup.enter="createTag"
-          @click.stop
+      <div class="preview">
+        <TagPill
+          v-for="tag in taskTags"
+          :key="tag.id"
+          class="chip"
+          :tag="tag"
+          :prefix-names="tagPrefixNames"
+          variant="ghost"
         />
-      </PopMenu>
+      </div>
     </n-popover>
+    <TagPicker
+      v-if="!readonly && show('tags')"
+      :show="tagOpen"
+      :anchor="() => tagBtn"
+      :tags="tags"
+      :selected="task.tag_ids || []"
+      :prefix-names="tagPrefixNames"
+      :locked-prefixes="metaTagPrefixes"
+      :creating="creatingTag"
+      :create="createTag"
+      :can-manage="!!projectId"
+      key-id="card.tags"
+      testid="card-tag-picker"
+      @update:show="tagOpen = $event"
+      @toggle="toggleTag"
+      @manage="manageTags"
+    />
 
     <!-- author + assignees merged into one overlapping avatar group: the
          author (muted) leads, then the assignee(s). Hover shows the full
@@ -1270,39 +1250,6 @@ const toggleGlAssignee = (m) =>
   display: flex;
   flex-direction: column;
   gap: 2px;
-}
-.tagmenu {
-  width: 300px;
-  max-width: 80vw;
-  max-height: 260px;
-  overflow-y: auto;
-}
-.chip-grp-head {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.6;
-  margin: 6px 0 4px;
-}
-.chip-group:first-child .chip-grp-head {
-  margin-top: 0;
-}
-.chip-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 8px;
-}
-.tagchip {
-  font-size: 12px;
-  padding: 2px 9px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  cursor: pointer;
-}
-.tagchip.on {
-  font-weight: 600;
 }
 .menu-item {
   display: flex;

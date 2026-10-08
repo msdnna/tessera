@@ -190,7 +190,11 @@ describe('TaskFilesTab.vue', () => {
       },
       global: { stubs },
     })
-    await w.findAll('button[title="Удалить"]')[0].trigger('click')
+    // Two steps (v2, #3113): the first press only arms the button.
+    await w.findAll('[data-testid="file-delete"]')[0].trigger('click')
+    await flushPromises()
+    expect(api.tasks.removeAttachment).not.toHaveBeenCalled()
+    await w.find('[data-testid="file-delete-armed"]').trigger('click')
     await flushPromises()
     expect(api.tasks.removeAttachment).toHaveBeenCalledWith('a')
     expect(w.emitted('update:attachments')[0][0]).toEqual([
@@ -244,10 +248,13 @@ describe('TaskRelationsTab.vue', () => {
         { id: 't4', number: null, title: 'без номера', project_name: 'P', board_name: 'B' },
       ],
     })
-    const w = mount(C, { props: { taskId: 't1', relations: [], wsId: 'w1' }, global: { stubs } })
-    // v2 (#2958): the form folds behind «+ Связать» in the narrow panel.
+    // The form is a popover (v2, #3113) — kept in the tree to be found here.
+    const w = mount(C, {
+      props: { taskId: 't1', relations: [], wsId: 'w1' },
+      global: { stubs: { ...stubs, teleport: true } },
+    })
     await w.find('.rel-open').trigger('click')
-    await w.find('.n-input-stub').trigger('focus')
+    await w.find('[data-testid="rel-number"]').trigger('focus')
     await flushPromises()
     const heads = w.findAll('.rp-head').map((n) => n.text())
     expect(heads).toEqual(['P · B', 'Q · B'])

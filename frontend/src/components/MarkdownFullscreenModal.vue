@@ -9,8 +9,10 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NModal, NIcon } from 'naive-ui'
-import { CloseOutline } from '@vicons/ionicons5'
+import { CloseOutline, ExpandOutline } from '@vicons/ionicons5'
 import MarkdownEditor from './MarkdownEditor.vue'
+import Kbd from './Kbd.vue'
+import { CAPS } from '@/utils/keyCaps'
 
 // `null` rather than a translated default: a prop default is evaluated once per
 // instance, so a literal built from t() would keep the language the modal was
@@ -50,18 +52,23 @@ function close() {
     @update:show="$event ? emit('update:show', true) : close()"
     @after-leave="emit('after-leave')"
   >
-    <div class="mdfs">
-      <div class="mdfs-head">
+    <!-- v2 window (#3113): the large-window head — 56px, title, close, Esc. -->
+    <div class="mdfs" data-testid="md-fullscreen">
+      <header class="mdfs-head">
+        <span class="mdfs-badge"><n-icon :component="ExpandOutline" :size="13" /></span>
         <span class="mdfs-title">{{ headTitle }}</span>
+        <span class="mdfs-grow" />
         <button
           type="button"
           class="mdfs-close"
           :title="$t('documents.editor.fullscreen.close')"
+          :aria-label="$t('documents.editor.fullscreen.close')"
           @click="close"
         >
           <n-icon :component="CloseOutline" :size="18" />
         </button>
-      </div>
+        <Kbd>{{ CAPS.escape }}</Kbd>
+      </header>
       <div class="mdfs-body">
         <MarkdownEditor
           :model-value="modelValue"
@@ -86,32 +93,55 @@ function close() {
   flex-direction: column;
   width: min(1100px, 94vw);
   height: min(880px, 90vh);
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
-  border-radius: 12px;
+  border-radius: var(--t-r-col);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-drag);
+  color: var(--t-text1);
   overflow: hidden;
+  --t-surface: var(--t-pop);
 }
 .mdfs-head {
+  flex: none;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border-bottom: 1px solid var(--t-border);
+  gap: 10px;
+  height: 56px;
+  padding: 0 16px 0 20px;
+  box-sizing: border-box;
 }
-.mdfs-title {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--t-text2);
-}
-.mdfs-close {
+.mdfs-badge {
+  flex: none;
   display: inline-flex;
   align-items: center;
-  border: none;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: var(--t-accent-grad);
+  color: #fff;
+}
+.mdfs-title {
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.mdfs-grow {
+  flex: 1;
+}
+.mdfs-close {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: var(--t-r-ctl);
   background: transparent;
   color: var(--t-text2);
-  border-radius: 6px;
-  padding: 4px;
   cursor: pointer;
   transition:
     background 0.12s ease,
@@ -128,7 +158,40 @@ function close() {
   flex: 1;
   min-height: 0;
   display: flex;
-  padding: 12px 16px 14px;
+  padding: 0 20px 18px;
+}
+/* The split editor inside: no v1 lines — the panes sit on the input surface,
+   the toolbar is a v2 strip. */
+.mdfs .mdfs-body :deep(.md2-write textarea),
+.mdfs .mdfs-body :deep(.md2-preview-side) {
+  padding: 12px 14px;
+  border-radius: 10px;
+  box-sizing: border-box;
+}
+.mdfs .mdfs-body :deep(.md2-write textarea) {
+  background: var(--t-input-bg);
+}
+.mdfs .mdfs-body :deep(.md2-preview-side) {
+  border-left: 0;
+  background: color-mix(in srgb, var(--t-input-bg) 45%, transparent);
+}
+.mdfs .mdfs-body :deep(.md2-toolbar) {
+  margin-top: 10px;
+  padding: 3px;
+  border-top: 0;
+  border-radius: 9px;
+  background: var(--t-input-bg);
+}
+.mdfs .mdfs-body :deep(.md2-tsep) {
+  align-self: center;
+  height: 16px;
+  margin: 0 3px;
+}
+@media (max-width: 720px) {
+  .mdfs .mdfs-body :deep(.md2-preview-side) {
+    border-top: 0;
+    margin-top: 10px;
+  }
 }
 .mdfs-body > * {
   flex: 1;

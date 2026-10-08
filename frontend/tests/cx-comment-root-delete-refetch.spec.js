@@ -10,7 +10,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
-import { NPopconfirm } from 'naive-ui'
+import ArmButton from '@/components/kit/ArmButton.vue'
 import { groupThreads } from '@/utils/taskFeed'
 
 const errors = []
@@ -72,14 +72,14 @@ const open = async (list = [ROOT, R1, R2]) => {
   })
 }
 
-// Щёлкает «удалить» у корня ветки: кнопка лишь взводит popconfirm, вызов идёт
-// на positive-click (см. cx-column-ctx-delete).
+// Щёлкает «удалить» у корня ветки: кнопка двухшаговая (v2, #3113) — первое
+// нажатие её лишь взводит, вызов идёт на `confirm`.
 const confirmDelete = async (w, id) => {
   const pc = w
-    .findAllComponents(NPopconfirm)
+    .findAllComponents(ArmButton)
     .find((p) => p.element?.closest?.(`[data-comment-id="${id}"]`))
   expect(pc).toBeTruthy()
-  pc.vm.$emit('positive-click')
+  pc.vm.$emit('confirm')
   await new Promise((r) => setTimeout(r, 0))
   await w.vm.$nextTick()
 }

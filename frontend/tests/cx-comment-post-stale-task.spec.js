@@ -22,7 +22,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
-import { NPopconfirm } from 'naive-ui'
+import ArmButton from '@/components/kit/ArmButton.vue'
 
 const warnings = []
 vi.mock('naive-ui', async () => {
@@ -253,7 +253,7 @@ describe('вкладка «Комментарии»: задачу сменили
     const saved = deferred()
     updateComment.mockReturnValue(saved.promise)
     const w = await open()
-    await w.find('.c-act').trigger('click') // ✎ у своего комментария
+    await w.find('[data-testid="comment-edit"]').trigger('click') // ✎ у своего комментария
     await tick(w)
     const editor = w.findAllComponents(EditorStub)[0]
     editor.vm.$emit('update:modelValue', 'исправленный текст')
@@ -276,9 +276,9 @@ describe('вкладка «Комментарии»: задачу сменили
     removeComment.mockReturnValue(gone.promise)
     const w = await open()
     const pc = w
-      .findAllComponents(NPopconfirm)
+      .findAllComponents(ArmButton)
       .find((p) => p.element?.closest?.(`[data-comment-id="c-a1"]`))
-    pc.vm.$emit('positive-click')
+    pc.vm.$emit('confirm')
     await tick(w)
 
     await switchTo(w, B, B_THREAD)

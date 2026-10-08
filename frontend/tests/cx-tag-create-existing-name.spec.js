@@ -1,10 +1,10 @@
 // Набрать в пикере имя тега, который у проекта УЖЕ есть (#2932).
 //
-// Под сеткой тегов в обоих пикерах задачи (модалка и карточка на доске) стоит
-// свободное поле «Новый тег, Enter». Сетка по набранному тексту НЕ фильтруется, а
-// теги проект копит — они разложены по префиксным группам, список прокручивается,
-// плюс всё, что принёс импорт из GitLab. Поэтому набрать имя существующего тега —
-// это обычный способ до него добраться, а не промах.
+// В пикере тегов (v2, #3113 — модалка и карточка на доске) сверху поле поиска:
+// оно фильтрует теги проекта, ↵ отмечает подсвеченный, «Создать тег «…»» (⌘↵)
+// появляется, когда так не называется ни один тег. Набрать имя существующего
+// тега — обычный способ до него добраться, а не промах: теги проект копит, плюс
+// всё, что принёс импорт из GitLab.
 //
 // Дороги дальше не было: Enter уходил создавать, упирался в UNIQUE(project_id,
 // name) и возвращался отказом «тег с таким именем уже есть в проекте» (409 — до
@@ -161,15 +161,17 @@ async function openModalPicker(task = TASK) {
   )
   shown.value = true
   await flush(wrapper)
-  return wrapper.find('[data-tour="tm-tags"] input').element
+  await wrapper.find('[data-testid="task-tags-open"]').trigger('click')
+  await flush(wrapper)
+  return document.querySelector('[data-testid="tag-picker-search"]')
 }
 
-// Ввод + Enter в поле «новый тег»: пикер уезжает в teleport, поэтому идём через DOM.
-async function typeEnter(input, text) {
+// Ввод + Enter в поле поиска: пикер уезжает в teleport, поэтому идём через DOM.
+async function typeEnter(input, text, mod = false) {
   input.value = text
   input.dispatchEvent(new Event('input', { bubbles: true }))
   await nextTick()
-  input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: mod, bubbles: true }))
   await nextTick()
   await nextTick()
 }
@@ -191,7 +193,7 @@ async function openPillsPicker(task = TASK) {
   await wrapper.find('[data-tour="card-tags"]').trigger('click')
   await nextTick()
   await nextTick()
-  return document.querySelector('.tagmenu input')
+  return document.querySelector('[data-testid="tag-picker-search"]')
 }
 
 beforeEach(() => {
@@ -251,7 +253,16 @@ describe('пикер тегов карточки · набрано занято�
     await typeEnter(input, 'баг')
     expect(createTag).not.toHaveBeenCalled()
     expect(addTag).not.toHaveBeenCalled()
+    // ↵ по набранному имени никогда не СНИМАЕТ тег.
+    expect(removeTag).not.toHaveBeenCalled()
     expect(input.value).toBe('')
+  })
+
+  it('⌘↵ по занятому имени — тот же тег, а не близнец', async () => {
+    const input = await openPillsPicker()
+    await typeEnter(input, 'баг', true)
+    expect(createTag).not.toHaveBeenCalled()
+    expect(addTag).toHaveBeenCalledWith('t1', 'tg-bug')
   })
 
   it('незанятое имя по-прежнему создаёт тег и цепляет его', async () => {

@@ -22,6 +22,7 @@
 // ответ, сам по себе прошёл бы все проверки на устаревание.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { setActivePinia, createPinia } from 'pinia'
 
 vi.mock('naive-ui', async () => {
   const actual = await vi.importActual('naive-ui')
@@ -92,6 +93,8 @@ const switchTo = async (w, props) => {
 const emitsOf = (w, event) => (w.emitted(event) || []).map((e) => e[0])
 
 beforeEach(() => {
+  // A hand-made link's removal offers an undo toast (#3113) — through the store.
+  setActivePinia(createPinia())
   uploadAttachment.mockReset().mockResolvedValue({ data: {} })
   attachments.mockReset().mockResolvedValue({ data: A_FILES })
   removeAttachment.mockReset().mockResolvedValue({ data: {} })
@@ -230,7 +233,7 @@ describe('вкладка «Связи»: задачу сменили, пока �
     const gone = deferred()
     removeRelation.mockReturnValue(gone.promise)
     const w = await openRelations()
-    w.vm.removeRelation?.('r-a1')
+    w.vm.removeRelation?.(A_RELS[0])
     await tick(w)
     await switchTo(w, { taskId: B, relations: B_RELS })
     gone.resolve({ data: {} })

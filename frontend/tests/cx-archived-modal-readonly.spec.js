@@ -18,7 +18,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
-import { NPopconfirm } from 'naive-ui'
+import ArmButton from '@/components/kit/ArmButton.vue'
 
 vi.mock('naive-ui', async () => {
   const actual = await vi.importActual('naive-ui')
@@ -99,10 +99,11 @@ const openDocs = async (readonly) =>
     global: { stubs },
   })
 
-// Кнопка сама по себе лишь взводит popconfirm — вызов идёт на positive-click.
-const firePopconfirms = async (w) => {
-  const list = w.findAllComponents(NPopconfirm)
-  list.forEach((p) => p.vm.$emit('positive-click'))
+// Необратимое удаление — двухшаговая кнопка (v2, #3113): первое нажатие лишь
+// взводит её, вызов идёт на `confirm`. Здесь — сразу второй шаг.
+const fireArms = async (w) => {
+  const list = w.findAllComponents(ArmButton)
+  list.forEach((p) => p.vm.$emit('confirm'))
   await new Promise((r) => setTimeout(r, 0))
   await w.vm.$nextTick()
   return list.length
@@ -127,7 +128,7 @@ describe('вкладка «Комментарии» в режиме только
 
   it('удаление не уходит в API, даже если кнопку всё-таки нажали', async () => {
     const w = await openComments(true)
-    await firePopconfirms(w)
+    await fireArms(w)
     expect(api.removeComment).not.toHaveBeenCalled()
     expect(w.emitted('update:comments')).toBeUndefined()
     w.unmount()
@@ -165,9 +166,9 @@ describe('вкладка «Комментарии» в режиме только
     const w = await openComments(false)
     expect(w.findAll('.c-acts').length).toBe(2) // корень и свой ответ
     const pc = w
-      .findAllComponents(NPopconfirm)
+      .findAllComponents(ArmButton)
       .find((p) => p.element?.closest?.(`[data-comment-id="${MINE.id}"]`))
-    pc.vm.$emit('positive-click')
+    pc.vm.$emit('confirm')
     await new Promise((r) => setTimeout(r, 0))
     expect(api.removeComment).toHaveBeenCalledWith(MINE.id)
     w.unmount()
@@ -190,15 +191,16 @@ describe('вкладка «Комментарии» в режиме только
 describe('вкладка «Связи» в режиме только для чтения', () => {
   it('не показывает ни «✕» у связи, ни формы добавления', async () => {
     const w = await openRelations(true)
-    expect(w.findAllComponents(NPopconfirm)).toHaveLength(0)
-    expect(w.find('.rel-add').exists()).toBe(false)
+    expect(w.findAll('[data-testid="rel-unlink"]')).toHaveLength(0)
+    expect(w.find('[data-testid="rel-form-card"]').exists()).toBe(false)
     expect(w.find('.rel-open').exists()).toBe(false)
     w.unmount()
   })
 
   it('снятие связи не уходит в API', async () => {
     const w = await openRelations(true)
-    await firePopconfirms(w)
+    await fireArms(w)
+    await w.vm.removeRelation(RELATION)
     expect(api.removeRelation).not.toHaveBeenCalled()
     w.unmount()
   })
@@ -212,10 +214,15 @@ describe('вкладка «Связи» в режиме только для чт
 
   it('контроль: в обычном режиме «✕» и форма на месте', async () => {
     const w = await openRelations(false)
-    expect(w.findAllComponents(NPopconfirm).length).toBeGreaterThan(0)
+    expect(w.findAll('[data-testid="rel-unlink"]').length).toBeGreaterThan(0)
     // v2 (#2958): the form opens from «Связать»; in read-only that button is gone.
     await w.find('.rel-open').trigger('click')
-    expect(w.find('.rel-add').exists()).toBe(true)
+    await w.vm.$nextTick()
+    expect(w.find('[data-testid="rel-form-card"]').exists()).toBe(true)
+    // Своя связь снимается сразу (и предлагает отмену) — запрос уходит.
+    await w.find('[data-testid="rel-unlink"]').trigger('click')
+    await new Promise((r) => setTimeout(r, 0))
+    expect(api.removeRelation).toHaveBeenCalledWith(RELATION.id)
     w.unmount()
   })
 })
@@ -223,21 +230,21 @@ describe('вкладка «Связи» в режиме только для чт
 describe('вкладка «Файлы» в режиме только для чтения', () => {
   it('не показывает ни кнопки загрузки, ни «удалить»', async () => {
     const w = await openFiles(true)
-    expect(w.findAllComponents(NPopconfirm)).toHaveLength(0)
+    expect(w.findAllComponents(ArmButton)).toHaveLength(0)
     expect(w.find('input[type="file"]').exists()).toBe(false)
     w.unmount()
   })
 
   it('удаление вложения не уходит в API', async () => {
     const w = await openFiles(true)
-    await firePopconfirms(w)
+    await fireArms(w)
     expect(api.removeAttachment).not.toHaveBeenCalled()
     w.unmount()
   })
 
   it('контроль: в обычном режиме и выбор файла, и «удалить» на месте', async () => {
     const w = await openFiles(false)
-    expect(w.findAllComponents(NPopconfirm).length).toBeGreaterThan(0)
+    expect(w.findAllComponents(ArmButton).length).toBeGreaterThan(0)
     expect(w.find('input[type="file"]').exists()).toBe(true)
     w.unmount()
   })
@@ -246,13 +253,13 @@ describe('вкладка «Файлы» в режиме только для чт
 describe('вкладка «Документы» в режиме только для чтения', () => {
   it('не показывает «отцепить»', async () => {
     const w = await openDocs(true)
-    expect(w.findAllComponents(NPopconfirm)).toHaveLength(0)
+    expect(w.findAllComponents(ArmButton)).toHaveLength(0)
     w.unmount()
   })
 
   it('отцепление не уходит в API', async () => {
     const w = await openDocs(true)
-    await firePopconfirms(w)
+    await fireArms(w)
     expect(unlinkTask).not.toHaveBeenCalled()
     expect(w.emitted('update:links')).toBeUndefined()
     w.unmount()
@@ -267,7 +274,7 @@ describe('вкладка «Документы» в режиме только д�
 
   it('контроль: в обычном режиме «отцепить» есть и доходит до API', async () => {
     const w = await openDocs(false)
-    expect(await firePopconfirms(w)).toBe(1)
+    expect(await fireArms(w)).toBe(1)
     expect(unlinkTask).toHaveBeenCalledWith(DOC_LINK.id)
     w.unmount()
   })

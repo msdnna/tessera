@@ -118,10 +118,19 @@
     "newPlaceholder": "New milestone…"
   },
   "tags": {
-    "newPlaceholder": "New tag, Enter",
     "alreadyOn": "That tag is already on the task",
     "manage": "Manage tags…",
-    "manageWhere": "«Project» window"
+    "manageWhere": "«Project» window",
+    "title": "Tags",
+    "search": "Find or create a tag",
+    "onTask": "On this task",
+    "found": "Found",
+    "all": "All tags",
+    "nothing": "Nothing found",
+    "create": "Create tag “{name}”",
+    "locked": "A GitLab rule tag — the sync manages it",
+    "keyPick": "move",
+    "keyToggle": "toggle"
   },
   "people": {
     "author": "Author: {name}",
@@ -145,22 +154,19 @@
   },
   "desc": {
     "template": "Issue template…",
-    "insertImage": "Insert an image",
-    "insertMermaid": "Insert a Mermaid diagram",
-    "fullscreen": "Open full screen",
-    "preview": "Preview",
     "placeholder": "Add a description…",
-    "emptyMarkdown": "_No description_"
+    "edit": "Edit",
+    "add": "Add a description…",
+    "none": "No description"
   },
   "comments": {
     "someone": "Someone",
     "placeholder": "Comment…",
-    "composerPlaceholder": "Write a comment… ({'@'} — mention, / — command, Ctrl+Enter — send)",
+    "composerPlaceholder": "Comment… {'@'} to mention, / for commands",
     "replyPlaceholder": "Reply… (Esc — cancel, Ctrl+Enter — send)",
     "reply": "Reply",
     "collapse": "Collapse replies",
     "replies": "{n} reply | {n} replies",
-    "deleteConfirm": "Delete the comment?",
     "empty": "No comments yet",
     "offlineComment": "Server unreachable — the comment was not sent",
     "offlineReply": "Server unreachable — the reply was not sent",
@@ -198,7 +204,12 @@
       "blocks": "blocks",
       "blocked_by": "is blocked by",
       "duplicates": "duplicates"
-    }
+    },
+    "removed": "Link to #{number} removed",
+    "restored": "Link to #{number} restored",
+    "formTitle": "Link a task",
+    "kindLabel": "Link type",
+    "taskLabel": "Task"
   },
   "files": {
     "empty": "No files yet",
@@ -414,5 +425,9 @@
     "all": "All",
     "comments": "Comments",
     "files": "Files"
+  },
+  "arm": {
+    "delete": "Delete?",
+    "unlink": "Remove?"
   }
 }

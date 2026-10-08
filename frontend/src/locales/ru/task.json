@@ -118,10 +118,19 @@
     "newPlaceholder": "Новый этап…"
   },
   "tags": {
-    "newPlaceholder": "Новый тег, Enter",
     "alreadyOn": "Этот тег уже на задаче",
     "manage": "Управлять тегами…",
-    "manageWhere": "окно «Проект»"
+    "manageWhere": "окно «Проект»",
+    "title": "Теги",
+    "search": "Найти или создать тег",
+    "onTask": "Теги задачи",
+    "found": "Найдено",
+    "all": "Все теги",
+    "nothing": "Ничего не найдено",
+    "create": "Создать тег «{name}»",
+    "locked": "Тег правила GitLab — им управляет синхронизация",
+    "keyPick": "выбрать",
+    "keyToggle": "отметить"
   },
   "people": {
     "author": "Автор: {name}",
@@ -145,22 +154,19 @@
   },
   "desc": {
     "template": "Шаблон issue…",
-    "insertImage": "Вставить изображение",
-    "insertMermaid": "Вставить Mermaid-диаграмму",
-    "fullscreen": "Открыть на весь экран",
-    "preview": "Предпросмотр",
     "placeholder": "Добавьте описание…",
-    "emptyMarkdown": "_Нет описания_"
+    "edit": "Изменить",
+    "add": "Добавить описание…",
+    "none": "Нет описания"
   },
   "comments": {
     "someone": "Кто-то",
     "placeholder": "Комментарий…",
-    "composerPlaceholder": "Написать комментарий… ({'@'} — упоминание, / — команда, Ctrl+Enter — отправить)",
+    "composerPlaceholder": "Комментарий… {'@'} — упомянуть, / — команды",
     "replyPlaceholder": "Ответить… (Esc — отмена, Ctrl+Enter — отправить)",
     "reply": "Ответить",
     "collapse": "Свернуть ответы",
     "replies": "{n} ответ | {n} ответа | {n} ответов",
-    "deleteConfirm": "Удалить комментарий?",
     "empty": "Комментариев пока нет",
     "offlineComment": "Сервер недоступен — комментарий не отправлен",
     "offlineReply": "Сервер недоступен — ответ не отправлен",
@@ -198,7 +204,12 @@
       "blocks": "блокирует",
       "blocked_by": "заблокирована",
       "duplicates": "дублирует"
-    }
+    },
+    "removed": "Связь с #{number} убрана",
+    "restored": "Связь с #{number} возвращена",
+    "formTitle": "Связать задачу",
+    "kindLabel": "Вид связи",
+    "taskLabel": "Задача"
   },
   "files": {
     "empty": "Файлов пока нет",
@@ -414,5 +425,9 @@
     "all": "Всё",
     "comments": "Комментарии",
     "files": "Файлы"
+  },
+  "arm": {
+    "delete": "Удалить?",
+    "unlink": "Убрать?"
   }
 }

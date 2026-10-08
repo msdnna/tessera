@@ -23,6 +23,9 @@ import {
   AttachOutline,
   ExpandOutline,
   EllipsisHorizontalOutline,
+  AtOutline,
+  CloudUploadOutline,
+  DocumentTextOutline,
 } from '@vicons/ionicons5'
 import { uploads as uploadsApi, tasks as tasksApi } from '@/api'
 import { toggleTaskMarker } from '@/utils/markdown'
@@ -43,7 +46,11 @@ import { isTauri } from '@/utils/serverBase'
 import { scrollParent } from '@/utils/dom'
 import { ATTACHMENT_MAX_BYTES, attachmentPickError, mediaPickMessage } from '@/utils/upload'
 import { formatFileSize } from '@/utils/docPdf'
+import { CAPS } from '@/utils/keyCaps'
 import RichContent from './RichContent.vue'
+import Kbd from './Kbd.vue'
+import ActionMenu from './kit/ActionMenu.vue'
+import AnchorLayer from './kit/AnchorLayer.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import UserAvatar from './UserAvatar.vue'
 
@@ -63,9 +70,16 @@ const props = defineProps({
   // 'write' | 'preview' — sets the initial tab (re-applied when it changes,
   // e.g. when a different task loads). User tab clicks override locally.
   initialMode: { type: String, default: 'write' },
-  // 'default' — bare editor with top Написать/Просмотр tabs (task description).
+  // 'default' — bare editor with a slim top bar (documents, the stage goals).
   // 'boxed' — framed composer with a persistent bottom toolbar and an in-place
-  // preview toggle (boxed comment composer).
+  // preview toggle (notes, reminders).
+  // 'v2' — the v2 edit block (#3113, StagePage mockup): one bar with the
+  // Написать / Просмотр segment and the tools, the field with a primary ring, and
+  // a footer «# задача · @ человек · Отмена Esc · Сохранить ⌘↵». Esc asks before
+  // throwing typed text away. The task description, a comment edit, a reply.
+  // 'composer' — the v2 comment composer (#3113, TaskModal mockup): a 46px row
+  // with the reader's avatar, the field, «Aa» (the same bar as v2, above the row),
+  // «Прикрепить» and «Отправить ⌘↵».
   variant: { type: String, default: 'default' },
   // Boxed only: show a send button in the toolbar that emits `submit`.
   send: { type: Boolean, default: false },
@@ -87,6 +101,18 @@ const props = defineProps({
   // growing to its content. For the fullscreen modal: at that size the toggle
   // wastes the second half of the window and a short text leaves it empty.
   split: { type: Boolean, default: false },
+  // v2: the footer's primary button (null → «Сохранить»); `footer` off hides the
+  // footer for a host that draws its own.
+  saveLabel: { type: String, default: null },
+  footer: { type: Boolean, default: true },
+  // v2: issue templates offered from the bar ([{ name }]); picking one emits
+  // `template` with its name. `templateLabel` titles the button.
+  templates: { type: Array, default: () => [] },
+  templateLabel: { type: String, default: '' },
+  // composer: whose avatar leads the row ({ id, name, src }).
+  avatar: { type: Object, default: null },
+  // composer: the send button's caption (null → «Отправить»).
+  sendLabel: { type: String, default: null },
 })
 const emit = defineEmits([
   'update:modelValue',
@@ -96,14 +122,20 @@ const emit = defineEmits([
   'update:mode',
   'attachments-changed',
   // Esc in the field — the host may use it to dismiss the composer (e.g. the reply
-  // form). The description editor doesn't listen, so this is a no-op there.
+  // form). In the v2 variant it means «leave and drop what was typed since the
+  // editor opened», asked first when anything was (see requestCancel).
   'cancel',
+  'template',
 ])
 
 const message = useMessage()
 const { t } = useI18n()
 const fieldPlaceholder = computed(() => props.placeholder ?? t('documents.editor.placeholder'))
 const boxed = computed(() => props.variant === 'boxed')
+const v2 = computed(() => props.variant === 'v2')
+const composer = computed(() => props.variant === 'composer')
+// Glyph captions of the bar (letters, not words — the same in every locale).
+const AA = 'Aa'
 const mode = ref(props.initialMode) // 'write' | 'preview'
 // Split shows both panes at once, so the textarea is always on screen and the
 // mode toggle has nothing left to switch.
@@ -135,12 +167,19 @@ const previewSide = ref(null)
 // to the panel, not the viewport.
 const compact = ref(false)
 const fmtOpen = ref(false)
+// The v2 bar and the composer fold their tools the same way, by the width they
+// get (the sidebar layout of the task modal is ~490px, a phone ~360px).
+const width = ref(0)
+// Narrow enough that the send button drops its caption and the v2 footer its
+// key hints.
+const narrowSend = computed(() => !!width.value && width.value < 420)
 let ro = null
 onMounted(() => {
-  if (!boxed.value || !rootEl.value || typeof ResizeObserver === 'undefined') return
+  if (props.variant === 'default' || !rootEl.value || typeof ResizeObserver === 'undefined') return
   ro = new ResizeObserver((entries) => {
     const w = entries[0]?.contentRect?.width
     if (w) {
+      width.value = w
       compact.value = w < 560
       if (!compact.value) fmtOpen.value = false
     }
@@ -560,6 +599,162 @@ const barTools = computed(() => [
     : []),
 ])
 
+// ── the v2 bar (variant v2, and the composer's «Aa» strip) ──
+// The mockup's row first (H B I · list · checkbox · link · @), then what the v1
+// description header carried (image, diagram, file, fullscreen); the rest of the
+// marks live in «⋯». As the editor narrows, the insert group and then the whole
+// row fold into «⋯» too, so the bar never wraps or scrolls.
+const V2_MAIN = ['heading', 'bold', 'italic', 'bulletList', 'checkbox', 'link', 'mention']
+const V2_INSERT = ['image', 'mermaid', 'attach', 'expand']
+const V2_MORE = ['orderedList', 'strike', 'code', 'quote', 'spoiler']
+const v2Defs = computed(() => {
+  const all = {}
+  for (const b of barTools.value) all[b.key] = b
+  // The mockup draws the list as a list icon; the numbered one gets the glyph.
+  all.bulletList = { ...all.bulletList, icon: ListOutline, t: undefined }
+  all.orderedList = { ...all.orderedList, icon: undefined, t: '1.' }
+  // The paperclip opens a menu here (a new file, an image, a file the task has).
+  if (all.attach) all.attach = { ...all.attach, fn: (e) => openAttachMenu(e?.currentTarget) }
+  if (props.mentionItems.length)
+    all.mention = {
+      key: 'mention',
+      icon: AtOutline,
+      title: t('documents.editor.tool.mention'),
+      fn: insertMention,
+    }
+  if (props.expandable)
+    all.expand = {
+      key: 'expand',
+      icon: ExpandOutline,
+      size: 15,
+      title: t('documents.editor.tool.expand'),
+      fn: openFullscreen,
+    }
+  return all
+})
+const pick = (keys) => keys.map((k) => v2Defs.value[k]).filter(Boolean)
+const barMain = computed(() => (width.value && width.value < 380 ? [] : pick(V2_MAIN)))
+const barInsert = computed(() => (width.value && width.value < 600 ? [] : pick(V2_INSERT)))
+const barMore = computed(() => {
+  const shown = new Set([...barMain.value, ...barInsert.value].map((b) => b.key))
+  return pick([...V2_MAIN, ...V2_INSERT, ...V2_MORE]).filter((b) => !shown.has(b.key))
+})
+const moreItems = computed(() =>
+  barMore.value.map((b) => ({ key: b.key, label: b.title, icon: b.icon })),
+)
+const moreOpen = ref(false)
+const moreBtn = ref(null)
+function onMoreSelect(key) {
+  moreOpen.value = false
+  // The attach row re-anchors its own menu on the «⋯» it came from.
+  const b = v2Defs.value[key]
+  if (key === 'attach') openAttachMenu(moreBtn.value)
+  else b?.fn()
+}
+// Insert «@» at the caret (after a space, so it starts a handle) and open the
+// people list as if it had been typed.
+function insertMention() {
+  const el = ta.value
+  if (!el) return
+  const before = el.value.slice(0, el.selectionStart)
+  insertAtCaret(!before || /\s$/.test(before) ? '@' : ' @')
+  nextTick(detectSuggest)
+}
+
+// ── issue templates (v2 bar) ──
+const tplOpen = ref(false)
+const tplBtn = ref(null)
+const tplItems = computed(() =>
+  props.templates.map((x) => ({ key: x.name, label: x.name, icon: DocumentTextOutline })),
+)
+function onTplSelect(name) {
+  tplOpen.value = false
+  emit('template', name)
+}
+
+// ── «Прикрепить» (composer, v2): an image, a new file, or one the task has ──
+const fileInput = ref(null)
+const attachMenu = ref(false)
+const attachAnchor = ref(null)
+const attachBtnEl = ref(null)
+async function openAttachMenu(el) {
+  attachAnchor.value = el || attachBtnEl.value || moreBtn.value
+  attachMenu.value = true
+  if (!canAttach.value) return
+  try {
+    const res = await tasksApi.attachments(props.attachTaskId)
+    attachList.value = res.data || []
+  } catch {
+    attachList.value = []
+  }
+}
+const attachItems = computed(() => {
+  const out = [{ key: 'image', label: t('documents.editor.attach.image'), icon: ImageOutline }]
+  if (!canAttach.value) return out
+  out.push({ key: 'file', label: t('documents.editor.attach.file'), icon: CloudUploadOutline })
+  if (attachList.value.length) {
+    out.push({
+      heading: t('documents.editor.attach.taskFiles'),
+      aside: String(attachList.value.length),
+    })
+    for (const a of attachList.value)
+      out.push({ key: `att:${a.id}`, label: a.filename, icon: AttachOutline })
+  }
+  return out
+})
+function onAttachSelect(key) {
+  attachMenu.value = false
+  if (key === 'image') pickImage()
+  else if (key === 'file') fileInput.value?.click?.()
+  else {
+    const a = attachList.value.find((x) => `att:${x.id}` === key)
+    if (a) linkAttachment(a)
+  }
+}
+function onFileChosen(e) {
+  const f = e.target.files && e.target.files[0]
+  e.target.value = ''
+  if (f) uploadAttachment(f)
+}
+
+// ── composer: the «Aa» strip ──
+const fmtOn = ref(false)
+const showBar = computed(() => v2.value || (composer.value && fmtOn.value))
+function toggleFmt() {
+  fmtOn.value = !fmtOn.value
+  if (!fmtOn.value) mode.value = 'write'
+  nextTick(() => ta.value?.focus())
+}
+
+// ── v2: leaving the editor ──
+// What the text was when the editor opened. Esc / «Отмена» with nothing typed
+// since just leaves; with something typed it first asks, inline in the footer —
+// the host reverts to its own copy on `cancel`.
+const baseline = ref(props.modelValue || '')
+const confirming = ref(false)
+function requestCancel() {
+  if ((props.modelValue || '') !== baseline.value) {
+    confirming.value = true
+    nextTick(() => ta.value?.focus())
+  } else emit('cancel')
+}
+function discard() {
+  confirming.value = false
+  emit('cancel')
+}
+function keepEditing() {
+  confirming.value = false
+  nextTick(() => ta.value?.focus())
+}
+function resetBaseline() {
+  baseline.value = props.modelValue || ''
+  confirming.value = false
+}
+function setMode(m) {
+  mode.value = m
+  if (m === 'write') nextTick(() => ta.value?.focus())
+}
+
 // ── selection bubble toolbar ──
 const bubble = ref(null) // { top, left } in viewport coords, or null
 
@@ -782,6 +977,23 @@ function onSelect() {
   if (!mq.value) refreshBubble()
 }
 function onKeydown(e) {
+  // v2 «Отменить правки?» is up: ↵ is «Да», Esc is «Нет»; any other key goes on
+  // typing and takes the question away.
+  if (confirming.value && !e.isComposing) {
+    if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && !e.shiftKey) {
+      e.preventDefault()
+      e.stopPropagation()
+      discard()
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      keepEditing()
+      return
+    }
+    confirming.value = false
+  }
   // A keystroke is the first thing that happens after a caret move, so this is
   // where a popup left behind by one is noticed and dropped — before any branch
   // below can act on it.
@@ -880,6 +1092,14 @@ function onKeydown(e) {
   // description doesn't). It's also the tab-trap release: the first Esc gives Tab
   // back to the browser and is kept from the surrounding modal, the second one
   // propagates and lets the modal close as usual.
+  // v2: Esc leaves the editor — after asking, when there is typing to lose — and
+  // never reaches the dialog underneath.
+  if (e.key === 'Escape' && v2.value) {
+    e.preventDefault()
+    e.stopPropagation()
+    requestCancel()
+    return
+  }
   if (e.key === 'Escape') {
     emit('cancel')
     if (tabTraps.value) {
@@ -939,15 +1159,27 @@ defineExpose({
   toggleMode,
   autoGrow,
   openFullscreen,
+  requestCancel,
+  resetBaseline,
 })
 </script>
 
 <template>
-  <div ref="rootEl" class="md2" :class="{ 'md2-boxed': boxed, 'md2-splitmode': split }">
+  <div
+    ref="rootEl"
+    class="md2"
+    :class="{
+      'md2-boxed': boxed,
+      'md2-splitmode': split,
+      'md2-v2': v2,
+      'md2-composer': composer,
+      'md2-fmt': composer && fmtOn,
+    }"
+  >
     <!-- Default variant: a slim top toolbar — insert actions plus a single
          preview/edit toggle (replaces the old Написать / Просмотр tabs). The boxed
          composer moves every control into the bottom toolbar instead. -->
-    <div v-if="!boxed && toolbar" class="md2-tabs">
+    <div v-if="variant === 'default' && toolbar" class="md2-tabs">
       <span class="md2-spacer" />
       <template v-if="writing">
         <button
@@ -981,6 +1213,93 @@ defineExpose({
       </button>
     </div>
 
+    <!-- v2 bar: the Написать / Просмотр segment and the tools in one strip on the
+         input surface (StagePage mockup). mousedown.prevent keeps the caret and
+         the selection in the field the tools act on. -->
+    <div v-if="showBar" class="md2-bar" data-testid="md2-bar">
+      <div class="md2-seg" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          class="md2-seg-b"
+          :class="{ on: mode === 'write' }"
+          :aria-selected="mode === 'write'"
+          data-testid="md2-write"
+          @mousedown.prevent
+          @click="setMode('write')"
+        >
+          {{ $t('documents.editor.write') }}
+        </button>
+        <button
+          type="button"
+          role="tab"
+          class="md2-seg-b"
+          :class="{ on: mode === 'preview' }"
+          :aria-selected="mode === 'preview'"
+          data-testid="md2-preview"
+          @mousedown.prevent
+          @click="setMode('preview')"
+        >
+          {{ $t('documents.editor.previewTab') }}
+        </button>
+      </div>
+      <span class="md2-spacer" />
+      <span v-if="mode === 'write'" class="md2-tools">
+        <button
+          v-for="b in barMain"
+          :key="b.key"
+          type="button"
+          class="md2-ti"
+          :class="[b.cls, { busy: b.busy }]"
+          :title="b.title"
+          :data-testid="`md2-tool-${b.key}`"
+          @mousedown.prevent="b.fn($event)"
+        >
+          <n-icon v-if="b.icon" :component="b.icon" :size="15" />
+          <template v-else>{{ b.t }}</template>
+        </button>
+        <span v-if="barMain.length && barInsert.length" class="md2-tsep" />
+        <button
+          v-for="b in barInsert"
+          :key="b.key"
+          type="button"
+          class="md2-ti"
+          :class="{ busy: b.busy }"
+          :title="b.title"
+          :data-testid="`md2-tool-${b.key}`"
+          @mousedown.prevent="b.fn($event)"
+        >
+          <n-icon :component="b.icon" :size="15" />
+        </button>
+        <button
+          v-if="templates.length"
+          ref="tplBtn"
+          type="button"
+          class="md2-ti"
+          :class="{ on: tplOpen }"
+          :title="templateLabel"
+          data-testid="md2-templates"
+          @mousedown.prevent
+          @click="tplOpen = !tplOpen"
+        >
+          <n-icon :component="DocumentTextOutline" :size="15" />
+        </button>
+        <button
+          v-if="barMore.length"
+          ref="moreBtn"
+          type="button"
+          class="md2-ti"
+          :class="{ on: moreOpen }"
+          :title="$t('documents.editor.tool.more')"
+          data-testid="md2-more"
+          @mousedown.prevent
+          @click="moreOpen = !moreOpen"
+        >
+          <n-icon :component="EllipsisHorizontalOutline" :size="16" />
+        </button>
+      </span>
+    </div>
+
     <!-- Enumerated rather than image/*: the server rejects SVG (it would run as
          active content on our origin), so the picker shouldn't offer it. -->
     <input
@@ -990,284 +1309,464 @@ defineExpose({
       hidden
       @change="onImgFile"
     />
+    <input v-if="canAttach" ref="fileInput" type="file" hidden @change="onFileChosen" />
 
-    <div class="md2-body">
-      <!-- Cross-fade (NOT mode="out-in"): out-in defers mounting the incoming pane
+    <!-- The composer's row (avatar · field · Aa · Прикрепить · Отправить);
+         everywhere else this wrapper generates no box. -->
+    <div class="md2-main">
+      <UserAvatar
+        v-if="composer && avatar"
+        class="md2-cava"
+        :user-id="avatar.id || ''"
+        :src="avatar.src"
+        :name="avatar.name || '?'"
+      />
+      <div class="md2-body">
+        <!-- Cross-fade (NOT mode="out-in"): out-in defers mounting the incoming pane
            until the outgoing one finishes leaving, and a parent re-render in between
            (the header's write/preview buttons key off `descMode`) wedged the
            transition — it settled on an empty slot, so switching a filled description
            into edit mode showed the toolbar but no textarea (#2742). A plain
            cross-fade mounts both at once; the leaving pane is taken out of flow in CSS
            so the layout doesn't jump. -->
-      <Transition name="md2-fade" @after-enter="autoGrow">
-        <div v-if="writing" key="write" class="md2-write" :class="{ dragging }">
-          <textarea
-            ref="ta"
-            :value="modelValue"
-            :placeholder="fieldPlaceholder"
-            :rows="minRows"
-            spellcheck="false"
-            @input="onInput"
-            @keydown="onKeydown"
-            @select="onSelect"
-            @mouseup="onSelect"
-            @scroll="onTaScroll"
-            @blur="onBlur"
-            @paste="onPaste"
-            @dragover.prevent="onDragOver"
-            @dragleave="onDragLeave"
-            @drop="onDrop"
-          />
+        <Transition name="md2-fade" @after-enter="autoGrow">
+          <div v-if="writing" key="write" class="md2-write" :class="{ dragging }">
+            <textarea
+              ref="ta"
+              :value="modelValue"
+              :placeholder="fieldPlaceholder"
+              :rows="minRows"
+              spellcheck="false"
+              @input="onInput"
+              @keydown="onKeydown"
+              @select="onSelect"
+              @mouseup="onSelect"
+              @scroll="onTaScroll"
+              @blur="onBlur"
+              @paste="onPaste"
+              @dragover.prevent="onDragOver"
+              @dragleave="onDragLeave"
+              @drop="onDrop"
+            />
 
-          <Transition name="bubble">
-            <div v-if="bubble" class="md2-bubble" :style="bubble">
-              <button
-                v-for="b in inlineTools"
-                :key="b.key"
-                type="button"
-                :class="b.cls"
-                :title="b.title"
-                @mousedown.prevent="b.fn"
+            <Transition name="bubble">
+              <div v-if="bubble" class="md2-bubble" :style="bubble">
+                <button
+                  v-for="b in inlineTools"
+                  :key="b.key"
+                  type="button"
+                  :class="b.cls"
+                  :title="b.title"
+                  @mousedown.prevent="b.fn"
+                >
+                  <n-icon v-if="b.icon" :component="b.icon" :size="15" />
+                  <template v-else>{{ b.t }}</template>
+                </button>
+              </div>
+            </Transition>
+
+            <Transition name="md2-sug">
+              <ul
+                v-if="mq && !isCmd && mentionMatches.length"
+                ref="sugEl"
+                class="md2-mentions"
+                :style="sugPos"
               >
-                <n-icon v-if="b.icon" :component="b.icon" :size="15" />
-                <template v-else>{{ b.t }}</template>
-              </button>
-            </div>
-          </Transition>
-
-          <Transition name="md2-sug">
-            <ul
-              v-if="mq && !isCmd && mentionMatches.length"
-              ref="sugEl"
-              class="md2-mentions"
-              :style="sugPos"
-            >
-              <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
-                <li
-                  v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)"
-                  class="md2-mention-sep"
-                >
-                  GitLab
-                </li>
-                <li
-                  class="md2-mention-item"
-                  :class="{ active: i === mqIndex }"
-                  @mousedown.prevent="pickSuggest(m)"
-                >
-                  <UserAvatar
-                    class="md2-mention-av"
-                    :user-id="m.avatarUserId"
-                    :src="m.avatarSrc"
-                    :name="m.display || m.label"
-                  />
-                  <span class="md2-mention-name">{{ m.display || m.label }}</span>
-                  <!-- The login is what actually gets inserted; without it the
+                <template v-for="(m, i) in mentionMatches" :key="m.gitlab ? `gl:${m.label}` : m.id">
+                  <li
+                    v-if="m.gitlab && (i === 0 || !mentionMatches[i - 1].gitlab)"
+                    class="md2-mention-sep"
+                  >
+                    GitLab
+                  </li>
+                  <li
+                    class="md2-mention-item"
+                    :class="{ active: i === mqIndex }"
+                    @mousedown.prevent="pickSuggest(m)"
+                  >
+                    <UserAvatar
+                      class="md2-mention-av"
+                      :user-id="m.avatarUserId"
+                      :src="m.avatarSrc"
+                      :name="m.display || m.label"
+                    />
+                    <span class="md2-mention-name">{{ m.display || m.label }}</span>
+                    <!-- The login is what actually gets inserted; without it the
                        row would promise a name and type something else. -->
-                  <span v-if="m.hint" class="md2-mention-hint">{{ m.hint }}</span>
-                </li>
-              </template>
-            </ul>
-          </Transition>
+                    <span v-if="m.hint" class="md2-mention-hint">{{ m.hint }}</span>
+                  </li>
+                </template>
+              </ul>
+            </Transition>
 
-          <!-- Quick actions: `/ключ` in mono plus the description, GitLab-style.
+            <!-- Quick actions: `/ключ` in mono plus the description, GitLab-style.
                Custom (dictionary) entries carry a neutral badge — they are hints
                for a human reader, the backend never executes them. -->
-          <Transition name="md2-sug">
-            <ul
-              v-if="mq && isCmd && commandMatches.length"
-              ref="sugEl"
-              class="md2-mentions md2-cmds"
-              :style="sugPos"
-            >
-              <li
-                v-for="(cmd, i) in commandMatches"
-                :key="cmd.key"
-                class="md2-mention-item md2-cmd-item"
-                :class="{ active: i === mqIndex }"
-                @mousedown.prevent="pickSuggest(cmd)"
+            <Transition name="md2-sug">
+              <ul
+                v-if="mq && isCmd && commandMatches.length"
+                ref="sugEl"
+                class="md2-mentions md2-cmds"
+                :style="sugPos"
               >
-                <code class="md2-cmd-key">/{{ cmd.key }}</code>
-                <span class="md2-cmd-desc">{{ cmd.description }}</span>
-                <span v-if="!cmd.builtin" class="md2-cmd-tag">{{
-                  $t('documents.editor.customCommand')
-                }}</span>
-              </li>
-            </ul>
-          </Transition>
-        </div>
+                <li
+                  v-for="(cmd, i) in commandMatches"
+                  :key="cmd.key"
+                  class="md2-mention-item md2-cmd-item"
+                  :class="{ active: i === mqIndex }"
+                  @mousedown.prevent="pickSuggest(cmd)"
+                >
+                  <code class="md2-cmd-key">/{{ cmd.key }}</code>
+                  <span class="md2-cmd-desc">{{ cmd.description }}</span>
+                  <span v-if="!cmd.builtin" class="md2-cmd-tag">{{
+                    $t('documents.editor.customCommand')
+                  }}</span>
+                </li>
+              </ul>
+            </Transition>
+          </div>
 
-        <RichContent
-          v-else
-          key="preview"
-          class="md2-preview"
-          :source="modelValue"
-          :members="mentionItems"
-          interactive
-          task-refs
-          :empty="$t('documents.editor.previewEmpty')"
-          @toggle="onToggleCheck"
-        />
-      </Transition>
+          <RichContent
+            v-else
+            key="preview"
+            class="md2-preview"
+            :source="modelValue"
+            :members="mentionItems"
+            interactive
+            task-refs
+            :empty="$t('documents.editor.previewEmpty')"
+            @toggle="onToggleCheck"
+          />
+        </Transition>
 
-      <!-- Split only: the preview sits beside the text instead of replacing it,
+        <!-- Split only: the preview sits beside the text instead of replacing it,
            and follows every keystroke (same v-model, no second copy). RichContent is
            a multi-root component, so it never inherits this file's scoped attribute —
            the grid/overflow rules have to land on a native wrapper, or the preview
            spills its content over the toolbar with no scrollbar (#2744). -->
-      <div v-if="split" ref="previewSide" class="md2-preview-side" @scroll="syncScroll('preview')">
-        <RichContent
-          class="md2-preview"
-          :source="modelValue"
-          :members="mentionItems"
-          interactive
-          task-refs
-          :empty="$t('documents.editor.previewEmpty')"
-          @toggle="onToggleCheck"
-        />
-      </div>
+        <div
+          v-if="split"
+          ref="previewSide"
+          class="md2-preview-side"
+          @scroll="syncScroll('preview')"
+        >
+          <RichContent
+            class="md2-preview"
+            :source="modelValue"
+            :members="mentionItems"
+            interactive
+            task-refs
+            :empty="$t('documents.editor.previewEmpty')"
+            @toggle="onToggleCheck"
+          />
+        </div>
 
-      <!-- Default variant: a formatting bar under the text. The selection bubble
+        <!-- Default variant: a formatting bar under the text. The selection bubble
            only carries inline marks, and the header row (when it is rendered at
            all — TaskModal hosts it in .desc-head) only carries insert/preview, so
            lists, checkboxes and spoilers need a home of their own. -->
-      <div v-if="!boxed && writing" class="md2-toolbar md2-format">
-        <button
-          v-for="b in tools"
-          :key="b.key"
-          type="button"
-          class="md2-tbtn"
-          :class="b.cls"
-          :title="b.title"
-          @mousedown.prevent="b.fn"
-        >
-          <n-icon v-if="b.icon" :component="b.icon" :size="15" />
-          <template v-else>{{ b.t }}</template>
-        </button>
-        <span v-if="canAttach || expandable" class="md2-tsep" />
-        <button
-          v-if="canAttach"
-          type="button"
-          class="md2-tbtn"
-          :class="{ busy: attaching }"
-          :title="$t('documents.editor.tool.attach')"
-          @mousedown.prevent="openAttachPicker"
-        >
-          <n-icon :component="AttachOutline" :size="16" />
-        </button>
-        <button
-          v-if="expandable"
-          type="button"
-          class="md2-tbtn"
-          :title="$t('documents.editor.tool.expand')"
-          @mousedown.prevent="openFullscreen"
-        >
-          <n-icon :component="ExpandOutline" :size="15" />
-        </button>
-      </div>
+        <div v-if="variant === 'default' && writing" class="md2-toolbar md2-format">
+          <button
+            v-for="b in tools"
+            :key="b.key"
+            type="button"
+            class="md2-tbtn"
+            :class="b.cls"
+            :title="b.title"
+            @mousedown.prevent="b.fn"
+          >
+            <n-icon v-if="b.icon" :component="b.icon" :size="15" />
+            <template v-else>{{ b.t }}</template>
+          </button>
+          <span v-if="canAttach || expandable" class="md2-tsep" />
+          <button
+            v-if="canAttach"
+            type="button"
+            class="md2-tbtn"
+            :class="{ busy: attaching }"
+            :title="$t('documents.editor.tool.attach')"
+            @mousedown.prevent="openAttachPicker"
+          >
+            <n-icon :component="AttachOutline" :size="16" />
+          </button>
+          <button
+            v-if="expandable"
+            type="button"
+            class="md2-tbtn"
+            :title="$t('documents.editor.tool.expand')"
+            @mousedown.prevent="openFullscreen"
+          >
+            <n-icon :component="ExpandOutline" :size="15" />
+          </button>
+        </div>
 
-      <!-- Files already on the task: picking one links it into the text. Rendered
+        <!-- Files already on the task: picking one links it into the text. Rendered
            in flow (not a floating popup) so it can't be clipped by the modal. -->
-      <ul v-if="attachOpen" class="md2-attach">
-        <li v-if="!attachList.length" class="md2-attach-empty">
-          {{ $t('documents.editor.attachEmpty') }}
-        </li>
-        <li
-          v-for="a in attachList"
-          :key="a.id"
-          class="md2-attach-item"
-          @mousedown.prevent="linkAttachment(a)"
-        >
-          <n-icon :component="AttachOutline" :size="14" />
-          <span class="md2-attach-name">{{ a.filename }}</span>
-        </li>
-      </ul>
+        <ul v-if="attachOpen" class="md2-attach">
+          <li v-if="!attachList.length" class="md2-attach-empty">
+            {{ $t('documents.editor.attachEmpty') }}
+          </li>
+          <li
+            v-for="a in attachList"
+            :key="a.id"
+            class="md2-attach-item"
+            @mousedown.prevent="linkAttachment(a)"
+          >
+            <n-icon :component="AttachOutline" :size="14" />
+            <span class="md2-attach-name">{{ a.filename }}</span>
+          </li>
+        </ul>
 
-      <!-- Compact composer: the format/insert buttons live in this popover instead of
+        <!-- Compact composer: the format/insert buttons live in this popover instead of
            on the bar, so a narrow composer can't overflow (see the toolbar below). In
            flow (not floating) so it can't be clipped by the box. -->
-      <div v-if="boxed && compact && fmtOpen && mode === 'write'" class="md2-fmtbar">
-        <button
-          v-for="b in barTools"
-          :key="b.key"
-          type="button"
-          class="md2-tbtn"
-          :class="[b.cls, { busy: b.busy }]"
-          :title="b.title"
-          @mousedown.prevent="b.fn"
-        >
-          <n-icon v-if="b.icon" :component="b.icon" :size="b.size || 15" />
-          <template v-else>{{ b.t }}</template>
-        </button>
-      </div>
+        <div v-if="boxed && compact && fmtOpen && mode === 'write'" class="md2-fmtbar">
+          <button
+            v-for="b in barTools"
+            :key="b.key"
+            type="button"
+            class="md2-tbtn"
+            :class="[b.cls, { busy: b.busy }]"
+            :title="b.title"
+            @mousedown.prevent="b.fn"
+          >
+            <n-icon v-if="b.icon" :component="b.icon" :size="b.size || 15" />
+            <template v-else>{{ b.t }}</template>
+          </button>
+        </div>
 
-      <!-- Boxed variant: persistent toolbar under the text (formatting is still also
+        <!-- Boxed variant: persistent toolbar under the text (formatting is still also
          available via the selection bubble). mousedown.prevent keeps the caret /
          selection in the textarea so the format buttons act on it. When the composer
          is narrow, the whole format/insert group folds into a single menu button so
          the bar (and the send button on its right) never overflows the box (#2743). -->
-      <div v-if="boxed" class="md2-toolbar">
-        <template v-if="mode === 'write'">
-          <button
-            v-if="compact"
-            type="button"
-            class="md2-tbtn"
-            :class="{ active: fmtOpen }"
-            :title="$t('documents.editor.tool.format')"
-            @mousedown.prevent="fmtOpen = !fmtOpen"
-          >
-            <n-icon :component="EllipsisHorizontalOutline" :size="18" />
-          </button>
-          <template v-else>
+        <div v-if="boxed" class="md2-toolbar">
+          <template v-if="mode === 'write'">
             <button
-              v-for="b in barTools"
-              :key="b.key"
+              v-if="compact"
               type="button"
               class="md2-tbtn"
-              :class="[b.cls, { busy: b.busy }]"
-              :title="b.title"
-              @mousedown.prevent="b.fn"
+              :class="{ active: fmtOpen }"
+              :title="$t('documents.editor.tool.format')"
+              @mousedown.prevent="fmtOpen = !fmtOpen"
             >
-              <n-icon v-if="b.icon" :component="b.icon" :size="b.size || 15" />
-              <template v-else>{{ b.t }}</template>
+              <n-icon :component="EllipsisHorizontalOutline" :size="18" />
             </button>
+            <template v-else>
+              <button
+                v-for="b in barTools"
+                :key="b.key"
+                type="button"
+                class="md2-tbtn"
+                :class="[b.cls, { busy: b.busy }]"
+                :title="b.title"
+                @mousedown.prevent="b.fn"
+              >
+                <n-icon v-if="b.icon" :component="b.icon" :size="b.size || 15" />
+                <template v-else>{{ b.t }}</template>
+              </button>
+            </template>
           </template>
-        </template>
-        <span class="md2-spacer" />
+          <span class="md2-spacer" />
+          <button
+            v-if="expandable"
+            type="button"
+            class="md2-tbtn"
+            :title="$t('documents.editor.tool.expand')"
+            @mousedown.prevent="openFullscreen"
+          >
+            <n-icon :component="ExpandOutline" :size="15" />
+          </button>
+          <button
+            type="button"
+            class="md2-tbtn"
+            :title="
+              mode === 'write'
+                ? $t('documents.editor.tool.preview')
+                : $t('documents.editor.tool.edit')
+            "
+            @mousedown.prevent="toggleMode"
+          >
+            <n-icon :component="mode === 'write' ? EyeOutline : CreateOutline" :size="16" />
+          </button>
+          <button
+            v-if="send"
+            type="button"
+            class="md2-send"
+            :class="{ busy: sending }"
+            :disabled="sending"
+            :title="
+              sending ? $t('documents.editor.tool.sending') : $t('documents.editor.tool.send')
+            "
+            @mousedown.prevent="onSend"
+          >
+            <TesseraSpinner v-if="sending" :size="16" variant="white" />
+            <n-icon v-else :component="SendOutline" :size="16" />
+          </button>
+        </div>
+      </div>
+      <template v-if="composer">
         <button
-          v-if="expandable"
           type="button"
-          class="md2-tbtn"
-          :title="$t('documents.editor.tool.expand')"
-          @mousedown.prevent="openFullscreen"
+          class="md2-cbtn md2-aa"
+          :class="{ on: fmtOn }"
+          :aria-pressed="fmtOn"
+          :title="$t('documents.editor.tool.formatToggle')"
+          data-testid="composer-format"
+          @mousedown.prevent
+          @click="toggleFmt"
         >
-          <n-icon :component="ExpandOutline" :size="15" />
+          {{ AA }}
         </button>
         <button
+          ref="attachBtnEl"
           type="button"
-          class="md2-tbtn"
-          :title="
-            mode === 'write'
-              ? $t('documents.editor.tool.preview')
-              : $t('documents.editor.tool.edit')
-          "
-          @mousedown.prevent="toggleMode"
+          class="md2-cbtn"
+          :class="{ busy: uploading || attaching, on: attachMenu }"
+          :title="$t('documents.editor.tool.attachMenu')"
+          data-testid="composer-attach"
+          @mousedown.prevent
+          @click="attachMenu ? (attachMenu = false) : openAttachMenu(attachBtnEl)"
         >
-          <n-icon :component="mode === 'write' ? EyeOutline : CreateOutline" :size="16" />
+          <n-icon :component="AttachOutline" :size="17" />
         </button>
         <button
           v-if="send"
           type="button"
-          class="md2-send"
-          :class="{ busy: sending }"
+          class="md2-csend"
+          :class="{ busy: sending, icon: narrowSend }"
           :disabled="sending"
           :title="sending ? $t('documents.editor.tool.sending') : $t('documents.editor.tool.send')"
-          @mousedown.prevent="onSend"
+          data-testid="composer-send"
+          @mousedown.prevent
+          @click="onSend"
         >
-          <TesseraSpinner v-if="sending" :size="16" variant="white" />
-          <n-icon v-else :component="SendOutline" :size="16" />
+          <TesseraSpinner v-if="sending" :size="14" variant="white" />
+          <n-icon v-else-if="narrowSend" :component="SendOutline" :size="15" />
+          <template v-else>{{ sendLabel ?? $t('documents.editor.send') }}</template>
+          <span v-if="!narrowSend" class="md2-ckbd">{{ CAPS.modEnter }}</span>
         </button>
-      </div>
+      </template>
     </div>
+
+    <!-- v2 footer: what # and @ do, then leave or save. «Отменить правки?» takes
+         the row over when Esc / «Отмена» would throw typing away. -->
+    <div v-if="v2 && footer" class="md2-foot" :class="{ confirming }">
+      <template v-if="confirming">
+        <span class="md2-confirm-q">{{ $t('documents.editor.discardAsk') }}</span>
+        <span class="md2-spacer" />
+        <button
+          type="button"
+          class="md2-fbtn"
+          data-testid="md2-keep"
+          @mousedown.prevent
+          @click="keepEditing"
+        >
+          {{ $t('common.answer.no') }} <Kbd>{{ CAPS.escape }}</Kbd>
+        </button>
+        <button
+          type="button"
+          class="md2-fbtn danger"
+          data-testid="md2-discard"
+          @mousedown.prevent
+          @click="discard"
+        >
+          {{ $t('common.answer.yes') }} <Kbd>{{ CAPS.enter }}</Kbd>
+        </button>
+      </template>
+      <template v-else>
+        <span v-if="!narrowSend" class="md2-hints">
+          <Kbd>{{ '#' }}</Kbd>
+          <span>{{ $t('documents.editor.hintTask') }}</span>
+          <template v-if="mentionItems.length">
+            <Kbd>{{ '@' }}</Kbd>
+            <span>{{ $t('documents.editor.hintPerson') }}</span>
+          </template>
+        </span>
+        <span class="md2-spacer" />
+        <button
+          type="button"
+          class="md2-fbtn"
+          data-testid="md2-cancel"
+          @mousedown.prevent
+          @click="requestCancel"
+        >
+          {{ $t('common.action.cancel') }} <Kbd>{{ CAPS.escape }}</Kbd>
+        </button>
+        <button
+          type="button"
+          class="md2-fbtn primary"
+          :class="{ busy: sending }"
+          :disabled="sending"
+          data-testid="md2-save"
+          @mousedown.prevent
+          @click="onSend"
+        >
+          <TesseraSpinner v-if="sending" :size="12" variant="white" />
+          {{ saveLabel ?? $t('common.action.save') }} <Kbd>{{ CAPS.modEnter }}</Kbd>
+        </button>
+      </template>
+    </div>
+
+    <!-- The bar's menus: drawn into the dialog the editor sits in (AnchorLayer),
+         so they keep the keyboard inside the task modal's focus trap. -->
+    <template v-if="v2 || composer">
+      <AnchorLayer
+        :show="moreOpen"
+        :anchor="() => moreBtn"
+        :placement="composer ? 'top-end' : 'bottom-end'"
+        focus=".am"
+        testid="md2-more-menu"
+        @update:show="moreOpen = $event"
+      >
+        <ActionMenu
+          inline
+          :show="moreOpen"
+          :width="240"
+          :items="moreItems"
+          testid="md2-more-items"
+          @update:show="moreOpen = $event"
+          @select="onMoreSelect"
+        />
+      </AnchorLayer>
+      <AnchorLayer
+        :show="tplOpen"
+        :anchor="() => tplBtn"
+        placement="bottom-end"
+        focus=".am"
+        testid="md2-tpl-menu"
+        @update:show="tplOpen = $event"
+      >
+        <ActionMenu
+          inline
+          :show="tplOpen"
+          :width="260"
+          :header="templateLabel"
+          :items="tplItems"
+          testid="md2-tpl-items"
+          @update:show="tplOpen = $event"
+          @select="onTplSelect"
+        />
+      </AnchorLayer>
+      <AnchorLayer
+        :show="attachMenu"
+        :anchor="() => attachAnchor"
+        :placement="composer ? 'top-end' : 'bottom-end'"
+        focus=".am"
+        testid="md2-attach-menu"
+        @update:show="attachMenu = $event"
+      >
+        <ActionMenu
+          inline
+          :show="attachMenu"
+          :width="280"
+          :items="attachItems"
+          testid="md2-attach-items"
+          @update:show="attachMenu = $event"
+          @select="onAttachSelect"
+        />
+      </AnchorLayer>
+    </template>
 
     <!-- Fullscreen editing shares this component's v-model, so there is no second
          copy of the text to merge back on close. -->
@@ -1381,22 +1880,21 @@ defineExpose({
   z-index: 4100;
   transform: translate(-4px, -100%);
   display: flex;
-  gap: 1px;
-  padding: 3px;
-  background: var(--t-input-bg);
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+  gap: 2px;
+  padding: 4px;
+  background: var(--t-pop);
+  border-radius: 10px;
+  box-shadow: var(--t-sh-pop);
 }
 .md2-bubble button {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 26px;
-  height: 26px;
-  padding: 0 6px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0 7px;
   border: none;
-  border-radius: 5px;
+  border-radius: 7px;
   background: transparent;
   color: var(--t-text1);
   font-size: 13px;
@@ -1436,24 +1934,26 @@ defineExpose({
   top: 0;
   z-index: 4100;
   margin: 0;
-  padding: 4px;
+  padding: 6px;
   list-style: none;
-  min-width: 180px;
+  min-width: 220px;
   max-width: min(360px, 90vw);
-  max-height: 240px;
+  max-height: 264px;
   overflow-y: auto;
-  background: var(--t-input-bg);
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.25);
+  box-sizing: border-box;
+  background: var(--t-pop);
+  border-radius: var(--t-r-card);
+  box-shadow: var(--t-sh-pop);
+  --t-surface: var(--t-pop);
 }
 .md2-mention-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 5px 8px;
-  border-radius: 6px;
-  font-size: 13px;
+  gap: 10px;
+  min-height: 32px;
+  padding: 0 8px 0 8px;
+  border-radius: 7px;
+  font-size: 13.5px;
   color: var(--t-text1);
   cursor: pointer;
 }
@@ -1537,17 +2037,17 @@ defineExpose({
   /* Neutral, flat — custom commands are documentation, not an accent action. */
   margin-left: auto;
   flex: none;
-  padding: 1px 6px;
-  border: 1px solid var(--t-border);
+  padding: 1px 7px;
   border-radius: 999px;
+  background: var(--t-pill);
   font-size: 10px;
   color: var(--t-text3);
 }
 .md2-mention-sep {
-  padding: 6px 8px 2px;
-  font-size: 10px;
+  padding: 8px 10px 4px;
+  font-size: 11.5px;
   font-weight: 600;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
   color: var(--t-text3);
   cursor: default;
@@ -1763,6 +2263,330 @@ defineExpose({
   align-self: stretch;
   margin: 2px 4px;
   background: var(--t-border);
+}
+/* The composer's row wrapper — no box anywhere else. */
+.md2-main {
+  display: contents;
+}
+
+/* ── v2 bar (variant v2; the composer's «Aa» strip) — StagePage mockup ── */
+.md2-bar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  padding: 3px;
+  margin-bottom: 8px;
+  box-sizing: border-box;
+  border-radius: 9px;
+  background: var(--t-input-bg);
+}
+.md2-seg {
+  flex: none;
+  display: flex;
+  gap: 2px;
+}
+.md2-seg-b {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.md2-seg-b.on {
+  background: var(--t-card);
+  box-shadow: var(--t-sh-card);
+  color: var(--t-text1);
+  font-weight: 600;
+}
+.md2-seg-b:not(.on):hover {
+  color: var(--t-text1);
+}
+.md2-tools {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+  color: var(--t-text3);
+}
+.md2-ti {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text3);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.md2-ti:hover,
+.md2-ti.on {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.md2-ti.i {
+  font-style: italic;
+  font-weight: 600;
+}
+.md2-ti.s {
+  text-decoration: line-through;
+}
+.md2-ti.busy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.md2-bar .md2-tsep {
+  align-self: center;
+  height: 16px;
+  margin: 0 3px;
+  background: color-mix(in srgb, var(--t-text3) 30%, transparent);
+}
+
+/* ── v2 field: the input surface with the primary ring, monospace 13/22 ── */
+.md2-v2 .md2-write textarea {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: var(--t-input-bg);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-primary) 55%, transparent);
+  color: var(--t-text2);
+  line-height: 22px;
+  min-height: calc(v-bind(minRows) * 22px + 24px);
+  transition: box-shadow 0.12s ease;
+}
+.md2-v2 .md2-write textarea:focus {
+  box-shadow: 0 0 0 2px var(--t-primary);
+}
+.md2-v2 .md2-preview {
+  padding: 12px 14px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--t-input-bg) 55%, transparent);
+  min-height: calc(v-bind(minRows) * 22px + 24px);
+  box-sizing: border-box;
+}
+.md2-v2 .md2-write.dragging::after {
+  inset: 0;
+  border-radius: 10px;
+}
+
+/* ── v2 footer ── */
+.md2-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  margin-top: 10px;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.md2-hints {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  white-space: nowrap;
+}
+.md2-hints > span + .kbd {
+  margin-left: 4px;
+}
+.md2-confirm-q {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text1);
+}
+.md2-fbtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 30px;
+  padding: 0 5px 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.md2-fbtn:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.md2-fbtn.primary,
+.md2-fbtn.danger {
+  padding-left: 12px;
+  color: #fff;
+  font-weight: 600;
+}
+.md2-fbtn.primary {
+  background: var(--t-accent-grad);
+}
+.md2-fbtn.danger {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #e0533d 86%, #000),
+    #e0533d 50%,
+    color-mix(in srgb, #e0533d 86%, #fff)
+  );
+}
+.md2-fbtn.primary:hover {
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--t-primary) 40%, transparent);
+}
+.md2-fbtn.danger:hover {
+  box-shadow: 0 4px 14px color-mix(in srgb, #e0533d 40%, transparent);
+}
+.md2-fbtn.primary .kbd,
+.md2-fbtn.danger .kbd {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  box-shadow: none;
+}
+.md2-fbtn.busy {
+  opacity: 0.8;
+  cursor: progress;
+}
+
+/* ── composer (TaskModal mockup L80–87): one 46px row on the input surface ── */
+.md2-composer .md2-main {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  min-height: 46px;
+  padding: 0 8px 0 12px;
+  box-sizing: border-box;
+  border-radius: 13px;
+  background: var(--t-input-bg);
+  transition: box-shadow 0.12s ease;
+}
+.md2-composer .md2-main:focus-within {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--t-primary) 55%, transparent);
+}
+.md2-composer .md2-body {
+  flex: 1;
+  min-width: 0;
+  align-self: stretch;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 12px 0;
+}
+.md2-composer .md2-write textarea {
+  padding: 0;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 22px;
+  min-height: 22px;
+  /* ~8 lines, then the field scrolls rather than eating the column. */
+  max-height: 176px;
+  overflow-y: auto;
+  color: var(--t-text1);
+}
+.md2-composer .md2-preview {
+  min-height: 22px;
+  max-height: 240px;
+  overflow-y: auto;
+  font-size: 14px;
+}
+.md2-cava {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  margin-bottom: 11px;
+  border-radius: 50%;
+  font-size: 10px;
+}
+.md2-cbtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 32px;
+  height: 32px;
+  margin-bottom: 7px;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.md2-cbtn:hover,
+.md2-cbtn.on {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.md2-cbtn.on {
+  color: var(--t-primary);
+}
+.md2-cbtn.busy {
+  opacity: 0.5;
+  pointer-events: none;
+}
+.md2-csend {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  margin-bottom: 7px;
+  padding: 0 6px 0 10px;
+  box-sizing: border-box;
+  border: 0;
+  border-radius: 9px;
+  background: var(--t-accent-grad);
+  color: #fff;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: box-shadow 0.12s ease;
+}
+.md2-csend.icon {
+  width: 32px;
+  padding: 0;
+  justify-content: center;
+}
+.md2-csend:hover {
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--t-primary) 40%, transparent);
+}
+.md2-csend.busy {
+  opacity: 0.8;
+  cursor: progress;
+}
+.md2-ckbd {
+  display: inline-flex;
+  align-items: center;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.2);
+  font-size: 11px;
+  font-weight: 600;
 }
 .md2-send {
   display: inline-flex;

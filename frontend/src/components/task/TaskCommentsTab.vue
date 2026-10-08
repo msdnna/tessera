@@ -13,8 +13,8 @@
 // history.
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NSpace, NPopconfirm, useMessage } from 'naive-ui'
-import { ChatbubbleEllipsesOutline, FlagOutline } from '@vicons/ionicons5'
+import { NIcon, useMessage } from 'naive-ui'
+import { ChatbubbleEllipsesOutline, FlagOutline, PencilOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardViewStore } from '@/stores/boardView'
@@ -38,6 +38,7 @@ import RichContent from '../RichContent.vue'
 import UserAvatar from '../UserAvatar.vue'
 import TesseraSpinner from '../TesseraSpinner.vue'
 import EmptyState from '../EmptyState.vue'
+import ArmButton from '../kit/ArmButton.vue'
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -78,12 +79,10 @@ const editingCommentOriginal = ref('')
 // offline send, else null.
 const posting = ref(false)
 const retryInfo = ref(null)
-// Docked under the modal (v2), an empty composer at rest is a one-line bar; its
-// toolbar shows while it has focus or text.
-const composerFocus = ref(false)
-function onComposerBlur(e) {
-  if (!e.currentTarget?.contains(e.relatedTarget)) composerFocus.value = false
-}
+// The composer's lead avatar (v2 mockup): the reader's own face.
+const meAvatar = computed(() =>
+  auth.user ? { id: auth.user.id, name: auth.user.name || auth.user.email || '' } : null,
+)
 
 // The flat list from the API, assembled into "root + its replies" threads.
 const threads = computed(() => groupThreads(props.comments))
@@ -646,56 +645,52 @@ async function onCommentCheck(c, i) {
                     · GitLab
                   </span>
                   <span class="c-when">{{ fmtWhen(it.th.root.created_at, formatters) }}</span>
-                  <span v-if="ownLive(it.th.root)" class="c-acts">
+                  <span
+                    v-if="ownLive(it.th.root) && editingCommentId !== it.th.root.id"
+                    class="c-acts"
+                  >
                     <button
-                      class="c-act"
+                      type="button"
+                      class="c-ibtn"
                       :title="t('common.action.edit')"
+                      :aria-label="t('common.action.edit')"
+                      data-testid="comment-edit"
                       @click="startEditComment(it.th.root)"
                     >
-                      ✎
+                      <n-icon :component="PencilOutline" :size="15" />
                     </button>
-                    <n-popconfirm
-                      :positive-button-props="{ type: 'error' }"
-                      :positive-text="t('common.action.delete')"
-                      @positive-click="deleteComment(it.th.root.id)"
-                    >
-                      <template #trigger>
-                        <button class="c-act" :title="t('common.action.delete')">✕</button>
-                      </template>
-                      {{ t('task.comments.deleteConfirm') }}
-                    </n-popconfirm>
+                    <ArmButton
+                      :title="t('common.action.delete')"
+                      :confirm="t('task.arm.delete')"
+                      testid="comment-delete"
+                      @confirm="deleteComment(it.th.root.id)"
+                    />
                   </span>
                 </div>
-                <template v-if="editingCommentId === it.th.root.id">
-                  <MarkdownEditor
-                    v-model="editingCommentBody"
-                    variant="boxed"
-                    :mention-items="mentionItems"
-                    :attach-task-id="taskId"
-                    :min-rows="2"
-                    :placeholder="t('task.comments.placeholder')"
-                    @attachments-changed="emit('changed')"
-                    @submit="saveComment"
-                  />
-                  <n-space :size="6" style="margin-top: 6px">
-                    <n-button size="tiny" type="primary" @click="saveComment">{{
-                      t('common.action.save')
-                    }}</n-button>
-                    <n-button size="tiny" @click="editingCommentId = null">{{
-                      t('common.action.cancel')
-                    }}</n-button>
-                  </n-space>
-                </template>
-                <RichContent
-                  v-else
-                  class="c-text"
-                  :source="it.th.root.body"
-                  :members="mentionItems"
-                  mention-cards
-                  task-refs
-                  :interactive="ownLive(it.th.root)"
-                  @toggle="onCommentCheck(it.th.root, $event)"
+                <MarkdownEditor
+                  v-if="editingCommentId === it.th.root.id"
+                  v-model="editingCommentBody"
+                  variant="v2"
+                  :mention-items="mentionItems"
+                  :attach-task-id="taskId"
+                  :min-rows="2"
+                  :placeholder="t('task.comments.placeholder')"
+                  @attachments-changed="emit('changed')"
+                  @submit="saveComment"
+                  @cancel="editingCommentId = null"
                 />
+                <!-- A wrapper, not a class on RichContent: it renders a fragment. -->
+                <div v-else class="c-bubble">
+                  <RichContent
+                    class="c-text"
+                    :source="it.th.root.body"
+                    :members="mentionItems"
+                    mention-cards
+                    task-refs
+                    :interactive="ownLive(it.th.root)"
+                    @toggle="onCommentCheck(it.th.root, $event)"
+                  />
+                </div>
                 <div class="c-thread-acts">
                   <button
                     v-if="!readonly"
@@ -744,56 +739,48 @@ async function onCommentCheck(c, i) {
                         }}</span>
                         <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
                         <span class="c-when">{{ fmtWhen(r.created_at, formatters) }}</span>
-                        <span v-if="ownLive(r)" class="c-acts">
+                        <span v-if="ownLive(r) && editingCommentId !== r.id" class="c-acts">
                           <button
-                            class="c-act"
+                            type="button"
+                            class="c-ibtn"
                             :title="t('common.action.edit')"
+                            :aria-label="t('common.action.edit')"
+                            data-testid="comment-edit"
                             @click="startEditComment(r)"
                           >
-                            ✎
+                            <n-icon :component="PencilOutline" :size="15" />
                           </button>
-                          <n-popconfirm
-                            :positive-button-props="{ type: 'error' }"
-                            :positive-text="t('common.action.delete')"
-                            @positive-click="deleteComment(r.id)"
-                          >
-                            <template #trigger>
-                              <button class="c-act" :title="t('common.action.delete')">✕</button>
-                            </template>
-                            {{ t('task.comments.deleteConfirm') }}
-                          </n-popconfirm>
+                          <ArmButton
+                            :title="t('common.action.delete')"
+                            :confirm="t('task.arm.delete')"
+                            testid="comment-delete"
+                            @confirm="deleteComment(r.id)"
+                          />
                         </span>
                       </div>
-                      <template v-if="editingCommentId === r.id">
-                        <MarkdownEditor
-                          v-model="editingCommentBody"
-                          variant="boxed"
-                          :mention-items="mentionItems"
-                          :attach-task-id="taskId"
-                          :min-rows="2"
-                          :placeholder="t('task.comments.placeholder')"
-                          @attachments-changed="emit('changed')"
-                          @submit="saveComment"
-                        />
-                        <n-space :size="6" style="margin-top: 6px">
-                          <n-button size="tiny" type="primary" @click="saveComment">{{
-                            t('common.action.save')
-                          }}</n-button>
-                          <n-button size="tiny" @click="editingCommentId = null">{{
-                            t('common.action.cancel')
-                          }}</n-button>
-                        </n-space>
-                      </template>
-                      <RichContent
-                        v-else
-                        class="c-text"
-                        :source="r.body"
-                        :members="mentionItems"
-                        mention-cards
-                        task-refs
-                        :interactive="ownLive(r)"
-                        @toggle="onCommentCheck(r, $event)"
+                      <MarkdownEditor
+                        v-if="editingCommentId === r.id"
+                        v-model="editingCommentBody"
+                        variant="v2"
+                        :mention-items="mentionItems"
+                        :attach-task-id="taskId"
+                        :min-rows="2"
+                        :placeholder="t('task.comments.placeholder')"
+                        @attachments-changed="emit('changed')"
+                        @submit="saveComment"
+                        @cancel="editingCommentId = null"
                       />
+                      <div v-else class="c-bubble">
+                        <RichContent
+                          class="c-text"
+                          :source="r.body"
+                          :members="mentionItems"
+                          mention-cards
+                          task-refs
+                          :interactive="ownLive(r)"
+                          @toggle="onCommentCheck(r, $event)"
+                        />
+                      </div>
                       <div v-if="!readonly" class="c-thread-acts">
                         <!-- Replying to a reply targets the same root: threads are two
                        levels deep, and the backend collapses it anyway. The reply's
@@ -815,8 +802,8 @@ async function onCommentCheck(c, i) {
               <MarkdownEditor
                 :ref="(el) => (replyEditor = el)"
                 v-model="replyBody"
-                variant="boxed"
-                send
+                variant="v2"
+                :save-label="t('task.comments.reply')"
                 :sending="replyingPost"
                 :mention-items="mentionItems"
                 :command-items="commandItems"
@@ -842,19 +829,12 @@ async function onCommentCheck(c, i) {
     <!-- The composer: pinned under the modal's scrolling column when it gives a
          target (v2), else sticky at the bottom of this pane. -->
     <Teleport v-if="!readonly" :to="composerTo" :disabled="!composerTo">
-      <div
-        class="comment-add"
-        :class="{
-          docked: !!composerTo,
-          idle: !!composerTo && !composerFocus && !newComment.trim(),
-        }"
-        @focusin="composerFocus = true"
-        @focusout="onComposerBlur"
-      >
+      <div class="comment-add" :class="{ docked: !!composerTo }" data-testid="comment-composer">
         <MarkdownEditor
           ref="commentEditor"
           v-model="newComment"
-          variant="boxed"
+          variant="composer"
+          :avatar="meAvatar"
           send
           :sending="posting"
           :mention-items="mentionItems"
@@ -1004,12 +984,15 @@ async function onCommentCheck(c, i) {
 .c-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .c-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 2px;
+  min-height: 26px;
 }
 .c-author {
   font-weight: 600;
@@ -1021,16 +1004,66 @@ async function onCommentCheck(c, i) {
   color: var(--t-text3);
 }
 .c-when {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--t-text3);
 }
+/* Edit / delete: icon buttons that surface on the row's hover (v2, #3113). */
 .c-acts {
   margin-left: auto;
   display: inline-flex;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.comment:hover > .c-body > .c-head > .c-acts,
+.c-acts:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .c-acts {
+    opacity: 1;
+  }
+}
+.c-ibtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text3);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.c-ibtn:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.c-ibtn:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+/* The comment itself (TaskModal mockup L75): a bubble with its corner at the
+   author, one level up from the card. */
+.c-bubble {
+  align-self: flex-start;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 4px 14px 14px 14px;
+  background: color-mix(in srgb, var(--t-sub) 65%, var(--t-pop));
+  color: var(--t-text1);
 }
 .c-text {
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.55;
 }
 /* Rendered markdown wraps text in <p>, whose default 1em top/bottom margin opens
    a wide gap under the header and above the actions — a one-line comment looked
@@ -1125,9 +1158,6 @@ async function onCommentCheck(c, i) {
   background: transparent;
 }
 .comment-add.docked::before {
-  display: none;
-}
-.comment-add.docked.idle :deep(.md2-toolbar) {
   display: none;
 }
 /* ── «Всё»: journal rows between the threads (v2, #2958) ── */

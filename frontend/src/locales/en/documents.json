@@ -28,7 +28,11 @@
       "preview": "Preview",
       "edit": "Edit",
       "send": "Send (Ctrl+Enter)",
-      "sending": "Sending…"
+      "sending": "Sending…",
+      "mention": "Mention",
+      "more": "More",
+      "formatToggle": "Formatting",
+      "attachMenu": "Attach"
     },
     "snippet": {
       "linkText": "text",
@@ -55,6 +59,17 @@
       "insert": "Insert a block below",
       "comment": "Discuss this block",
       "drag": "Drag the block"
+    },
+    "write": "Write",
+    "previewTab": "Preview",
+    "send": "Send",
+    "discardAsk": "Discard your changes?",
+    "hintTask": "task",
+    "hintPerson": "person",
+    "attach": {
+      "image": "Image…",
+      "file": "File from your computer…",
+      "taskFiles": "Task files"
     }
   },
   "doc": {
