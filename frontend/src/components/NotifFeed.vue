@@ -97,8 +97,14 @@ function parts(n) {
 function chipOf(n) {
   const p = n.payload || {}
   if (p.excerpt) return { quote: p.excerpt }
+  // A deleted task (#3114) has no row to join: the number and title come from
+  // the payload alone, and the row opens nothing (notificationRoute → null).
   if (p.title && p.event !== 'task_due_soon' && p.event !== 'conference_invited')
-    return { title: p.title, ref: n.task_number ?? p.task_number }
+    return {
+      title: p.title,
+      ref: n.task_number ?? p.task_number,
+      gone: p.event === 'task_deleted',
+    }
   return null
 }
 // A row without a person carries the system's glyph in its own tone.
@@ -288,7 +294,7 @@ function onKey(e) {
               <div v-if="chipOf(n)?.quote" class="np-quote">
                 {{ t('notifications.pop.quote', { text: chipOf(n).quote }) }}
               </div>
-              <span v-else-if="chipOf(n)" class="np-chip">
+              <span v-else-if="chipOf(n)" class="np-chip" :class="{ gone: chipOf(n).gone }">
                 <n-icon :component="DocumentTextOutline" :size="12" />
                 <span v-if="chipOf(n).ref" class="np-chip-ref">#{{ chipOf(n).ref }}</span>
                 <span class="np-chip-t">{{ chipOf(n).title }}</span>
@@ -605,6 +611,11 @@ function onKey(e) {
   text-overflow: ellipsis;
   white-space: nowrap;
   color: var(--t-text1);
+}
+/* A deleted task (#3114): named, but there is nothing left to open. */
+.np-chip.gone .np-chip-t {
+  color: var(--t-text3);
+  text-decoration: line-through;
 }
 .np-actions {
   display: flex;
