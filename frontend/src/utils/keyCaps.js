@@ -12,6 +12,8 @@ export const CAPS = {
   modEnter: isMac ? '⌘↵' : 'Ctrl ↵',
   shiftEnter: isMac ? '⇧↵' : 'Shift ↵',
   backspace: '⌫',
+  space: 'Space',
+  comma: ',',
 }
 
 // A single letter or digit key cap («B», «1») — the key itself, not a word to

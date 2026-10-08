@@ -100,7 +100,7 @@ describe('MembersModal глазами рядового участника', () =
   it('не предлагает ни смену роли, ни удаление ни на одной строке', async () => {
     const w = await open('member')
     for (const row of w.findAll('.member')) {
-      expect(row.findComponent(naive.NSelect).exists()).toBe(false)
+      expect(row.find('[data-testid="member-role"]').exists()).toBe(false)
       expect(row.findAll('button').length).toBe(0)
     }
   })
@@ -124,7 +124,7 @@ describe('MembersModal глазами рядового участника', () =
     const w = await open('member')
     expect(rowOf(w, 'Владелец').text()).toContain('Владелец')
     expect(rowOf(w, 'Админ').text()).toContain('Админ')
-    expect(rowOf(w, 'Я рядовой').text()).toContain('Это вы')
+    expect(rowOf(w, 'Я рядовой').find('.mw-you').exists()).toBe(true)
   })
 })
 
@@ -140,7 +140,7 @@ describe('MembersModal глазами менеджера', () => {
     expect(w.find('.invite').exists()).toBe(true)
     expect(invitations).toHaveBeenCalledTimes(1)
     const other = rowOf(w, 'Админ') // не он сам: сам он здесь ME с ролью member
-    expect(other.findComponent(naive.NSelect).exists()).toBe(true)
+    expect(other.find('[data-testid="member-role"]').exists()).toBe(true)
   })
 
   it('упавшие приглашения больше не уносят список участников и у менеджера', async () => {

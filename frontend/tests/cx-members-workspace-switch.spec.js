@@ -105,7 +105,7 @@ describe('MembersModal: смена пространства', () => {
     )
     wsApi.createInvitation.mockResolvedValue({ data: { link: 'https://t/invite?token=secret' } })
     await w.find('.invite input').setValue('stranger@example.com')
-    await w.findAll('.invite button')[0].trigger('click')
+    await w.find('[data-testid="members-invite-submit"]').trigger('click')
     await flush(w)
     expect(w.find('.link-box').exists()).toBe(true)
 
