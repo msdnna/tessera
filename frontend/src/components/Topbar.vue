@@ -48,6 +48,7 @@ const pageCrumb = computed(() => {
     const known = ['security', 'appearance', 'locale', 'notifications', 'app']
     return { cur: t('settings.title'), sub: t(`settings.nav.${known.includes(s) ? s : 'profile'}`) }
   }
+  if (p === '/conferences') return { cur: t('conferences.title'), sub: workspaceName(ws.current) }
   if (p === '/admin')
     return {
       cur: t('settings.admin.title'),

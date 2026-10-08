@@ -606,8 +606,8 @@ onBeforeUnmount(() => {
 }
 .thumb {
   padding: 0;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
+  border: 0;
+  border-radius: 10px;
   overflow: hidden;
   background: var(--t-hover);
   cursor: pointer;
@@ -634,8 +634,8 @@ onBeforeUnmount(() => {
   padding: 4px 8px;
   font-size: 12px;
   color: var(--t-text2);
-  background: var(--t-hover);
-  border: 1px solid var(--t-border);
+  background: var(--t-ctl);
+  border: 0;
   border-radius: 8px;
   cursor: pointer;
 }

@@ -130,7 +130,9 @@ describe('conferences list', () => {
     expect(rows).toHaveLength(1)
     const text = rows[0].text()
     expect(text).toContain('Ежедневная летучка')
-    expect(text).toContain('Запланирована')
+    // v2 (#3107): a planned call sits under its day — this one's day is gone, so
+    // it is filed with the plans that never started.
+    expect(w.text()).toContain('Прошли, но не начались')
     expect(text).toContain('Приглашено: 3')
     expect(text).toContain('Аня')
   })
@@ -144,11 +146,14 @@ describe('conferences list', () => {
     })
     const { w } = await mountAt('/conferences')
     const rows = w.findAll('[data-testid="conference-row"]')
-    expect(rows[0].text()).toContain('Завершилась')
-    expect(rows[1].text()).toContain('Началась')
+    // v2 (#3107): the call that is on now leads the list as a card.
+    const live = rows.find((r) => r.text().includes('Началась'))
+    const ended = rows.find((r) => r.text().includes('Завершилась'))
+    expect(rows[0]).toBe(live)
+    expect(ended).toBeTruthy()
     // active_count is only shown when somebody is actually in the room.
-    expect(rows[1].text()).toContain('В комнате: 2')
-    expect(rows[0].text()).not.toContain('В комнате')
+    expect(live.text()).toContain('В комнате: 2')
+    expect(ended.text()).not.toContain('В комнате')
   })
 
   it('refetches with the status filter and shows the filtered empty state', async () => {
@@ -208,6 +213,25 @@ describe('scheduling', () => {
     await w.vm.submit()
     expect(api.create).not.toHaveBeenCalled()
     expect(toast.warning).toHaveBeenCalled()
+  })
+})
+
+describe('instant meeting (v2, #3107)', () => {
+  it('creates an untimed call, opens it and joins it', async () => {
+    const created = conf({ id: 'now1', title: 'Встреча 12:00' })
+    api.create.mockResolvedValue({ data: created })
+    api.get.mockResolvedValue({ data: { conference: created, participants: [part()] } })
+    const joined = part({ joined_at: '2026-09-03T09:00:00Z' })
+    api.join.mockResolvedValue({
+      data: { conference: conf({ status: 'live' }), participant: joined },
+    })
+    const { w, router } = await mountAt('/conferences')
+    await w.get('[data-testid="conference-instant"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+    expect(api.create.mock.calls[0][1].scheduled_at).toBeNull()
+    expect(router.currentRoute.value.path).toBe('/conferences/now1')
+    expect(api.join).toHaveBeenCalledWith('now1')
   })
 })
 
@@ -393,8 +417,13 @@ describe('routing', () => {
     mounted.push(w)
     await flushPromises()
 
-    // Rendered, and rendered into the topbar rather than inline.
-    expect(document.getElementById('tb-slot-left').textContent).toContain('К списку')
+    // Rendered, and rendered into the topbar rather than inline: the way back
+    // and the call's name (v2, #3107).
+    const left = document.getElementById('tb-slot-left')
+    expect(left.querySelector('[data-testid="conference-back"]').getAttribute('aria-label')).toBe(
+      'К списку',
+    )
+    expect(left.textContent).toContain('Ежедневная летучка')
     expect(w.text()).toContain('Ежедневная летучка')
   })
 })

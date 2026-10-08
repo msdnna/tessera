@@ -232,7 +232,8 @@
       "matrix": "Matrix",
       "settings": "Settings",
       "admin": "Administration",
-      "notifications": "Notifications"
+      "notifications": "Notifications",
+      "meet": "Conferences"
     },
     "nav": {
       "palette": "Search and commands",
@@ -414,6 +415,15 @@
       "open": "Notifications: open",
       "read": "Notifications: mark read",
       "readAll": "Notifications: mark all read"
+    },
+    "meet": {
+      "schedule": "Schedule a conference",
+      "instant": "Instant conference",
+      "join": "Join the live or nearest one",
+      "mic": "In a call: microphone",
+      "cam": "In a call: camera",
+      "leave": "Leave the call",
+      "minimize": "Fold the call into the mini window and back"
     }
   },
   "palette": {

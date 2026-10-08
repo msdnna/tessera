@@ -39,6 +39,7 @@ export const GROUPS = [
   'stage',
   'inbox',
   'notifications',
+  'meet',
   'settings',
   'admin',
 ]
@@ -293,6 +294,16 @@ export const CATALOG = [
   { id: 'stage.back', keys: 'escape', group: 'stage' },
 
   // ── settings and administration (#3106) ──
+  // Conferences (#3107, PackageE «Встречи»): the section answers N V / N J / ⇧J,
+  // the call ⌘D / ⌘E / ⌘⇧H, and ⌘⇧M folds the call into the mini-window and back
+  // from anywhere while it runs.
+  { id: 'meet.schedule', keys: 'n v', group: 'meet' },
+  { id: 'meet.instant', keys: 'n j', group: 'meet' },
+  { id: 'meet.join', keys: 'shift+j', group: 'meet' },
+  { id: 'meet.mic', keys: 'mod+d', group: 'meet' },
+  { id: 'meet.cam', keys: 'mod+e', group: 'meet' },
+  { id: 'meet.leave', keys: 'mod+shift+h', group: 'meet' },
+  { id: 'meet.minimize', keys: 'mod+shift+m', group: 'meet' },
   // The bell's feed (#3107, PackageE «NotifPop»): the popover answers these
   // itself while it is open — display rows for the cheat sheet and its footer.
   { id: 'notifications.select', group: 'notifications', display: [['arrowup', 'arrowdown']] },

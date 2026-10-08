@@ -47,7 +47,10 @@
     "submit": "Schedule",
     "cancel": "Cancel",
     "required": "Enter a title",
-    "created": "Conference scheduled"
+    "created": "Conference scheduled",
+    "subtitle": "The link is ready at once; invite people from the room",
+    "stage": "To a stage",
+    "repeat": "Does not repeat"
   },
   "invite": {
     "button": "Invite",
@@ -90,7 +93,9 @@
     "denoise": "Noise suppression"
   },
   "mini": {
-    "expand": "Expand"
+    "expand": "Expand",
+    "minimize": "Fold into the mini window",
+    "more": "+{count} participant | +{count} participants"
   },
   "role": {
     "host": "Host",
@@ -180,5 +185,31 @@
     "yourTurn": "Your turn to share the screen",
     "queued": "You are number {n} in the queue",
     "waiting": "Waiting in the queue: {count}"
+  },
+  "list": {
+    "live": "live",
+    "join": "Join",
+    "enter": "Join",
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied",
+    "more": "More",
+    "confirmDelete": "Delete for sure?",
+    "untimed": "No time set",
+    "ended": "Finished",
+    "runningMin": "{n} min",
+    "runningH": "{h} h {m} min",
+    "emptyTitle": "No meetings yet",
+    "past": "Past, never started"
+  },
+  "instant": {
+    "title": "Meeting {time}",
+    "button": "Instant",
+    "hint": "Start a call now and join it"
+  },
+  "call": {
+    "count": "{count} participant | {count} participants",
+    "layout": "Layout",
+    "grid": "Grid",
+    "speaker": "Speaker"
   }
 }
