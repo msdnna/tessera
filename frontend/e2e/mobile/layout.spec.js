@@ -124,6 +124,25 @@ test('мобильная вёрстка: доска', async ({ page, seed }, tes
   await expectFitsWidth(page, 'доска')
 })
 
+// The list and the calendar on a phone (#2973): 56px rows without the field
+// columns, the month as dots — neither may push the page sideways. The layout is
+// picked in the header's board menu, as a reader would.
+for (const [key, label] of [
+  ['list', 'Список'],
+  ['calendar', 'Календарь'],
+]) {
+  test(`мобильная вёрстка: ${label.toLowerCase()}`, async ({ page, seed }, testInfo) => {
+    await openBoard(page, seed.boardId)
+    await settle(page)
+    await page.locator('.tb-right .n-button').first().click()
+    await page.locator('.n-dropdown-option', { hasText: label }).first().click()
+    await expect(page.getByTestId(key === 'list' ? 'list-view' : 'calendar-view')).toBeVisible()
+    await page.waitForTimeout(300)
+    await report(page, testInfo, `board-${key}`)
+    await expectFitsWidth(page, label)
+  })
+}
+
 test('мобильная вёрстка: модалка задачи', async ({ page, seed, backend }, testInfo) => {
   const title = `Моб ${Date.now().toString(36)}`
   await backend.createTask(seed.columns[0].id, title, {
