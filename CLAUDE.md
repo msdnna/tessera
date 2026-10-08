@@ -225,6 +225,15 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   `notes.task_id`; у `reminders` — `body`, `done_at` (идёт за `done`), `snoozed_from`,
   `workspace_id` (NULL — видно в любом пространстве). Разделов `/notes` `/reminders` больше нет
   (редирект в панель); пилл-колокольчик на карточке — из стора, без запроса на карточку.
+- **Виды доски v2 (#2973, #3009):** Список (`BoardListView` + `list/ListRow`, геометрия и курсор —
+  `utils/listView.js`; строки фиксированной высоты → оконная отрисовка, держит 500+ задач),
+  Календарь (`BoardCalendarView` + `calendar/CalendarPill`, сетки и перенос срока —
+  `utils/calendarView.js`: date-only остаётся UTC-полночью, время — в поясе профиля), Матрица
+  (ручной квадрант — поле задачи `eisenhower_quadrant`, навигация — `utils/matrixNav.js`).
+  Ширины колонок списка, режим календаря и «Шкала» таймлайна/Ганта (`День/Неделя/Месяц/Квартал`
+  + переключатели) — ключи `list`/`calendar`/`chart` конфига представления (`utils/boardViews.js`).
+  Клавиши видов — свои id в каталоге (`list.*`, `cal.*`, `matrix.*`) плюс `card.*` с `when` на
+  свой вид; действия над задачами — общие функции KanbanBoard (`listActions`/`calendarActions`).
 - **Редактор описаний/комментариев — собственный `MarkdownEditor.vue`** (textarea +
   тулбар + Написать/Просмотр + @-mentions), хранит **Markdown**. **TipTap пробовали и
   отвергли** (тема/бандл) — не возвращать без явного запроса.
