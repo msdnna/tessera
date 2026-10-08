@@ -178,7 +178,7 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
         :anchor="() => wsHead"
         placement="bottom-start"
         :offset="{ x: 0, y: 4 }"
-        :width="264"
+        :width="280"
         :header="wsMenu.header.value"
         :items="wsMenu.items.value"
         testid="ws-menu"

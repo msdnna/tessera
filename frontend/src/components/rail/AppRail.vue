@@ -400,7 +400,7 @@ function onRailKey(e) {
       v-model:show="menu.show"
       :anchor="() => ({ x: menu.x, y: menu.y })"
       placement="point"
-      :width="264"
+      :width="280"
       :header="menuHeader"
       :items="menuItems"
       testid="rail-menu"

@@ -45,55 +45,55 @@ const roleLabel = (r) => (r && ROLE_ORDER[r] !== undefined ? t(`shell.members.${
 </script>
 
 <template>
-  <n-popover
-    v-if="members.length"
-    trigger="hover"
-    placement="bottom-end"
-    :delay="300"
-    :show-arrow="false"
-    raw
-  >
-    <template #trigger>
-      <div class="bm" data-testid="board-members">
-        <UserAvatar
-          v-for="m in shown"
-          :key="m.user_id"
-          class="bm-ava"
-          :user-id="m.user_id"
-          :name="m.name"
-        />
-        <span v-if="extra" class="bm-ava bm-more">+{{ extra }}</span>
-      </div>
-    </template>
-    <div class="bm-list" data-testid="board-members-list">
-      <div class="bm-head">
-        <span>{{ t('board.members.title', { count: members.length }) }}</span>
-        <span class="bm-head-aside">{{ t('board.members.tasks') }}</span>
-      </div>
-      <div class="bm-rows">
-        <div v-for="m in members" :key="m.user_id" class="bm-row">
-          <UserAvatar class="bm-ava sm" :user-id="m.user_id" :name="m.name" />
-          <span class="bm-name">{{ m.name }}</span>
-          <span class="bm-role">{{ roleLabel(m.role) }}</span>
-          <span class="bm-n">{{ m.tasks }}</span>
+  <!-- A real root, so the sub-toolbar's class (its place in the row) lands on
+       an element rather than on the popover's fragment. -->
+  <div v-if="members.length" class="bm-root">
+    <n-popover trigger="hover" placement="bottom-end" :delay="300" :show-arrow="false" raw>
+      <template #trigger>
+        <div class="bm" data-testid="board-members">
+          <UserAvatar
+            v-for="m in shown"
+            :key="m.user_id"
+            class="bm-ava"
+            :user-id="m.user_id"
+            :name="m.name"
+          />
+          <span v-if="extra" class="bm-ava bm-more">+{{ extra }}</span>
+        </div>
+      </template>
+      <div class="bm-list" data-testid="board-members-list">
+        <div class="bm-head">
+          <span>{{ t('board.members.title', { count: members.length }) }}</span>
+          <span class="bm-head-aside">{{ t('board.members.tasks') }}</span>
+        </div>
+        <div class="bm-rows">
+          <div v-for="m in members" :key="m.user_id" class="bm-row">
+            <UserAvatar class="bm-ava sm" :user-id="m.user_id" :name="m.name" />
+            <span class="bm-name">{{ m.name }}</span>
+            <span class="bm-role">{{ roleLabel(m.role) }}</span>
+            <span class="bm-n">{{ m.tasks }}</span>
+          </div>
+        </div>
+        <div class="bm-gap" />
+        <div
+          class="bm-row bm-stub"
+          aria-disabled="true"
+          :title="t('common.stub.soon', { n: presenceStub })"
+          data-testid="board-members-presence"
+        >
+          <n-icon :component="EyeOutline" :size="16" class="bm-stub-ic" />
+          <span class="bm-name">{{ t('board.members.watching') }}</span>
+          <span class="bm-soon">{{ t('common.stub.soon', { n: presenceStub }) }}</span>
         </div>
       </div>
-      <div class="bm-gap" />
-      <div
-        class="bm-row bm-stub"
-        aria-disabled="true"
-        :title="t('common.stub.soon', { n: presenceStub })"
-        data-testid="board-members-presence"
-      >
-        <n-icon :component="EyeOutline" :size="16" class="bm-stub-ic" />
-        <span class="bm-name">{{ t('board.members.watching') }}</span>
-        <span class="bm-soon">{{ t('common.stub.soon', { n: presenceStub }) }}</span>
-      </div>
-    </div>
-  </n-popover>
+    </n-popover>
+  </div>
 </template>
 
 <style scoped>
+.bm-root {
+  display: flex;
+}
 .bm {
   display: flex;
   align-items: center;
@@ -134,7 +134,7 @@ const roleLabel = (r) => (r && ROLE_ORDER[r] !== undefined ? t(`shell.members.${
 }
 /* The v2 popover (#3112): --t-pop, radius 16, the popover shadow. */
 .bm-list {
-  width: 280px;
+  width: 304px;
   padding: 6px;
   box-sizing: border-box;
   border-radius: 16px;

@@ -478,6 +478,7 @@ const noTasks = computed(
   () =>
     !loading.value &&
     !archivedMode.value &&
+    !isMobile.value &&
     layout.value === 'board' &&
     displayColumns.value.length > 0 &&
     allTasks.value.length === 0 &&
@@ -3298,7 +3299,7 @@ async function restoreFromArchive(taskId) {
             :icon="AlbumsOutline"
             :text="t(groupMode === 'status' ? 'board.column.emptyStatus' : 'board.column.emptyTag')"
           />
-          <!-- Columns, not a task yet (CatalogE «Пустая доска»): a card over the
+          <!-- Columns, not a task yet (CatalogE «Пустая доска»): a card under the
                lanes. «Из бэклога» of the mockup is not here — moving tasks out of
                the backlog is the stage selector's (⇧E) job, not a board action. -->
           <div v-if="noTasks" class="empty-tasks" data-testid="board-empty">
@@ -4092,27 +4093,20 @@ async function restoreFromArchive(taskId) {
 .empty-board {
   padding: 48px 24px;
 }
-/* «На доске пока нет задач»: centred over the lanes, which stay visible and
-   usable around it. */
-.board-main {
-  position: relative;
-}
+/* «На доске пока нет задач»: under the (empty, short) lanes rather than over
+   them — a card laid over the lanes hid their «Создать задачу» from the hover
+   that unfolds it. */
 .empty-tasks {
-  position: absolute;
-  inset: 0;
-  z-index: 4;
   display: flex;
-  align-items: center;
   justify-content: center;
-  pointer-events: none;
+  padding: 32px 16px 24px;
 }
 .empty-tasks-card {
   max-width: 340px;
   padding: 26px 30px;
   border-radius: 18px;
-  background: color-mix(in srgb, var(--t-pop) 92%, transparent);
+  background: var(--t-pop);
   box-shadow: var(--t-sh-pop);
-  pointer-events: auto;
 }
 .add-col-edit {
   margin-left: 0;

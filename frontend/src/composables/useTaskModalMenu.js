@@ -4,8 +4,8 @@ import { useMessage } from 'naive-ui'
 import {
   ArchiveOutline,
   ArrowUndoOutline,
-  ChevronBackOutline,
-  ChevronForwardOutline,
+  EyeOffOutline,
+  EyeOutline,
   LogoGitlab,
   TrashOutline,
 } from '@vicons/ionicons5'
@@ -51,7 +51,7 @@ export function useTaskModalMenu({
       out.push({
         key: 'pane',
         label: paneHidden() ? t('task.head.showPane') : t('task.head.hidePane'),
-        icon: paneHidden() ? ChevronBackOutline : ChevronForwardOutline,
+        icon: paneHidden() ? EyeOutline : EyeOffOutline,
       })
     if (readonly()) {
       out.push({ key: 'restore', label: t('task.action.restore'), icon: ArrowUndoOutline })
