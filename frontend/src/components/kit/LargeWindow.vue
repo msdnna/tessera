@@ -463,12 +463,9 @@ defineExpose({ topmost, close })
 .lw-tab.active .lw-tab-ic {
   color: var(--t-primary);
 }
-/* The gradient stroke only on shapes: an axis-aligned <line> has a zero-area
-   bounding box and vanishes under an objectBoundingBox gradient (the list
-   icon's bars) — those keep the flat accent. */
-.lw-tab.active .lw-tab-ic :deep(:not(line)[stroke='currentColor']) {
-  stroke: url(#t-accent-grad-svg);
-}
+/* The active icon is the flat accent: a gradient stroke (objectBoundingBox)
+   loses every straight segment of an outline icon — the list's bars, the
+   reader's lines (reference-web-accent-gradient, gotcha 3). */
 .lw-tab-l {
   flex: 1;
   white-space: nowrap;

@@ -594,19 +594,37 @@ defineExpose({ addNew, escape })
   grid-template-columns: minmax(0, 1fr);
 }
 .lw-mobile .gr-grid {
-  grid-template-columns: minmax(0, 1fr) 100px 28px;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 28px;
 }
 .lw-mobile .gr-grid > :nth-child(1),
 .lw-mobile .gr-grid > :nth-child(4),
-.lw-mobile .gr-grid > :nth-child(6),
 .lw-mobile .gr-grid > :nth-child(7) {
   display: none;
 }
 .lw-mobile .glw-thead.gr-grid {
   display: none;
 }
+/* Phone: the label over its match and action, the details under them — the
+   value map stays reachable. */
 .lw-mobile .gr-match {
   grid-column: 1 / -1;
+  grid-row: 1;
+}
+.lw-mobile .gr-grid > :nth-child(3) {
+  grid-column: 1;
+  grid-row: 2;
+}
+.lw-mobile .gr-grid > :nth-child(5) {
+  grid-column: 2;
+  grid-row: 2;
+}
+.lw-mobile .gr-grid > :nth-child(8) {
+  grid-column: 3;
+  grid-row: 2;
+}
+.lw-mobile .gr-sum {
+  grid-column: 1 / -1;
+  grid-row: 3;
 }
 .lw-mobile .gr-keys {
   display: none;
