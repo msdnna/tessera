@@ -1288,7 +1288,7 @@ onMounted(() => {
 
 /* A narrow pane (a laptop with the sidebar open) drops the stub columns first:
    they carry no data yet, the user, role and status do. */
-@container (max-width: 860px) {
+@container (max-width: 800px) {
   .av-thead .c-spaces,
   .av-thead .c-login,
   .av-thead .c-2fa,

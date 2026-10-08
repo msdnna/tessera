@@ -1184,6 +1184,24 @@ function wsSummary(r) {
 .ns-more:focus-visible {
   opacity: 1;
 }
+/* On a channel card the «⋯» takes no room of its own: with a pointer it floats
+   over the end of the title on hover (the card's colour fades the text under
+   it), so three cards in a row keep their names. On touch it is in the row. */
+@media (hover: hover) {
+  .ns-ch {
+    position: relative;
+  }
+  .ns-ch .ns-more {
+    position: absolute;
+    top: 16px;
+    right: 56px;
+    background: var(--t-col);
+    box-shadow: -10px 0 8px var(--t-col);
+  }
+  .ns-ch .ns-more:hover {
+    background: var(--t-hover);
+  }
+}
 .ns-more:hover {
   background: var(--t-hover);
   color: var(--t-text1);
