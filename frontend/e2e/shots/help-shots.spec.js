@@ -43,23 +43,11 @@ const SUFFIX = LANG === 'ru' ? '' : `.${LANG}`
 // `data-column-name` carries the stored name, not the localized caption.
 const CAPTIONS = {
   ru: {
-    integrations: 'Интеграции',
-    jobs: 'Фоновые задания',
-    // Substring of the bindings heading («Привязки GitLab → доска»).
-    bindingsHead: 'Привязки',
-    configureWriteback: /Настроить действия/,
-    configureRules: 'Настроить правила',
     thisDevice: 'это устройство',
     events: 'События',
     mention: 'Упоминания',
   },
   en: {
-    integrations: 'Integrations',
-    jobs: 'Background jobs',
-    // Substring of «GitLab → board bindings» — lower-case, the match is exact.
-    bindingsHead: 'bindings',
-    configureWriteback: /Configure actions/,
-    configureRules: 'Configure rules',
     thisDevice: 'this device',
     events: 'Events',
     mention: 'Mentions',
@@ -463,89 +451,82 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'admin-oauth', card)
     })
 
-    // The GitLab modal is two shots of one screen: the account block on top and
-    // the binding fields below it, which do not fit the card together (the pane
-    // scrolls at 76vh). The article shows each next to the text that explains it.
+    // The GitLab window (v2 #2975, kit/LargeWindow): one shot per section the
+    // articles explain — «Подключения» from the top (the account and the
+    // binding cards), the same section scrolled to the picked binding's fields,
+    // «Обратная запись» and «Правила лейблов». Opened through its store, as
+    // every door of the workspace menu does; the shot is the window.
     async function openGitlab(page) {
       await openBoard(page)
-      await page.getByRole('button', { name: L.integrations }).click()
-      // Naive UI's dropdown options are plain divs, not menu items with a role,
-      // and the GitLab one renders its label through a render function (it can
-      // carry a conflict badge) — so it is matched by text, not by role.
-      await page.locator('.n-dropdown-option', { hasText: 'GitLab' }).click()
-      const card = page.locator('.gl-card')
-      await expect(card).toBeVisible()
-      // The bindings arrive in their own request and the first one is selected
-      // on load; waiting for its project path keeps the shutter off a blank form.
-      await expect(card.getByPlaceholder('group/project')).toHaveValue('demo-group/demo-project')
-      return card
+      await page.evaluate(() => {
+        const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia
+        pinia._s.get('wsDialogs').open('gitlab')
+      })
+      const win = page.getByTestId('gitlab-window')
+      await expect(win).toBeVisible()
+      // The bindings arrive in their own request and the first one is picked on
+      // load; waiting for its card keeps the shutter off an empty section.
+      await expect(page.getByTestId('gitlab-binding-card').first()).toBeVisible()
+      await page.waitForTimeout(300)
+      return win
     }
 
     test('GitLab: аккаунт', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openGitlab(page)
-      await shoot(page, scheme, 'gitlab-account', card)
+      const win = await openGitlab(page)
+      await shoot(page, scheme, 'gitlab-account', win)
     })
 
     test('GitLab: привязка проекта к доске', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openGitlab(page)
-      // Scroll the left pane, not the page: the card itself stays put, only its
-      // content moves. Playwright's own scrollIntoViewIfNeeded is no good here —
-      // it walks up to the nearest scrollable ancestor and finds the *page*,
-      // which does not scroll behind a modal, so the pane never moved and this
-      // shot came back a byte-for-byte twin of the account one. Scrolling the
-      // pane by hand, anchored on the bindings heading, puts the whole set of
-      // fields in frame instead.
-      await card.locator('.gl-left').evaluate((pane, head0) => {
-        const head = [...pane.querySelectorAll('.gl-h')].find((h) => h.textContent.includes(head0))
-        pane.scrollTop += head.getBoundingClientRect().top - pane.getBoundingClientRect().top
-      }, L.bindingsHead)
-      await shoot(page, scheme, 'gitlab-bindings', card)
-    })
-
-    // The two right-pane editors (#2810, wave 3). Both live below the fold of the
-    // left pane, so the pane is scrolled to the button row before clicking; the
-    // shot is of the whole card, because the point of these pictures is that the
-    // modal *expands* into a second pane next to the settings it belongs to.
-    async function openRightPane(page, buttonName) {
-      const card = await openGitlab(page)
-      await card.locator('.gl-left').evaluate((pane) => {
-        pane.scrollTop = pane.scrollHeight
+      const win = await openGitlab(page)
+      // The section scrolls inside the window, not the page: bring the picked
+      // binding's heading to the top of the pane by hand.
+      await page.getByTestId('gitlab-connections').evaluate((tab) => {
+        const pane = tab.querySelector('.glw-scroll')
+        const form = tab.querySelector('[data-testid="gitlab-binding-form"]')
+        pane.scrollTop += form.getBoundingClientRect().top - pane.getBoundingClientRect().top - 44
       })
-      await card.getByRole('button', { name: buttonName }).click()
-      await expect(card.locator('.gl-right')).toBeVisible()
-      return card
-    }
+      await page.waitForTimeout(200)
+      await shoot(page, scheme, 'gitlab-bindings', win)
+    })
 
     test('GitLab: действия обратной записи', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openRightPane(page, L.configureWriteback)
-      // The bindings come from the seed; waiting for the first row's summary keeps
-      // the shutter off the pane's own loading frame.
-      await expect(card.locator('.gl-rcard').first()).toBeVisible()
-      await shoot(page, scheme, 'gitlab-writeback', card)
+      const win = await openGitlab(page)
+      await page.getByTestId('gitlab-tab-writeback').click()
+      // The pairs come from the seed; the first row keeps the shutter off the
+      // section's empty frame.
+      await expect(page.getByTestId('gitlab-wb-row').first()).toBeVisible()
+      await shoot(page, scheme, 'gitlab-writeback', win)
     })
 
     test('GitLab: правила разбора меток', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openRightPane(page, L.configureRules)
-      // The rules are the backend's defaults (S:/P:/M:), so the value maps are
-      // filled — waiting for the first one avoids shooting three empty cards.
-      await expect(card.locator('.gl-rmap .gl-rule').first()).toBeVisible()
-      await shoot(page, scheme, 'gitlab-tags', card)
+      const win = await openGitlab(page)
+      await page.getByTestId('gitlab-tab-rules').click()
+      // The rules are the backend's defaults (S:/P:/M:) — the first one opened
+      // shows its value table.
+      const row = page.getByTestId('gitlab-rule-row').first()
+      await expect(row).toBeVisible()
+      await row.locator('.gr-sum').click()
+      await expect(page.getByTestId('gitlab-rule-edit')).toBeVisible()
+      await shoot(page, scheme, 'gitlab-tags', win)
     })
 
     test('фоновые задания', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
       await openBoard(page)
-      await page.getByRole('button', { name: L.jobs }).click()
-      const modal = page.locator('.bj-modal')
-      await expect(modal).toBeVisible()
-      // The panel selects its first job on load; waiting for the detail pane
-      // keeps the shot from showing «Выберите задание».
-      await expect(modal.locator('.bj-detail-name')).toBeVisible()
-      await shoot(page, scheme, 'background-jobs', modal)
+      // G J — the window's own key (#2975).
+      await page.keyboard.press('g')
+      await page.keyboard.press('j')
+      const win = page.getByTestId('jobs-window')
+      await expect(win).toBeVisible()
+      // The window picks its first job on load; waiting for the detail keeps
+      // the shot from showing «Выберите задание».
+      await expect(win.locator('.bj-detail-name')).toBeVisible()
+      await page.waitForTimeout(300)
+      await shoot(page, scheme, 'background-jobs', win)
     })
 
     // Notification settings (#2810, wave 4; v2 #3106 — their own section of

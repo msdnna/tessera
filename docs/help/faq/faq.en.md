@@ -3,7 +3,7 @@ title: FAQ
 category: FAQ
 order: 90
 keywords: faq, questions, theme, dark, notifications, android, app, password, what's new
-updated: 2026-08-26
+updated: 2026-10-08
 ---
 
 ## How do I turn on the dark theme?
@@ -16,7 +16,7 @@ A task is made done by the board's **completing column**, and that column is set
 
 ## How do I invite someone into a workspace?
 
-The **Members** button (the people icon) in the sidebar header, to the right of the logo → “Invite by email”. The invitation arrives as an email with a link; the role is “Member” or “Admin”. You change the role of an existing member in the same window.
+The workspace menu (its name at the top of the sidebar) → **Members**: type the addresses — they turn into chips — and press **Invite**. The invitation arrives as an email with a link; the role is “Member” or “Admin”. You change the role of an existing member in the same window, with a click on its pill in the row.
 
 ## Is there a mobile app?
 

@@ -12,7 +12,7 @@ Tessera is a task tracker: boards with tasks, documents, notes and reminders. Th
 
 Everything lives inside a **workspace**. A workspace is a self-contained space with its own projects, boards and members; you switch between them in the header of the sidebar. Your first workspace is created together with your account, so you never start from nothing.
 
-To invite a colleague: the **Members** button (the people icon) in the sidebar header, to the right of the logo → “Invite by email”. The invitee gets an email with a link; the role is “Member” or “Admin”, and the workspace has a single owner whose role is never changed.
+To invite a colleague: the workspace menu (its name at the top of the sidebar) → **Members**. Addresses in the invite field turn into chips — on <kbd>Enter</kbd>, a comma or a space — so several people can be invited at once; **Invite** sends. A registered person is added at once, a new one gets an email with a link (the link can be copied too). The role is “Member” or “Admin”; the workspace has a single owner whose role is never changed.
 
 ## Projects and groups
 

@@ -3,7 +3,7 @@ title: Comments
 category: Tasks
 order: 32
 keywords: comments, discussion, replies, thread, mention, commands, quick actions, task link, edit, delete
-updated: 2026-08-28
+updated: 2026-10-08
 ---
 
 The **Comments** tab is the discussion of a task. Comments are written with the same [Markdown editor](/help/markdown-editor) as the description, so formatting, images, attachments and diagrams all work in them. On top of that come three things the description doesn't have: reply threads, mentions that notify, and commands.
@@ -80,3 +80,5 @@ Partial success is still success: `/assign @known @unknown` assigns whoever was 
 ## Workspace commands
 
 Besides the built-in ones, a workspace may define **its own commands** — `/approve` for a bot, say. Tessera **recognises but does not execute** them: such a line stays in the comment's text (the hint says so — “will stay as text”), and it is parsed by whoever it is addressed to.
+
+The workspace owner and admins set them up: the workspace menu → Integrations → **Commands**. A row is edited in place — <kbd>Enter</kbd> opens it, a second <kbd>Enter</kbd> saves, <kbd>N</kbd> adds one, <kbd>⌥</kbd> <kbd>↑</kbd> / <kbd>↓</kbd> change the order in the popup, <kbd>⌫</kbd> deletes with an undo. The neighbouring **Built-in** section is a reference of the commands the server runs.

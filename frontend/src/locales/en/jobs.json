@@ -19,7 +19,8 @@
     "notify_scanner": "Due dates and reminders scan",
     "recurrence": "Recurring tasks",
     "conference_recordings": "Conference recordings",
-    "trash_purge": "Trash purge"
+    "trash_purge": "Trash purge",
+    "gitlab_webhook_cron": "GitLab sync by webhook"
   },
   "op": {
     "sync_scan": "checking integrations due for a sync",
@@ -30,7 +31,8 @@
     "recording_sweep": "checking conference recordings and sweeping expired ones",
     "trash_purge": "purging boards and columns past their undo window",
     "sync_full": "full sync",
-    "sync_incremental": "incremental sync"
+    "sync_incremental": "incremental sync",
+    "webhook_scan": "checking GitLab webhook events"
   },
   "status": {
     "running": "running",
