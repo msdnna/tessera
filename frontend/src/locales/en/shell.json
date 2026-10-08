@@ -244,7 +244,8 @@
       "goSidebar": "Focus the sidebar tree",
       "goRail": "Focus the spaces rail",
       "goStage": "The board’s milestone page",
-      "goNotifications": "Notifications under the bell"
+      "goNotifications": "Notifications under the bell",
+      "help": "Help centre"
     },
     "board": {
       "addTask": "Task in the hovered column",

@@ -2,15 +2,15 @@
 import { ref, watch, onMounted, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NSpin } from 'naive-ui'
-import { ArrowBackOutline, ArrowForwardOutline } from '@vicons/ionicons5'
+import { ArrowBackOutline, ArrowForwardOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import { useHelpStore } from '@/stores/help'
 import { pickActive, measureHeadings } from '@/utils/helpToc'
 import HelpNav from './HelpNav.vue'
-import HelpSearch from './HelpSearch.vue'
 import HelpArticle from './HelpArticle.vue'
+import HelpFeedback from './HelpFeedback.vue'
 
 // The working area of the help centre (#2792): navigation, article, table of
-// contents. Lives inside the modal (HelpCenterModal) rather than on a route —
+// contents. The search moved into the window's head (v2, #3107). Lives inside the modal (HelpCenterModal) rather than on a route —
 // the reader asks a question without leaving the board they are working on.
 // Content is docs-as-code, compiled into the bundle, so this makes no requests.
 const { t } = useI18n()
@@ -85,14 +85,19 @@ function goToHeading(id) {
 <template>
   <div class="hc">
     <aside class="hc-side">
-      <HelpSearch />
       <HelpNav />
     </aside>
 
     <main ref="root" class="hc-main" @scroll.passive="onScroll">
       <div class="hc-body">
         <header v-if="help.meta" class="hc-head">
-          <div class="hc-crumb">{{ help.meta.category }}</div>
+          <div class="hc-crumb">
+            <span>{{ help.meta.category }}</span>
+            <template v-if="help.meta.title !== help.meta.category">
+              <n-icon :component="ChevronForwardOutline" :size="11" />
+              <span class="hc-crumb-cur">{{ help.meta.title }}</span>
+            </template>
+          </div>
           <h1 class="hc-h1">{{ help.meta.title }}</h1>
           <div v-if="help.meta.updated" class="hc-updated">
             {{ t('help.updated', { date: help.meta.updated }) }}
@@ -104,7 +109,7 @@ function goToHeading(id) {
         <n-spin v-if="help.loading && !help.body" size="small" />
         <p v-else-if="help.error" class="hc-error">{{ help.error }}</p>
         <!-- inline: a cross-link to a neighbouring article swaps this pane
-             instead of navigating; a link into the app closes the modal. -->
+             instead of navigating; a link into the app closes the window. -->
         <HelpArticle
           v-else
           :source="help.body"
@@ -114,27 +119,26 @@ function goToHeading(id) {
           @navigate="help.closeCenter()"
         />
 
-        <nav v-if="help.neighbours.prev || help.neighbours.next" class="hc-neighbours">
+        <footer v-if="help.meta && help.body" class="hc-foot">
+          <HelpFeedback :slug="help.meta.slug" :lang="help.bodyLang" />
+          <span class="hc-foot-spacer" />
           <button
-            v-if="help.neighbours.prev"
+            v-if="help.neighbours.next || help.neighbours.prev"
             type="button"
             class="hc-neighbour"
-            @click="help.open(help.neighbours.prev.slug)"
+            :data-dir="help.neighbours.next ? 'next' : 'prev'"
+            @click="help.open((help.neighbours.next || help.neighbours.prev).slug)"
           >
-            <n-icon :component="ArrowBackOutline" :size="14" />
-            <span>{{ help.neighbours.prev.title }}</span>
+            <template v-if="help.neighbours.next">
+              {{ t('help.next', { title: help.neighbours.next.title }) }}
+              <n-icon :component="ArrowForwardOutline" :size="13" />
+            </template>
+            <template v-else>
+              <n-icon :component="ArrowBackOutline" :size="13" />
+              {{ t('help.prev', { title: help.neighbours.prev.title }) }}
+            </template>
           </button>
-          <span v-else />
-          <button
-            v-if="help.neighbours.next"
-            type="button"
-            class="hc-neighbour hc-neighbour-next"
-            @click="help.open(help.neighbours.next.slug)"
-          >
-            <span>{{ help.neighbours.next.title }}</span>
-            <n-icon :component="ArrowForwardOutline" :size="14" />
-          </button>
-        </nav>
+        </footer>
       </div>
 
       <aside v-if="help.headings.length" class="hc-toc">
@@ -158,19 +162,20 @@ function goToHeading(id) {
 </template>
 
 <style scoped>
+/* v2 (#3107 — HelpWin): the navigation is a sunken panel inset from the window
+   edge, the article a column up to 560px, «На странице» on the right. No lines. */
 .hc {
   display: grid;
-  grid-template-columns: 240px minmax(0, 1fr);
+  grid-template-columns: 256px minmax(0, 1fr);
   height: 100%;
   min-height: 0;
 }
 .hc-side {
-  border-right: 1px solid var(--t-border);
-  padding: 16px 12px;
+  margin: 0 0 14px 14px;
+  padding: 10px 8px;
+  border-radius: 16px;
+  background: var(--t-sub);
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
 }
 .hc-main {
   display: grid;
@@ -179,92 +184,105 @@ function goToHeading(id) {
   min-width: 0;
 }
 .hc-body {
-  padding: 24px 28px 48px;
+  display: flex;
+  flex-direction: column;
+  padding: 10px 32px 28px;
   min-width: 0;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+.hc-body > * {
+  max-width: 560px;
+  width: 100%;
 }
 .hc-crumb {
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
   color: var(--t-text3);
 }
+.hc-crumb-cur {
+  color: var(--t-text2);
+}
 .hc-h1 {
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
-  margin: 6px 0 4px;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+  margin: 14px 0 4px;
   color: var(--t-text1);
 }
 .hc-updated {
   font-size: 12px;
   color: var(--t-text3);
-  margin-bottom: 20px;
+  margin-bottom: 18px;
 }
 .hc-error {
   color: var(--t-text2);
 }
 .hc-untranslated {
   margin: 0 0 16px;
-  padding: 8px 12px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface-alt);
+  padding: 9px 12px;
+  border-radius: 10px;
+  background: var(--t-ctl);
   color: var(--t-text3);
   font-size: 13px;
 }
-.hc-neighbours {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 12px;
-  margin-top: 36px;
-  padding-top: 20px;
-  border-top: 1px solid var(--t-border);
-}
-.hc-neighbour {
+/* The article's foot: «Статья помогла?» on the left, the next one on the
+   right. Pushed to the bottom of a short article. */
+.hc-foot {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 10px 14px;
-  border: 1px solid var(--t-border);
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: auto;
+  padding-top: 28px;
+}
+.hc-foot-spacer {
+  flex: 1;
+}
+.hc-neighbour {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 8px;
+  border: none;
   border-radius: 8px;
   background: transparent;
-  color: var(--t-text1);
+  color: var(--t-text2);
   font: inherit;
   font-size: 13px;
   cursor: pointer;
-  text-align: left;
 }
 .hc-neighbour:hover {
   background: var(--t-hover);
-}
-.hc-neighbour-next {
-  justify-content: flex-end;
-  text-align: right;
+  color: var(--t-text1);
 }
 .hc-toc {
   position: sticky;
   top: 0;
   align-self: start;
-  padding: 28px 16px;
+  padding: 44px 18px 20px 4px;
   display: flex;
   flex-direction: column;
   gap: 2px;
 }
 .hc-toc-head {
   font-size: 11px;
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
   color: var(--t-text3);
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 .hc-toc-item {
   border: none;
   background: transparent;
-  border-left: 2px solid var(--t-border);
-  padding: 4px 10px;
+  padding: 4px 0;
   font: inherit;
-  font-size: 12px;
+  font-size: 12.5px;
   color: var(--t-text2);
   text-align: left;
   cursor: pointer;
@@ -274,14 +292,14 @@ function goToHeading(id) {
   color: var(--t-text1);
 }
 .hc-toc-sub {
-  padding-left: 22px;
+  padding-left: 12px;
 }
 .hc-toc-active {
-  border-left-color: var(--t-primary);
-  color: var(--t-primary);
+  color: var(--t-text1);
+  font-weight: 650;
 }
 
-/* Below these widths the modal itself is near-fullscreen, and the side columns
+/* Below these widths the window itself is near-fullscreen, and the side columns
    stop earning their space: the TOC is a second copy of links already scrolled
    past, and the nav is one tap away behind the search box. */
 @media (max-width: 1100px) {
@@ -300,7 +318,7 @@ function goToHeading(id) {
     display: none;
   }
   .hc-body {
-    padding: 18px 16px 40px;
+    padding: 8px 16px 28px;
   }
 }
 </style>

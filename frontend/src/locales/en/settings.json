@@ -129,7 +129,8 @@
       "roles": "Roles & permissions",
       "server": "Server",
       "integrations": "Integrations",
-      "jobs": "Background jobs"
+      "jobs": "Background jobs",
+      "help": "Help"
     },
     "invite": "Invite",
     "csv": "Export CSV",
@@ -224,6 +225,12 @@
       },
       "storedPlaceholder": "•••••• (stored; type to replace)",
       "clearWarn": "GitLab synchronization will stop"
+    },
+    "help": {
+      "sub": "“Was this article helpful?” — readers’ answers",
+      "emptyTitle": "No feedback yet",
+      "empty": "Answers to “Was this article helpful?” show up here, per article and language.",
+      "share": "Helpful: {n}%"
     }
   },
   "notifications": {

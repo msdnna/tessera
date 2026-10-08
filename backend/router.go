@@ -425,6 +425,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PUT("/admin/oauth/gitlab", rh.SetOAuthConfig)
 			// Background jobs panel (admin-only): observe/run/cancel background work.
 			protected.GET("/admin/metrics", rh.MetricsHandler)
+			// «Статья помогла?» totals (#3071).
+			protected.GET("/admin/help-feedback", rh.HelpFeedback)
 			protected.GET("/admin/jobs", rh.ListJobs)
 			protected.GET("/admin/jobs/:key", rh.GetJob)
 			protected.POST("/admin/jobs/:key/run", rh.RunJob)

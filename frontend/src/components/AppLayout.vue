@@ -54,6 +54,7 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { install as installShortcuts } from '@/shortcuts/dispatcher'
 import { useThemeStore } from '@/stores/theme'
 import { usePaletteStore } from '@/stores/palette'
+import { useHelpStore } from '@/stores/help'
 import { sGet } from '@/utils/serverStorage'
 import { treeEventNeedsRefresh } from '@/utils/treeEvents'
 import { resyncShell } from '@/utils/shellResync'
@@ -110,6 +111,7 @@ onBeforeUnmount(() => uninstallShortcuts?.())
 
 const theme = useThemeStore()
 const palette = usePaletteStore()
+const help = useHelpStore()
 useShortcuts({
   'nav.palette': () => palette.toggle(),
   // v2 (#2953): no drag-resizing — one width, collapsed to the icon rail by the
@@ -126,6 +128,7 @@ useShortcuts({
     else inbox.open({ focus: true })
   },
   'nav.goNotifications': () => notes.requestFeed(),
+  'nav.help': () => (help.centerShown ? help.closeCenter() : help.openCenter()),
   'go.documents': () => router.push('/documents'),
   'go.settings': () => router.push('/settings'),
   'view.theme': () => theme.toggle(),

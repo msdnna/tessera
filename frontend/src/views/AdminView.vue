@@ -20,6 +20,7 @@ import {
   CloudDownloadOutline,
   EllipsisHorizontal,
   GitBranchOutline,
+  HelpCircleOutline,
   KeyOutline,
   LockClosedOutline,
   LockOpenOutline,
@@ -50,6 +51,7 @@ import SecretInput from '@/components/SecretInput.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
 import Kbd from '@/components/Kbd.vue'
 import ActionMenu from '@/components/kit/ActionMenu.vue'
+import AdminHelpFeedback from '@/components/admin/AdminHelpFeedback.vue'
 import '@/components/settings/settings.css'
 
 const { t } = useI18n()
@@ -64,7 +66,7 @@ const { web, api: apiVersion } = useVersionInfo()
 const { formatDateTime } = useFormat()
 
 const host = location.host
-const SECTIONS = ['users', 'server', 'integrations']
+const SECTIONS = ['users', 'server', 'integrations', 'help']
 const section = computed(() => {
   const s = route?.query?.s
   return typeof s === 'string' && SECTIONS.includes(s) ? s : 'users'
@@ -447,6 +449,16 @@ onMounted(() => {
       <button
         type="button"
         class="av-item"
+        :class="{ active: section === 'help' }"
+        data-testid="admin-nav-help"
+        @click="select('help')"
+      >
+        <n-icon :component="HelpCircleOutline" :size="16" class="av-item-ic" />
+        <span class="av-item-l">{{ t('settings.admin.nav.help') }}</span>
+      </button>
+      <button
+        type="button"
+        class="av-item"
         data-testid="admin-nav-jobs"
         @click="dialogs.open('jobs')"
       >
@@ -691,6 +703,15 @@ onMounted(() => {
             </n-button>
           </div>
         </section>
+      </template>
+
+      <!-- Help: «Статья помогла?» totals (#3071) -->
+      <template v-else-if="section === 'help'">
+        <header class="av-head">
+          <h1 class="av-title">{{ t('settings.admin.nav.help') }}</h1>
+          <span class="av-sub">{{ t('settings.admin.help.sub') }}</span>
+        </header>
+        <AdminHelpFeedback />
       </template>
 
       <!-- Integrations: the GitLab OAuth app -->

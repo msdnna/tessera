@@ -56,6 +56,8 @@ export const CATALOG = [
   { id: 'nav.goMine', keys: 'g m', group: 'nav', command: 'HomeOutline' },
   { id: 'nav.sidebar', keys: '[', group: 'nav', command: 'EyeOutline' },
   { id: 'nav.shortcuts', keys: '?', group: 'nav', command: 'KeypadOutline' },
+  // The help centre (#3107, PackageE «HelpWin»); `modal` so F1 closes it too.
+  { id: 'nav.help', keys: 'f1', group: 'nav', command: 'HelpCircleOutline', modal: true },
   // Undo toasts (#2969): ⌘Z takes back the newest one from anywhere but a text
   // field; F6 moves focus onto it.
   // `modal`: a toast raised inside a large window (the «Проект» window's tag

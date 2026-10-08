@@ -374,6 +374,8 @@ export const admin = {
     api.post(`/admin/jobs/${encodeURIComponent(key)}/run`, null, { skipLoader: true }),
   cancelJob: (key) =>
     api.post(`/admin/jobs/${encodeURIComponent(key)}/cancel`, null, { skipLoader: true }),
+  // «Статья помогла?» totals per article and language (#3071).
+  helpFeedback: () => api.get('/admin/help-feedback'),
 }
 
 export const workspaces = {

@@ -12,6 +12,43 @@ import (
 	"github.com/google/uuid"
 )
 
+const helpFeedbackTotals = `-- name: HelpFeedbackTotals :many
+SELECT key, count(*)::bigint AS votes
+FROM user_acknowledgements
+WHERE key LIKE 'helpful:%'
+GROUP BY key
+ORDER BY key
+`
+
+type HelpFeedbackTotalsRow struct {
+	Key   string `json:"key"`
+	Votes int64  `json:"votes"`
+}
+
+// «Статья помогла?» (#3071): a vote is an acknowledgement keyed
+// helpful:<slug>:<lang>:yes|no, so the totals are a count per key. The prefix
+// is matched with a plain LIKE — the key is client-owned and has no index of
+// its own; the admin screen asks for this rarely and the table is small.
+func (q *Queries) HelpFeedbackTotals(ctx context.Context) ([]HelpFeedbackTotalsRow, error) {
+	rows, err := q.db.Query(ctx, helpFeedbackTotals)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []HelpFeedbackTotalsRow
+	for rows.Next() {
+		var i HelpFeedbackTotalsRow
+		if err := rows.Scan(&i.Key, &i.Votes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserAcknowledgements = `-- name: ListUserAcknowledgements :many
 SELECT key, ack_at FROM user_acknowledgements
 WHERE user_id = $1
