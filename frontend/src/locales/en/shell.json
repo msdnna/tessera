@@ -411,10 +411,10 @@
       "menu": "User actions"
     },
     "notifications": {
-      "select": "Notifications: select",
-      "open": "Notifications: open",
-      "read": "Notifications: mark read",
-      "readAll": "Notifications: mark all read"
+      "select": "Pick a notification",
+      "open": "Open the notification",
+      "read": "Mark it read",
+      "readAll": "Mark all read"
     },
     "meet": {
       "schedule": "Schedule a conference",
