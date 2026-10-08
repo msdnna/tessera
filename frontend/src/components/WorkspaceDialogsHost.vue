@@ -42,7 +42,7 @@ const del = slot('delete')
 
 // Browser Back closes these modals instead of leaving the board. The large
 // windows (kit/LargeWindow, #2975) take care of it themselves.
-for (const s of [gitlab, commands, jobs]) useOverlayBack(s, () => (s.value = false))
+for (const s of [gitlab, jobs]) useOverlayBack(s, () => (s.value = false))
 
 const target = computed(() => dialogs.target || ws.current)
 

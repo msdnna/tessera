@@ -68,10 +68,15 @@ const open = async (rows) => {
   return w
 }
 
-// Инлайн-ошибки модалка рисует в .cmd-err — по одной на проблемную строку.
+// Инлайн-ошибки окно рисует в .cmd-err — по одной на проблемную строку.
 const inlineErrors = (w) => w.findAll('.cmd-err').map((e) => e.text())
-const saveBtn = (w) =>
-  w.findAll('button').find((b) => b.text().includes('Сохранить')) ?? w.findAll('button').at(-1)
+// v2 (#2975): строки правятся на месте — двойной клик (или Enter) раскрывает
+// строку в форму, её «Сохранить» отправляет словарь целиком.
+const saveBtn = async (w) => {
+  await w.findAll('.cmd-row')[0].trigger('dblclick')
+  await w.vm.$nextTick()
+  return w.find('[data-testid="cmd-save"]')
+}
 
 describe('WorkspaceCommandsModal · алиасы встроенных команд', () => {
   beforeEach(() => {
@@ -83,13 +88,13 @@ describe('WorkspaceCommandsModal · алиасы встроенных коман
   it('отбивает ключ, совпавший с алиасом встроенной команды', async () => {
     const w = await open([{ key: 'done', description: 'Готово' }])
     expect(inlineErrors(w)).toEqual(['встроенная команда'])
-    expect(saveBtn(w).attributes('disabled')).toBeDefined()
+    expect((await saveBtn(w)).attributes('disabled')).toBeDefined()
     w.unmount()
   })
 
   it('не даёт PUT уехать на сервер с таким ключом', async () => {
     const w = await open([{ key: 'assignee', description: 'Исполнитель' }])
-    await saveBtn(w).trigger('click')
+    await (await saveBtn(w)).trigger('click')
     await w.vm.$nextTick()
     expect(setCommands).not.toHaveBeenCalled()
     w.unmount()
@@ -125,7 +130,7 @@ describe('WorkspaceCommandsModal · алиасы встроенных коман
   it('пропускает свободный ключ и шлёт его канонизированным', async () => {
     const w = await open([{ key: '/Approve', description: '  Одобрить  ' }])
     expect(inlineErrors(w)).toEqual([])
-    await saveBtn(w).trigger('click')
+    await (await saveBtn(w)).trigger('click')
     await w.vm.$nextTick()
     expect(setCommands).toHaveBeenCalledWith('ws-1', [{ key: 'approve', description: 'Одобрить' }])
     w.unmount()
