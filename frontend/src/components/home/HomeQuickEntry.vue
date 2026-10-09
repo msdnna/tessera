@@ -5,6 +5,7 @@
 // in the target board's «К работе»; Tab moves to the board picker.
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useTaskCreatedToast } from '@/composables/useTaskCreatedToast'
 import { NIcon, NPopover, useMessage } from 'naive-ui'
 import {
   AddCircleOutline,
@@ -38,6 +39,7 @@ const emit = defineEmits(['created'])
 
 const { t } = useI18n()
 const message = useMessage()
+const taskCreated = useTaskCreatedToast()
 const ws = useWorkspacesStore()
 const { formatDue } = useFormat()
 
@@ -132,7 +134,8 @@ async function submit() {
       await tasksApi.addTag(task.id, id)
     }
     for (const person of p.people) await tasksApi.addAssignee(task.id, person.user_id)
-    message.success(t('shell.home.quick.created', { n: task.number }))
+    // The board is not on screen: the toast says where the task went (#3117).
+    taskCreated(task, { project: target.value.project, board: target.value, column: todoCol })
     text.value = ''
     emit('created', task)
   } catch (e) {

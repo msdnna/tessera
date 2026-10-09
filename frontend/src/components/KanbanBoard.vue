@@ -100,6 +100,7 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { usePaletteStore } from '@/stores/palette'
 import { useUndoStore } from '@/stores/undo'
 import { useToastsStore } from '@/stores/toasts'
+import { useConflictsStore } from '@/stores/conflicts'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
@@ -2361,7 +2362,14 @@ useRealtime((ev) => {
   // Surface a freshly detected write-back conflict so the user knows to resolve it
   // (the resolver lives in the GitLab modal's «Конфликты» entry).
   if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
-    message.warning(t('board.toast.gitlabConflict'))
+    // A warning with its way out (#3117): «Разрешить» opens the resolver on it.
+    const taskId = ev.data?.task_id || null
+    message.warning(t('board.toast.gitlabConflict'), {
+      action: {
+        label: () => t('toasts.act.resolve'),
+        run: () => useConflictsStore().openResolver(taskId),
+      },
+    })
   }
   // The open board was retired. DeleteBoard takes its columns, cards and uploads
   // with it and announces a bare `board.deleted`, so there is nothing left to

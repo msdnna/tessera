@@ -251,7 +251,6 @@
       "hintIdle": "from anywhere",
       "untitled": "Untitled",
       "in": "in",
-      "created": "Task #{n} created",
       "noBoard": "No board to put the task on",
       "taskTitle": "Task “{title}”"
     },
@@ -649,8 +648,7 @@
     "placeholder": {
       "task": "Task title"
     },
-    "board": "Board",
-    "taskCreated": "Task #{n} created"
+    "board": "Board"
   },
   "rail": {
     "appearance": "Workspace appearance",

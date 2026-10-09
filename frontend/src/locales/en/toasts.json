@@ -22,7 +22,8 @@
     "journal": "Journal",
     "show": "Show",
     "you": "You",
-    "someone": "Someone"
+    "someone": "Someone",
+    "resolve": "Resolve"
   },
   "me": {
     "changedTask": "changed your task",
@@ -85,5 +86,6 @@
     "bannerSub": "Pop-ups are hidden · mentions and calls get through",
     "off": "Turn off",
     "bell": "Do not disturb until {time}"
-  }
+  },
+  "created": "Task #{n} created"
 }

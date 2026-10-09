@@ -5,6 +5,7 @@
 // «Входящие» capture popover (#2996).
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { useTaskCreatedToast } from '@/composables/useTaskCreatedToast'
 import { NModal, NCard, NInput, NSelect, NButton, useMessage } from 'naive-ui'
 import { boards as boardsApi, projects as projApi } from '@/api'
 import { useQuickStore } from '@/stores/quick'
@@ -19,6 +20,14 @@ import { humanizeError } from '@/utils/errors'
 
 const { t } = useI18n()
 const message = useMessage()
+const taskCreated = useTaskCreatedToast()
+function boardById(id) {
+  for (const g of boardOptions.value) {
+    const c = g.children.find((x) => x.value === id)
+    if (c) return { id, name: c.label, project: { name: g.label } }
+  }
+  return { id }
+}
 const quick = useQuickStore()
 const ws = useWorkspacesStore()
 const boardView = useBoardViewStore()
@@ -80,7 +89,10 @@ async function submit() {
       column_id: col.id,
       title: normalizeTitle(title.value),
     })
-    message.success(t('shell.quick.taskCreated', { n: res.data.number }))
+    // A task created onto the board in front of you shows up on it; anywhere
+    // else the toast says where it went and opens it (#3117).
+    const onIt = boardView.active && boardView.boardId === boardId.value
+    if (!onIt) taskCreated(res.data, { board: boardById(boardId.value), column: col })
     show.value = false
   } catch (e) {
     message.error(humanizeError(e))
