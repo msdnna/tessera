@@ -115,6 +115,18 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 		if t, terr := h.q.GetTask(ctx, *taskID); terr == nil {
 			obj["task_board_id"] = t.BoardID
 			obj["task_number"] = t.Number
+			// The in-app toast (#3117) draws the task as a chip with its status
+			// glyph: the whole title (the payload inlines only a short one) and
+			// the column it stands in. The recipient may read the task — it is
+			// the task the notification is about.
+			obj["task_title"] = t.Title
+			obj["task_done"] = t.CompletedAt != nil
+			if col, cerr := h.q.GetColumn(ctx, t.ColumnID); cerr == nil {
+				obj["task_column"] = col.Name
+				if col.NameKey != nil {
+					obj["task_column_key"] = *col.NameKey
+				}
+			}
 		}
 	}
 	// Addressed to the recipient alone: the text is theirs (for a reminder it is

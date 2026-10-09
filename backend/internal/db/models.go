@@ -461,17 +461,21 @@ type NotificationDelivery struct {
 }
 
 type NotificationPref struct {
-	UserID            uuid.UUID `json:"user_id"`
-	DueEnabled        bool      `json:"due_enabled"`
-	DueLeadMinutes    int32     `json:"due_lead_minutes"`
-	DueRepeatMinutes  int32     `json:"due_repeat_minutes"`
-	ReminderEnabled   bool      `json:"reminder_enabled"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	QuietEnabled      bool      `json:"quiet_enabled"`
-	QuietStartMinutes int32     `json:"quiet_start_minutes"`
-	QuietEndMinutes   int32     `json:"quiet_end_minutes"`
-	QuietTz           string    `json:"quiet_tz"`
-	DigestMinutes     int32     `json:"digest_minutes"`
+	UserID            uuid.UUID  `json:"user_id"`
+	DueEnabled        bool       `json:"due_enabled"`
+	DueLeadMinutes    int32      `json:"due_lead_minutes"`
+	DueRepeatMinutes  int32      `json:"due_repeat_minutes"`
+	ReminderEnabled   bool       `json:"reminder_enabled"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	QuietEnabled      bool       `json:"quiet_enabled"`
+	QuietStartMinutes int32      `json:"quiet_start_minutes"`
+	QuietEndMinutes   int32      `json:"quiet_end_minutes"`
+	QuietTz           string     `json:"quiet_tz"`
+	DigestMinutes     int32      `json:"digest_minutes"`
+	ToastsEnabled     bool       `json:"toasts_enabled"`
+	Toasts            []byte     `json:"toasts"`
+	QuietToasts       bool       `json:"quiet_toasts"`
+	DndUntil          *time.Time `json:"dnd_until"`
 }
 
 type NotificationRoute struct {

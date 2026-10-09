@@ -578,6 +578,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/notification-template-preview", rh.PreviewNotificationTemplate)
 			protected.GET("/notification-prefs", rh.GetMyNotificationPrefs)
 			protected.PUT("/notification-prefs", rh.UpdateMyNotificationPrefs)
+			protected.PUT("/notification-prefs/dnd", rh.SetMyNotificationDnd)
 			protected.PATCH("/tasks/:id/due-notify", rh.SetTaskDueNotify)
 			protected.GET("/notification-routes", rh.ListNotificationRoutes)
 			protected.POST("/notification-routes", rh.CreateNotificationRoute)
