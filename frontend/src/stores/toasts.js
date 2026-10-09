@@ -605,6 +605,8 @@ export const useToastsStore = defineStore('toasts', () => {
         duration: kind === 'loading' ? 0 : (opts.duration ?? DURATION.info),
       }
     }
+    // naive's `class` option: some callers hang an e2e anchor on it.
+    if (opts.class) spec.cls = opts.class
     if (opts.action)
       spec.actions = [
         ...(spec.actions || []),

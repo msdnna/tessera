@@ -149,13 +149,16 @@ function onAction(a, e) {
 <template>
   <div
     class="tt"
-    :class="{
-      act,
-      touch,
-      focused,
-      paused,
-      [`k-${toast.kind}`]: true,
-    }"
+    :class="[
+      toast.cls,
+      {
+        act,
+        touch,
+        focused,
+        paused,
+        [`k-${toast.kind}`]: true,
+      },
+    ]"
     data-testid="toast"
     :data-kind="toast.kind"
     :data-toast="toast.id"
