@@ -106,6 +106,17 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   own plain hover rule (TaskCard: avatar ring via `.card:hover :deep(.avatar)`).
   `/* @kind other */` hints don't survive — the DS build strips comments.
 
+- 2026-10-09 (#3109) Design flagged two more: Naive's `--n-*` re-declared with
+  `!important` on a component selector (`.auth .auth-alt`, 7 vars) — rewritten as
+  real properties (`background-color`, `display: none` on `.n-button__border`), and
+  `.plain` the same way pre-emptively; and `--app-vh` (declared twice on `:root`,
+  `100vh` then `100dvh` under `@supports`) — it wants `/* @kind other */`. The DS
+  build now KEEPS such hints: write `--x: v; /* @kind other */` in the source and
+  the `keepKindHints` plugin in `design-system/vite.config.js` re-inserts the comment
+  after every `--x:` declaration of the minified CSS. Don't override Naive by
+  re-declaring its `--n-*` variables in CSS that ships in the DS — set the real
+  property (use `:not(.n-…--disabled):hover` etc. for specificity).
+
 ## Known render warns
 
 - `[FONT_MISSING] "JetBrains Mono"` — it is the 3rd entry of a monospace stack
