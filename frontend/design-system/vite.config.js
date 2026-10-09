@@ -38,6 +38,12 @@ export default defineConfig({
   plugins: [inlinePublicUrls(), vue()],
   resolve: {
     alias: [
+      // See src/stubs/docImport.js — keeps the document editor and pdf.js (~3 MB)
+      // out of the bundle. Before the generic `@/` alias, which would win otherwise.
+      {
+        find: /^@\/utils\/docImport(\.js)?$/,
+        replacement: resolve(import.meta.dirname, 'src/stubs/docImport.js'),
+      },
       { find: /^@\//, replacement: resolve(root, 'src') + '/' },
       // See src/stubs/mermaid.js — keeps ~8 MB of diagram engine out of the bundle.
       { find: /^mermaid$/, replacement: resolve(import.meta.dirname, 'src/stubs/mermaid.js') },

@@ -53,9 +53,28 @@ const props = defineProps({
   // on a card).
   keyId: { type: String, default: '' },
   testid: { type: String, default: 'tag-picker' },
+  // Drawn in place, not floating at an anchor (design-system previews), and the
+  // search it opens with (a preview of «Найдено» / «Создать тег»).
+  inline: { type: Boolean, default: false },
+  initialQuery: { type: String, default: '' },
 })
 const emit = defineEmits(['update:show', 'toggle', 'manage'])
 const { t } = useI18n()
+
+// The layer around the picker: the anchored one, or nothing at all in place.
+const InPlace = (_, { slots }) => slots.default?.()
+const layerProps = computed(() =>
+  props.inline
+    ? {}
+    : {
+        show: props.show,
+        anchor: props.anchor,
+        placement: props.placement,
+        title: t('task.tags.title'),
+        testid: props.testid,
+        'onUpdate:show': (v) => !v && close(),
+      },
+)
 
 const query = ref('')
 const input = ref(null)
@@ -147,7 +166,7 @@ watch(
   () => props.show,
   async (on) => {
     if (!on) return
-    query.value = ''
+    query.value = props.initialQuery
     active.value = 0
     navigated.value = false
     await nextTick()
@@ -226,14 +245,7 @@ defineExpose({ query })
 </script>
 
 <template>
-  <AnchorLayer
-    :show="show"
-    :anchor="anchor"
-    :placement="placement"
-    :title="t('task.tags.title')"
-    :testid="testid"
-    @update:show="(v) => !v && close()"
-  >
+  <component :is="inline ? InPlace : AnchorLayer" v-bind="layerProps">
     <div class="tp" role="dialog" :aria-label="t('task.tags.title')" @keydown="onKeydown">
       <label class="tp-search">
         <n-icon :component="PricetagOutline" :size="14" class="tp-sicon" />
@@ -354,7 +366,7 @@ defineExpose({ query })
         <Kbd>{{ CAPS.escape }}</Kbd>
       </div>
     </div>
-  </AnchorLayer>
+  </component>
 </template>
 
 <style scoped>

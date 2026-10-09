@@ -78,6 +78,8 @@ const props = defineProps({
   // Floating, but rendered where it is mounted instead of in <body> — inside a
   // modal, whose focus trap would otherwise pull the focus back out of the menu.
   inPlace: { type: Boolean, default: false },
+  // Open with this submenu already shown (design-system previews, `inline`).
+  startSub: { type: String, default: '' },
 })
 const emit = defineEmits(['update:show', 'select'])
 const { t } = useI18n()
@@ -161,6 +163,8 @@ watch(
       armItem(pre.key)
       active.value = rows.value.indexOf(pre)
     }
+    const preSub = props.startSub && rows.value.find((i) => i.key === props.startSub && i.children)
+    if (preSub) openSub(preSub, false)
     await nextTick()
     if (!props.inline) panel.value?.focus({ preventScroll: true })
   },
@@ -173,11 +177,16 @@ watch(
 function placeSub() {
   const el = subPanel.value
   const root = panel.value
-  if (!el || !root || !sub.value || sheet.value || props.inline) return
+  if (!el || !root || !sub.value || sheet.value) return
   const row = [...root.querySelectorAll('[data-am-sub]')].find(
     (n) => n.getAttribute('data-am-sub') === sub.value.key,
   )
   if (!row) return
+  // Drawn in place (a design-system card): beside the menu, in its own box.
+  if (props.inline) {
+    subStyle.value = { left: `${root.offsetWidth + 2}px`, top: `${row.offsetTop - 6}px` }
+    return
+  }
   const p = root.getBoundingClientRect()
   const r = row.getBoundingClientRect()
   const w = el.offsetWidth
@@ -561,6 +570,9 @@ function stubTitle(item) {
 /* The submenu (#3111): the same panel, fixed beside the menu. */
 .am-sub {
   z-index: 2051;
+}
+.am.inline .am-sub {
+  position: absolute;
 }
 .am-row.open {
   background: var(--t-hover);

@@ -11,17 +11,19 @@ import { TrashOutline } from '@vicons/ionicons5'
 import Kbd from '@/components/Kbd.vue'
 import { CAPS } from '@/utils/keyCaps'
 
-defineProps({
+const props = defineProps({
   // Tooltip and accessible name of the idle button.
   title: { type: String, default: '' },
   // What the armed button says («Удалить?»).
   confirm: { type: String, required: true },
   icon: { type: [Object, Function], default: () => TrashOutline },
   testid: { type: String, default: 'arm-button' },
+  // Drawn armed and kept so (design-system previews): no 4 s disarm.
+  armedStill: { type: Boolean, default: false },
 })
 const emit = defineEmits(['confirm'])
 
-const armed = ref(false)
+const armed = ref(props.armedStill)
 let timer = 0
 function disarm() {
   armed.value = false

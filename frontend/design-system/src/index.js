@@ -29,6 +29,7 @@ export { ColumnHeader } from './board/ColumnHeader.jsx'
 
 // Tags, people, navigation
 export { TagPill } from './tags/TagPill.jsx'
+export { TagPicker } from './tags/TagPicker.jsx'
 export { UserAvatar } from './people/UserAvatar.jsx'
 export { ProjectIcon } from './navigation/ProjectIcon.jsx'
 
@@ -39,6 +40,7 @@ export { FormField } from './interaction/FormField.jsx'
 export { ColorIconPicker } from './interaction/ColorIconPicker.jsx'
 export { ActionMenu } from './interaction/ActionMenu.jsx'
 export { UndoToast } from './interaction/UndoToast.jsx'
+export { ArmButton } from './interaction/ArmButton.jsx'
 
 // Editor, feedback
 export { MarkdownEditor } from './editor/MarkdownEditor.jsx'
