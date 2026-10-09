@@ -197,11 +197,39 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
 - **Ревью пилотов (#3109):** «Входящие» — только кнопка в шапке + G I (строки в сайдбаре
   нет); справка — «?» рейла (Справочный центр · Обучение) и F1 на статье текущего экрана
   (`utils/helpContext`), `HelpHint` в шапках не ставить. Крошки доски — двери (проект →
-  окно «Проект», доска → список досок). Описание задачи — `MarkdownEditor variant="v2"`
-  (проза, правка кликом/⇧E, `utils/descEdit`), композер — `variant="composer"`. Тосты и
-  поповеры свойств ждут макетов пакетов I/J (брифы `brief-v2-toasts.md` / `brief-v2-props.md`,
-  #3117/#3118); уведомления «про меня» на бэкенде уже есть (`deleted`, `unassigned`,
-  `completed`, `reopened`, #3114).
+  окно «Проект», доска → список досок). Уведомления «про меня» на бэкенде: `deleted`,
+  `unassigned`, `completed`, `reopened` (#3114).
+- **Тосты (#3117, пакет I, миграция 0082):** один каркас `toast/Toast`, две полосы
+  `toast/ToastLanes` — низ: ответы на мои действия + undo (`stores/undo`, правила пакета A);
+  верх справа под колокольчиком: «про меня» из сокета `notification` (те же слова, что строка
+  ленты), напоминания, звонки, активность доски (`toasts.activity()` из KanbanBoard, только
+  чужие, без дубля «про меня»), система, сводка. Правила — `utils/toastModel.js`, стор —
+  `stores/toasts.js`; на телефоне одна полоса с очередью. **Сообщения — только `useMessage`
+  из `@/composables/useMessage`, не из naive-ui** (`<n-message-provider>` нет; опции
+  `{ retry, line, action, duration, class }`); успех тостом — только если результата не видно.
+  Новое событие задачи, дающее тост, обязано нести `actor`. Настройки тостов и «Не беспокоить» —
+  `notification_prefs` (`toasts` jsonb, `toasts_enabled`, `quiet_toasts`, `dnd_until`; поля
+  PUT необязательны) + `PUT /notification-prefs/dnd`. Слой поверх карточки (пульс) — отдельный
+  fixed-элемент, не класс на `.card`. e2e-якоря: `toast` + `data-kind`, `toast-lane-top|bottom|phone`.
+- **Свойства задачи и редактор (#3118, пакет J):** все свойства — `kit/PropPicker` (поповер /
+  лист на телефоне / `shell="palette"`), строки полей — один модуль
+  `components/task/props/propItems.js` для модалки, карточки, «Списка» и палитры (новое поле —
+  построитель там, не своё меню). Хосты: модалка — `task/TaskPropPickers` (`openField`,
+  `fieldOpen`), карточка/Список — `task/props/TaskFieldPopover`; placement `below-or-side`
+  (слева от `[data-pop-side]`). Клавиши модалки: S A P D L, O оценка, M этап, U родитель,
+  ⇧L связь (форма остаётся открытой), повтор клавиши — следующее поле. Срок —
+  `due/DuePicker` (DueEditor удалён; модель `composables/useDueModel`, чистая часть
+  `utils/dueModel`, разбор `quickParse.parseDue`): шлёт `{ due_date, start_date, recurrence }`
+  целиком — **любой путь правки задачи обязан нести `recurrence`**; date-only — UTC-полночь,
+  время — пояс профиля, `recurrence.tz` следует за этим. Редактор — `MarkdownEditor`
+  `v2` | `composer` («Aa» помнит `tessera_composer_fmt`) | `full`; подсветка — прозрачная
+  textarea над `utils/mdHighlight` (в пропорциональном поле — только цвет). @ # / —
+  `utils/edSuggest` + `editor/EdSuggest` (на месте, не телепорт), клавиши поля — группа
+  `editor.*` (по физической клавише; ссылка ⌘⇧K — ⌘K у палитры). Описание — I (⇧E скрытый
+  алиас), «Отменить правки?» по Esc. Пузырь над текстом для чтения — `editor/EdReadBubble`
+  («Цитировать в ответ» через `utils/quoteBus`). Полноэкранный — `editor/FullscreenEditor` на
+  LargeWindow (⌘1–3, Esc свернуть с сохранением). Черновик комментария — на задачу
+  (`tessera_comment_draft:<taskId>`).
 - **Телефон (≤768px, #2976 — пакет G, модель A):** своя оболочка в `AppLayout` — шапка
   `mobile/MobileTopbar` (на доске: проект/доска → дровер; иначе «‹ Ещё»), страница и нижняя
   навигация `mobile/MobileTabBar` (Мои задачи · Доска · Входящие · Поиск · Ещё). Дерево —
