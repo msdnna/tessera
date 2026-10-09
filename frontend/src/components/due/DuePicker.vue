@@ -99,6 +99,18 @@ const model = useDueModel(
   (patch) => emit('apply', patch),
 )
 const notifyDefaults = useNotifyDefaults()
+// The notification as the reader last set it: every change goes out whole, so
+// two quick clicks never merge with a copy of the task that is not back yet.
+const notifyLocal = ref({ ...props.notify })
+watch(
+  () => props.notify,
+  (v) => (notifyLocal.value = { ...v }),
+  { deep: true },
+)
+function onNotify(patch) {
+  notifyLocal.value = { ...notifyLocal.value, ...patch }
+  emit('notify', { ...notifyLocal.value })
+}
 
 // ── shell: a popover, or a sheet on a phone ──
 const { isMobile } = useResponsive()
@@ -315,7 +327,7 @@ function commitTime() {
 }
 
 // ── doors ──
-const notifyText = computed(() => notifySummary(props.notify, notifyDefaults.value))
+const notifyText = computed(() => notifySummary(notifyLocal.value, notifyDefaults.value))
 const repText = computed(() =>
   model.freq && model.nextLabel
     ? `${model.summary} · ${t('task.due.rep.next', { date: model.nextLabel })}`
@@ -670,9 +682,9 @@ defineExpose({ model, pane, openPane })
             <DueRepeatPane v-if="pane === 'rep'" :model="model" :columns="columns" />
             <DueNotifyPane
               v-else
-              :notify="notify"
+              :notify="notifyLocal"
               :defaults="notifyDefaults"
-              @notify="emit('notify', $event)"
+              @notify="onNotify"
             />
             <div class="dp-foot">
               <button type="button" tabindex="-1" class="dp-fk" @click="backToMain">
@@ -841,10 +853,10 @@ defineExpose({ model, pane, openPane })
       <DueRepeatPane v-else-if="pane === 'rep'" :model="model" :columns="columns" mobile />
       <DueNotifyPane
         v-else
-        :notify="notify"
+        :notify="notifyLocal"
         :defaults="notifyDefaults"
         mobile
-        @notify="emit('notify', $event)"
+        @notify="onNotify"
       />
     </div>
   </BottomSheet>
