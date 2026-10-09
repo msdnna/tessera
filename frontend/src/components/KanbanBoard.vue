@@ -619,6 +619,22 @@ watch(allTasks, () => {
   }, 800)
 })
 onBeforeUnmount(() => clearTimeout(stripTimer))
+// The property pickers (#3118) count what the board holds: tasks per column
+// for «Статус», open tasks per person («6 в работе») for «Исполнители».
+watch(
+  allTasks,
+  (list) => {
+    const counts = {}
+    const load = {}
+    for (const x of list || []) {
+      counts[x.column_id] = (counts[x.column_id] || 0) + 1
+      if (x.completed_at) continue
+      for (const uid of x.assignee_ids || []) load[uid] = (load[uid] || 0) + 1
+    }
+    boardViewStore.taskStats = { boardId: props.boardId, counts, load }
+  },
+  { immediate: true },
+)
 // ── composer facets: filters, multi-level sort, chips and the add menu ──
 // The facet layer (filter state + the menus and chips over it) lives in
 // `useBoardFacets`; grouping stays here because it builds the board's columns.

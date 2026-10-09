@@ -3,7 +3,7 @@ import { tourEvent } from '@/utils/tourEvents'
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { NModal, NPopover, NIcon, NSpin, useMessage } from 'naive-ui'
+import { NModal, NIcon, NSpin, useMessage } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,

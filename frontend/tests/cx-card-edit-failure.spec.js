@@ -103,7 +103,8 @@ async function mountCard(props = {}, seed = {}) {
 }
 
 // The pickers teleport their body to <body>, so rows are queried off the document.
-const menuRows = () => Array.from(document.body.querySelectorAll('.menu .menu-item'))
+// The pill's picker is the PropPicker of package J (#3118), teleported to <body>.
+const menuRows = () => Array.from(document.body.querySelectorAll('.pp .pp-row'))
 
 beforeEach(() => {
   setActivePinia(createPinia())

@@ -9,13 +9,12 @@
 import { tourEvent } from '@/utils/tourEvents'
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopover, NTooltip, NInput, useMessage } from 'naive-ui'
+import { NIcon, NPopover, NTooltip, useMessage } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
   PersonAddOutline,
   PricetagOutline,
-  CheckmarkOutline,
   RepeatOutline,
   TimerOutline,
   RibbonOutline,
@@ -25,8 +24,8 @@ import {
 import { storeToRefs } from 'pinia'
 import { tasks as tasksApi, projects as projectsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
-import { priorityLabel, priorityOptions as buildPriorityOptions } from '@/utils/priority'
-import { hueGrad, softFill, readableHue } from '@/utils/gradient'
+import { priorityLabel } from '@/utils/priority'
+import { softFill, readableHue } from '@/utils/gradient'
 import { buildTagGroups, matchTagByName } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { useFormat } from '@/composables/useFormat'
@@ -37,11 +36,9 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { cardFieldVisible } from '@/utils/cardFields'
-import { glAssigneesOf, glPickerMembers } from '@/utils/assignees'
+import { glAssigneesOf } from '@/utils/assignees'
 import { isTaskOverdue } from '@/utils/taskFilter'
-import { uiCollator } from '@/i18n'
 import { taskBasePatch } from '@/utils/taskPatch'
-import PopMenu from '../PopMenu.vue'
 import UserAvatar from '../UserAvatar.vue'
 import DuePicker from '../due/DuePicker.vue'
 import { recurrenceHint } from '@/utils/dueModel'
@@ -49,6 +46,8 @@ import RichContent from '../RichContent.vue'
 import TagPill from '../TagPill.vue'
 import TagPicker from './TagPicker.vue'
 import ReminderPill from './ReminderPill.vue'
+import TaskFieldPopover from './props/TaskFieldPopover.vue'
+import { nextField } from './props/propItems'
 import { useThemeStore } from '@/stores/theme'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -227,44 +226,6 @@ const people = computed(() => {
 const shownPeople = computed(() => people.value.slice(0, PEOPLE_SHOWN))
 const extraPeople = computed(() => Math.max(0, people.value.length - PEOPLE_SHOWN))
 
-// Assignee picker: a search box + a list capped at 10, ordered assigned →
-// recently-picked → alphabetical. "Recent" is a small cross-board localStorage
-// MRU of user ids the user has assigned, so the people you actually use surface
-// first; falls back to alphabetical when there's no history.
-const RECENT_ASSIGNEES_KEY = 'tessera_recent_assignees'
-function readRecentAssignees() {
-  try {
-    const v = JSON.parse(localStorage.getItem(RECENT_ASSIGNEES_KEY) || '[]')
-    return Array.isArray(v) ? v : []
-  } catch {
-    return []
-  }
-}
-const assigneeQuery = ref('')
-const recentAssignees = ref(readRecentAssignees())
-const pickerMembers = computed(() => {
-  const q = assigneeQuery.value.trim().toLowerCase()
-  if (q) return members.value.filter((m) => (m.name || '').toLowerCase().includes(q))
-  // No query: assigned first, then MRU, then alphabetical — deduped, capped at 10
-  // (but never hiding a currently-assigned member so they can be removed).
-  const byId = new Map(members.value.map((m) => [m.user_id, m]))
-  const seen = new Set()
-  const out = []
-  const add = (id) => {
-    if (seen.has(id) || !byId.has(id)) return
-    seen.add(id)
-    out.push(byId.get(id))
-  }
-  const assigned = props.task.assignee_ids || []
-  assigned.forEach(add)
-  recentAssignees.value.forEach(add)
-  const cmp = uiCollator()
-  ;[...members.value]
-    .sort((a, b) => cmp.compare(a.name || '', b.name || ''))
-    .forEach((m) => add(m.user_id))
-  return out.slice(0, Math.max(10, assigned.length))
-})
-
 const due = computed(() => formatDue(props.task.due_date))
 // Long form (capitalised, full weekday) for the stacked row, where the terse
 // lowercase pill form would clash with capitalised siblings like the priority.
@@ -309,15 +270,10 @@ const estTooltip = computed(() => {
     ? t('task.estimate.rollupTooltip', { value: body })
     : t('task.estimate.tooltip', { value: body })
 })
-// Computed, not a plain array: the labels have to re-resolve on a language switch.
-const priorityOptions = computed(() => buildPriorityOptions())
 // Shared flag gradient defs live in App.vue (one per priority level), so a board
 // with 100s of cards references 4 defs instead of inlining an <svg> per card.
 const flagGradId = computed(() => (props.task.priority ? `t-prio-grad-${props.task.priority}` : ''))
 
-function isAssigned(uid) {
-  return (props.task.assignee_ids || []).includes(uid)
-}
 function hasTag(id) {
   return (props.task.tag_ids || []).includes(id)
 }
@@ -378,7 +334,6 @@ async function run(fn) {
 // utils/taskPatch.js for why omitting it matters.
 const apply = (patch) =>
   run(() => tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch }))
-const setPriority = (p) => apply({ priority: p })
 
 // Per-task due-notification override sentinels (-1 / 'inherit' = user default).
 const dueEnabledSel = computed(() => {
@@ -438,42 +393,36 @@ async function createTag(name) {
   }
   return !!ok
 }
-async function toggleAssignee(uid) {
-  const adding = !isAssigned(uid)
-  const ok = await run(() =>
-    adding ? tasksApi.addAssignee(props.task.id, uid) : tasksApi.removeAssignee(props.task.id, uid),
-  )
-  // The MRU is «people you actually assign», so a refused pick must not enter it
-  // — it would push a name nobody was assigned to the top of every other picker.
-  if (ok && adding) {
-    // Bump to the front of the MRU list (cap the stored history).
-    const next = [uid, ...recentAssignees.value.filter((x) => x !== uid)].slice(0, 30)
-    recentAssignees.value = next
-    localStorage.setItem(RECENT_ASSIGNEES_KEY, JSON.stringify(next))
-  }
-}
-// GitLab half of the picker: the project roster plus whoever this task already
-// carries that the roster has since dropped — otherwise a person who left the
-// GitLab project stays assigned with no row to un-assign them from (see
-// utils/assignees). Shares the search box with the Tessera half above.
-const glPickerList = computed(() =>
-  glPickerMembers(gitlabMembers.value, glAssignees.value, assigneeQuery.value),
+// The property pickers of the pills (#3118, PackageJ «Карточка на доске»): one
+// PropPicker at a time, at its pill. The open pill wears the focus ring and its
+// hover card stays shut.
+const pickField = ref('')
+const prioBtn = ref(null)
+const peopleBtn = ref(null)
+const estBtn = ref(null)
+const msBtn = ref(null)
+const pillOf = { priority: prioBtn, assignees: peopleBtn, estimate: estBtn, milestone: msBtn }
+const pickAnchor = () => pillOf[pickField.value]?.value || null
+// Assignees open to the left, under the avatars at the card's right edge.
+const pickPlacement = computed(() =>
+  pickField.value === 'assignees' ? 'bottom-end' : 'bottom-start',
 )
-// GitLab-member assignees: board tasks carry their logins in gitlab_assignee_logins.
-const glAssigneeLogins = computed(() => props.task.gitlab_assignee_logins || [])
-function isGlAssigned(username) {
-  return glAssigneeLogins.value.includes(username)
+function togglePick(f) {
+  if (props.readonly) return
+  tagOpen.value = false
+  pickField.value = pickField.value === f ? '' : f
 }
-const toggleGlAssignee = (m) =>
-  run(() =>
-    isGlAssigned(m.gl_username)
-      ? tasksApi.removeGitlabAssignee(props.task.id, m.gl_username)
-      : tasksApi.pinGitlabAssignee(props.task.id, {
-          gl_username: m.gl_username,
-          gl_name: m.gl_name,
-          gl_avatar_url: m.gl_avatar_url,
-        }),
-  )
+watch(tagOpen, (on) => on && (pickField.value = ''))
+// The field's key again in an open picker: the next field of S A P D L the
+// card has a picker for (status and due go through the palette's keys).
+function cycleCard(from) {
+  const can = { priority: true, assignees: true, tags: show('tags') }
+  let f = nextField(from)
+  for (let i = 0; i < 5 && f && !can[f]; i++) f = nextField(f)
+  pickField.value = ''
+  if (f === 'tags') tagOpen.value = true
+  else if (f && f !== from) setTimeout(() => (pickField.value = f))
+}
 defineExpose({ openDue })
 </script>
 
@@ -494,49 +443,33 @@ defineExpose({ openDue })
          "icon + value" rows — same triggers/pickers, so every field stays
          clickable; hover highlights the row (see .pills.stacked CSS). -->
     <!-- priority -->
-    <n-popover
+    <button
       v-if="show('priority') && (showEmpty || task.priority || stackFields)"
-      trigger="click"
-      placement="bottom-start"
+      ref="prioBtn"
+      class="pill prio-pill"
+      :class="{ set: task.priority, 'pp-open': pickField === 'priority' }"
+      :style="task.priority ? { '--pc': PRIORITY_COLORS[task.priority] } : null"
+      :title="stackFields ? t('task.field.priority') : ''"
+      data-tour="card-priority"
+      data-testid="card-pill-priority"
+      @click.stop="togglePick('priority')"
     >
-      <template #trigger>
-        <button
-          class="pill prio-pill"
-          :class="{ set: task.priority }"
-          :style="task.priority ? { '--pc': PRIORITY_COLORS[task.priority] } : null"
-          :title="stackFields ? t('task.field.priority') : ''"
-          data-tour="card-priority"
-          @click.stop
-        >
-          <n-icon
-            :component="FlagOutline"
-            :size="13"
-            :style="
-              task.priority
-                ? {
-                    color: PRIORITY_COLORS[task.priority],
-                    '--icon-grad': `url(#${flagGradId})`,
-                  }
-                : {}
-            "
-          />
-          <span v-if="stackFields" class="pill-text" :class="{ 'sf-empty': !task.priority }">{{
-            task.priority ? priorityLabel(task.priority) : '—'
-          }}</span>
-        </button>
-      </template>
-      <PopMenu>
-        <div
-          v-for="o in priorityOptions"
-          :key="o.value"
-          class="menu-item"
-          @click="setPriority(o.value)"
-        >
-          <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }" />
-          {{ o.label }}
-        </div>
-      </PopMenu>
-    </n-popover>
+      <n-icon
+        :component="FlagOutline"
+        :size="13"
+        :style="
+          task.priority
+            ? {
+                color: PRIORITY_COLORS[task.priority],
+                '--icon-grad': `url(#${flagGradId})`,
+              }
+            : {}
+        "
+      />
+      <span v-if="stackFields" class="pill-text" :class="{ 'sf-empty': !task.priority }">{{
+        task.priority ? priorityLabel(task.priority) : '—'
+      }}</span>
+    </button>
 
     <!-- due date: opens the due picker (#3118); a repeating one tells its rule on hover -->
     <n-tooltip
@@ -585,38 +518,51 @@ defineExpose({ openDue })
       :readonly="readonly"
     />
 
-    <!-- estimate: display-only chip (own value, or Σ subtask rollup) -->
-    <n-tooltip v-if="show('estimate') && (estText || stackFields)">
+    <!-- estimate: own value, or Σ subtask rollup; a click opens its picker -->
+    <n-tooltip
+      v-if="show('estimate') && (estText || stackFields)"
+      :disabled="pickField === 'estimate'"
+    >
       <template #trigger>
-        <div
+        <button
+          ref="estBtn"
           class="pill"
-          :class="{ set: estText, 'est-pill': estText }"
+          :class="{ set: estText, 'est-pill': estText, 'pp-open': pickField === 'estimate' }"
           :title="stackFields ? t('task.field.estimate') : ''"
+          data-testid="card-pill-estimate"
+          @click.stop="togglePick('estimate')"
         >
           <n-icon :component="TimerOutline" :size="13" />
           <span v-if="estText" class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>
           <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
-        </div>
+        </button>
       </template>
       {{ estText ? estTooltip : t('task.field.estimate') }}
     </n-tooltip>
 
-    <!-- milestone («Этап»): display-only chip; editing lives in the task modal -->
-    <n-tooltip v-if="show('milestone') && (taskMilestone || stackFields)">
+    <!-- milestone («Этап»): a click opens the stage picker -->
+    <n-tooltip
+      v-if="show('milestone') && (taskMilestone || stackFields)"
+      :disabled="pickField === 'milestone'"
+    >
       <template #trigger>
-        <div
+        <button
+          ref="msBtn"
           class="pill"
           :class="{
             set: taskMilestone,
             'ms-pill': taskMilestone,
             closed: taskMilestone && taskMilestone.state === 'closed',
+            'pp-open': pickField === 'milestone',
           }"
           :title="stackFields ? t('task.field.milestone') : ''"
+          data-testid="card-pill-milestone"
+          @click.stop="togglePick('milestone')"
         >
           <n-icon :component="RibbonOutline" :size="13" />
           <span v-if="taskMilestone" class="pill-text">{{ taskMilestone.title }}</span>
           <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
-        </div>
+        </button>
       </template>
       <template v-if="taskMilestone">
         {{
@@ -782,110 +728,71 @@ defineExpose({ openDue })
       class="people"
     >
       <n-popover
-        trigger="click"
+        trigger="hover"
         placement="bottom-end"
-        @update:show="(v) => !v && (assigneeQuery = '')"
+        :delay="400"
+        :show-arrow="false"
+        :disabled="pickField === 'assignees'"
+        raw
+        class="people-pop"
       >
         <template #trigger>
-          <n-popover
-            trigger="hover"
-            placement="bottom-end"
-            :delay="400"
-            :show-arrow="false"
-            raw
-            class="people-pop"
+          <button
+            ref="peopleBtn"
+            class="pill assignee-pill"
+            :class="{ 'pp-open': pickField === 'assignees' }"
+            :title="stackFields ? t('task.field.assignee') : ''"
+            data-tour="card-assignees"
+            data-testid="card-pill-assignees"
+            @click.stop="togglePick('assignees')"
           >
-            <template #trigger>
-              <button
-                class="pill assignee-pill"
-                :title="stackFields ? t('task.field.assignee') : ''"
-                data-tour="card-assignees"
-                @click.stop
-              >
-                <n-icon
-                  v-if="stackFields"
-                  :component="PersonAddOutline"
-                  :size="13"
-                  class="sf-people-ic"
-                />
-                <UserAvatar
-                  v-for="p in shownPeople"
-                  :key="p.key"
-                  class="avatar"
-                  :class="{ 'author-ava': p.role === 'author', 'ext-ava': p.ext }"
-                  :user-id="p.userId"
-                  :src="p.src"
-                  :name="p.name"
-                />
-                <span v-if="extraPeople" class="avatar more-ava">+{{ extraPeople }}</span>
-                <n-icon
-                  v-if="!stackFields && !people.length"
-                  :component="PersonAddOutline"
-                  :size="14"
-                  class="no-people"
-                />
-                <span v-else-if="stackFields && !people.length" class="pill-text sf-empty">—</span>
-              </button>
-            </template>
-            <div class="people-list">
-              <div v-for="p in people" :key="p.key" class="people-row">
-                <UserAvatar class="avatar sm" :user-id="p.userId" :src="p.src" :name="p.name" />
-                <span class="people-name">{{ p.name }}</span>
-                <span class="people-role">{{ t(`task.people.role.${p.role}`) }}</span>
-              </div>
-              <div v-if="!people.length" class="people-row people-none">
-                {{ t('task.people.none') }}
-              </div>
-            </div>
-          </n-popover>
+            <n-icon
+              v-if="stackFields"
+              :component="PersonAddOutline"
+              :size="13"
+              class="sf-people-ic"
+            />
+            <UserAvatar
+              v-for="p in shownPeople"
+              :key="p.key"
+              class="avatar"
+              :class="{ 'author-ava': p.role === 'author', 'ext-ava': p.ext }"
+              :user-id="p.userId"
+              :src="p.src"
+              :name="p.name"
+            />
+            <span v-if="extraPeople" class="avatar more-ava">+{{ extraPeople }}</span>
+            <n-icon
+              v-if="!stackFields && !people.length"
+              :component="PersonAddOutline"
+              :size="14"
+              class="no-people"
+            />
+            <span v-else-if="stackFields && !people.length" class="pill-text sf-empty">—</span>
+          </button>
         </template>
-        <PopMenu class="assignee-menu">
-          <n-input
-            v-model:value="assigneeQuery"
-            size="tiny"
-            :placeholder="t('common.action.search')"
-            clearable
-            @click.stop
-          />
-          <div class="assignee-list">
-            <div
-              v-for="m in pickerMembers"
-              :key="m.user_id"
-              class="menu-item assignee-item"
-              @click="toggleAssignee(m.user_id)"
-            >
-              <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
-              <span class="aname">{{ m.name }}</span>
-              <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
-            </div>
-            <template v-if="glPickerList.length">
-              <div class="assignee-sep">GitLab</div>
-              <div
-                v-for="m in glPickerList"
-                :key="m.gl_username"
-                class="menu-item assignee-item"
-                @click="toggleGlAssignee(m)"
-              >
-                <UserAvatar
-                  class="avatar sm"
-                  :src="m.gl_avatar_url"
-                  :name="m.gl_name || m.gl_username"
-                />
-                <span class="aname">{{ m.gl_name || m.gl_username }}</span>
-                <n-icon
-                  v-if="isGlAssigned(m.gl_username)"
-                  :component="CheckmarkOutline"
-                  class="chk"
-                />
-              </div>
-            </template>
-            <div v-if="!pickerMembers.length && !glPickerList.length" class="assignee-empty">
-              {{ t('task.people.noMatches') }}
-            </div>
+        <div class="people-list">
+          <div v-for="p in people" :key="p.key" class="people-row">
+            <UserAvatar class="avatar sm" :user-id="p.userId" :src="p.src" :name="p.name" />
+            <span class="people-name">{{ p.name }}</span>
+            <span class="people-role">{{ t(`task.people.role.${p.role}`) }}</span>
           </div>
-        </PopMenu>
+          <div v-if="!people.length" class="people-row people-none">
+            {{ t('task.people.none') }}
+          </div>
+        </div>
       </n-popover>
     </div>
+    <TaskFieldPopover
+      v-model:field="pickField"
+      :task="task"
+      :anchor="pickAnchor"
+      :placement="pickPlacement"
+      :subtasks="subtasks"
+      :readonly="readonly"
+      @changed="emit('changed')"
+      @cycle="cycleCard"
+    />
   </div>
 </template>
 
@@ -1239,62 +1146,14 @@ defineExpose({ openDue })
   background: var(--t-text3);
   opacity: 0.85;
 }
-/* Assignee picker: a pinned search box above a scrollable, capped list. */
-.assignee-menu {
-  gap: 6px;
-}
-.assignee-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-.assignee-empty {
-  padding: 8px 6px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--t-text3);
-}
-.assignee-sep {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--t-text3);
-  padding: 6px 6px 2px;
-}
 /* external GitLab assignee (no Tessera account): neutral, slightly muted */
 .ext-ava {
   background: var(--t-text3);
   opacity: 0.9;
 }
-.menu {
-  min-width: 180px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 6px;
-  border-radius: 7px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.menu-item:hover {
-  background: var(--t-hover);
-}
-.assignee-item .aname {
-  flex: 1;
-}
-.assignee-item .chk {
-  color: var(--t-primary);
-}
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+/* The pill whose picker is open (#3118): the focus ring of the mockup. */
+.pill.pp-open {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--t-primary);
 }
 </style>

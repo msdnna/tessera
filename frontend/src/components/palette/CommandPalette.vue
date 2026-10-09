@@ -12,6 +12,7 @@ import Kbd from '@/components/Kbd.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
 import TesseraIcon from '@/components/TesseraIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import PropPicker from '@/components/kit/PropPicker.vue'
 import { usePaletteStore } from '@/stores/palette'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { useResponsive } from '@/composables/useResponsive'
@@ -47,6 +48,26 @@ const groups = computed(() => {
   return scoped.value ? taskScope.groupsFor(palette.query) : results.groups.value
 })
 const flat = computed(() => groups.value.flatMap((g) => g.rows))
+// A field drawn by the PropPicker rows (#3118): status, people, priority, stage.
+const picker = computed(() => (groups.value.length === 1 && groups.value[0].picker) || null)
+const pickerEl = ref(null)
+// Each row resolves to what the palette does next ('close' | 'back' | 'stay').
+const pickerItems = computed(() =>
+  (picker.value?.items || []).map((r) =>
+    r.kind === 'row' && r.run
+      ? {
+          ...r,
+          close: false,
+          run: async () => {
+            const next = (await r.run()) || 'stay'
+            if (next === 'close') palette.hide()
+            else if (next === 'back') back()
+            inputEl.value?.focus()
+          },
+        }
+      : r,
+  ),
+)
 const loading = computed(() => {
   if (formMode.value) return false
   return scoped.value ? taskScope.loading.value : results.loading.value && !flat.value.length
@@ -288,6 +309,11 @@ function onKeydown(e) {
   if (e.isComposing) return
   if (formMode.value && onFormKey(e)) return
   if (field.value === 'due' && onDueKey(e)) return
+  // The field's PropPicker takes the list's keys: ↑↓, ↵, Space (after the
+  // arrows), the digits — Tab, ⇧Tab, Esc and ⌫ stay the palette's.
+  if (picker.value && !['Tab', 'Escape', 'Backspace'].includes(e.key)) {
+    if (pickerEl.value?.handleKey(e)) return
+  }
   const mod = hasModKey(e)
   switch (e.key) {
     case 'ArrowDown':
@@ -492,6 +518,19 @@ const enterLabel = (row) => {
           />
           <div v-else ref="listEl" class="cp-list">
             <div v-if="loading" class="cp-empty"><n-spin size="small" /></div>
+            <PropPicker
+              v-else-if="picker"
+              :key="field"
+              ref="pickerEl"
+              inline
+              shell="palette"
+              :show="palette.open"
+              :items="pickerItems"
+              :cursor="picker.cursor"
+              :query="palette.query"
+              :empty="{ title: t('shell.palette.nothing') }"
+              testid="palette-picker"
+            />
             <div v-else-if="!flat.length" class="cp-empty">
               {{
                 palette.query.trim() ? t('shell.palette.nothing') : t('shell.palette.typeToSearch')

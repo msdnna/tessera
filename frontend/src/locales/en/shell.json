@@ -554,6 +554,7 @@
       "priority": "Priority…",
       "due": "When? “fri 18:00”, “in 3 days”, “14.10”",
       "tags": "Tag — find or create…",
+      "milestone": "Stage…",
       "subtask": "Subtask title…"
     },
     "back": "back",
@@ -609,6 +610,8 @@
       "noDue": "No due date",
       "tags": "Tags",
       "noTags": "No tags",
+      "milestone": "Stage",
+      "noMilestone": "No stage",
       "subtask": "Create subtask",
       "subtaskPlaceholder": "Type a title and press ↵",
       "subtaskCreated": "Subtask created",

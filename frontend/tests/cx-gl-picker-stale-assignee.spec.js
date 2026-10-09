@@ -59,21 +59,28 @@ async function openPicker(task = TASK, roster = ROSTER) {
   await wrapper.find('.assignee-pill').trigger('click')
   await nextTick()
   await nextTick()
-  return document.querySelector('.assignee-menu')
+  for (let i = 0; i < 4; i++) await nextTick()
+  // The people picker is the PropPicker of package J (#3118).
+  return document.querySelector('[data-testid="card-assignee-picker-card"]')
 }
 
 function rows(menu) {
-  return [...menu.querySelectorAll('.assignee-item')]
+  return [...menu.querySelectorAll('[data-testid^="prop-assignee-"]')]
 }
 // The row's own label: its text content also carries the avatar's initials.
 function nameOf(row) {
-  return row.querySelector('.aname').textContent.trim()
+  return row.querySelector('.pp-label')?.textContent.trim() || ''
 }
 
 beforeEach(() => {
   localStorage.clear()
   setActivePinia(createPinia())
   vi.clearAllMocks()
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })
 })
 
 afterEach(() => {
@@ -96,7 +103,7 @@ describe('assignee picker · GitLab half', () => {
   it('marks both of them as assigned and un-assigns on click', async () => {
     const menu = await openPicker()
     const stale = rows(menu).find((r) => nameOf(r) === 'quit')
-    expect(stale.querySelector('.chk')).toBeTruthy()
+    expect(stale.getAttribute('aria-checked')).toBe('true')
     stale.click()
     await nextTick()
     expect(tasksApi.removeGitlabAssignee).toHaveBeenCalledWith('t1', 'quit')

@@ -8,6 +8,8 @@ import {
   workspaces as wsApi,
 } from '@/api'
 import { usePaletteStore } from '@/stores/palette'
+import { useBoardViewStore } from '@/stores/boardView'
+import { useAuthStore } from '@/stores/auth'
 import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useFormat } from '@/composables/useFormat'
 import { useThemeStore } from '@/stores/theme'
@@ -24,18 +26,32 @@ import {
 } from '@/utils/dueModel'
 import { resolvedTimezone } from '@/utils/format'
 import { rank } from '@/utils/fuzzy'
-import { priorityLabel, priorityOptions } from '@/utils/priority'
+import { priorityLabel } from '@/utils/priority'
 import { columnName } from '@/utils/defaultNames'
 import { columnStatusName } from '@/utils/columnStatus'
 import { sortedColumns } from '@/utils/status'
+import { planComplete } from '@/utils/cardNav'
+import { glPickerMembers } from '@/utils/assignees'
+import {
+  assigneeItems,
+  milestoneItems,
+  priorityItems,
+  pushRecent,
+  readRecent,
+  RECENT_ASSIGNEES_KEY,
+  statusItems,
+} from '@/components/task/props/propItems'
 import { taskBasePatch } from '@/utils/taskPatch'
 import { taskLink } from '@/utils/taskLink'
 import { copyText } from '@/utils/clipboard'
 import { humanizeError } from '@/utils/errors'
-import { PRIORITY_COLORS } from '@/styles/tokens'
 import { ICONS } from './icons'
 
-export const FIELDS = ['status', 'assignees', 'priority', 'due', 'tags', 'subtask']
+export const FIELDS = ['status', 'assignees', 'priority', 'due', 'tags', 'milestone', 'subtask']
+// Fields whose list is the PropPicker's own rows (#3118, PackageJ «Палитра ⌘K:
+// подсписки полей»): same rows, data and order as the popovers, in the palette's
+// metrics.
+export const PICKER_FIELDS = ['status', 'assignees', 'priority', 'milestone']
 
 const TAG_COLORS = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
 
@@ -79,11 +95,14 @@ export function usePaletteTask() {
   const projectWindow = useProjectWindowStore()
   const { formatDate, formatters } = useFormat()
   const theme = useThemeStore()
+  const bv = useBoardViewStore()
+  const auth = useAuthStore()
 
   const task = ref(null)
   const columns = ref([])
   const members = ref([])
   const tags = ref([])
+  const milestones = ref([])
   const boardInfo = ref(null)
   const loading = ref(false)
   const busy = ref(false)
@@ -103,10 +122,15 @@ export function usePaletteTask() {
       try {
         const detail = (await tasksApi.get(id)).data
         const b = (await boardsApi.get(detail.board_id)).data
-        const [cols, mem, tg] = await Promise.all([
+        const [cols, mem, tg, ms] = await Promise.all([
           boardsApi.columns(detail.board_id),
           wsApi.members(b.workspace_id),
           projectsApi.tags(b.project_id),
+          // The stage list is a nicety of one field: its failure must not
+          // take the whole task scope down.
+          Promise.resolve()
+            .then(() => projectsApi.milestones(b.project_id))
+            .catch(() => ({ data: [] })),
         ])
         if (mine !== seq) return
         task.value = detail
@@ -114,6 +138,7 @@ export function usePaletteTask() {
         columns.value = sortedColumns(cols.data || [])
         members.value = mem.data || []
         tags.value = tg.data || []
+        milestones.value = ms?.data || []
       } catch (e) {
         if (mine === seq) {
           message.error(humanizeError(e))
@@ -226,6 +251,16 @@ export function usePaletteTask() {
         run: open('tags'),
       },
       {
+        key: 'milestone',
+        icon: ICONS.TrailSignOutline,
+        title: t('shell.palette.task.milestone'),
+        sub:
+          milestones.value.find((m) => m.id === tk.milestone_id)?.title ||
+          t('shell.palette.task.noMilestone'),
+        field: 'milestone',
+        run: open('milestone'),
+      },
+      {
         key: 'subtask',
         icon: ICONS.GitBranchOutline,
         title: t('shell.palette.task.subtask'),
@@ -266,57 +301,126 @@ export function usePaletteTask() {
     return 'close'
   }
 
-  function statusRows() {
+  // The board's counts when the task is on the open board (KanbanBoard
+  // publishes them), else none.
+  const stats = computed(() =>
+    bv.taskStats?.boardId && bv.taskStats.boardId === task.value?.board_id ? bv.taskStats : null,
+  )
+  const move = (columnId) =>
+    tasksApi.move(task.value.id, { column_id: columnId, before_id: null, after_id: null })
+
+  // The PropPicker rows of a field (#3118): each `run` resolves to what the
+  // palette does next — 'close', 'back' or 'stay'.
+  function pickerFor(f, query) {
     const tk = task.value
-    return columns.value.map((c, i) => ({
-      key: `col:${c.id}`,
-      status: statusOf(c, i),
-      title: columnName(c),
-      checked: c.id === tk.column_id,
-      run: () =>
-        apply(async () => {
-          if (c.id === tk.column_id) return
+    if (f === 'status') {
+      const cols = columns.value
+      return statusItems({
+        t,
+        columns: cols,
+        currentId: tk.column_id,
+        doneId: doneColumnId.value,
+        counts: stats.value?.counts || null,
+        completed: !!tk.completed_at,
+        query,
+        ops: {
           // No neighbour: the server appends to the end of the whole column — a
           // tail picked from loaded cards lands mid-column on a sprint-scoped
           // board (#2932, see moveNeighbors in utils/status).
-          await tasksApi.move(tk.id, { column_id: c.id, before_id: null, after_id: null })
-        }, afterSingle()),
-    }))
-  }
-
-  function assigneeRows() {
-    const tk = task.value
-    const on = new Set((tk.assignees || []).map((a) => a.id))
-    return members.value.map((m) => ({
-      key: `as:${m.user_id}`,
-      avatar: m.user_id,
-      title: m.name || m.email,
-      sub: m.email,
-      checked: on.has(m.user_id),
-      search: [m.name, m.email],
-      run: () =>
-        apply(async () => {
-          if (on.has(m.user_id)) await tasksApi.removeAssignee(tk.id, m.user_id)
-          else await tasksApi.addAssignee(tk.id, m.user_id)
-          await reloadTask()
-        }, 'stay'),
-    }))
-  }
-
-  function priorityRows() {
-    const tk = task.value
-    return priorityOptions()
-      .slice()
-      .reverse()
-      .map((o) => ({
-        key: `prio:${o.value}`,
-        dot: o.value ? PRIORITY_COLORS[o.value] : null,
-        icon: o.value ? null : ICONS.FlagOutline,
-        title: o.label,
-        checked: (tk.priority || 0) === o.value,
-        keysCaps: [String(o.value)],
-        run: () => setPriority(o.value),
-      }))
+          move: (id) =>
+            apply(async () => {
+              if (id !== tk.column_id) await move(id)
+            }, afterSingle()),
+          next: () => {
+            const i = cols.findIndex((c) => c.id === tk.column_id)
+            const nx = i >= 0 ? cols[i + 1] : null
+            return apply(async () => nx && (await move(nx.id)), afterSingle())
+          },
+          complete: () =>
+            apply(async () => {
+              const plan = planComplete({
+                completed: !!tk.completed_at,
+                columnId: tk.column_id,
+                doneColumnId: doneColumnId.value || cols[cols.length - 1]?.id,
+              })
+              if (plan.op === 'move') await move(plan.columnId)
+              else
+                await tasksApi.update(tk.id, {
+                  ...taskBasePatch(tk),
+                  completed: plan.op === 'complete',
+                })
+            }, afterSingle()),
+        },
+      })
+    }
+    if (f === 'priority')
+      return priorityItems({ current: tk.priority || 0, ops: { set: (p) => setPriority(p) } })
+    if (f === 'milestone')
+      return milestoneItems({
+        t,
+        query,
+        milestones: milestones.value,
+        current: tk.milestone_id || null,
+        showClosed: !!query,
+        formatters: formatters.value,
+        ops: {
+          set: (id) =>
+            apply(
+              () => (id ? tasksApi.setMilestone(tk.id, id) : tasksApi.clearMilestone(tk.id)),
+              afterSingle(),
+            ),
+        },
+      })
+    // assignees
+    const assigned = new Set((tk.assignees || []).map((a) => a.id))
+    const glOn = (tk.gitlab_assignees || []).map((g) => g.gl_username)
+    const gl =
+      bv.boardId === tk.board_id
+        ? glPickerMembers(bv.gitlabMembersList, tk.gitlab_assignees || [])
+        : []
+    const reload = () => reloadTask()
+    return assigneeItems({
+      t,
+      query,
+      members: members.value,
+      assigned,
+      recent: readRecent(RECENT_ASSIGNEES_KEY),
+      gitlab: gl,
+      glAssigned: new Set(glOn),
+      me: auth.user?.id || '',
+      load: stats.value?.load || null,
+      ops: {
+        toggle: (uid) =>
+          apply(async () => {
+            if (assigned.has(uid)) await tasksApi.removeAssignee(tk.id, uid)
+            else {
+              pushRecent(RECENT_ASSIGNEES_KEY, uid)
+              await tasksApi.addAssignee(tk.id, uid)
+            }
+            await reload()
+          }, 'stay'),
+        toggleGl: (g) =>
+          apply(async () => {
+            if (glOn.includes(g.gl_username))
+              await tasksApi.removeGitlabAssignee(tk.id, g.gl_username)
+            else
+              await tasksApi.pinGitlabAssignee(tk.id, {
+                gl_username: g.gl_username,
+                gl_name: g.gl_name,
+                gl_avatar_url: g.gl_avatar_url,
+              })
+            await reload()
+          }, 'stay'),
+        clear: () =>
+          apply(async () => {
+            await Promise.all([
+              ...[...assigned].map((uid) => tasksApi.removeAssignee(tk.id, uid)),
+              ...glOn.map((l) => tasksApi.removeGitlabAssignee(tk.id, l)),
+            ])
+            await reload()
+          }, 'stay'),
+      },
+    })
   }
 
   function setPriority(value) {
@@ -519,10 +623,8 @@ export function usePaletteTask() {
     const filter = (rows) =>
       q ? rank(rows, (r) => r.search || [r.title], q).map((r) => ({ ...r, hl: q })) : rows
     let rows
-    if (f === 'status') rows = filter(statusRows())
-    else if (f === 'assignees') rows = filter(assigneeRows())
-    else if (f === 'priority') rows = filter(priorityRows())
-    else if (f === 'due') return dueRows(q)
+    if (PICKER_FIELDS.includes(f)) return [{ id: f, title, rows: [], picker: pickerFor(f, q) }]
+    if (f === 'due') return dueRows(q)
     else if (f === 'tags') {
       const { rows: all, create, manage } = tagRows(q)
       rows = [...filter(all), ...(create ? [create] : []), manage]

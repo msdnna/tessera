@@ -40,7 +40,9 @@ const props = defineProps({
   editing: { type: Boolean, default: false },
   readonly: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'pick', 'toggle', 'rename', 'commit', 'cancel', 'menu', 'people'])
+// `field` (#3118): a click on the priority, people or estimate cell — the list
+// opens that property's picker at the cell.
+const emit = defineEmits(['open', 'pick', 'toggle', 'rename', 'commit', 'cancel', 'menu', 'field'])
 
 const { t } = useI18n()
 const ctx = inject('listCtx')
@@ -86,7 +88,7 @@ function onClick(e) {
 <template>
   <div
     class="lr"
-    :class="{ mobile, done, selected, cursor, editing }"
+    :class="{ mobile, done, selected, cursor, editing, ro: readonly }"
     :style="mobile ? null : { gridTemplateColumns: `28px 52px minmax(0, 1fr) ${cols}` }"
     :data-task-id="task.id"
     data-testid="list-row"
@@ -146,7 +148,11 @@ function onClick(e) {
       />
       <span v-else class="lr-title" :title="task.title">{{ task.title }}</span>
 
-      <span class="lr-prio">
+      <span
+        class="lr-prio lr-cell"
+        data-testid="list-cell-priority"
+        @click.stop="!readonly && $emit('field', 'priority', $event.currentTarget)"
+      >
         <template v-if="prio">
           <span class="lr-pbar" :style="{ background: hueGradVert(prioColor) }" />
           {{ priorityLabel(prio) }}
@@ -154,7 +160,11 @@ function onClick(e) {
         <span v-else class="lr-none">—</span>
       </span>
       <span class="lr-due" :class="{ overdue, none: !due }">{{ due || '—' }}</span>
-      <span class="lr-people">
+      <span
+        class="lr-people lr-cell"
+        data-testid="list-cell-assignees"
+        @click.stop="!readonly && $emit('field', 'assignees', $event.currentTarget)"
+      >
         <template v-if="people.length">
           <UserAvatar
             v-for="p in people.slice(0, 3)"
@@ -168,17 +178,17 @@ function onClick(e) {
           />
           <span v-if="people.length > 3" class="lr-more">+{{ people.length - 3 }}</span>
         </template>
-        <button
-          v-else-if="!readonly"
-          type="button"
-          class="lr-addp"
-          :title="t('board.list.assign')"
-          @click.stop="$emit('people')"
-        >
+        <button v-else-if="!readonly" type="button" class="lr-addp" :title="t('board.list.assign')">
           <n-icon :component="PersonAddOutline" :size="14" />
         </button>
       </span>
-      <span class="lr-est" :class="{ none: !estimate }">{{ estimate || '—' }}</span>
+      <span
+        class="lr-est lr-cell"
+        :class="{ none: !estimate }"
+        data-testid="list-cell-estimate"
+        @click.stop="!readonly && $emit('field', 'estimate', $event.currentTarget)"
+        >{{ estimate || '—' }}</span
+      >
       <span class="lr-tags">
         <TagPill
           v-for="tag in shownTags"
@@ -460,5 +470,13 @@ function onClick(e) {
   margin: 0;
   font-size: 10px;
   box-shadow: none;
+}
+/* The cells that open a picker (#3118): a hover well, like a pill. */
+.lr-cell {
+  border-radius: 7px;
+}
+.lr:not(.ro) .lr-cell:hover {
+  background: var(--t-hover);
+  cursor: pointer;
 }
 </style>

@@ -49,6 +49,9 @@ export const useBoardViewStore = defineStore('boardView', () => {
   // Canonical tag prefixes governed by non-"tag" GitLab rules (status/priority/…),
   // hidden from tag pickers.
   const metaTagPrefixes = ref(new Set())
+  // What the property pickers count (#3118), published by KanbanBoard from the
+  // tasks it holds: { boardId, counts: column id → tasks, load: user id → open }.
+  const taskStats = ref({ boardId: null, counts: {}, load: {} })
 
   const tagsList = computed(() => Object.values(tagsMap))
   const membersList = computed(() => Object.values(membersMap))
@@ -157,6 +160,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     refill(milestonesMap, null)
     refill(prefixNames, null)
     metaTagPrefixes.value = new Set()
+    taskStats.value = { boardId: null, counts: {}, load: {} }
     gitlabCanCreate.value = false
     gitlabFetchTemplates.value = false
     gitlabIntegrationId.value = null
@@ -196,6 +200,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     milestonesMap,
     prefixNames,
     metaTagPrefixes,
+    taskStats,
     tagsList,
     membersList,
     milestonesList,

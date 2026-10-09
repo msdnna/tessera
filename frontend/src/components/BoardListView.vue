@@ -50,6 +50,7 @@ import {
 import ListRow from './list/ListRow.vue'
 import TesseraIcon from './TesseraIcon.vue'
 import InlineEdit from './kit/InlineEdit.vue'
+import TaskFieldPopover from './task/props/TaskFieldPopover.vue'
 
 const props = defineProps({
   // The board's lanes, in order: [{ key, name, color, status?, tag?, milestone? }].
@@ -87,6 +88,23 @@ const emit = defineEmits(['open', 'changed', 'restore', 'fold', 'resize'])
 
 const { t } = useI18n()
 const { isMobile } = useResponsive()
+
+// A click on a property cell opens that property's picker at the cell (#3118):
+// the same PropPicker as the card's pills and the task modal.
+const pick = ref({ task: null, field: '', el: null })
+function openPick(task, field, el) {
+  const same = pick.value.task?.id === task.id && pick.value.field === field
+  pick.value = same ? { task: null, field: '', el: null } : { task, field, el }
+}
+// The row's task as the board has it now — a toggle reloads the board, and a
+// multi picker (people) must see the change it just made.
+const pickTask = computed(() => {
+  const id = pick.value.task?.id
+  if (!id) return null
+  for (const list of Object.values(props.lists || {}))
+    for (const x of list || []) if (x.id === id) return x
+  return pick.value.task
+})
 
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
@@ -599,7 +617,7 @@ defineExpose({ startRename, startAdd })
               @commit="(v) => commitRename(r.spot, v)"
               @cancel="editing = null"
               @menu="menu.open($event, r.task)"
-              @people="run('field', r.task, 'assignees')"
+              @field="(f, el) => openPick(r.task, f, el)"
             />
             <div v-if="!b.count && addingKey !== b.key" class="lv-empty">
               {{ t('board.list.empty') }}
@@ -624,6 +642,16 @@ defineExpose({ startRename, startAdd })
     </div>
 
     <TaskActionMenu :menu="menu" />
+    <TaskFieldPopover
+      v-model:field="pick.field"
+      :task="pickTask"
+      :anchor="() => pick.el"
+      :placement="pick.field === 'assignees' ? 'bottom-end' : 'bottom-start'"
+      :subtasks="pickTask ? subtasksByParent[pickTask.id] || [] : []"
+      :readonly="readonly"
+      testid="list"
+      @changed="emit('changed')"
+    />
   </div>
 </template>
 
