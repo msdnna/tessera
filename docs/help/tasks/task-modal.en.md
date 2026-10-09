@@ -78,6 +78,12 @@ Every tab label carries a counter, so a closed tab still tells you whether there
 - **[Documents](/help/task-documents)** — documents that point at this task.
 - **[History](/help/task-history)** — the journal of changes.
 
+## Following a task
+
+At the foot of the properties panel is the **Following** row: who gets notified about the task's life — comments, moves between columns, completion, edits and archiving. The author, the assignees and everyone who commented follow it on their own, nothing to press.
+
+**Unfollow** takes you off the list: the task's notifications stop, even while you stay an assignee. **Follow** does the opposite and lets you keep an eye on someone else's task. Notifications addressed to you — you were assigned, mentioned, the task was deleted — always arrive, following has nothing to do with them.
+
 ## The bottom of the window
 
 At the bottom: **Archive** and **Delete**. The difference matters: [the archive](/help/archive) keeps the task whole and lets you bring it back, deleting is irreversible.
