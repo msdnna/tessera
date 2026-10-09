@@ -68,8 +68,14 @@ test('захват: заметка и напоминание из одной с�
   // ⌫ deletes at once; the toast brings it back.
   await page.keyboard.press('Backspace')
   await expect.poll(async () => (await feed(backend, ws.id)).reminders.length).toBe(0)
-  // The newest toast (the delete) is the last one; the «done» one is above it.
-  await page.getByTestId('undo-toast-undo').last().click()
+  // The delete's toast lands once the browser has the DELETE's answer, which
+  // can trail the poll above; the «done» one stands above it meanwhile. Aim at
+  // the delete's own toast, not at whichever is last right now.
+  await page
+    .getByTestId('undo-toast')
+    .filter({ hasText: 'Запись удалена' })
+    .getByTestId('undo-toast-undo')
+    .click()
   await expect
     .poll(async () => (await feed(backend, ws.id)).reminders.map((r) => r.message))
     .toContain(`Созвон ${s}`)
