@@ -113,7 +113,6 @@ defineExpose({ onKey })
           <button
             type="button"
             class="pdc-chip"
-            :class="{ on: !time }"
             data-time="none"
             @mousedown.prevent
             @click="time = null"

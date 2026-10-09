@@ -69,6 +69,7 @@ const weeks = computed(() => {
         const e = epochOf(c)
         let kind = 'norm'
         if (key === selK) kind = 'sel'
+        else if (!c.inMonth) kind = 'norm'
         else if (key === endK) kind = 'end'
         else if (props.span && e > props.span.lo && e < props.span.hi) kind = 'inr'
         else if (props.rep.has(key)) kind = 'rep'

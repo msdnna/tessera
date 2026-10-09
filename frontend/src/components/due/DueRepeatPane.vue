@@ -578,8 +578,8 @@ const warning = computed(() => {
   padding: 0;
 }
 .drp.mobile .drp-seg {
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex-wrap: wrap;
+  row-gap: 3px;
 }
 .drp.mobile .drp-sego {
   flex: 1 0 auto;

@@ -1028,7 +1028,7 @@ defineExpose({ model, pane, openPane })
 }
 .dp-body {
   display: grid;
-  grid-template-columns: 206px minmax(0, 1fr);
+  grid-template-columns: minmax(206px, max-content) minmax(0, 1fr);
   gap: 12px;
   padding: 2px 2px 0;
 }
@@ -1331,14 +1331,16 @@ defineExpose({ model, pane, openPane })
   color: var(--t-text2);
 }
 .dps-rt {
-  flex: 1;
+  flex: 0 1 auto;
   min-width: 0;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .dps-rm {
-  max-width: 45%;
+  flex: 1;
+  min-width: 0;
+  text-align: right;
   font-size: 13px;
   color: var(--t-text3);
   white-space: nowrap;
