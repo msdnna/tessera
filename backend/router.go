@@ -512,6 +512,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 			protected.GET("/tasks/:id", rh.GetTask)
 			protected.GET("/tasks/:id/description", rh.GetTaskDescription)
+			protected.PUT("/tasks/:id/subscription", rh.SetTaskSubscription)
 			// The task modal's «Напоминания и заметки» (#2998): own reminders,
 			// readable notes.
 			protected.GET("/tasks/:id/reminders", rh.ListTaskReminders)

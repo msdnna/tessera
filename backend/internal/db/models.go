@@ -683,6 +683,13 @@ type TaskRelation struct {
 	Source        string    `json:"source"`
 }
 
+type TaskSubscription struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	UserID     uuid.UUID `json:"user_id"`
+	Subscribed bool      `json:"subscribed"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 type TaskTag struct {
 	TaskID uuid.UUID `json:"task_id"`
 	TagID  uuid.UUID `json:"tag_id"`
