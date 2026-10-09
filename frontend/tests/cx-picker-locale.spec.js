@@ -14,7 +14,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
 import { h, nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
-import { NTimePicker, NDatePicker, NMessageProvider } from 'naive-ui'
+import { NDatePicker, NMessageProvider } from 'naive-ui'
 
 vi.mock('@/api', () => ({
   users: { updatePreferences: vi.fn(() => Promise.resolve()) },
@@ -27,7 +27,7 @@ vi.mock('@/api', () => ({
   },
 }))
 
-const DueEditor = (await import('@/components/DueEditor.vue')).default
+const DuePicker = (await import('@/components/due/DuePicker.vue')).default
 // The «Проект» window's stage tab (#2971) took over from MilestoneManager: its
 // new-stage row carries the range picker.
 const ProjectStagesTab = (await import('@/components/project/ProjectStagesTab.vue')).default
@@ -58,21 +58,35 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-describe('DueEditor time picker', () => {
+// The due picker (#3118) has no Naive time picker any more: its clock is the
+// «Время» field and the 09:00 / 12:00 / 18:00 chips, labelled through useFormat.
+const chips = () =>
+  [...document.querySelectorAll('.dp-chip[data-time]')]
+    .filter((b) => b.dataset.time !== 'none')
+    .map((b) => b.textContent.trim().toUpperCase())
+const timeField = () => document.querySelector('[data-testid="due-time"]').value.toUpperCase()
+
+describe('due picker clock', () => {
   it('follows the 12h clock preference', async () => {
     const theme = useThemeStore()
     theme.timeFormat = '12h'
-    const w = mountWith(DueEditor, { due: Date.UTC(2026, 0, 15, 15, 0) })
+    theme.timezone = 'UTC'
+    mountWith(DuePicker, { show: true, due: Date.UTC(2026, 0, 15, 15, 0) })
     await nextTick()
-    expect(w.findComponent(NTimePicker).props('format')).toBe('hh:mm a')
+    await nextTick()
+    expect(chips()).toEqual(['09:00 AM', '12:00 PM', '06:00 PM'])
+    expect(timeField()).toBe('03:00 PM')
   })
 
   it('keeps the 24h clock when that is the preference', async () => {
     const theme = useThemeStore()
     theme.timeFormat = '24h'
-    const w = mountWith(DueEditor, { due: Date.UTC(2026, 0, 15, 15, 0) })
+    theme.timezone = 'UTC'
+    mountWith(DuePicker, { show: true, due: Date.UTC(2026, 0, 15, 15, 0) })
     await nextTick()
-    expect(w.findComponent(NTimePicker).props('format')).toBe('HH:mm')
+    await nextTick()
+    expect(chips()).toEqual(['09:00', '12:00', '18:00'])
+    expect(timeField()).toBe('15:00')
   })
 })
 

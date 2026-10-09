@@ -281,3 +281,168 @@ export function parseCapture(text, { now = new Date(), people = [], tags = [] } 
     taskRef,
   }
 }
+
+// ── Срок словами (#3118, DuePicker) ──
+//
+//   «пт 18:00», «завтра», «через 3 дня», «14.10», «след. понедельник 9:00»,
+//   «конец недели», «через 2 ч», «в 18», «вечером», «без срока»
+//
+// Every word has to be understood: a due is one moment, and a line that is half
+// a date and half a title (the quick entry's job) is a typo here — the picker
+// says «Не понял …» about the words it could not read instead of guessing.
+//
+// `now` is a WALL clock — a local Date whose fields are the reader's calendar
+// (profile timezone) — and the answer is in the same terms: a calendar day and
+// an optional 'HH:MM'. Turning that into an instant is the caller's business
+// (utils/dueModel `writeEndpoint`), the one place that knows the zone.
+
+const NEXT_WORDS = new Set(['след', 'след.', 'следующий', 'следующая', 'следующую', 'next'])
+const FILLER = new Set(['в', 'во', 'на', 'at', 'on', 'by'])
+const CLEAR_WORDS = ['без срока', 'нет срока', 'нет', 'убрать', 'no date', 'none', 'clear']
+const END_OF_WEEK = ['конец недели', 'к концу недели', 'end of week', 'eow']
+const PART_OF_DAY = {
+  утром: '09:00',
+  morning: '09:00',
+  днём: '12:00',
+  днем: '12:00',
+  noon: '12:00',
+  вечером: '18:00',
+  evening: '18:00',
+}
+const IN_UNITS = [
+  [/^(мин|минут[уы]?|m|min|mins|minutes?)$/, 'min'],
+  [/^(ч|час|часа|часов|h|hr|hrs|hours?)$/, 'hour'],
+  [/^(д|дн|день|дня|дней|d|days?)$/, 'day'],
+  [/^(н|нед|неделю|недели|недель|w|wk|weeks?)$/, 'week'],
+  [/^(мес|месяц|месяца|месяцев|mo|months?)$/, 'month'],
+]
+const inUnit = (w) => IN_UNITS.find(([re]) => re.test(w.replace(/\.$/, '')))?.[1] || null
+const hhmm = (h, m = 0) => `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`
+
+function clockWord(word, afterAt) {
+  const t = timeFromWord(word)
+  if (t) return t
+  // «6pm», «9am», «12am»
+  let m = /^(\d{1,2})(am|pm)$/.exec(word)
+  if (m && Number(m[1]) <= 12) return hhmm((Number(m[1]) % 12) + (m[2] === 'pm' ? 12 : 0))
+  // «18ч», «9h» — or a bare «18» right after «в» / «at»
+  m = /^(\d{1,2})(?:ч|h)$/.exec(word) || (afterAt ? /^(\d{1,2})$/.exec(word) : null)
+  if (m && Number(m[1]) <= 23) return hhmm(Number(m[1]))
+  return null
+}
+
+// A clock typed on its own (the picker's «Время» field): «18:00», «9.30», «6pm»,
+// «6:30 pm», «18». 'HH:MM' or null.
+export function parseClock(text) {
+  const s = String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/\s+/g, '')
+  if (!s) return null
+  const m = /^(\d{1,2})(?:[:.](\d{2}))?(am|pm)$/.exec(s)
+  if (m) {
+    const h = Number(m[1])
+    const min = Number(m[2] || 0)
+    if (h < 1 || h > 12 || min > 59) return null
+    return hhmm((h % 12) + (m[3] === 'pm' ? 12 : 0), min)
+  }
+  return clockWord(s, true)
+}
+
+// «через 3 дня» / «через 3д» / «через неделю» / «in 2 hours» at words[i]:
+// how many words it took and the moved wall clock, or null.
+function readIn(words, i, now) {
+  if (!IN_WORDS.has(words[i]) || i + 1 >= words.length) return null
+  let n = 1
+  let unit = inUnit(words[i + 1])
+  let used = 1
+  if (!unit) {
+    const m = /^(\d{1,3})([^\d]*)$/.exec(words[i + 1])
+    if (!m) return null
+    n = Number(m[1])
+    unit = m[2] ? inUnit(m[2]) : i + 2 < words.length ? inUnit(words[i + 2]) : null
+    used = m[2] ? 1 : 2
+  }
+  if (!unit) return null
+  const at = new Date(now)
+  if (unit === 'min') at.setMinutes(at.getMinutes() + n)
+  else if (unit === 'hour') at.setHours(at.getHours() + n)
+  else if (unit === 'day') at.setDate(at.getDate() + n)
+  else if (unit === 'week') at.setDate(at.getDate() + 7 * n)
+  else at.setMonth(at.getMonth() + n)
+  return { used, at, clock: unit === 'min' || unit === 'hour' }
+}
+
+/**
+ * Read a due typed in words.
+ * @returns {{ empty: true }
+ *   | { ok: true, clear: true }
+ *   | { ok: true, day: Date|null, time: string|null }   // day: wall start of day
+ *   | { ok: false, bad: string }}                       // the words not understood
+ */
+export function parseDue(text, { now = new Date() } = {}) {
+  let s = String(text || '')
+    .trim()
+    .toLowerCase()
+    .replace(/,/g, ' ')
+    .replace(/\s+/g, ' ')
+  if (!s) return { empty: true }
+  if (CLEAR_WORDS.includes(s)) return { ok: true, clear: true }
+  const today = startOfDay(now)
+  let day = null
+  let time = null
+  for (const phrase of END_OF_WEEK) {
+    if (s === phrase || s.startsWith(`${phrase} `)) {
+      // The coming Friday — today, when today is one.
+      day = new Date(today.getTime() + ((5 - today.getDay() + 7) % 7) * DAY_MS + 3600000)
+      s = s.slice(phrase.length).trim()
+      break
+    }
+  }
+  const words = s.split(' ').filter(Boolean)
+  const bad = []
+  for (let i = 0; i < words.length; i++) {
+    const w = words[i]
+    const moved = readIn(words, i, now)
+    if (moved) {
+      day = moved.at
+      if (moved.clock) time = hhmm(moved.at.getHours(), moved.at.getMinutes())
+      i += moved.used
+      continue
+    }
+    if (FILLER.has(w)) continue
+    // «след. понедельник» — the one after today, a week on when today is Monday.
+    if (NEXT_WORDS.has(w) && WEEKDAY_OF.has(words[i + 1])) {
+      const ahead = (WEEKDAY_OF.get(words[i + 1]) - today.getDay() + 7) % 7 || 7
+      day = new Date(today.getTime() + ahead * DAY_MS + 3600000)
+      i += 1
+      continue
+    }
+    if (w in PART_OF_DAY) {
+      time = PART_OF_DAY[w]
+      continue
+    }
+    const d = dayFromWord(w, now)
+    if (d) {
+      day = d
+      continue
+    }
+    const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(w)
+    if (iso) {
+      const dd = new Date(Number(iso[1]), Number(iso[2]) - 1, Number(iso[3]))
+      if (dd.getMonth() === Number(iso[2]) - 1 && dd.getDate() === Number(iso[3])) {
+        day = dd
+        continue
+      }
+    }
+    const tm = clockWord(w, FILLER.has(words[i - 1]))
+    if (tm) {
+      time = tm
+      continue
+    }
+    bad.push(w)
+  }
+  if (bad.length) return { ok: false, bad: bad.join(' ') }
+  if (!day && !time) return { ok: false, bad: String(text).trim() }
+  return { ok: true, day: day ? startOfDay(day) : null, time }
+}

@@ -360,7 +360,7 @@ export function useChartTimeline({
     if (!cursor.value) return ''
     const dt = new Date(cursor.value.ms)
     // The timeline is laid out on local calendar days, so its cursor label reads
-    // in the browser timezone (timeZone: null) — see DueEditor for the same rule.
+    // in the browser timezone (timeZone: null) — a browser-day grid.
     const o = { day: '2-digit', month: 'short', timeZone: null }
     if (dt.getFullYear() !== new Date().getFullYear()) o.year = 'numeric'
     let s = formatDate(dt, o)

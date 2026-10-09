@@ -120,7 +120,7 @@ const modalStubs = {
   ...Object.fromEntries(Object.entries(naiveStubs).map(([k, v]) => ['N' + k, v])),
   MarkdownEditor: true,
   RichContent: true,
-  DueEditor: true,
+  DuePicker: true,
   draggable: {
     template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>',
     props: ['list'],

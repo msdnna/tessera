@@ -15,10 +15,9 @@
 // highlight; here it is empty for the innocent reason that there is nothing to
 // count from, which reads as «ещё ничего не выбрано» (#2932).
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
-import { h, nextTick } from 'vue'
+import { nextTick } from 'vue'
+import { loadPicker, mountPicker, highlighted, deadWarning } from './helpers/duePicker'
 import { setActivePinia, createPinia } from 'pinia'
-import { NMessageProvider } from 'naive-ui'
 import { dueDateMissing } from '@/utils/recurrence'
 
 const TZ_BEFORE = process.env.TZ
@@ -36,7 +35,7 @@ vi.mock('@/api', () => ({
   gitlab: { projectConfig: vi.fn(() => Promise.reject(new Error('no integration'))) },
 }))
 
-const DueEditor = (await import('@/components/DueEditor.vue')).default
+const DuePicker = await loadPicker()
 
 const TODO = '11111111-1111-1111-1111-111111111111'
 const COLUMNS = [{ id: TODO, name: 'К работе' }]
@@ -46,24 +45,12 @@ const RULE = { freq: 'daily', interval: 1, trigger: 'complete', tz: 'Europe/Mosc
 let wrapper = null
 
 function mountWith(props) {
-  wrapper = mount(
-    { render: () => h(NMessageProvider, null, { default: () => h(DueEditor, props) }) },
-    { attachTo: document.body },
-  )
+  wrapper = mountPicker(DuePicker, props)
   return wrapper
 }
 
-const editor = (w) => w.findComponent(DueEditor)
-const warning = (w) => w.find('.de-warn')
-
-// Day numbers the grid highlights as *upcoming* occurrences in the month in view.
-function highlighted(w) {
-  return w
-    .findAll('.de-day')
-    .filter((b) => b.classes('occ') && !b.classes('out'))
-    .map((b) => Number(b.text()))
-    .sort((a, b) => a - b)
-}
+const model = (w) => w.findComponent(DuePicker).vm.model
+const warning = (w) => deadWarning(w, DuePicker)
 
 beforeEach(() => {
   localStorage.clear()
@@ -97,13 +84,14 @@ describe('dueDateMissing', () => {
   })
 })
 
-describe('the editor says why an undated repeat will not fire', () => {
+describe('the picker says why an undated repeat will not fire', () => {
   it('warns when the rule is opened on a task with no due date', async () => {
     const w = mountWith({ due: null, columns: COLUMNS, recurrence: RULE })
     await nextTick()
-    expect(warning(w).exists()).toBe(true)
-    expect(warning(w).text()).not.toMatch(/^task\.recur\./) // a missing key falls back to its path
-    expect(highlighted(w)).toEqual([])
+    const text = await warning(w)
+    expect(text).toBeTruthy()
+    expect(text).not.toMatch(/^task\./) // a missing key falls back to its path
+    expect(highlighted()).toEqual([])
   })
 
   it('stays quiet when a frequency is picked on an undated task', async () => {
@@ -112,11 +100,11 @@ describe('the editor says why an undated repeat will not fire', () => {
     // already closed. Warning here would be crying wolf at the editor's own fix.
     const w = mountWith({ due: null, columns: COLUMNS, recurrence: null })
     await nextTick()
-    expect(warning(w).exists()).toBe(false) // no rule yet: nothing to warn about
-    editor(w).vm.setFreq('weekly')
+    expect(await warning(w)).toBe(null) // no rule yet: nothing to warn about
+    model(w).setFreq('weekly')
     await nextTick()
-    expect(warning(w).exists()).toBe(false)
-    expect(editor(w).vm.localDue).not.toBe(null)
+    expect(await warning(w)).toBe(null)
+    expect(model(w).due).not.toBe(null)
   })
 
   it('warns for every trigger, not just the clock-driven one', async () => {
@@ -127,7 +115,7 @@ describe('the editor says why an undated repeat will not fire', () => {
         recurrence: { ...RULE, trigger, trigger_column: trigger === 'column' ? TODO : undefined },
       })
       await nextTick()
-      expect(warning(w).exists()).toBe(true)
+      expect(await warning(w)).toBeTruthy()
       w.unmount()
     }
     wrapper = null
@@ -136,11 +124,13 @@ describe('the editor says why an undated repeat will not fire', () => {
   it('clears once a date is picked in the grid', async () => {
     const w = mountWith({ due: null, columns: COLUMNS, recurrence: RULE })
     await nextTick()
-    const cell = w.findAll('.de-day').find((b) => !b.classes('out') && b.text() === '10')
-    await cell.trigger('click')
+    const cell = [...document.querySelectorAll('[data-testid="due-cal"] .dc-day')].find(
+      (b) => !b.classList.contains('out') && b.textContent.trim() === '10',
+    )
+    cell.click()
     await nextTick()
-    expect(warning(w).exists()).toBe(false)
-    expect(highlighted(w).length).toBeGreaterThan(0)
+    expect(await warning(w)).toBe(null)
+    expect(highlighted().length).toBeGreaterThan(0)
   })
 
   it('appears when «Очистить срок» is pressed under a live rule', async () => {
@@ -149,12 +139,11 @@ describe('the editor says why an undated repeat will not fire', () => {
     // stays on the card, silently dead.
     const w = mountWith({ due: DUE, columns: COLUMNS, recurrence: RULE })
     await nextTick()
-    expect(warning(w).exists()).toBe(false)
-    const clear = w.findAll('.de-link').find((b) => b.text() === 'Очистить срок')
-    await clear.trigger('click')
+    expect(await warning(w)).toBe(null)
+    document.querySelector('[data-testid="due-clear"]').click()
     await nextTick()
-    expect(warning(w).exists()).toBe(true)
-    expect(highlighted(w)).toEqual([])
+    expect(await warning(w)).toBeTruthy()
+    expect(highlighted()).toEqual([])
   })
 })
 
@@ -163,8 +152,8 @@ describe('a dated repeat is untouched', () => {
   it('previews the daily series with no warning', async () => {
     const w = mountWith({ due: DUE, columns: COLUMNS, recurrence: RULE })
     await nextTick()
-    expect(warning(w).exists()).toBe(false)
+    expect(await warning(w)).toBe(null)
     // 24 daily occurrences from Fri 10 Jul — the rest of July, then August.
-    expect(highlighted(w)).toEqual(Array.from({ length: 21 }, (_, i) => 11 + i))
+    expect(highlighted()).toEqual(Array.from({ length: 21 }, (_, i) => 11 + i))
   })
 })

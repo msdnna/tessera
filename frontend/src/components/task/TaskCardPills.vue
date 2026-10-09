@@ -43,7 +43,8 @@ import { uiCollator } from '@/i18n'
 import { taskBasePatch } from '@/utils/taskPatch'
 import PopMenu from '../PopMenu.vue'
 import UserAvatar from '../UserAvatar.vue'
-import DueEditor from '../DueEditor.vue'
+import DuePicker from '../due/DuePicker.vue'
+import { recurrenceHint } from '@/utils/dueModel'
 import RichContent from '../RichContent.vue'
 import TagPill from '../TagPill.vue'
 import TagPicker from './TagPicker.vue'
@@ -272,8 +273,21 @@ const dueLong = computed(() => formatDue(props.task.due_date, { long: true }))
 // facet — a card painted red has to be one the «Просрочено» filter still lists
 // (it also owns the "a closed task is never late" half, which used to live here).
 const overdue = computed(() => isTaskOverdue(props.task, new Date(), formatters.value))
-const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_date) : null))
-const startTs = computed(() => (props.task.start_date ? Date.parse(props.task.start_date) : null))
+// The due picker (#3118): mounted only while open — a board has hundreds of pills.
+// `openDue` is the card's one way in (a click on the pill; J1's field cycling).
+const dueOpen = ref(false)
+const dueBtn = ref(null)
+function openDue() {
+  if (props.readonly) return
+  dueOpen.value = !dueOpen.value
+}
+const recurHint = computed(() =>
+  recurrenceHint(props.task.recurrence, props.task.due_date, {
+    fmt: formatters.value,
+    weekStart: theme.weekStart === 0 ? 0 : 1,
+    columns: columns.value,
+  }),
+)
 // Estimate chip: the task's own estimate, or — if unset — the rollup sum of its
 // subtasks (so a parent shows "Σ …"). Unit resolved from the project config.
 const estCfg = computed(() => wsStore.estimationFor(projectId.value))
@@ -460,6 +474,7 @@ const toggleGlAssignee = (m) =>
           gl_avatar_url: m.gl_avatar_url,
         }),
   )
+defineExpose({ openDue })
 </script>
 
 <template>
@@ -523,42 +538,44 @@ const toggleGlAssignee = (m) =>
       </PopMenu>
     </n-popover>
 
-    <!-- due date: opens the calendar directly -->
-    <n-popover
+    <!-- due date: opens the due picker (#3118); a repeating one tells its rule on hover -->
+    <n-tooltip
       v-if="show('due') && (showEmpty || due || stackFields)"
-      trigger="click"
-      placement="bottom-start"
+      :disabled="!task.recurrence || dueOpen"
     >
       <template #trigger>
         <button
+          ref="dueBtn"
           class="pill"
-          :class="{ set: due, overdue }"
-          :title="stackFields ? t('task.field.due') : ''"
+          :class="{ set: due, overdue, 'pill-on': dueOpen }"
+          :title="stackFields && !task.recurrence ? t('task.field.due') : ''"
           data-tour="card-due"
-          @click.stop
+          data-testid="card-due-pill"
+          @click.stop="openDue"
         >
           <n-icon :component="CalendarClearOutline" :size="13" />
           <span v-if="due" class="pill-text">{{ stackFields ? dueLong : due }}</span>
           <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
-          <n-icon
-            v-if="task.recurrence"
-            :component="RepeatOutline"
-            :size="11"
-            class="pill-recur"
-            :title="t('task.field.recurring')"
-          />
+          <n-icon v-if="task.recurrence" :component="RepeatOutline" :size="11" class="pill-recur" />
         </button>
       </template>
-      <DueEditor
-        :due="dueTs"
-        :start="startTs"
-        :recurrence="task.recurrence"
-        :notify="{ enabled: dueEnabledSel, lead: dueLeadSel, repeat: dueRepeatSel }"
-        :columns="columns"
-        @apply="apply"
-        @notify="saveDueNotify"
-      />
-    </n-popover>
+      {{ recurHint }}
+    </n-tooltip>
+    <DuePicker
+      v-if="dueOpen"
+      :show="dueOpen"
+      :anchor="() => dueBtn"
+      :due="task.due_date || null"
+      :start="task.start_date || null"
+      :recurrence="task.recurrence || null"
+      :notify="{ enabled: dueEnabledSel, lead: dueLeadSel, repeat: dueRepeatSel }"
+      :columns="columns"
+      key-id="card.due"
+      testid="card-due-picker"
+      @update:show="dueOpen = $event"
+      @apply="apply"
+      @notify="saveDueNotify"
+    />
 
     <!-- reminder bell (#2998): right after the due date -->
     <ReminderPill
@@ -1058,6 +1075,10 @@ const toggleGlAssignee = (m) =>
    colour (purple accent clashed inside the neutral pill, worse on dark) */
 .pill-recur {
   color: inherit;
+}
+/* The pill whose picker is open (#3118): a focus ring. */
+.pill.pill-on {
+  box-shadow: 0 0 0 2px var(--t-primary);
 }
 /* Flag (priority) icon carries the active priority's gradient (set --icon-grad
    inline on the flag only; the date pill is also .pill.set but has no

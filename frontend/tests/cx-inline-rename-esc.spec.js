@@ -221,7 +221,7 @@ describe('card title rename — Esc (#2932)', () => {
     ...naive,
     ...Object.fromEntries(Object.entries(naive).map(([k, v]) => ['N' + k, v])),
     RichContent: true,
-    DueEditor: true,
+    DuePicker: true,
     draggable: {
       template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>',
       props: ['list'],

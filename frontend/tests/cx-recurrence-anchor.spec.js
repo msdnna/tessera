@@ -1,4 +1,4 @@
-// The editor's calendar has to preview the day the *server* will pick (#2932).
+// The due picker's calendar (DuePicker, #3118; DueEditor before it) has to preview the day the *server* will pick (#2932).
 //
 // A monthly/yearly rule carries a server-managed day-of-month anchor (`day`, plus
 // `month` for yearly). It exists because a short month temporarily moves the due
@@ -14,10 +14,8 @@
 // anchor was invented for: the task is sitting on Feb 28, and the calendar promised
 // March 28 while the server had always been going to fire on March 31.
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
-import { h, nextTick } from 'vue'
+import { nextTick } from 'vue'
 import { setActivePinia, createPinia } from 'pinia'
-import { NMessageProvider } from 'naive-ui'
 
 // Pinned so "local midnight" is a fixed thing and the grid is reproducible.
 const TZ_BEFORE = process.env.TZ
@@ -35,35 +33,26 @@ vi.mock('@/api', () => ({
   gitlab: { projectConfig: vi.fn(() => Promise.reject(new Error('no integration'))) },
 }))
 
-const DueEditor = (await import('@/components/DueEditor.vue')).default
+import {
+  loadPicker,
+  mountPicker,
+  model as modelOf,
+  highlighted,
+  forward as forwardBy,
+  day,
+} from './helpers/duePicker'
+
+const DuePicker = await loadPicker()
 
 let wrapper = null
 
 function mountWith(props) {
-  wrapper = mount(
-    { render: () => h(NMessageProvider, null, { default: () => h(DueEditor, props) }) },
-    { attachTo: document.body },
-  )
+  wrapper = mountPicker(DuePicker, props)
   return wrapper
 }
 
-const editor = (w) => w.findComponent(DueEditor)
-
-// The day numbers the grid highlights as upcoming occurrences, for the month
-// currently in view (cells spilling in from the neighbouring months are `out`).
-function highlighted(w) {
-  return w
-    .findAll('.de-day')
-    .filter((b) => b.classes('occ') && !b.classes('out'))
-    .map((b) => Number(b.text()))
-    .sort((a, b) => a - b)
-}
-
-// Walk the calendar `n` months forward (the grid opens on the due date's month).
-async function forward(w, n) {
-  for (let i = 0; i < n; i++) editor(w).vm.stepMonth(1)
-  await nextTick()
-}
+const model = (w) => modelOf(w, DuePicker)
+const forward = (w, n) => forwardBy(w, DuePicker, n)
 
 beforeEach(() => {
   localStorage.clear()
@@ -117,7 +106,7 @@ describe('recurrence preview honours the stored anchor', () => {
   it('previews from the due date when the rule has no anchor yet', async () => {
     const w = mountWith({ due: new Date(2026, 1, 20, 9, 0).getTime(), recurrence: null })
     await nextTick()
-    editor(w).vm.setFreq('monthly')
+    model(w).setFreq('monthly')
     await nextTick()
     await forward(w, 1) // March 2026
     expect(highlighted(w)).toEqual([20])
@@ -131,7 +120,7 @@ describe('recurrence preview honours the stored anchor', () => {
       recurrence: { freq: 'monthly', interval: 1, day: 31, tz: 'Europe/Moscow' },
     })
     await nextTick()
-    editor(w).vm.onDayClick(new Date(2026, 1, 12))
+    model(w).pickDay(day(2026, 1, 12))
     await nextTick()
     await forward(w, 1) // March 2026
     expect(highlighted(w)).toEqual([12])
@@ -147,7 +136,7 @@ describe('recurrence preview honours the stored anchor', () => {
       recurrence: { freq: 'monthly', interval: 1, day: 31, tz: 'Europe/Moscow' },
     })
     await nextTick()
-    editor(w).vm.setTime(new Date(2026, 5, 1, 10, 0).getTime()) // 09:00 → 10:00
+    model(w).setTime('10:00') // 09:00 → 10:00
     await nextTick()
     await forward(w, 1) // March 2026
     expect(highlighted(w)).toEqual([31])
@@ -160,7 +149,7 @@ describe('recurrence preview honours the stored anchor', () => {
       recurrence: { freq: 'yearly', interval: 1, day: 31, month: 12, tz: 'Europe/Moscow' },
     })
     await nextTick()
-    editor(w).vm.setFreq('monthly')
+    model(w).setFreq('monthly')
     await nextTick()
     await forward(w, 1) // March 2026
     expect(highlighted(w)).toEqual([28])

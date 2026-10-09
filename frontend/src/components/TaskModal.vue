@@ -59,7 +59,8 @@ import {
 } from '@/utils/estimation'
 import { useThemeStore } from '@/stores/theme'
 import { useTagFit } from '@/composables/useTagFit'
-import DueEditor from './DueEditor.vue'
+import DuePicker from './due/DuePicker.vue'
+import { recurrenceHint } from '@/utils/dueModel'
 import PopMenu from './PopMenu.vue'
 import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
@@ -426,7 +427,7 @@ const dueLabel = computed(() => {
 })
 
 // Per-task due-notification selectors (sentinel -1 / 'inherit' = user default),
-// passed to the shared DueEditor.
+// passed to the due picker.
 const dueNotify = computed(() => {
   const t = task.value || {}
   return {
@@ -435,6 +436,15 @@ const dueNotify = computed(() => {
     repeat: t.due_repeat_minutes ?? -1,
   }
 })
+// The «Срок» value: the due picker's anchor; its tooltip spells out the repeat.
+const dueValEl = ref(null)
+const recurSummary = computed(() =>
+  recurrenceHint(recurrence.value, dueTs.value, {
+    fmt: formatters.value,
+    weekStart: theme.weekStart === 0 ? 0 : 1,
+    columns: columns.value,
+  }),
+)
 
 // The task's project — the header's icon and first crumb.
 const project = computed(
@@ -703,7 +713,7 @@ async function createMilestone() {
     message.error(e.message)
   }
 }
-// DueEditor commits start + due + recurrence together.
+// The due picker commits start + due + recurrence together.
 function onDueApply(patch) {
   dueTs.value = patch.due_date ? new Date(patch.due_date).getTime() : null
   if (dueTs.value) tourEvent('task.due')
@@ -1611,39 +1621,47 @@ useShortcuts(
                     </div>
 
                     <!-- due -->
-                    <div class="prow" data-tour="tm-due" :data-tour-set="dueTs ? '' : null">
+                    <div
+                      class="prow"
+                      :class="{ 'prow-on': fieldOpen === 'due' }"
+                      data-tour="tm-due"
+                      :data-tour-set="dueTs ? '' : null"
+                    >
                       <span class="plabel">{{ t('task.field.due') }}</span>
-                      <n-popover
-                        :show="fieldOpen === 'due'"
-                        trigger="click"
-                        placement="bottom-start"
-                        @update:show="setField('due', $event)"
+                      <button
+                        ref="dueValEl"
+                        class="val"
+                        data-testid="task-due-open"
+                        :title="recurrence ? recurSummary : ''"
+                        @click="setField('due', fieldOpen !== 'due')"
                       >
-                        <template #trigger>
-                          <button class="val">
-                            <n-icon :component="CalendarClearOutline" :size="14" class="vico" />
-                            <span :class="{ muted: !dueLabel }">{{
-                              dueLabel || t('task.value.dueUnset')
-                            }}</span>
-                            <n-icon
-                              v-if="recurrence"
-                              :component="RepeatOutline"
-                              :size="14"
-                              class="recur-mark"
-                              :title="t('task.field.recurring')"
-                            />
-                          </button>
-                        </template>
-                        <DueEditor
-                          :due="dueTs"
-                          :start="startTs"
-                          :recurrence="recurrence"
-                          :notify="dueNotify"
-                          :columns="columns"
-                          @apply="onDueApply"
-                          @notify="onDueNotify"
+                        <n-icon :component="CalendarClearOutline" :size="14" class="vico" />
+                        <span :class="{ muted: !dueLabel }">{{
+                          dueLabel || t('task.value.dueUnset')
+                        }}</span>
+                        <n-icon
+                          v-if="recurrence"
+                          :component="RepeatOutline"
+                          :size="14"
+                          class="recur-mark"
                         />
-                      </n-popover>
+                      </button>
+                      <DuePicker
+                        v-if="!ro"
+                        :show="fieldOpen === 'due'"
+                        :anchor="() => dueValEl"
+                        side=".tm-panel"
+                        :due="dueTs"
+                        :start="startTs"
+                        :recurrence="recurrence"
+                        :notify="dueNotify"
+                        :columns="columns"
+                        key-id="task.due"
+                        testid="task-due-picker"
+                        @update:show="setField('due', $event)"
+                        @apply="onDueApply"
+                        @notify="onDueNotify"
+                      />
                       <ShortcutKeys id="task.due" class="pkey" />
                     </div>
 
@@ -2423,6 +2441,10 @@ useShortcuts(
 }
 .prow:hover {
   background: var(--t-hover);
+}
+/* The row whose popover is open (#3118 — the picker's anchor). */
+.prow.prow-on {
+  background: var(--t-active);
 }
 .plabel {
   font-size: 13px;

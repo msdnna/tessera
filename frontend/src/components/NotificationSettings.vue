@@ -48,6 +48,7 @@ import SecretInput from '@/components/SecretInput.vue'
 import ActionMenu from '@/components/kit/ActionMenu.vue'
 import PopoverForm from '@/components/kit/PopoverForm.vue'
 import FormField from '@/components/kit/FormField.vue'
+import { setNotifyDefaults } from '@/composables/useNotifyDefaults'
 import '@/components/settings/settings.css'
 
 const { t } = useI18n()
@@ -195,6 +196,8 @@ async function savePrefs() {
     const res = await prefsApi.update({ ...prefs })
     applying = true
     Object.assign(prefs, res.data || {})
+    // The due picker's «По умолчанию — …» reads these (#3118).
+    setNotifyDefaults(res.data || null)
     await nextTick()
     applying = false
   } catch (e) {

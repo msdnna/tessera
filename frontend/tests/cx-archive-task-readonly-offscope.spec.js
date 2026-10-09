@@ -113,7 +113,7 @@ const stubs = {
   ...Object.fromEntries(Object.entries(naive).map(([k, v]) => ['N' + k, v])),
   MarkdownEditor: true,
   RichContent: true,
-  DueEditor: true,
+  DuePicker: true,
   draggable: {
     template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>',
     props: ['list'],

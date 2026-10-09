@@ -9,14 +9,14 @@
 // (`recurrence_once_end_test.go`), hands over exactly one and then drops the rule.
 // The same shortcut lit up dates the series had already walked past.
 //
-// The picked list still has to be visible — this grid is where it is picked — so
-// the days that aren't occurrences keep a mark of their own (`pick`) instead of
-// borrowing the one that promises a firing.
+// The picked list still has to be visible — it is where the list is edited. The
+// due picker (#3118) keeps the two apart by place: the main grid marks only the
+// occurrences (`rep`), the «Повтор» panel's own grid — where «По датам» is ticked
+// — marks the picked list.
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
-import { h, nextTick } from 'vue'
+import { nextTick } from 'vue'
+import { loadPicker, mountPicker, highlighted } from './helpers/duePicker'
 import { setActivePinia, createPinia } from 'pinia'
-import { NMessageProvider } from 'naive-ui'
 
 // Pinned so "local midnight" is a fixed thing and the grid is reproducible.
 const TZ_BEFORE = process.env.TZ
@@ -34,26 +34,27 @@ vi.mock('@/api', () => ({
   gitlab: { projectConfig: vi.fn(() => Promise.reject(new Error('no integration'))) },
 }))
 
-const DueEditor = (await import('@/components/DueEditor.vue')).default
+const DuePicker = await loadPicker()
 
 let wrapper = null
 
 function mountWith(props) {
-  wrapper = mount(
-    { render: () => h(NMessageProvider, null, { default: () => h(DueEditor, props) }) },
-    { attachTo: document.body },
-  )
+  wrapper = mountPicker(DuePicker, props)
   return wrapper
 }
 
-// Day numbers carrying `cls` in the month currently in view (cells spilling in
-// from the neighbouring months are `out`).
-function marked(w, cls) {
-  return w
-    .findAll('.de-day')
-    .filter((b) => b.classes(cls) && !b.classes('out'))
-    .map((b) => Number(b.text()))
+// The picked dates in the «Повтор» panel's grid (the due itself is `sel` there).
+async function picked(w) {
+  const p = w.findComponent(DuePicker).vm
+  await p.openPane('rep')
+  await nextTick()
+  const days = [...document.querySelectorAll('[data-testid="due-rep-cal"] .dc-day.rep')]
+    .filter((b) => !b.classList.contains('out'))
+    .map((b) => Number(b.textContent.trim()))
     .sort((a, b) => a - b)
+  p.pane = 'main'
+  await nextTick()
+  return days
 }
 
 const MARCH = ['2026-03-02', '2026-03-09', '2026-03-16', '2026-03-23']
@@ -73,12 +74,12 @@ afterEach(() => {
 
 describe('custom-date recurrence previews only the days that will fire', () => {
   it('promises one more firing when «repeat forever» is off', async () => {
-    const w = mountWith({
+    mountWith({
       due: new Date(2026, 2, 2, 9, 0).getTime(),
       recurrence: { freq: 'custom', dates: [...MARCH], once: true, tz: 'Europe/Moscow' },
     })
     await nextTick()
-    expect(marked(w, 'occ')).toEqual([9])
+    expect(highlighted()).toEqual([9])
   })
 
   it('still shows the dates picked past the end of a one-off rule', async () => {
@@ -89,7 +90,8 @@ describe('custom-date recurrence previews only the days that will fire', () => {
       recurrence: { freq: 'custom', dates: [...MARCH], once: true, tz: 'Europe/Moscow' },
     })
     await nextTick()
-    expect(marked(w, 'pick')).toEqual([16, 23])
+    expect(highlighted()).toEqual([9])
+    expect(await picked(w)).toEqual([9, 16, 23])
   })
 
   it('marks a date the series has already walked past as picked, not upcoming', async () => {
@@ -98,30 +100,29 @@ describe('custom-date recurrence previews only the days that will fire', () => {
       recurrence: { freq: 'custom', dates: [...MARCH], tz: 'Europe/Moscow' },
     })
     await nextTick()
-    expect(marked(w, 'occ')).toEqual([16, 23])
-    expect(marked(w, 'pick')).toEqual([2])
+    expect(highlighted()).toEqual([16, 23])
+    expect(await picked(w)).toEqual([2, 16, 23])
   })
 
   // ── negative controls ──
 
   it('keeps promising the whole list while the rule repeats forever', async () => {
-    const w = mountWith({
+    mountWith({
       due: new Date(2026, 2, 2, 9, 0).getTime(),
       recurrence: { freq: 'custom', dates: [...MARCH], tz: 'Europe/Moscow' },
     })
     await nextTick()
-    expect(marked(w, 'occ')).toEqual([9, 16, 23])
-    expect(marked(w, 'pick')).toEqual([])
+    expect(highlighted()).toEqual([9, 16, 23])
   })
 
   it('leaves non-custom rules without any picked days', async () => {
-    // `pick` is the custom list's own mark; a weekly rule has no list to show.
+    // The picked list is the custom rule's own; a weekly rule has none to show.
     const w = mountWith({
       due: new Date(2026, 2, 2, 9, 0).getTime(),
       recurrence: { freq: 'weekly', interval: 1, once: true, tz: 'Europe/Moscow' },
     })
     await nextTick()
-    expect(marked(w, 'occ')).toEqual([9])
-    expect(marked(w, 'pick')).toEqual([])
+    expect(highlighted()).toEqual([9])
+    expect(await picked(w)).toEqual([])
   })
 })
