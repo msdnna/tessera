@@ -12,7 +12,7 @@ The **Comments** tab is the discussion of a task. Comments are written with the 
 
 ## Sending
 
-The input is pinned to the bottom of the tab and doesn't scroll away. Send it with the button or with **Ctrl+Enter**.
+The field is pinned to the bottom and stays put while you scroll. At rest it is one line; step into it and it opens up and grows with the text up to 40% of the window height. The **«Aa»** button opens the formatting row (the editor remembers whether it is open), next to it are «Attach» and «Send». Send with the button or **Ctrl+Enter**. On a phone the field rides above the keyboard.
 
 If the server is unreachable the comment **isn't lost**: “No connection — retrying (1/3)…” appears under the field and the editor tries three more times with a growing pause. Your text stays in the field the whole time, and Cancel stops the wait. Retries only happen when the network is gone: if the server answered with an error, resending is pointless and no retry is made.
 
