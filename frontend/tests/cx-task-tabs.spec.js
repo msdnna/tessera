@@ -254,11 +254,11 @@ describe('TaskRelationsTab.vue', () => {
       global: { stubs: { ...stubs, teleport: true } },
     })
     await w.find('.rel-open').trigger('click')
-    await w.find('[data-testid="rel-number"]').trigger('focus')
     await flushPromises()
-    const heads = w.findAll('.rp-head').map((n) => n.text())
+    // The relation form of package J (#3118): sections «project · board».
+    const heads = w.findAll('.pp-sec .pp-grow').map((n) => n.text())
     expect(heads).toEqual(['P · B', 'Q · B'])
-    const titles = w.findAll('.rp-title').map((n) => n.text())
+    const titles = w.findAll('[data-testid="rel-pick"] .pp-label').map((n) => n.text())
     expect(titles).toEqual(['вторая', 'третья']) // no self-link, no numberless task
   })
 })

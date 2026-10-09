@@ -146,7 +146,9 @@ const affordances = (w) => ({
   roNote: w.find('.tm-ro-banner').exists(),
   statusBtns: w.findAll('.st-btn').length,
   colPicker: w.find('.col-chip.static').exists() ? 'static' : 'picker',
-  detachParent: w.find('.val.detach').exists(),
+  // Package J (#3118): «Открепить» lives in the «Родитель» picker, which a
+  // read-only panel opens locked — the panel's own mark says which.
+  detachParent: !w.find('.props.tm-ro').exists(),
   // Заголовок и прочие текстовые поля: `:readonly="ro"` доходит только до них,
   // так что один запертый input = запертое имя задачи.
   // v2: the title is a <textarea> (#2958), the other text fields inputs.

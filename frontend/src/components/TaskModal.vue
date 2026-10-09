@@ -3,7 +3,7 @@ import { tourEvent } from '@/utils/tourEvents'
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { NModal, NInput, NButton, NPopover, NIcon, NSpin, useMessage } from 'naive-ui'
+import { NModal, NPopover, NIcon, NSpin, useMessage } from 'naive-ui'
 import {
   FlagOutline,
   CalendarClearOutline,
@@ -11,6 +11,7 @@ import {
   PlayForwardOutline,
   ChevronDownOutline,
   ArrowUndoOutline,
+  AddOutline,
   LayersOutline,
   LogoGitlab,
   OpenOutline,
@@ -24,10 +25,9 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useBoardViewStore } from '@/stores/boardView'
 import { PRIORITY_COLORS } from '@/styles/tokens'
-import { priorityLabel, priorityOptions as priorityOptionList } from '@/utils/priority'
-import { hueGrad, softFill, readableHue } from '@/utils/gradient'
+import { priorityLabel } from '@/utils/priority'
+import { softFill, readableHue } from '@/utils/gradient'
 import { buildTagGroups, matchTagByName } from '@/utils/tagGroups'
-import { milestoneRange } from '@/utils/milestones'
 import { resolvedTimezone } from '@/utils/format'
 import { useFormat } from '@/composables/useFormat'
 import { sortedColumns, columnById, nextColumn, doneTarget, moveNeighbors } from '@/utils/status'
@@ -52,16 +52,12 @@ import {
   formatEstimate,
   formatEstimateFull,
   estimateRangeShort,
-  parseEstimateInput,
-  scaleOptions,
-  estimatePlaceholder,
   sumEstimates,
 } from '@/utils/estimation'
 import { useThemeStore } from '@/stores/theme'
 import { useTagFit } from '@/composables/useTagFit'
 import DuePicker from './due/DuePicker.vue'
 import { recurrenceHint } from '@/utils/dueModel'
-import PopMenu from './PopMenu.vue'
 import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
@@ -76,6 +72,9 @@ import TaskRelationsTab from './task/TaskRelationsTab.vue'
 import TaskFilesTab from './task/TaskFilesTab.vue'
 import TaskDocumentsTab from './task/TaskDocumentsTab.vue'
 import TagPicker from './task/TagPicker.vue'
+import TaskPropPickers from './task/TaskPropPickers.vue'
+import { nextField } from './task/props/propItems'
+import { useWsDialogsStore } from '@/stores/wsDialogs'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -306,7 +305,6 @@ const priority = ref(0)
 const dueTs = ref(null)
 const startTs = ref(null)
 const estimate = ref(null) // canonical estimate value | null
-const estInput = ref('') // free-text buffer for the estimate popover
 const recurrence = ref(null) // full recurrence rule object | null
 const columns = ref([]) // board columns: status row, subtask rows, recurrence selects
 const doneColumnId = ref(null) // boards.done_column_id — target of the «close» check
@@ -324,24 +322,16 @@ function manageTags(typed = '') {
   projectWindow.open(pid, 'tags', { filter })
 }
 
-// Computed: the ladder is rebuilt per render so a language switch reaches it.
-const priorityOptions = computed(() => priorityOptionList())
-
 // ── estimation ──────────────────────────────────────────────
 // Effective unit config for this task's project (project override → workspace
 // default → built-in). boardInfo.projectId is the reliable source once loaded.
 const estCfg = computed(() => store.estimationFor(projectId.value || boardInfo.value?.projectId))
-// Compact estimate ("8н") — used to prefill the free-text editor, which parses
-// that same syntax.
-const estLabel = computed(() => formatEstimate(estimate.value, estCfg.value))
 // Full spelled-out estimate ("8 недель"), shown as the row's value.
 const estFull = computed(() => formatEstimateFull(estimate.value, estCfg.value))
 // Projected window from start_date, free-form ("18 мая → 13 июл."), shown inline.
 const estRange = computed(() =>
   estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value, formatters.value),
 )
-const estOptions = computed(() => scaleOptions(estCfg.value)) // non-empty only for points
-const estPlaceholder = computed(() => estimatePlaceholder(estCfg.value))
 // Rollup hint: sum of direct subtask estimates, shown when the task has children.
 const subtaskEstimate = computed(() => sumEstimates(task.value?.subtasks))
 const subtaskEstimateLabel = computed(() =>
@@ -351,28 +341,6 @@ function setEstimate(val) {
   estimate.value = val && val > 0 ? val : null
   applyMeta()
 }
-// Apply what was typed in the estimate box. An unreadable entry is reported and
-// left alone: the field is free text ("1ч 30", "3д 4ч", "полдня"), and the old
-// `setEstimate(parse(...))` turned every misread into a silent clear — the number
-// a person had planned with vanished on a typo, with nothing on screen to say so.
-function applyEstInput() {
-  const { value, ok } = parseEstimateInput(estInput.value, estCfg.value)
-  if (!ok) {
-    message.error(t('task.estimate.unreadable', { value: estInput.value.trim() }))
-    return
-  }
-  setEstimate(value)
-}
-function clearEstimate() {
-  estInput.value = ''
-  setEstimate(null)
-}
-// Prefill the free-text buffer with the current value when the popover opens.
-function onEstShow(shown) {
-  setField('estimate', shown)
-  if (shown) estInput.value = estLabel.value
-}
-
 const tagObjs = computed(() =>
   selectedTags.value.map((id) => tags.value.find((t) => t.id === id)).filter(Boolean),
 )
@@ -679,7 +647,6 @@ function setPriority(p) {
   if (p) tourEvent('task.priority')
 }
 // ── milestone («Этап») ──
-const newMilestoneTitle = ref('')
 // Locally-created milestones shown immediately, before the board reloads its meta.
 const extraMilestones = ref([])
 const milestoneOptions = computed(() => {
@@ -697,18 +664,6 @@ async function setMilestone(milestoneId) {
     else await tasksApi.clearMilestone(props.taskId)
     if (task.value) task.value.milestone_id = milestoneId || null
     emit('changed')
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-async function createMilestone() {
-  const title = newMilestoneTitle.value.trim()
-  if (!title || !projectId.value) return
-  try {
-    const { data } = await projApi.createMilestone(projectId.value, { title })
-    extraMilestones.value.push(data)
-    newMilestoneTitle.value = ''
-    await setMilestone(data.id)
   } catch (e) {
     message.error(e.message)
   }
@@ -931,22 +886,25 @@ async function transferTo(boardId) {
     message.error(e.message)
   }
 }
-// Detach this task from its parent → becomes a top-level board card.
+// Detach this task from its parent → becomes a top-level board card. The
+// modal stays on the task (the «Родитель» picker, #3118) and re-reads it.
 async function detachFromParent() {
   try {
     await tasksApi.setParent(props.taskId, null)
+    await loadDetail()
     emit('changed')
-    close()
   } catch (e) {
     message.error(e.message)
   }
 }
-// Attach this task as a subtask of another (becomes its child).
+// Attach this task as a subtask of another (becomes its child); a parent on
+// another board takes the task over there.
 async function attachTo(parentId) {
+  if (!parentId || parentId === task.value?.parent_id) return
   try {
     await tasksApi.setParent(props.taskId, parentId)
+    await loadDetail()
     emit('changed')
-    close()
   } catch (e) {
     message.error(e.message)
   }
@@ -1019,6 +977,23 @@ async function toggleAssignee(uid) {
 
 function isGlAssigned(username) {
   return glAssignees.value.some((g) => g.gl_username === username)
+}
+// «Снять всех» (⇧⌫ in the picker): every Tessera and GitLab assignee off.
+async function clearAssignees() {
+  const ids = [...selectedAssignees.value]
+  const logins = glAssignees.value.map((g) => g.gl_username)
+  try {
+    await Promise.all([
+      ...ids.map((uid) => tasksApi.removeAssignee(props.taskId, uid)),
+      ...logins.map((login) => tasksApi.removeGitlabAssignee(props.taskId, login)),
+    ])
+    selectedAssignees.value = []
+    if (logins.length) task.value = (await tasksApi.get(props.taskId)).data
+    emit('changed')
+    refreshEvents()
+  } catch (e) {
+    message.error(e.message)
+  }
 }
 // Assign/unassign a GitLab project member (may have no Tessera account). On
 // integration boards with push_assignees on, the backend mirrors this to the issue.
@@ -1181,32 +1156,139 @@ const composerEl = ref(null)
 // ── activity: «Всё» (comments + journal) / «Комментарии» / «Файлы» ──
 const activityMode = ref('all')
 
-// ── field popovers, opened by click or by their key (S/P/A/D/L) ──
-// One controlled slot: a key opens its field's popover, picking a single value
-// (status, priority) closes it, multi-pickers stay open for more.
+// ── field popovers, opened by click or by their key (S/P/A/D/L, O/M/U) ──
+// One controlled slot: a key opens its field's picker at its row of
+// «Свойства» (#3118), picking a single value (status, priority, stage…) closes
+// it, multi-pickers stay open for more. The open field's row is drawn active.
 const fieldOpen = ref('')
 function setField(name, open) {
   if (open) fieldOpen.value = name
   else if (fieldOpen.value === name) fieldOpen.value = ''
 }
+function toggleField(name) {
+  setField(name, fieldOpen.value !== name)
+}
 function openField(name) {
   if (ro.value) return
-  // The keys reach the panel's fields; a hidden panel comes back first.
-  if (name !== 'status' && wide.value && rightHidden.value) toggleRightPane()
+  // S with the panel hidden opens at the status chip of the head.
+  if (name === 'status' && wide.value && rightHidden.value) name = 'statusHead'
+  // The other keys reach the panel's fields; a hidden panel comes back first.
+  else if (wide.value && rightHidden.value) toggleRightPane()
   nextTick(() => (fieldOpen.value = name))
-}
-function pickPriority(p) {
-  fieldOpen.value = ''
-  setPriority(p)
-}
-function pickColumn(id) {
-  fieldOpen.value = ''
-  moveToColumn(id)
 }
 watch(
   () => props.taskId,
   () => (fieldOpen.value = ''),
 )
+// The rows the pickers stand at, and the focus going back to the row's value
+// once its picker closes (Esc «возвращает фокус на якорь»).
+const statusHeadEl = ref(null)
+const rowEls = {
+  status: ref(null),
+  priority: ref(null),
+  assignees: ref(null),
+  estimate: ref(null),
+  milestone: ref(null),
+  parent: ref(null),
+}
+function rowAnchor(field) {
+  if (field === 'statusHead') return statusHeadEl.value
+  return rowEls[field]?.value || null
+}
+watch(fieldOpen, (now, before) => {
+  if (now || !before || !props.show) return
+  const el = rowAnchor(before)
+  const target = el?.matches?.('button') ? el : el?.querySelector?.('button.val')
+  nextTick(() => target?.focus?.({ preventScroll: true }))
+})
+// The same key again in an open picker walks to the next field: S A P D L.
+function cycleField(from) {
+  const next = nextField(from === 'statusHead' ? 'status' : from)
+  if (!next) return
+  fieldOpen.value = ''
+  nextTick(() => openField(next))
+}
+
+// The «Связи» form (⇧L) at the section's «Связать».
+const relOpen = ref(false)
+const relOpenEl = ref(null)
+watch(
+  () => props.taskId,
+  () => (relOpen.value = false),
+)
+function openRelation() {
+  if (ro.value) return
+  if (wide.value && rightHidden.value) toggleRightPane()
+  nextTick(() => (relOpen.value = true))
+}
+
+// What the pickers draw (TaskPropPickers): the board's columns with their
+// counts, the people with their load on this board, the stage list…
+const boardCounts = computed(() => {
+  const counts = {}
+  const load = {}
+  for (const x of props.boardTopTasks || []) {
+    counts[x.column_id] = (counts[x.column_id] || 0) + 1
+    if (x.completed_at) continue
+    for (const uid of x.assignee_ids || []) load[uid] = (load[uid] || 0) + 1
+  }
+  return { counts, load }
+})
+const wsDialogs = useWsDialogsStore()
+const propCtx = computed(() => ({
+  task: task.value,
+  columns: sortedCols.value,
+  doneId: doneCol.value?.id || null,
+  completed: completed.value,
+  counts: (props.boardTopTasks || []).length ? boardCounts.value.counts : null,
+  priority: priority.value,
+  members: members.value,
+  assigned: selectedAssignees.value,
+  gitlab: glPickerList.value,
+  glAssigned: glAssignees.value.map((g) => g.gl_username),
+  load: (props.boardTopTasks || []).length ? boardCounts.value.load : null,
+  estimate: estimate.value,
+  estCfg: estCfg.value,
+  rollup: subtaskEstimate.value,
+  milestones: milestoneOptions.value,
+  parent: task.value?.parent_id
+    ? parentTask.value || { id: task.value.parent_id, title: '' }
+    : null,
+  boardTasks: parentCandidates.value,
+  projectId: projectId.value || boardInfo.value?.projectId || '',
+  wsId: wsId.value || '',
+  readonly: ro.value
+    ? task.value?.archived_at || props.readonly
+      ? t('props.readonlyArchived')
+      : t('props.readonly')
+    : '',
+}))
+const propOps = {
+  move: (id) => moveToColumn(id),
+  next: () => nextCol.value && moveToColumn(nextCol.value.id),
+  complete: () => closeTask(),
+  setPriority: (p) => setPriority(p),
+  toggleAssignee: (uid) => toggleAssignee(uid),
+  toggleGl: (m) => toggleGlAssignee(m),
+  clearAssignees: () => clearAssignees(),
+  invite: (email) => {
+    fieldOpen.value = ''
+    wsDialogs.draftEmail = email
+    wsDialogs.open('members')
+  },
+  setEstimate: (v) => setEstimate(v),
+  openScale: () => {
+    const pid = projectId.value || boardInfo.value?.projectId
+    fieldOpen.value = ''
+    if (pid) projectWindow.open(pid, 'estimation')
+  },
+  setMilestone: (id) => setMilestone(id),
+  milestoneCreated: (m) => extraMilestones.value.push(m),
+  setParent: (id) => attachTo(id),
+  detach: () => detachFromParent(),
+  openParent: (id) => emit('open', id),
+  cycle: (from) => cycleField(from),
+}
 
 // ── keys (v2, #2958): J/K walk the board's order, the field keys mirror the
 // selected card's. Live only while this modal is the top layer and nothing in it
@@ -1218,7 +1300,7 @@ function keysLive() {
   // A kit layer (a menu, the tag picker) or the description's editor holds the
   // keyboard (#3113).
   if (document.querySelector('.kit-layer')) return false
-  return !fieldOpen.value
+  return !fieldOpen.value && !relOpen.value
 }
 const canEdit = () => !ro.value
 
@@ -1229,6 +1311,10 @@ const headerRef = ref(null)
 function onEsc() {
   if (fieldOpen.value) {
     fieldOpen.value = ''
+    return
+  }
+  if (relOpen.value) {
+    relOpen.value = false
     return
   }
   if (headerRef.value?.closeMenus()) return
@@ -1255,6 +1341,10 @@ useShortcuts(
     'task.priorityPick': () => openField('priority'),
     'task.due': () => openField('due'),
     'task.tags': () => openField('tags'),
+    'task.estimate': () => openField('estimate'),
+    'task.milestone': () => openField('milestone'),
+    'task.parent': () => openField('parent'),
+    'task.relation': () => openRelation(),
     'task.subtask': () => canEdit() && subtasksTab.value?.startAdd(),
     'task.editDesc': () => canEdit() && descTab.value?.startEdit(),
     'task.editDescAlt': () => canEdit() && descTab.value?.startEdit(),
@@ -1348,47 +1438,21 @@ useShortcuts(
 
               <!-- status · shift right · complete · when it last changed -->
               <div class="tm-actions">
-                <n-popover
+                <button
                   v-if="!ro && sortedCols.length"
-                  :show="fieldOpen === 'status'"
-                  trigger="click"
-                  placement="bottom-start"
-                  @update:show="setField('status', $event)"
+                  ref="statusHeadEl"
+                  class="tm-status col-chip"
+                  :class="{ open: fieldOpen === 'statusHead' }"
+                  :style="statusTone"
+                  :disabled="moving"
+                  data-testid="task-status"
+                  @click="toggleField('statusHead')"
                 >
-                  <template #trigger>
-                    <button
-                      class="tm-status col-chip"
-                      :style="statusTone"
-                      :disabled="moving"
-                      data-testid="task-status"
-                    >
-                      <TesseraIcon
-                        :name="statusIcon(currentColumn)"
-                        :size="15"
-                        class="tm-status-ico"
-                      />
-                      <span>{{ columnName(currentColumn) || t('task.value.columnNone') }}</span>
-                      <n-icon :component="ChevronDownOutline" :size="12" class="tm-status-chev" />
-                      <ShortcutKeys id="task.status" />
-                    </button>
-                  </template>
-                  <PopMenu class="pmenu">
-                    <div
-                      v-for="c in sortedCols"
-                      :key="c.id"
-                      class="menu-item col-item"
-                      :class="{ cur: c.id === task?.column_id }"
-                      @click="pickColumn(c.id)"
-                    >
-                      <TesseraIcon
-                        :name="statusIcon(c)"
-                        :size="14"
-                        :style="{ color: c.color || 'var(--t-text3)' }"
-                      />
-                      <span>{{ columnName(c) }}</span>
-                    </div>
-                  </PopMenu>
-                </n-popover>
+                  <TesseraIcon :name="statusIcon(currentColumn)" :size="15" class="tm-status-ico" />
+                  <span>{{ columnName(currentColumn) || t('task.value.columnNone') }}</span>
+                  <n-icon :component="ChevronDownOutline" :size="12" class="tm-status-chev" />
+                  <ShortcutKeys id="task.status" />
+                </button>
                 <span v-else class="tm-status col-chip static" :style="statusTone">
                   <TesseraIcon :name="statusIcon(currentColumn)" :size="15" class="tm-status-ico" />
                   <span>{{ columnName(currentColumn) || '—' }}</span>
@@ -1448,56 +1512,30 @@ useShortcuts(
               <!-- The properties: beside the content when there is room, in the
                    flow right here otherwise (CSS moves the one panel). -->
               <Teleport :to="sideEl" :disabled="!wide || !sideEl">
-                <aside v-if="!wide || !rightHidden" class="tm-panel">
+                <aside v-if="!wide || !rightHidden" class="tm-panel" data-pop-side>
                   <div class="tp-sec">{{ t('task.panel.props') }}</div>
                   <div class="props" :class="{ 'tm-ro': ro }">
                     <!-- status -->
-                    <div class="prow">
+                    <div
+                      :ref="rowEls.status"
+                      class="prow"
+                      :class="{ active: fieldOpen === 'status' }"
+                      data-testid="task-row-status"
+                      @click="toggleField('status')"
+                    >
                       <span class="plabel">{{ t('task.field.status') }}</span>
-                      <n-popover
-                        v-if="!ro && sortedCols.length"
-                        :show="fieldOpen === 'statusPanel'"
-                        trigger="click"
-                        placement="bottom-start"
-                        @update:show="setField('statusPanel', $event)"
+                      <button
+                        class="val"
+                        :class="{ static: ro }"
+                        @click.stop="toggleField('status')"
                       >
-                        <template #trigger>
-                          <button class="val">
-                            <TesseraIcon
-                              :name="statusIcon(currentColumn)"
-                              :size="14"
-                              :style="{ color: currentColumn?.color || 'var(--t-text3)' }"
-                            />
-                            <span>{{
-                              columnName(currentColumn) || t('task.value.columnNone')
-                            }}</span>
-                          </button>
-                        </template>
-                        <PopMenu class="pmenu">
-                          <div
-                            v-for="c in sortedCols"
-                            :key="c.id"
-                            class="menu-item col-item"
-                            :class="{ cur: c.id === task?.column_id }"
-                            @click="pickColumn(c.id)"
-                          >
-                            <TesseraIcon
-                              :name="statusIcon(c)"
-                              :size="14"
-                              :style="{ color: c.color || 'var(--t-text3)' }"
-                            />
-                            <span>{{ columnName(c) }}</span>
-                          </div>
-                        </PopMenu>
-                      </n-popover>
-                      <span v-else class="val static">
                         <TesseraIcon
                           :name="statusIcon(currentColumn)"
                           :size="14"
                           :style="{ color: currentColumn?.color || 'var(--t-text3)' }"
                         />
-                        <span>{{ columnName(currentColumn) || '—' }}</span>
-                      </span>
+                        <span>{{ columnName(currentColumn) || t('task.value.columnNone') }}</span>
+                      </button>
                       <ShortcutKeys id="task.status" class="pkey" />
                     </div>
 
@@ -1506,119 +1544,59 @@ useShortcuts(
                        (#2759): its steps end when the user actually sets the value,
                        not when the picker was opened. Absent (not empty) when unset,
                        so [data-tour-set] alone selects the filled ones. -->
-                    <div class="prow" data-tour="tm-priority" :data-tour-set="priority ? '' : null">
+                    <div
+                      :ref="rowEls.priority"
+                      class="prow"
+                      :class="{ active: fieldOpen === 'priority' }"
+                      data-tour="tm-priority"
+                      :data-tour-set="priority ? '' : null"
+                      data-testid="task-row-priority"
+                      @click="toggleField('priority')"
+                    >
                       <span class="plabel">{{ t('task.field.priority') }}</span>
-                      <n-popover
-                        :show="fieldOpen === 'priority'"
-                        trigger="click"
-                        placement="bottom-start"
-                        @update:show="setField('priority', $event)"
-                      >
-                        <template #trigger>
-                          <button class="val">
-                            <span v-if="priority" class="prio-pill" :style="priorityTone">
-                              <n-icon :component="FlagOutline" :size="13" />
-                              {{ priorityLabel(priority) }}
-                            </span>
-                            <span v-else class="muted">{{ priorityLabel(0) }}</span>
-                          </button>
-                        </template>
-                        <PopMenu>
-                          <div
-                            v-for="o in priorityOptions"
-                            :key="o.value"
-                            class="menu-item"
-                            @click="pickPriority(o.value)"
-                          >
-                            <span
-                              class="dot"
-                              :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }"
-                            />
-                            <span class="grow">{{ o.label }}</span>
-                            <span class="muted">{{ o.value }}</span>
-                          </div>
-                        </PopMenu>
-                      </n-popover>
+                      <button class="val" @click.stop="toggleField('priority')">
+                        <span v-if="priority" class="prio-pill" :style="priorityTone">
+                          <n-icon :component="FlagOutline" :size="13" />
+                          {{ priorityLabel(priority) }}
+                        </span>
+                        <span v-else class="muted">{{ priorityLabel(0) }}</span>
+                      </button>
                       <ShortcutKeys id="task.priorityPick" class="pkey" />
                     </div>
 
                     <!-- assignees -->
                     <div
+                      :ref="rowEls.assignees"
                       class="prow"
+                      :class="{ active: fieldOpen === 'assignees' }"
                       data-tour="tm-assignees"
                       :data-tour-set="assigneeObjs.length || glAssignees.length ? '' : null"
+                      data-testid="task-row-assignees"
+                      @click="toggleField('assignees')"
                     >
                       <span class="plabel">{{ t('task.field.assignees') }}</span>
-                      <n-popover
-                        :show="fieldOpen === 'assignees'"
-                        trigger="click"
-                        placement="bottom-start"
-                        @update:show="setField('assignees', $event)"
-                      >
-                        <template #trigger>
-                          <button class="val val-people">
-                            <span v-if="assigneeObjs.length || glAssignees.length" class="cascade">
-                              <UserAvatar
-                                v-for="u in assigneeObjs.slice(0, 4)"
-                                :key="u.user_id"
-                                class="avatar"
-                                :user-id="u.user_id"
-                                :name="u.name"
-                                :title="u.name"
-                              />
-                              <UserAvatar
-                                v-for="(g, i) in glAssignees.slice(0, 4)"
-                                :key="`g${i}`"
-                                class="avatar ext-ava"
-                                :src="g.gl_avatar_url"
-                                :name="g.gl_name || g.gl_username"
-                                :title="`${g.gl_name || g.gl_username} (GitLab)`"
-                              />
-                            </span>
-                            <span v-if="assigneeNames" class="people-names">{{
-                              assigneeNames
-                            }}</span>
-                            <span v-else class="muted">{{ t('task.value.assigneesNone') }}</span>
-                          </button>
-                        </template>
-                        <PopMenu class="pmenu">
-                          <div
-                            v-for="m in members"
-                            :key="m.user_id"
-                            class="menu-item"
-                            @click="toggleAssignee(m.user_id)"
-                          >
-                            <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
-                            <span class="grow">{{ m.name }}</span>
-                            <n-icon
-                              v-if="selectedAssignees.includes(m.user_id)"
-                              :component="CheckmarkOutline"
-                              class="chk"
-                            />
-                          </div>
-                          <template v-if="glPickerList.length">
-                            <div class="menu-sep">GitLab</div>
-                            <div
-                              v-for="m in glPickerList"
-                              :key="m.gl_user_id"
-                              class="menu-item"
-                              @click="toggleGlAssignee(m)"
-                            >
-                              <UserAvatar
-                                class="avatar sm"
-                                :src="m.gl_avatar_url"
-                                :name="m.gl_name || m.gl_username"
-                              />
-                              <span class="grow">{{ m.gl_name || m.gl_username }}</span>
-                              <n-icon
-                                v-if="isGlAssigned(m.gl_username)"
-                                :component="CheckmarkOutline"
-                                class="chk"
-                              />
-                            </div>
-                          </template>
-                        </PopMenu>
-                      </n-popover>
+                      <button class="val val-people" @click.stop="toggleField('assignees')">
+                        <span v-if="assigneeObjs.length || glAssignees.length" class="cascade">
+                          <UserAvatar
+                            v-for="u in assigneeObjs.slice(0, 4)"
+                            :key="u.user_id"
+                            class="avatar"
+                            :user-id="u.user_id"
+                            :name="u.name"
+                            :title="u.name"
+                          />
+                          <UserAvatar
+                            v-for="(g, i) in glAssignees.slice(0, 4)"
+                            :key="`g${i}`"
+                            class="avatar ext-ava"
+                            :src="g.gl_avatar_url"
+                            :name="g.gl_name || g.gl_username"
+                            :title="`${g.gl_name || g.gl_username} (GitLab)`"
+                          />
+                        </span>
+                        <span v-if="assigneeNames" class="people-names">{{ assigneeNames }}</span>
+                        <span v-else class="muted">{{ t('task.value.assigneesNone') }}</span>
+                      </button>
                       <ShortcutKeys id="task.assignees" class="pkey" />
                     </div>
 
@@ -1643,7 +1621,7 @@ useShortcuts(
                     <!-- due -->
                     <div
                       class="prow"
-                      :class="{ 'prow-on': fieldOpen === 'due' }"
+                      :class="{ active: fieldOpen === 'due' }"
                       data-tour="tm-due"
                       :data-tour-set="dueTs ? '' : null"
                     >
@@ -1686,147 +1664,49 @@ useShortcuts(
                     </div>
 
                     <!-- estimate -->
-                    <div class="prow">
+                    <div
+                      :ref="rowEls.estimate"
+                      class="prow"
+                      :class="{ active: fieldOpen === 'estimate' }"
+                      data-testid="task-row-estimate"
+                      @click="toggleField('estimate')"
+                    >
                       <span class="plabel">{{ t('task.field.estimate') }}</span>
-                      <n-popover
-                        :show="fieldOpen === 'estimate'"
-                        trigger="click"
-                        placement="bottom-start"
-                        @update:show="onEstShow"
-                      >
-                        <template #trigger>
-                          <button class="val">
-                            <n-icon :component="TimeOutline" :size="14" class="vico" />
-                            <span :class="{ muted: !estFull }">{{
-                              estFull || t('task.value.estimateUnset')
-                            }}</span>
-                            <span v-if="estRange" class="est-range">· {{ estRange }}</span>
-                            <span
-                              v-if="subtaskEstimateLabel"
-                              class="est-rollup"
-                              :title="t('task.estimate.rollupHint')"
-                              >Σ {{ subtaskEstimateLabel }}</span
-                            >
-                          </button>
-                        </template>
-                        <div class="est-pop">
-                          <PopMenu v-if="estOptions.length" class="est-menu">
-                            <div class="menu-item" @click="clearEstimate">
-                              <span class="grow muted">{{ t('task.value.estimateUnset') }}</span>
-                              <n-icon
-                                v-if="estimate == null"
-                                :component="CheckmarkOutline"
-                                class="chk"
-                              />
-                            </div>
-                            <div
-                              v-for="o in estOptions"
-                              :key="o.value"
-                              class="menu-item"
-                              @click="setEstimate(o.value)"
-                            >
-                              <span class="grow">{{ o.label }}</span>
-                              <n-icon
-                                v-if="estimate === o.value"
-                                :component="CheckmarkOutline"
-                                class="chk"
-                              />
-                            </div>
-                          </PopMenu>
-                          <div v-else class="est-edit">
-                            <n-input
-                              v-model:value="estInput"
-                              size="small"
-                              :placeholder="estPlaceholder"
-                              @keydown.esc.stop="fieldOpen = ''"
-                              @keydown.enter.prevent="applyEstInput"
-                            />
-                            <div class="est-actions">
-                              <n-button size="tiny" tertiary @click="clearEstimate">{{
-                                t('task.estimate.clear')
-                              }}</n-button>
-                              <n-button size="tiny" type="primary" @click="applyEstInput">{{
-                                t('task.estimate.apply')
-                              }}</n-button>
-                            </div>
-                          </div>
-                        </div>
-                      </n-popover>
+                      <button class="val" @click.stop="toggleField('estimate')">
+                        <n-icon :component="TimeOutline" :size="14" class="vico" />
+                        <span :class="{ muted: !estFull }">{{
+                          estFull || t('task.value.estimateUnset')
+                        }}</span>
+                        <span v-if="estRange" class="est-range">· {{ estRange }}</span>
+                        <span
+                          v-if="subtaskEstimateLabel"
+                          class="est-rollup"
+                          :title="t('task.estimate.rollupHint')"
+                          >Σ {{ subtaskEstimateLabel }}</span
+                        >
+                      </button>
+                      <ShortcutKeys id="task.estimate" class="pkey" />
                     </div>
 
                     <!-- milestone («Этап») -->
-                    <div class="prow">
+                    <div
+                      :ref="rowEls.milestone"
+                      class="prow"
+                      :class="{ active: fieldOpen === 'milestone' }"
+                      data-testid="task-row-milestone"
+                      @click="toggleField('milestone')"
+                    >
                       <span class="plabel">{{ t('task.field.milestone') }}</span>
-                      <n-popover
-                        :show="fieldOpen === 'milestone'"
-                        trigger="click"
-                        placement="bottom-start"
-                        @update:show="setField('milestone', $event)"
-                      >
-                        <template #trigger>
-                          <button class="val">
-                            <n-icon :component="TrailSignOutline" :size="14" class="vico" />
-                            <span :class="{ muted: !taskMilestone }">
-                              {{
-                                taskMilestone ? taskMilestone.title : t('task.value.milestoneUnset')
-                              }}
-                            </span>
-                            <span v-if="taskMilestone?.state === 'closed'" class="est-range"
-                              >· {{ t('task.value.milestoneClosed') }}</span
-                            >
-                          </button>
-                        </template>
-                        <div class="ms-pop">
-                          <PopMenu class="ms-menu">
-                            <div class="menu-item" @click="setMilestone(null)">
-                              <span class="grow muted">{{ t('task.value.milestoneUnset') }}</span>
-                              <n-icon
-                                v-if="!task?.milestone_id"
-                                :component="CheckmarkOutline"
-                                class="chk"
-                              />
-                            </div>
-                            <div
-                              v-for="m in milestoneOptions"
-                              :key="m.id"
-                              class="menu-item"
-                              @click="setMilestone(m.id)"
-                            >
-                              <span
-                                class="grow ms-opt"
-                                :class="{ 'ms-closed': m.state === 'closed' }"
-                              >
-                                <span class="ms-opt-title">{{ m.title }}</span>
-                                <span v-if="milestoneRange(m, formatters)" class="ms-opt-range">{{
-                                  milestoneRange(m, formatters)
-                                }}</span>
-                              </span>
-                              <n-icon
-                                v-if="task?.milestone_id === m.id"
-                                :component="CheckmarkOutline"
-                                class="chk"
-                              />
-                            </div>
-                          </PopMenu>
-                          <div class="ms-new">
-                            <n-input
-                              v-model:value="newMilestoneTitle"
-                              size="small"
-                              :placeholder="t('task.milestone.newPlaceholder')"
-                              @keydown.esc.stop="fieldOpen = ''"
-                              @keydown.enter.prevent="createMilestone"
-                            />
-                            <n-button
-                              size="small"
-                              type="primary"
-                              :disabled="!newMilestoneTitle.trim()"
-                              @click="createMilestone"
-                            >
-                              {{ t('common.action.create') }}
-                            </n-button>
-                          </div>
-                        </div>
-                      </n-popover>
+                      <button class="val" @click.stop="toggleField('milestone')">
+                        <n-icon :component="TrailSignOutline" :size="14" class="vico" />
+                        <span :class="{ muted: !taskMilestone }">
+                          {{ taskMilestone ? taskMilestone.title : t('task.value.milestoneUnset') }}
+                        </span>
+                        <span v-if="taskMilestone?.state === 'closed'" class="est-range"
+                          >· {{ t('task.value.milestoneClosed') }}</span
+                        >
+                      </button>
+                      <ShortcutKeys id="task.milestone" class="pkey" />
                     </div>
 
                     <!-- tags -->
@@ -1896,46 +1776,24 @@ useShortcuts(
                     </div>
 
                     <!-- parent -->
-                    <div class="prow">
+                    <div
+                      :ref="rowEls.parent"
+                      class="prow"
+                      :class="{ active: fieldOpen === 'parent' }"
+                      data-testid="task-row-parent"
+                      @click="toggleField('parent')"
+                    >
                       <span class="plabel">{{ t('task.field.parent') }}</span>
-                      <div v-if="task?.parent_id" class="parent-row">
-                        <button
-                          class="val parent-chip"
-                          :title="parentTask?.title || ''"
-                          @click="emit('open', task.parent_id)"
-                        >
-                          <span class="parent-title">{{ parentLabel }}</span>
-                        </button>
-                        <button v-if="!ro" class="val detach" @click="detachFromParent">
-                          {{ t('task.parent.detach') }}
-                        </button>
-                      </div>
-                      <n-popover
-                        v-else
-                        :show="fieldOpen === 'parent'"
-                        trigger="click"
-                        placement="bottom-start"
-                        @update:show="setField('parent', $event)"
+                      <button
+                        class="val"
+                        :class="{ 'parent-chip': task?.parent_id }"
+                        :title="parentTask?.title || ''"
+                        @click.stop="toggleField('parent')"
                       >
-                        <template #trigger>
-                          <button class="val">
-                            <span class="muted">{{ t('task.parent.makeSubtask') }}</span>
-                          </button>
-                        </template>
-                        <PopMenu class="pmenu">
-                          <div
-                            v-for="cand in parentCandidates"
-                            :key="cand.id"
-                            class="menu-item"
-                            @click="attachTo(cand.id)"
-                          >
-                            {{ cand.title }}
-                          </div>
-                          <span v-if="!parentCandidates.length" class="muted small">{{
-                            t('task.parent.noCandidates')
-                          }}</span>
-                        </PopMenu>
-                      </n-popover>
+                        <span v-if="task?.parent_id" class="parent-title">{{ parentLabel }}</span>
+                        <span v-else class="muted">{{ t('props.parent.make') }}</span>
+                      </button>
+                      <ShortcutKeys id="task.parent" class="pkey" />
                     </div>
                   </div>
 
@@ -1982,12 +1840,32 @@ useShortcuts(
                     </button>
                   </template>
 
-                  <div class="tp-sec" data-testid="tab-relations" data-tour="tm-links">
-                    {{ t('task.panel.links') }}
+                  <div
+                    class="tp-sec tp-sec-act"
+                    :class="{ active: relOpen }"
+                    data-testid="tab-relations"
+                    data-tour="tm-links"
+                  >
+                    <span class="grow">{{ t('task.panel.links') }}</span>
+                    <button
+                      v-if="!ro"
+                      ref="relOpenEl"
+                      type="button"
+                      class="rel-open"
+                      data-testid="rel-open"
+                      @click="relOpen = !relOpen"
+                    >
+                      <n-icon :component="AddOutline" :size="14" />
+                      {{ t('props.relation.open') }}
+                      <ShortcutKeys id="task.relation" />
+                    </button>
                   </div>
                   <TaskRelationsTab
                     v-model:relations="relations"
+                    v-model:open="relOpen"
+                    :anchor="() => relOpenEl"
                     :task-id="taskId"
+                    :task-number="task?.number || null"
                     :ws-id="wsId"
                     :readonly="ro"
                     @changed="emit('changed')"
@@ -2007,6 +1885,12 @@ useShortcuts(
                   </template>
                 </aside>
               </Teleport>
+              <TaskPropPickers
+                v-model:field="fieldOpen"
+                :anchor="rowAnchor"
+                :ctx="propCtx"
+                :ops="propOps"
+              />
 
               <TaskDescriptionTab
                 ref="descTab"
@@ -2463,12 +2347,61 @@ useShortcuts(
   padding: 2px 8px;
   border-radius: 9px;
 }
+.prow {
+  cursor: pointer;
+}
 .prow:hover {
   background: var(--t-hover);
 }
-/* The row whose popover is open (#3118 — the picker's anchor). */
-.prow.prow-on {
+/* The row whose picker is open (#3118, PackageJ): the accent's active level,
+   the value in bold — the picker stands under it or beside the panel. */
+.prow.active {
   background: var(--t-active);
+}
+.prow.active .val {
+  font-weight: 600;
+}
+.prow.active .pkey {
+  opacity: 1;
+}
+/* «Связи» with «Связать ⇧L» on the right of the section's header. */
+.tp-sec-act {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 8px 0 0;
+  padding: 6px 6px 6px 8px;
+  border-radius: 9px;
+}
+.tp-sec-act.active {
+  background: var(--t-active);
+}
+.rel-open {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 4px 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+  cursor: pointer;
+}
+.rel-open:hover,
+.tp-sec-act.active .rel-open {
+  color: var(--t-text1);
+}
+.rel-open:hover {
+  background: var(--t-hover);
+}
+.tm-status.open {
+  box-shadow: 0 0 0 2px var(--t-primary);
 }
 .plabel {
   font-size: 13px;
@@ -2498,6 +2431,17 @@ useShortcuts(
 }
 .val.static {
   cursor: default;
+}
+.val:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+.parent-chip,
+.val .muted {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .vico {
   flex: none;
@@ -2577,12 +2521,6 @@ useShortcuts(
 .grow {
   flex: 1;
 }
-.dot {
-  flex: none;
-  width: 9px;
-  height: 9px;
-  border-radius: 50%;
-}
 .chip {
   font-size: 11px;
   padding: 1px 8px;
@@ -2610,13 +2548,7 @@ useShortcuts(
   display: inline-flex;
   gap: 6px;
 }
-/* ── parent row (#2861): [parent title …] [Открепить] ── */
-.parent-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-}
+/* ── parent row (#2861): the parent's title, or «Сделать подзадачей…» ── */
 .parent-chip {
   min-width: 0;
 }
@@ -2624,10 +2556,6 @@ useShortcuts(
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.parent-row .detach {
-  flex: none;
-  color: var(--t-text3);
 }
 /* ── «Разработка» ── */
 .dev-card {
@@ -2705,24 +2633,6 @@ useShortcuts(
   box-shadow: var(--t-sh-card);
 }
 
-/* ── popover menus ── */
-.menu-item.danger {
-  color: #e0533d;
-}
-a.menu-item {
-  color: inherit;
-  text-decoration: none;
-}
-.menu-sep {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.6;
-  padding: 6px 6px 2px;
-}
-.chk {
-  color: var(--t-primary);
-}
 .small {
   font-size: 12px;
   padding: 4px;
@@ -2733,58 +2643,6 @@ a.menu-item {
   color: var(--t-text3);
   font-size: 12px;
   white-space: nowrap;
-}
-.est-menu {
-  min-width: 160px;
-  max-height: 280px;
-  overflow-y: auto;
-}
-.est-edit {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 220px;
-}
-.est-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 6px;
-}
-.ms-pop {
-  /* Fit the widest option (title + date range on one line) up to a cap. */
-  width: max-content;
-  min-width: 240px;
-  max-width: 380px;
-}
-.ms-menu {
-  max-height: 260px;
-  overflow-y: auto;
-}
-.ms-closed {
-  opacity: 0.6;
-}
-.ms-opt {
-  display: flex;
-  align-items: baseline;
-  gap: 6px;
-  min-width: 0;
-}
-.ms-opt-title {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.ms-opt-range {
-  flex: none;
-  color: var(--t-text3);
-  font-size: 11px;
-  white-space: nowrap;
-}
-.ms-new {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-  margin-top: 8px;
 }
 /* Read-only (archive) modal: property values become display-only. */
 .props.tm-ro :is(button, .n-select, .n-tag, [role='button']) {

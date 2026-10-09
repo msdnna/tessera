@@ -215,6 +215,12 @@ export const CATALOG = [
   { id: 'task.due', keys: 'd', modal: true },
   { id: 'task.tags', keys: 'l', modal: true },
   { id: 'task.subtask', keys: 'shift+n', modal: true },
+  // The property pickers of package J (#3118): estimate, stage, parent and the
+  // relation form. ⇧M and ⇧R were taken (note, reminder), hence U and ⇧L.
+  { id: 'task.estimate', keys: 'o', group: 'task', modal: true },
+  { id: 'task.milestone', keys: 'm', group: 'task', modal: true },
+  { id: 'task.parent', keys: 'u', group: 'task', modal: true },
+  { id: 'task.relation', keys: 'shift+l', group: 'task', modal: true },
   // The description's editor: I (#3118, PackageJ «Описание»). ⇧E — its key of
   // #3113 — stays as a hidden alias, so the hand that learnt it still works.
   { id: 'task.editDesc', keys: 'i', group: 'task', modal: true },

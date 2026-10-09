@@ -29,6 +29,7 @@ import { workspaces as wsApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useUndoStore } from '@/stores/undo'
+import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useFormat } from '@/composables/useFormat'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { copyText } from '@/utils/clipboard'
@@ -490,10 +491,20 @@ useShortcuts(
   { when: topmost },
 )
 
+// «Пригласить «…»» from the assignee picker (#3118) hands an address over: it
+// lands in the invite field as a chip, ready to send.
+const wsDialogs = useWsDialogsStore()
+function takeDraft() {
+  const email = wsDialogs.draftEmail
+  if (!email || !props.show) return
+  wsDialogs.draftEmail = ''
+  draft.value = email
+  commitDraft()
+}
 watch(
   () => [props.show, props.wsId],
   ([show]) => {
-    if (show) load()
+    if (show) load().then(takeDraft)
     else menuFor.value = null
   },
 )

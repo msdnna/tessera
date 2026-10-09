@@ -23,8 +23,14 @@
 //
 // И гвард «запрос в полёте»: поле очищается только по факту ответа, так что
 // нетерпеливый второй Enter слал второе создание.
-import { describe, it, expect, vi, beforeEach } from 'vitest'
+//
+// С пакета J (#3118) форма — это RelationPicker в рамке PropPicker: совпадения
+// стоят строками под полем, ↵ связывает строку под курсором (лучшее совпадение —
+// выбор на экране, а не догадка) или, если указать не на что, набранный номер;
+// после связи форма остаётся открытой для следующей.
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { setActivePinia, createPinia } from 'pinia'
 
 const error = vi.fn()
 const info = vi.fn()
@@ -58,12 +64,6 @@ const WS_TASKS = [
   { id: 't-4', number: 13, title: 'Экспорт в PDF', project_name: 'P', board_name: 'B' },
 ]
 
-const stubs = { EmptyState: true, teleport: true }
-
-const tick = async (w, n = 6) => {
-  for (let i = 0; i < n; i++) await w.vm.$nextTick()
-}
-
 function deferred() {
   let resolve
   const promise = new Promise((res) => {
@@ -72,25 +72,68 @@ function deferred() {
   return { promise, resolve }
 }
 
-async function openTab(rels = []) {
-  const TaskRelationsTab = (await import('@/components/task/TaskRelationsTab.vue')).default
-  const w = mount(TaskRelationsTab, {
-    props: { taskId: TASK, relations: rels, wsId: 'ws-1' },
-    global: { stubs },
+let w = null
+const flush = () => new Promise((r) => setTimeout(r, 0))
+async function tick(n = 4) {
+  for (let i = 0; i < n; i++) await w.vm.$nextTick()
+}
+async function openForm(rels = []) {
+  const RelationPicker = (await import('@/components/task/props/RelationPicker.vue')).default
+  w = mount(RelationPicker, {
+    props: {
+      show: false,
+      anchor: () => document.body,
+      taskId: TASK,
+      relations: rels,
+      wsId: 'ws-1',
+    },
+    attachTo: document.body,
   })
-  await tick(w)
+  await w.setProps({ show: true })
+  await tick(6)
+  await flush()
+  await tick()
   return w
 }
-
-// Набрать в поле и нажать Enter (та же дорога, что и кнопка «Связать»).
-async function type(w, text) {
-  w.vm.relNumber = text
-  await tick(w)
-  await w.vm.addRelation()
-  await tick(w)
+const input = () => document.querySelector('[data-testid="rel-number"]')
+const shown = () =>
+  [...document.querySelectorAll('[data-testid="rel-pick"] .pp-mono')].map((n) =>
+    Number(n.textContent.replace('#', '')),
+  )
+async function type(text) {
+  input().value = text
+  input().dispatchEvent(new Event('input', { bubbles: true }))
+  await tick()
+}
+async function key(k, extra = {}) {
+  input().dispatchEvent(
+    new KeyboardEvent('keydown', { key: k, bubbles: true, cancelable: true, ...extra }),
+  )
+  await tick()
+}
+// Набрать в поле и нажать Enter.
+async function enter(text) {
+  await type(text)
+  await key('Enter')
+  await flush()
+  await tick()
 }
 
-describe('вкладка «Связи»: набранное в поле «№ или название»', () => {
+beforeEach(() => {
+  setActivePinia(createPinia())
+  window.matchMedia = vi.fn().mockReturnValue({
+    matches: false,
+    addEventListener: () => {},
+    removeEventListener: () => {},
+  })
+})
+afterEach(() => {
+  w?.unmount()
+  w = null
+  document.body.innerHTML = ''
+})
+
+describe('форма «Связать»: набранное в поле «№ или название»', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     addRelation.mockResolvedValue({ data: {} })
@@ -99,49 +142,56 @@ describe('вкладка «Связи»: набранное в поле «№ и
   })
 
   it('название, совпавшее ровно с одной задачей, связывает именно её', async () => {
-    const w = await openTab()
-    await type(w, 'экспорт')
+    await openForm()
+    await enter('экспорт')
     expect(addRelation).toHaveBeenCalledWith(TASK, 13, 'relates')
   })
 
-  it('название с несколькими совпадениями не связывает наугад, а открывает список', async () => {
-    const w = await openTab()
-    await type(w, 'оплат')
-    expect(addRelation).not.toHaveBeenCalled()
-    expect(w.vm.relPickerOpen).toBe(true)
-    // Список под полем уже отфильтрован — выбирать есть из чего.
-    expect(w.vm.relGroups.flatMap((g) => g.tasks).map((x) => x.number)).toEqual([11, 12])
+  it('несколько совпадений: список отфильтрован, ↵ связывает строку под курсором', async () => {
+    await openForm()
+    await type('оплат')
+    expect(shown()).toEqual([11, 12])
+    await key('ArrowDown')
+    await key('Enter')
+    expect(addRelation).toHaveBeenCalledWith(TASK, 12, 'relates')
   })
 
   it('название, не совпавшее ни с чем, говорит об этом вместо тишины', async () => {
-    const w = await openTab()
-    await type(w, 'такого нет')
+    await openForm()
+    await enter('такого нет')
     expect(addRelation).not.toHaveBeenCalled()
     expect(warning).toHaveBeenCalled()
   })
 
   it('вставленный «#13» читается как номер 13', async () => {
-    const w = await openTab()
-    await type(w, '#13')
+    await openForm()
+    await enter('#13')
     expect(addRelation).toHaveBeenCalledWith(TASK, 13, 'relates')
   })
 
   it('обычный путь: набранный номер по-прежнему связывает', async () => {
-    const w = await openTab()
-    await type(w, '42')
+    await openForm()
+    await enter('42')
     expect(addRelation).toHaveBeenCalledWith(TASK, 42, 'relates')
   })
 
-  it('пустое поле не связывает ничего — даже когда совпадение ровно одно', async () => {
-    // Единственная задача пространства: «первое совпадение» связало бы её молча.
-    wsTasks.mockResolvedValue({ data: [WS_TASKS[2]] })
-    const w = await openTab()
-    await type(w, '   ')
+  it('пустое поле не связывает ничего', async () => {
+    wsTasks.mockResolvedValue({ data: [] })
+    await openForm()
+    await enter('   ')
     expect(addRelation).not.toHaveBeenCalled()
+  })
+
+  it('после связи форма остаётся открытой, поле пустое', async () => {
+    await openForm()
+    await enter('#13')
+    expect(input().value).toBe('')
+    expect(w.emitted('update:show')).toBeFalsy()
+    expect(w.emitted('update:relations')).toBeTruthy()
   })
 })
 
-describe('вкладка «Связи»: задача, уже связанная этим видом', () => {
+describe('форма «Связать»: задача, уже связанная этим видом', () => {
   const LINKED = [
     { id: 'r-1', kind: 'relates', related_number: 13, related_title: 'Экспорт в PDF' },
   ]
@@ -154,33 +204,29 @@ describe('вкладка «Связи»: задача, уже связанная
   })
 
   it('набранный номер уже связанной задачи не уходит в запрос', async () => {
-    const w = await openTab(LINKED)
-    await type(w, '13')
+    await openForm(LINKED)
+    await enter('13')
     expect(addRelation).not.toHaveBeenCalled()
     expect(info).toHaveBeenCalled()
-    expect(w.vm.relNumber).toBe(null)
+    expect(input().value).toBe('')
   })
 
-  it('та же задача с ДРУГИМ видом связи — это другая связь, запрос уходит', async () => {
-    const w = await openTab(LINKED)
-    w.vm.relKind = 'blocks'
-    await tick(w)
-    await type(w, '13')
+  it('та же задача с ДРУГИМ видом (⌥2) — это другая связь, запрос уходит', async () => {
+    await openForm(LINKED)
+    await key('2', { code: 'Digit2', altKey: true })
+    await enter('13')
     expect(addRelation).toHaveBeenCalledWith(TASK, 13, 'blocks')
   })
 
-  it('уже связанной этим видом задачи нет в пикере, с другим видом — есть', async () => {
-    const w = await openTab(LINKED)
-    w.vm.openRelPicker() // фокус в поле: список задач подгружается лениво
-    await tick(w)
-    expect(w.vm.relGroups.flatMap((g) => g.tasks).map((x) => x.number)).toEqual([11, 12])
-    w.vm.relKind = 'blocks'
-    await tick(w)
-    expect(w.vm.relGroups.flatMap((g) => g.tasks).map((x) => x.number)).toEqual([11, 12, 13])
+  it('уже связанной этим видом задачи нет в списке, с другим видом — есть', async () => {
+    await openForm(LINKED)
+    expect(shown()).toEqual([11, 12])
+    await key('2', { code: 'Digit2', altKey: true })
+    expect(shown()).toEqual([11, 12, 13])
   })
 })
 
-describe('вкладка «Связи»: второй Enter по летящему запросу', () => {
+describe('форма «Связать»: второй Enter по летящему запросу', () => {
   beforeEach(() => {
     vi.clearAllMocks()
     relations.mockResolvedValue({ data: [] })
@@ -190,22 +236,17 @@ describe('вкладка «Связи»: второй Enter по летящем�
   it('шлёт ровно одно создание', async () => {
     const sent = deferred()
     addRelation.mockReturnValue(sent.promise)
-    const w = await openTab()
-    w.vm.relNumber = '13'
-    await tick(w)
-    w.vm.addRelation()
-    await tick(w)
-    w.vm.addRelation() // нетерпение: поле ещё не очищено
-    await tick(w)
+    await openForm()
+    await type('13')
+    await key('Enter')
+    await key('Enter') // нетерпение: поле ещё не очищено
     expect(addRelation).toHaveBeenCalledTimes(1)
 
     sent.resolve({ data: {} })
-    await tick(w)
-    // Ответ пришёл — поле снова принимает ввод.
-    w.vm.relNumber = '11'
-    await tick(w)
-    await w.vm.addRelation()
-    await tick(w)
+    await flush()
+    await tick()
+    addRelation.mockResolvedValue({ data: {} })
+    await enter('11')
     expect(addRelation).toHaveBeenCalledTimes(2)
   })
 })

@@ -7,6 +7,7 @@ import shell from './shell.json'
 import app from './app.json'
 import board from './board.json'
 import task from './task.json'
+import props from './props.json'
 import project from './project.json'
 import documents from './documents.json'
 import conferences from './conferences.json'
@@ -29,6 +30,7 @@ export default {
   app,
   board,
   task,
+  props,
   project,
   documents,
   conferences,

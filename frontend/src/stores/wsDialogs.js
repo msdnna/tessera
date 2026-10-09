@@ -16,6 +16,9 @@ export const useWsDialogsStore = defineStore('wsDialogs', () => {
   // Where the small ones (create / appearance / delete — popover forms since
   // #2969) open: the element of the door that asked, else the sidebar header.
   const anchor = ref(null)
+  // An address to invite, handed over by «Пригласить «…»» of the assignee
+  // picker (#3118): the members window puts it into its invite field.
+  const draftEmail = ref('')
 
   function open(name, workspace = null, anchorEl = null) {
     target.value = workspace
@@ -26,5 +29,5 @@ export const useWsDialogsStore = defineStore('wsDialogs', () => {
     current.value = ''
   }
 
-  return { current, target, anchor, open, close }
+  return { current, target, anchor, draftEmail, open, close }
 })

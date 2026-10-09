@@ -355,6 +355,10 @@
     "footBefore": "Keys show up in tooltips and menu items. This window opens with",
     "footAfter": "from anywhere.",
     "task": {
+      "estimate": "Estimate",
+      "milestone": "Stage",
+      "parent": "Parent (make a subtask)",
+      "relation": "Link to a task",
       "next": "Next task",
       "prev": "Previous task",
       "close": "Close the task",

@@ -194,17 +194,26 @@ describe('вкладка «Связи»: задачу сменили, пока �
     await tick(w)
     return w
   }
-  async function link(w, number = 42) {
-    w.vm.relNumber = number
+  // The link itself is made by the relation form of package J (#3118,
+  // RelationPicker); the tab only owns the list and the unlink.
+  async function openForm(taskId = A, list = A_RELS) {
+    const RelationPicker = (await import('@/components/task/props/RelationPicker.vue')).default
+    const w = mount(RelationPicker, {
+      props: { taskId, relations: list, wsId: 'ws-1', anchor: () => null },
+      global: { stubs },
+    })
     await tick(w)
-    w.vm.addRelation()
+    return w
+  }
+  async function link(w, number = 42) {
+    w.vm.link(number)
     await tick(w)
   }
 
   it('перечитка связей адресована ТОЙ задаче, где их связали', async () => {
     const sent = deferred()
     addRelation.mockReturnValue(sent.promise)
-    const w = await openRelations()
+    const w = await openForm()
     await link(w)
     expect(addRelation).toHaveBeenCalledWith(A, 42, 'relates')
 
@@ -219,7 +228,7 @@ describe('вкладка «Связи»: задачу сменили, пока �
   it('список связей покинутой задачи не уезжает в открытую', async () => {
     const landed = deferred()
     relations.mockReturnValue(landed.promise)
-    const w = await openRelations()
+    const w = await openForm()
     await link(w)
     await switchTo(w, { taskId: B, relations: B_RELS })
     landed.resolve({ data: A_RELS })
@@ -244,7 +253,7 @@ describe('вкладка «Связи»: задачу сменили, пока �
   })
 
   it('обычная связь доходит до списка (контроль)', async () => {
-    const w = await openRelations()
+    const w = await openForm()
     await link(w)
     expect(relations).toHaveBeenCalledWith(A)
     expect(emitsOf(w, 'update:relations')).toContainEqual(A_RELS)
