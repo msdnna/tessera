@@ -116,14 +116,19 @@ function onKey(e) {
   e.stopPropagation()
   setMode(m)
 }
-onMounted(() => window.addEventListener('keydown', onKey, true))
+onMounted(() => {
+  window.addEventListener('keydown', onKey, true)
+  // The window is mounted already open, so LargeWindow's `opened` never fires:
+  // the field takes the focus once the modal's own focus handling has run.
+  setTimeout(onOpened, 60)
+})
 onBeforeUnmount(() => {
   window.removeEventListener('keydown', onKey, true)
   clearTimeout(saveTimer)
 })
 
 function onOpened() {
-  setTimeout(() => editor.value?.focus(), 0)
+  editor.value?.focus()
 }
 </script>
 

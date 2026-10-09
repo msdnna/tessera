@@ -43,8 +43,9 @@ function check() {
   const root = props.target?.()
   const sel = typeof window !== 'undefined' ? window.getSelection?.() : null
   if (!root || !sel || sel.isCollapsed || !sel.rangeCount) return hide()
-  // A selection inside a field being edited is the editor's own bubble's.
-  if (isTypingTarget(document.activeElement)) return hide()
+  // A selection inside a field being edited here is the editor's own bubble's.
+  const ae = document.activeElement
+  if (isTypingTarget(ae) && root.contains(ae)) return hide()
   const range = sel.getRangeAt(0)
   if (!root.contains(range.commonAncestorContainer)) return hide()
   const text = String(sel).trim()
