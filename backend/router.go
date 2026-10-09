@@ -403,6 +403,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/workspaces/:id/tasks/by-number/:number", rh.GetTaskByNumber)
 			// Resolve a /project/<slug>/board/<slug> pair to its board.
 			protected.GET("/board-by-slug", rh.ResolveBoardBySlug)
+			// A project by its address, a former one included (#3012).
+			protected.GET("/project-by-slug", rh.ResolveProjectBySlug)
+			// What deleting a workspace takes with it (#3014).
+			protected.GET("/workspaces/:id/counts", rh.WorkspaceCounts)
 			protected.GET("/workspaces/:id/summary", rh.WorkspaceSummary)
 			protected.GET("/workspaces/:id/members", rh.ListMembers)
 			protected.POST("/workspaces/:id/members", rh.AddMember)
@@ -480,6 +484,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.DELETE("/groups/:id", rh.DeleteProjectGroup)
 
 			protected.GET("/projects/:id", rh.GetProject)
+			protected.GET("/projects/:id/counts", rh.ProjectCounts)
 			protected.PATCH("/projects/:id", rh.UpdateProject)
 			protected.PATCH("/projects/:id/slug", rh.SetProjectSlug)
 			protected.PATCH("/projects/:id/move", rh.MoveProject)
