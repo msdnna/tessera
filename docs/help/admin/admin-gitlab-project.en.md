@@ -3,7 +3,7 @@ title: Linking a GitLab project to a board
 category: Administration
 order: 84
 keywords: administration, gitlab, integration, binding, synchronization, issue, board, token
-updated: 2026-10-08
+updated: 2026-10-10
 platforms: web
 ---
 
@@ -61,7 +61,7 @@ The card's “⋯” menu has sync, full sync and **delete the connection** — 
 
 **Enabled** — the binding's working switch. A disabled binding keeps all its settings but does not sync — handier than deleting it and setting it up again.
 
-Under the fields is the **GitLab webhook**: the address and the secret you paste into the project's settings in GitLab, so changes arrive within seconds rather than on schedule. Movement in the opposite direction, from Tessera into GitLab, is the **Write-back** section; it is off entirely by default and is [covered separately](/help/admin-gitlab-sync).
+Under the fields is the **GitLab webhook**: the address and the secret you paste into the project's settings in GitLab, so changes arrive within seconds rather than on schedule. Turn on the **Issues** and **Comments** events in GitLab, plus **Merge request events** and **Pipeline events** for a task's [Development](/help/task-modal) block. Movement in the opposite direction, from Tessera into GitLab, is the **Write-back** section; it is off entirely by default and is [covered separately](/help/admin-gitlab-sync).
 
 ## Saving and running
 

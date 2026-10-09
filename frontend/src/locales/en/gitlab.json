@@ -51,7 +51,7 @@
       "copy": "Copy",
       "copied": "Copied",
       "copyFailed": "Could not copy — select and copy manually",
-      "onceWarning": "The secret is shown once. Paste the URL and token into GitLab: Settings → Webhooks, with the “Issues” and “Comments” events. Lost it? Generate a new one.",
+      "onceWarning": "The secret is shown once. Paste the URL and token into GitLab: Settings → Webhooks, with the “Issues”, “Comments”, “Merge request events” and “Pipeline events” triggers (the last two feed a task’s “Development” block). Lost it? Generate a new one.",
       "lastEvent": "Last event: {at}",
       "never": "never",
       "failed": "Could not change the webhook"

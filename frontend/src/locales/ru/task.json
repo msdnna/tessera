@@ -514,7 +514,11 @@
     "milestone": "привязал(а) к этапу",
     "milestoneNamed": "привязал(а) к этапу «{name}»",
     "milestoneRemoved": "отвязал(а) от этапа",
-    "milestoneRemovedNamed": "отвязал(а) от этапа «{name}»"
+    "milestoneRemovedNamed": "отвязал(а) от этапа «{name}»",
+    "codeOpenedOn": "открыт {ref} в {branch}",
+    "codeOpened": "открыт {ref}",
+    "codeMerged": "смержен {ref}",
+    "codeClosed": "закрыт {ref}"
   },
   "ref": {
     "notFound": "Задача #{number} не найдена"
@@ -535,5 +539,21 @@
   "arm": {
     "delete": "Удалить?",
     "unlink": "Убрать?"
+  },
+  "dev": {
+    "openMr": "Открыть {ref} в GitLab",
+    "state": {
+      "open": "открыт",
+      "merged": "смержен",
+      "closed": "закрыт",
+      "draft": "черновик"
+    },
+    "ci": {
+      "success": "пайплайн пройден",
+      "running": "пайплайн идёт",
+      "failed": "пайплайн упал",
+      "canceled": "пайплайн отменён",
+      "manual": "пайплайн ждёт запуска"
+    }
   }
 }

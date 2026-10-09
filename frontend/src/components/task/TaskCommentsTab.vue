@@ -22,6 +22,7 @@ import {
   CheckmarkOutline,
   WarningOutline,
   CloudDoneOutline,
+  GitMergeOutline,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -30,6 +31,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useThemeStore } from '@/stores/theme'
 import { resolvedTimezone } from '@/utils/format'
 import { fmtWhen, groupThreads, eventText } from '@/utils/taskFeed'
+import { sourceMeta } from '@/utils/sources'
 import { useFormat } from '@/composables/useFormat'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { hasCommandLine } from '@/utils/commands'
@@ -705,9 +707,17 @@ async function onCommentCheck(c, i) {
       <TransitionGroup :name="hydrated ? 'c-fade' : ''" tag="div" class="c-items">
         <div v-for="it in feed" :key="it.key" :class="it.kind === 'event' ? 'c-event' : 'c-thread'">
           <template v-if="it.kind === 'event'">
-            <UserAvatar class="e-ava" :user-id="it.e.actor_id" :name="it.e.actor_name" />
+            <!-- A merge request's line (#2964) is the provider's, not a person's:
+                 a neutral glyph bubble and «GitLab ·» instead of an avatar and a name. -->
+            <span v-if="it.e.kind === 'code_change'" class="e-src" data-testid="task-event-code">
+              <n-icon :component="GitMergeOutline" :size="12" />
+            </span>
+            <UserAvatar v-else class="e-ava" :user-id="it.e.actor_id" :name="it.e.actor_name" />
             <span class="e-text">
-              <b>{{ it.e.actor_name || t('task.history.someone') }}</b>
+              <template v-if="it.e.kind === 'code_change'">
+                <b class="e-src-name">{{ sourceMeta(it.e.data?.source).label }}</b> ·
+              </template>
+              <b v-else>{{ it.e.actor_name || t('task.history.someone') }}</b>
               <template v-if="it.e.kind === 'moved' && it.e.data?.to">
                 {{ t('task.journal.movedVerb') }}
                 <template v-if="it.e.data.from">
@@ -1332,6 +1342,21 @@ async function onCommentCheck(c, i) {
   min-height: 28px;
   font-size: 13px;
   color: var(--t-text3);
+}
+.e-src {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--t-pill);
+  color: var(--t-text2);
+}
+.e-src-name {
+  color: var(--t-text2);
+  font-weight: 500;
 }
 .e-ava {
   flex: none;

@@ -74,6 +74,9 @@ import TaskFilesTab from './task/TaskFilesTab.vue'
 import TaskDocumentsTab from './task/TaskDocumentsTab.vue'
 import TagPicker from './task/TagPicker.vue'
 import TaskPropPickers from './task/TaskPropPickers.vue'
+import CodeLinkCard from './task/CodeLinkCard.vue'
+import { useCodeLinksStore } from '@/stores/codeLinks'
+import { sortCodeLinks } from '@/utils/codeLinks'
 import { nextField } from './task/props/propItems'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 
@@ -137,6 +140,14 @@ const router = useRouter()
 const message = useMessage()
 const loading = ref(false)
 const task = ref(null)
+// «Разработка» (#2964): the merge requests working on the task — the fetched
+// list, or what the socket said since (a pipeline finishing in GitLab).
+const codeLinksStore = useCodeLinksStore()
+const codeLinks = computed(() => {
+  const id = task.value?.id
+  if (!id) return []
+  return sortCodeLinks(codeLinksStore.byTask[id] ?? task.value.code_links ?? [])
+})
 // Read-only is a property of the TASK, not of the screen it was opened from.
 // The `readonly` prop carries the board's archive SCOPE (?archived=1); `archived_at`
 // carries the task's own state — and half the doors into this modal walk past the
@@ -440,6 +451,7 @@ async function loadDetail() {
     const res = await tasksApi.get(props.taskId)
     if (mine !== loadSeq) return
     const t = res.data
+    codeLinksStore.forget(t.id)
     task.value = t
     title.value = t.title
     description.value = t.description || ''
@@ -1798,9 +1810,19 @@ useShortcuts(
                     </div>
                   </div>
 
-                  <!-- Разработка: the GitLab issue this task mirrors, or the way to make one. -->
-                  <template v-if="task?.gitlab || (task && gitlabCanCreate && !ro)">
+                  <!-- Разработка: the merge requests working on the task (#2964), then
+                       the GitLab issue it mirrors, or the way to make one. -->
+                  <template
+                    v-if="task?.gitlab || codeLinks.length || (task && gitlabCanCreate && !ro)"
+                  >
                     <div class="tp-sec">{{ t('task.panel.dev') }}</div>
+                    <div v-if="codeLinks.length" class="dev-list" data-testid="task-dev-mrs">
+                      <CodeLinkCard
+                        v-for="l in codeLinks"
+                        :key="`${l.provider}:${l.kind}:${l.repo}:${l.number}`"
+                        :link="l"
+                      />
+                    </div>
                     <div v-if="task.gitlab" class="dev-card">
                       <a
                         class="dev-line"
@@ -2559,6 +2581,12 @@ useShortcuts(
   white-space: nowrap;
 }
 /* ── «Разработка» ── */
+.dev-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
 .dev-card {
   display: flex;
   flex-direction: column;
