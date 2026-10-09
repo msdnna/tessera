@@ -857,8 +857,12 @@ onBeforeUnmount(() => {
     transform 0.16s ease,
     opacity 0.16s ease;
 }
-.tl-top-move,
-.tl-bot-move {
+/* Only the top lane's deck slides. The bottom lane grows upwards under the
+   pointer: a FLIP move there keeps an older toast drawn where the new one has
+   just landed for 200 ms, so a click aimed at the newest «Отменить» lands on
+   the previous toast's — the undo of the wrong action. The undo toasts never
+   slid (package A); the older ones step up at once. */
+.tl-top-move {
   transition: transform 0.2s ease;
 }
 .tl-top-enter-from {
