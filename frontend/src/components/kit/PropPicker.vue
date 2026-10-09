@@ -556,6 +556,12 @@ defineExpose({ handleKey, move, pick, api, root })
   text-transform: uppercase;
   color: var(--t-text3);
 }
+.pp-sec > .pp-grow {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .pp-sec-n {
   font-weight: 500;
   letter-spacing: 0;
@@ -675,10 +681,15 @@ defineExpose({ handleKey, move, pick, api, root })
 }
 /* The name keeps its room; the second word (an email, a range) gives way. */
 .pp-label {
+  flex: 0 1 auto;
+}
+.pp-label:not(:last-child) {
   flex: 0 0 auto;
   max-width: 68%;
 }
-.pp-text.two .pp-label {
+.pp-text.two .pp-label,
+.pp-text.two .pp-sub {
+  flex: none;
   max-width: none;
 }
 .pp-sub {
@@ -860,10 +871,10 @@ defineExpose({ handleKey, move, pick, api, root })
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 4px 10px;
+  gap: 4px 8px;
   min-height: 34px;
   margin: 4px -6px -6px;
-  padding: 6px 12px;
+  padding: 6px 10px;
   box-sizing: border-box;
   border-radius: 0 0 var(--t-r-card) var(--t-r-card);
   background: color-mix(in srgb, var(--t-pop) 55%, var(--t-bg));

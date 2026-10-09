@@ -231,7 +231,7 @@ const title = computed(() =>
           @mousedown.prevent
           @click="kind = k.value"
         >
-          {{ k.label }}<span class="rl-cap">{{ k.cap }}</span>
+          {{ k.label }}<span v-if="isMac" class="rl-cap">{{ k.cap }}</span>
         </button>
       </div>
     </template>
@@ -294,14 +294,14 @@ const title = computed(() =>
   background: var(--t-ctl);
 }
 .rl-seg-b {
-  flex: 1;
+  flex: 1 1 auto;
   min-width: 0;
   height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  padding: 0 4px;
+  padding: 0 6px;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -310,6 +310,7 @@ const title = computed(() =>
   font-size: 12.5px;
   white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
 }
 .rl-seg-b.on {
