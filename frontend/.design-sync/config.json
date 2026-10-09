@@ -46,6 +46,12 @@
     },
     "FormField": {
       "cardMode": "column"
+    },
+    "ActionMenu": {
+      "cardMode": "column"
+    },
+    "ArmButton": {
+      "cardMode": "column"
     }
   },
   "readmeHeader": ".design-sync/conventions.md"

@@ -13,6 +13,7 @@ export const CommentComposer = () => (
   <Box w={640}>
     <MarkdownEditor
       variant="composer"
+      send
       avatar={{ name: 'Аня Ковалёва' }}
       placeholder="Комментарий… @ — упомянуть, / — команды"
       minRows={1}
