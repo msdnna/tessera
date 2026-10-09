@@ -15,11 +15,14 @@ import {
   PlayCircleOutline,
 } from '@vicons/ionicons5'
 import { changeStatus, ciMeta, branchLine } from '@/utils/codeLinks'
+import { readableHue } from '@/utils/gradient'
+import { useThemeStore } from '@/stores/theme'
 
 const props = defineProps({
   link: { type: Object, required: true },
 })
 const { t } = useI18n()
+const theme = useThemeStore()
 
 const CI_ICONS = {
   success: CheckmarkCircleOutline,
@@ -33,12 +36,13 @@ const status = computed(() => changeStatus(props.link))
 const ci = computed(() => ciMeta(props.link.ci_status))
 const branches = computed(() => branchLine(props.link))
 // The mockup's tinted pill: a soft same-hue diagonal over the card surface. A
-// draft is neutral — flat grey, no hue.
+// draft is neutral — flat grey, no hue. The text is clamped for legibility on the
+// active theme (the merged blue is too dark on the dark surface as is).
 const pillStyle = computed(() => {
   const c = status.value.color
   if (!c) return {}
   return {
-    color: c,
+    color: readableHue(c, theme.isDark),
     background: `linear-gradient(to top right, color-mix(in srgb, ${c} 13%, var(--t-pop)), color-mix(in srgb, ${c} 22%, var(--t-pop)))`,
   }
 })
@@ -72,7 +76,7 @@ function open() {
       >
     </div>
     <div v-if="branches || ci" class="mr-sub">
-      <span class="mr-branches">{{ branches }}</span>
+      <span class="mr-branches" :title="branches">{{ branches }}</span>
       <span class="grow" />
       <a
         v-if="ci"
@@ -84,7 +88,7 @@ function open() {
         data-testid="task-mr-ci"
         @click.stop
       >
-        <n-icon :component="CI_ICONS[ci.icon]" :size="13" :style="{ color: ci.color }" />
+        <n-icon :component="CI_ICONS[ci.icon]" :size="13" :color="ci.color" />
         <span>{{ t(`task.dev.ci.${ci.key}`) }}</span>
       </a>
     </div>
