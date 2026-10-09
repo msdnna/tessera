@@ -823,7 +823,7 @@ body {
 
 /* ── A card pulses under its activity toast (#3117, PackageI «Подсветка
    карточки»): a 2px accent ring and a soft glow, 900 ms, once. Reduced motion
-   — a still ring for 1.5 s (the board removes the class). ── */
+   — a still ring for 1.5 s (the board removes the layer). ── */
 @keyframes t-card-pulse {
   0%,
   35% {
@@ -839,11 +839,14 @@ body {
       0 0 28px transparent;
   }
 }
-.t-pulse {
-  animation: t-card-pulse 0.9s ease-out 1;
+.t-pulse-ring {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  animation: t-card-pulse 0.9s ease-out 1 forwards;
 }
 @media (prefers-reduced-motion: reduce) {
-  .t-pulse {
+  .t-pulse-ring {
     animation: none;
     box-shadow: 0 0 0 2px var(--t-primary);
   }

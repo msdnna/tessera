@@ -16,6 +16,7 @@
 //   { key, label, icon, stub: 3005 }                             // not built yet
 //   { key, ..., busy: true } / { key, ..., failed: { title, sub } }
 //   { heading: 'Мои', aside: '2' }                               // section title
+//   { hint: 'Упоминания … проходят' }                 // a quiet note box (#3117)
 //   { key, label, glyph: 'layout-kanban', active, note, noteWarn, locked,
 //     caps: ['1'] }                                // a list entry (#2987)
 //   { key, label, icon, children: [...items], subWidth }  // a submenu (#3111)
@@ -107,7 +108,7 @@ const { style } = useAnchoredPanel({
   onOutside: close,
 })
 
-const isRow = (i) => !i.gap && !i.heading
+const isRow = (i) => !i.gap && !i.heading && !i.hint
 const rows = computed(() => props.items.filter(isRow))
 const live = (i) => !i.disabled && !i.stub && !i.busy
 const active = ref(-1)
@@ -406,6 +407,7 @@ function stubTitle(item) {
       >
         <template v-for="(item, idx) in lvl.items" :key="item.key || `gap-${idx}`">
           <div v-if="item.gap" class="am-gap" />
+          <div v-else-if="item.hint" class="am-hint">{{ item.hint }}</div>
           <div v-else-if="item.heading" class="am-head am-section">
             <span class="am-head-text">{{ item.heading }}</span>
             <span v-if="item.aside" class="am-head-aside">{{ item.aside }}</span>
@@ -630,6 +632,15 @@ function stubTitle(item) {
 }
 .am-gap {
   height: 6px;
+}
+.am-hint {
+  margin: 4px 2px 2px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--t-sub);
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--t-text3);
 }
 .am-section {
   padding-top: 8px;

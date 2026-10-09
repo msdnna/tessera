@@ -89,7 +89,7 @@ export function buildNotificationToast(
     taskId: n.task_id || null,
     time: n.created_at || null,
     chip,
-    quote: p.excerpt || '',
+    quote: p.quote || p.excerpt || '',
     actions: [],
   }
   const parts = () => sentenceParts(n, { t, te, chip: !!(chip || spec.quote) })

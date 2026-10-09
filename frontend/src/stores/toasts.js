@@ -80,6 +80,10 @@ export const useToastsStore = defineStore('toasts', () => {
   // On a call's own screen only mentions and calls get through.
   const callScreen = ref(false)
 
+  // Until when the bell keeps its feed open against a click outside it — the
+  // feed's «Не беспокоить» menu floats in <body> (NotifFeed).
+  const feedHold = ref(0)
+
   // «Доступно обновление» after «Позже»: a chip in the top bar until reload.
   const updateChip = ref(false)
 
@@ -695,6 +699,7 @@ export const useToastsStore = defineStore('toasts', () => {
     phone,
     callScreen,
     updateChip,
+    feedHold,
     pulse,
     bind,
     setReloader,

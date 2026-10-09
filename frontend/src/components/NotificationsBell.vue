@@ -7,16 +7,19 @@
 // `G N` and other screens ask for the feed through the store's `feedRequest`.
 import { ref, watch } from 'vue'
 import { NIcon, NPopover } from 'naive-ui'
-import { NotificationsOutline } from '@vicons/ionicons5'
+import { MoonOutline, NotificationsOutline } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import NotifFeed from './NotifFeed.vue'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useToastsStore } from '@/stores/toasts'
 import { useResponsive } from '@/composables/useResponsive'
 
 defineProps({ placement: { type: String, default: 'bottom-end' } })
 
 const notes = useNotificationsStore()
+// «Не беспокоить» (#3117) puts a moon on the bell.
+const toasts = useToastsStore()
 const router = useRouter()
 const { t } = useI18n()
 const { isMobile } = useResponsive()
@@ -29,6 +32,12 @@ watch(
   () => notes.feedRequest,
   () => (isMobile.value ? openPage() : (showFeed.value = true)),
 )
+// The feed's «Не беспокоить» menu floats outside the popover: a click there is
+// not a click away from the feed.
+function onShow(v) {
+  if (!v && Date.now() < toasts.feedHold) return
+  showFeed.value = v
+}
 function onTrigger() {
   if (isMobile.value) openPage()
 }
@@ -42,19 +51,22 @@ function onTrigger() {
     :show-arrow="false"
     raw
     class="np-pop"
-    @update:show="(v) => (showFeed = v)"
+    @update:show="onShow"
   >
     <template #trigger>
       <button
         type="button"
         class="bell-btn"
-        :class="{ on: showFeed && !isMobile, touch: isMobile }"
+        :class="{ on: (showFeed || toasts.dnd) && !isMobile, touch: isMobile }"
         :aria-label="t('shell.tools.notifications')"
         data-testid="notifications-bell"
         data-tour="footer-notifications"
         @click="onTrigger"
       >
         <n-icon :component="NotificationsOutline" :size="isMobile ? 22 : 18" />
+        <span v-if="toasts.dnd" class="bell-moon" data-testid="notifications-dnd-moon">
+          <n-icon :component="MoonOutline" :size="9" />
+        </span>
         <span v-if="notes.unread" class="bell-n" data-testid="notifications-unread">{{
           notes.unread > 9 ? '9+' : notes.unread
         }}</span>
@@ -109,6 +121,22 @@ function onTrigger() {
   font-weight: 700;
   line-height: 16px;
   text-align: center;
+  pointer-events: none;
+}
+
+.bell-moon {
+  position: absolute;
+  right: 3px;
+  bottom: 3px;
+  width: 15px;
+  height: 15px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--t-pop);
+  color: var(--t-primary);
+  box-shadow: 0 0 0 1.5px var(--t-bg);
   pointer-events: none;
 }
 

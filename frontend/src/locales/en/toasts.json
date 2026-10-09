@@ -62,7 +62,7 @@
   },
   "update": {
     "title": "An update is available",
-    "text": "Reload the page to switch to the new version",
+    "text": "Reload the page to switch to it",
     "reload": "Reload",
     "later": "Later",
     "chip": "Update",

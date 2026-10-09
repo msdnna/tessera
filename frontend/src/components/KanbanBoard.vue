@@ -2458,13 +2458,25 @@ watch(
   () => toasts.pulse.seq,
   () => {
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    // The ring is a layer of its own over the card, not a class on it: the
+    // card re-renders on the very event that raised the toast, and a class
+    // added from outside would be wiped by its own class binding.
     for (const id of toasts.pulse.ids) {
       const el = document.querySelector(`.card[data-task-id="${id}"]`)
       if (!el || !inSight(el)) continue
-      el.classList.remove('t-pulse')
-      void el.offsetWidth
-      el.classList.add('t-pulse')
-      setTimeout(() => el.classList.remove('t-pulse'), reduced ? 1500 : 900)
+      const r = el.getBoundingClientRect()
+      const ring = document.createElement('div')
+      ring.className = 't-pulse-ring'
+      ring.dataset.testid = 'card-pulse'
+      Object.assign(ring.style, {
+        left: `${r.left}px`,
+        top: `${r.top}px`,
+        width: `${r.width}px`,
+        height: `${r.height}px`,
+        borderRadius: getComputedStyle(el).borderRadius,
+      })
+      document.body.appendChild(ring)
+      setTimeout(() => ring.remove(), reduced ? 1500 : 900)
     }
   },
 )

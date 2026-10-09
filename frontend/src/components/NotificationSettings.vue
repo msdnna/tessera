@@ -14,7 +14,17 @@
 // rules; the rules are kept and drawn as rows (see #3106).
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NInput, NModal, NSelect, NSpin, NSwitch, NTooltip } from 'naive-ui'
+import {
+  NButton,
+  NCheckbox,
+  NIcon,
+  NInput,
+  NModal,
+  NSelect,
+  NSpin,
+  NSwitch,
+  NTooltip,
+} from 'naive-ui'
 import {
   AddOutline,
   CreateOutline,
@@ -47,6 +57,8 @@ import { useThemeStore } from '@/stores/theme'
 import SecretInput from '@/components/SecretInput.vue'
 import ActionMenu from '@/components/kit/ActionMenu.vue'
 import PopoverForm from '@/components/kit/PopoverForm.vue'
+import SettingsToasts from '@/components/settings/SettingsToasts.vue'
+import { useToastsStore } from '@/stores/toasts'
 import FormField from '@/components/kit/FormField.vue'
 import { setNotifyDefaults } from '@/composables/useNotifyDefaults'
 import '@/components/settings/settings.css'
@@ -162,7 +174,14 @@ const prefs = reactive({
   quiet_end_minutes: 480,
   quiet_tz: '',
   digest_minutes: 0,
+  // «Всплывающие в приложении» (#3117): the main switch, what to show, and
+  // whether the quiet hours silence them too.
+  toasts_enabled: true,
+  toasts: {},
+  quiet_toasts: false,
 })
+// The toasts follow a saved change at once — this tab's lanes read the store.
+const toastsStore = useToastsStore()
 const prefsError = ref('')
 // Set while the server's answer is copied back in, so that copy is not taken
 // for an edit and saved again.
@@ -194,6 +213,7 @@ async function savePrefs() {
     // so send the browser's own zone, the one this screen renders in.
     prefs.quiet_tz = resolvedTimezone(theme.timezone) || prefs.quiet_tz
     const res = await prefsApi.update({ ...prefs })
+    toastsStore.applyServer(res.data)
     applying = true
     Object.assign(prefs, res.data || {})
     // The due picker's «По умолчанию — …» reads these (#3118).
@@ -626,6 +646,9 @@ function wsSummary(r) {
     <n-spin v-if="loading" size="small" />
     <div v-else-if="loadError" class="st-err">{{ loadError }}</div>
     <template v-else>
+      <!-- In-app toasts (#3117): before the channels and the rules. -->
+      <SettingsToasts :prefs="prefs" />
+
       <!-- Channels -->
       <div class="ns-channels" data-testid="notif-channels">
         <article
@@ -824,6 +847,11 @@ function wsSummary(r) {
             />
           </div>
           <p class="st-hint">{{ quietHint }}</p>
+          <label class="st-toggle ns-quiet-toasts" data-testid="notif-quiet-toasts">
+            <n-checkbox v-model:checked="prefs.quiet_toasts" :disabled="!prefs.quiet_enabled">
+              {{ t('settings.notifications.schedule.quietToasts') }}
+            </n-checkbox>
+          </label>
           <n-tooltip :delay="300">
             <template #trigger>
               <label class="st-toggle st-stub" data-testid="notif-quiet-exceptions">

@@ -247,6 +247,7 @@ func msgReopened(actor string, number *int64, title string) notifyMsg {
 func msgComment(actor string, number *int64, excerpt string) notifyMsg {
 	p := withCtx(event(evComment, number), "excerpt", excerpt)
 	p["actor"] = actor
+	withQuote(p, excerpt)
 	return notifyMsg{
 		text:    fmt.Sprintf("%s прокомментировал #%s%s", actor, taskRef(number), shortCtx(excerpt)),
 		payload: p,
@@ -256,6 +257,7 @@ func msgComment(actor string, number *int64, excerpt string) notifyMsg {
 func msgThreadReply(actor string, number *int64, excerpt string) notifyMsg {
 	p := withCtx(event(evThreadReply, number), "excerpt", excerpt)
 	p["actor"] = actor
+	withQuote(p, excerpt)
 	return notifyMsg{
 		text:    fmt.Sprintf("%s ответил(а) в обсуждении #%s%s", actor, taskRef(number), shortCtx(excerpt)),
 		payload: p,
@@ -265,10 +267,29 @@ func msgThreadReply(actor string, number *int64, excerpt string) notifyMsg {
 func msgMention(actor string, number *int64, excerpt string) notifyMsg {
 	p := withCtx(event(evMention, number), "excerpt", excerpt)
 	p["actor"] = actor
+	withQuote(p, excerpt)
 	return notifyMsg{
 		text:    fmt.Sprintf("%s упомянул(а) вас в #%s%s", actor, taskRef(number), shortCtx(excerpt)),
 		payload: p,
 	}
+}
+
+// quoteLimit bounds the comment quote a notification carries for the in-app
+// toast (#3117): long enough to recognise the comment, short enough for one line.
+const quoteLimit = 120
+
+// withQuote adds the comment as the toast quotes it — whitespace collapsed,
+// cut at quoteLimit runes with an ellipsis. `excerpt` stays the short inline
+// context the sentence carries; this is only drawn under it.
+func withQuote(p map[string]any, s string) {
+	q := strings.Join(strings.Fields(s), " ")
+	if q == "" {
+		return
+	}
+	if r := []rune(q); len(r) > quoteLimit {
+		q = strings.TrimSpace(string(r[:quoteLimit])) + "…"
+	}
+	p["quote"] = q
 }
 
 // msgConferenceInvited announces an invitation to a call. It is the first event

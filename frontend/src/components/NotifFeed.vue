@@ -26,18 +26,22 @@ import {
   ChevronForwardOutline,
   ChevronBackOutline,
   DocumentTextOutline,
+  MoonOutline,
 } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import EmptyState from '@/components/EmptyState.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
+import ActionMenu from '@/components/kit/ActionMenu.vue'
 import { notificationText } from '@/utils/notificationText'
 import { notificationRoute } from '@/utils/notificationRoute'
 import { notificationGroup, notificationAge, NOTIFICATION_FILTERS } from '@/utils/notificationFeed'
 import { stubTask } from '@/utils/featureStubs'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useToastsStore } from '@/stores/toasts'
+import { dndPreset } from '@/utils/toastModel'
 import { useFormat } from '@/composables/useFormat'
 import './kit/kit.css'
 
@@ -52,6 +56,7 @@ const emit = defineEmits(['close', 'back'])
 
 const ws = useWorkspacesStore()
 const notes = useNotificationsStore()
+const toasts = useToastsStore()
 const router = useRouter()
 const message = useMessage()
 const { formatters } = useFormat()
@@ -153,6 +158,43 @@ function openSettings() {
   router.push({ path: '/settings', query: { s: 'notifications' } })
 }
 
+// ── «Не беспокоить» (#3117): the moon in the head ───────────────────────
+// Silences the toasts «про меня», activity and the system for an hour or till
+// tomorrow 9:00; the feed itself goes on filling, the count goes on growing.
+const moonEl = ref(null)
+const dndMenu = ref(false)
+// The menu floats in <body>: inside the bell's popover a fixed layer is placed
+// against the popover's transform, not the window. A click in it is outside
+// the popover, so the bell is asked to hold the feed open meanwhile.
+watch(dndMenu, (v) => (toasts.feedHold = v ? Infinity : Date.now() + 400))
+onBeforeUnmount(() => (toasts.feedHold = 0))
+const dndUntilText = computed(() =>
+  toasts.server.dnd_until ? formatters.value.formatTime(new Date(toasts.server.dnd_until)) : '',
+)
+const dndItems = computed(() => {
+  const items = [
+    {
+      key: 'hour',
+      label: t('toasts.dnd.hour'),
+      icon: TimeOutline,
+      note: t('toasts.dnd.until', { time: formatters.value.formatTime(dndPreset('hour')) }),
+      caps: ['1'],
+    },
+    { key: 'tomorrow', label: t('toasts.dnd.tomorrow'), icon: MoonOutline, caps: ['2'] },
+  ]
+  if (toasts.dnd) items.push({ gap: true }, { key: 'off', label: t('toasts.dnd.off') })
+  items.push({ hint: t('toasts.dnd.note') })
+  return items
+})
+async function setDnd(key) {
+  dndMenu.value = false
+  try {
+    await toasts.setDnd(key === 'off' ? null : dndPreset(key))
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+
 // ── keys while the feed is open ───────────────────────────────────────
 // The cursor is shown only once the keyboard is used: a mouse reader gets the
 // hover level, not a second highlight that follows nothing they did.
@@ -178,6 +220,8 @@ function move(step) {
 }
 function onKey(e) {
   if (e.defaultPrevented || e.metaKey || e.ctrlKey || e.altKey) return
+  // The moon's menu has the keys while it is open.
+  if (dndMenu.value) return
   if (e.target?.closest?.('input, textarea, [contenteditable="true"]')) return
   const k = e.key
   if (k === 'ArrowDown' || k === 'ArrowUp') move(k === 'ArrowDown' ? 1 : -1)
@@ -220,6 +264,34 @@ function onKey(e) {
       <n-tooltip :delay="400">
         <template #trigger>
           <button
+            ref="moonEl"
+            type="button"
+            class="np-icon"
+            :class="{ on: toasts.dnd || dndMenu }"
+            :aria-label="t('toasts.dnd.title')"
+            :aria-pressed="toasts.dnd"
+            data-testid="notifications-dnd"
+            @click="dndMenu = !dndMenu"
+          >
+            <n-icon :component="MoonOutline" :size="15" />
+          </button>
+        </template>
+        {{ toasts.dnd ? t('toasts.dnd.bell', { time: dndUntilText }) : t('toasts.dnd.title') }}
+      </n-tooltip>
+      <ActionMenu
+        v-model:show="dndMenu"
+        :anchor="() => moonEl"
+        placement="bottom-end"
+        :offset="{ x: 0, y: 6 }"
+        :width="248"
+        :header="t('toasts.dnd.title')"
+        :items="dndItems"
+        testid="dnd-menu"
+        @select="setDnd"
+      />
+      <n-tooltip :delay="400">
+        <template #trigger>
+          <button
             type="button"
             class="np-icon"
             :aria-label="t('notifications.pop.settings')"
@@ -232,6 +304,22 @@ function onKey(e) {
         {{ t('notifications.pop.settings') }}
       </n-tooltip>
     </header>
+
+    <div v-if="toasts.dnd" class="np-dnd" data-testid="notifications-dnd-banner">
+      <n-icon :component="MoonOutline" :size="16" class="np-dnd-ic" />
+      <div class="np-dnd-t">
+        <span class="np-dnd-title">{{ t('toasts.dnd.banner', { time: dndUntilText }) }}</span>
+        <span class="np-dnd-sub">{{ t('toasts.dnd.bannerSub') }}</span>
+      </div>
+      <button
+        type="button"
+        class="kit-btn small"
+        data-testid="notifications-dnd-off"
+        @click="setDnd('off')"
+      >
+        {{ t('toasts.dnd.off') }}
+      </button>
+    </div>
 
     <div class="np-tabs" role="tablist">
       <button
@@ -428,6 +516,45 @@ function onKey(e) {
 .np-icon:hover {
   background: var(--t-hover);
   color: var(--t-text1);
+}
+.np-icon.on {
+  background: var(--t-active);
+  color: var(--t-primary);
+}
+
+/* «Не беспокоить» on (#3117): a soft accent banner over the filters. */
+.np-dnd {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 12px 8px;
+  padding: 8px 8px 8px 10px;
+  border-radius: 12px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 10%, var(--t-pop)),
+    color-mix(in srgb, var(--t-primary) 20%, var(--t-pop))
+  );
+}
+.np-dnd-ic {
+  flex: none;
+  color: var(--t-primary);
+}
+.np-dnd-t {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.np-dnd-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text1);
+}
+.np-dnd-sub {
+  font-size: 12px;
+  color: var(--t-text3);
 }
 
 /* Filters: a segmented control on the sunken level. */
