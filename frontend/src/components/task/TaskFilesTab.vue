@@ -5,7 +5,8 @@
 // published back through `update:attachments`.
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, useMessage } from 'naive-ui'
+import { NIcon } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { AttachOutline, DownloadOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { saveAttachment } from '@/utils/download'

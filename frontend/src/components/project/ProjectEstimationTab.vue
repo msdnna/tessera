@@ -8,7 +8,8 @@
 // one, «+» adds one typed in the unit («3ч», «5»). Saves at once.
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NSwitch, useMessage } from 'naive-ui'
+import { NIcon, NSwitch } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { AddOutline, CloseOutline } from '@vicons/ionicons5'
 import { projects as projApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'

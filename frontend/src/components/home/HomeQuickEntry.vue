@@ -6,7 +6,8 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useTaskCreatedToast } from '@/composables/useTaskCreatedToast'
-import { NIcon, NPopover, useMessage } from 'naive-ui'
+import { NIcon, NPopover } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AddCircleOutline,
   CalendarClearOutline,

@@ -1,6 +1,6 @@
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   ArchiveOutline,
   ArrowUndoOutline,

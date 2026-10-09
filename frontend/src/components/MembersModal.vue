@@ -6,7 +6,8 @@
 // from its toast, removing a member is a two-step item of the role menu.
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   PeopleOutline,
   MailOutline,

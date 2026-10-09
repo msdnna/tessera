@@ -10,7 +10,8 @@
 // brings the last record back · Esc close.
 import { computed, nextTick, onBeforeUnmount, ref, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AlarmOutline,
   AlertCircleOutline,

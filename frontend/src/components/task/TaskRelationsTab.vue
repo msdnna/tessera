@@ -14,7 +14,8 @@
 // mounted on its own the tab draws the button under the list itself.
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, useMessage } from 'naive-ui'
+import { NIcon } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { CloseOutline, AddOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { sourceMeta, isExternalSource } from '@/utils/sources'

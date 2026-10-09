@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, h, render } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NDropdown, NModal, NCard, NInput, useMessage } from 'naive-ui'
+import { NIcon, NDropdown, NModal, NCard, NInput } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { FolderOutline } from '@vicons/ionicons5'
 import { PROJECT_ICONS, sanitizeIconSvg } from '@/utils/projectIcons'
 import { formatFileSize } from '@/utils/docPdf'

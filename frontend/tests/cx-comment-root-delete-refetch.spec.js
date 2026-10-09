@@ -26,6 +26,11 @@ vi.mock('naive-ui', async () => {
     }),
   }
 })
+// The message API moved out of naive (composables/useMessage, #3117): route it
+// to the naive mock above, where this spec keeps its spies.
+vi.mock('@/composables/useMessage', async () => ({
+  useMessage: (await import('naive-ui')).useMessage,
+}))
 
 const removeComment = vi.fn()
 const comments = vi.fn()

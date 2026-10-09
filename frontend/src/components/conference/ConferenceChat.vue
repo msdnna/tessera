@@ -20,7 +20,8 @@
 // every screenshot of every call in memory for the life of the tab.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NInput, NModal, NPopconfirm, NSpin, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NModal, NPopconfirm, NSpin, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AttachOutline,
   CloseOutline,

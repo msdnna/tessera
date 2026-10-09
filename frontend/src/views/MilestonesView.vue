@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { NIcon, NButton, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NButton, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   TrailSignOutline,
   LogoGitlab,

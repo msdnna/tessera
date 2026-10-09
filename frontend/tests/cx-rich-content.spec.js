@@ -36,6 +36,11 @@ vi.mock('naive-ui', async (importOriginal) => {
     useMessage: () => ({ error: vi.fn(), success: vi.fn(), info: vi.fn(), warning }),
   }
 })
+// The message API moved out of naive (composables/useMessage, #3117): route it
+// to the naive mock above, where this spec keeps its spies.
+vi.mock('@/composables/useMessage', async () => ({
+  useMessage: (await import('naive-ui')).useMessage,
+}))
 
 // build() runs on mounted and only assigns the html ref, so the markup lands one
 // tick later.

@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { EditorContent, Editor } from '@tiptap/vue-3'
-import { NButton, NIcon, NInput, NSelect, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NSelect } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { useI18n } from 'vue-i18n'
 import {
   AddOutline,

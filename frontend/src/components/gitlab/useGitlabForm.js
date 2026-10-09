@@ -6,7 +6,7 @@
 import { tourEvent } from '@/utils/tourEvents'
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
 import { canonPrefix } from '@/utils/tagGroups'
 import { useGitlabStore } from '@/stores/gitlab'

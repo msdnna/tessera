@@ -16,7 +16,8 @@
 // server sends — paging and a page of all notifications are #3049, accepting a
 // meeting from here is #3051 (both visible stubs).
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
-import { NIcon, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   NotificationsOutline,
   SettingsOutline,

@@ -13,7 +13,8 @@
 // history.
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, useMessage } from 'naive-ui'
+import { NIcon } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   ChatbubbleEllipsesOutline,
   FlagOutline,

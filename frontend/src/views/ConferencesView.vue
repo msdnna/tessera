@@ -14,7 +14,8 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NDatePicker, NPopconfirm, NSpin, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NDatePicker, NPopconfirm, NSpin, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   VideocamOutline,
   ArrowBackOutline,

@@ -7,7 +7,8 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CAPS, cap } from '@/utils/keyCaps'
-import { NIcon, NDatePicker, useMessage } from 'naive-ui'
+import { NIcon, NDatePicker } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AddOutline,
   TrailSignOutline,

@@ -9,7 +9,8 @@
 // Opened from the footer «⋯» and by G J (administrators only).
 import { ref, computed, watch, onBeforeUnmount, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   ChevronBackOutline,
   PlayOutline,

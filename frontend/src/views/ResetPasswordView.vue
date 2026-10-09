@@ -1,6 +1,7 @@
 <script setup>
 import { ref, computed } from 'vue'
-import { NForm, NFormItem, NInput, NButton, NIcon, useMessage } from 'naive-ui'
+import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { LinkOutline, CheckmarkCircleOutline, ArrowBackOutline } from '@vicons/ionicons5'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { accountFlows } from '@/api'

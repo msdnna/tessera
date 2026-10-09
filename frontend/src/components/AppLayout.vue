@@ -11,8 +11,8 @@ import {
   NDrawerContent,
   NTooltip,
   NIcon,
-  useMessage,
 } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import ShortcutKeys from './ShortcutKeys.vue'
 import ShortcutPending from './ShortcutPending.vue'

@@ -13,7 +13,8 @@
 import { computed, nextTick, onMounted, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
-import { NButton, NIcon, NInput, NSpin, NSwitch, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NSpin, NSwitch, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   BuildOutline,
   ChevronDownOutline,

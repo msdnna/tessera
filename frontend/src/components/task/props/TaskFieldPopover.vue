@@ -9,7 +9,7 @@
 // One instance serves a whole card or a whole list: `field` says which picker
 // is open ('priority' | 'assignees' | 'estimate' | 'milestone'), `anchor` where.
 import { computed } from 'vue'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { storeToRefs } from 'pinia'
 import { tasks as tasksApi } from '@/api'
 import { useBoardViewStore } from '@/stores/boardView'

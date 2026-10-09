@@ -11,7 +11,8 @@
 // — the socket and every action here go through that store.
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, useMessage } from 'naive-ui'
+import { NIcon } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AlarmOutline,
   CafeOutline,

@@ -4,7 +4,8 @@
 // and the delete happens at once — the board offers the undo in a toast.
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AddOutline,
   ArrowBackOutline,

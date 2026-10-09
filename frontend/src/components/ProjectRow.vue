@@ -7,7 +7,8 @@
 import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
-import { NIcon, NButton, NText, useMessage } from 'naive-ui'
+import { NIcon, NButton, NText } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   EllipsisHorizontalOutline,
   ChevronForwardOutline,

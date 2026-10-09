@@ -6,7 +6,8 @@
 // patching its own copy.
 import { ref, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NInput, NPopover, useMessage } from 'naive-ui'
+import { NIcon, NInput, NPopover } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AddOutline,
   CheckmarkCircleOutline,

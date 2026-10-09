@@ -6,7 +6,8 @@
 // `task/TaskActionMenu` (#3112) — what's left here is the card frame itself.
 import { ref, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   CheckmarkCircle,
   CheckmarkOutline,

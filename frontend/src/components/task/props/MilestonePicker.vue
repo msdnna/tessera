@@ -11,7 +11,7 @@
 // and handed over through `created` + `set`.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import PropPicker from '../../kit/PropPicker.vue'
 import AnchorLayer from '../../kit/AnchorLayer.vue'
 import PopoverForm from '../../kit/PopoverForm.vue'

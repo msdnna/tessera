@@ -1,6 +1,6 @@
 import { computed, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { boards as boardsApi } from '@/api'
 import { useUndoStore } from '@/stores/undo'
 import { humanizeError } from '@/utils/errors'

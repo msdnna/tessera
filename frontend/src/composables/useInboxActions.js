@@ -1,5 +1,5 @@
 import { useI18n } from 'vue-i18n'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { useRouter } from 'vue-router'
 import { boards as boardsApi, documents as docsApi } from '@/api'
 import { useInboxStore } from '@/stores/inbox'

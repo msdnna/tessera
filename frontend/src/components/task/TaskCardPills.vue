@@ -9,7 +9,8 @@
 import { tourEvent } from '@/utils/tourEvents'
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopover, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NPopover, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   FlagOutline,
   CalendarClearOutline,

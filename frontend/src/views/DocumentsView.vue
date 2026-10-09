@@ -2,7 +2,8 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NSpin, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NSpin, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AddOutline,
   AlertCircleOutline,

@@ -2,7 +2,8 @@
 import { ref, computed, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import { NButton, NScrollbar, NText, NIcon, NDropdown, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NScrollbar, NText, NIcon, NDropdown, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   CheckmarkDoneOutline,
   DocumentTextOutline,
