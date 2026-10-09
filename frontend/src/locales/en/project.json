@@ -130,7 +130,7 @@
       "dangerHint": "Archiving can be undone, deleting cannot",
       "deleteArmed": "Delete «{name}» for good? Press again to delete",
       "deleteHint": "Deleting takes two steps: the project’s boards, tasks and milestones are gone for good",
-      "deleteHintCounts": "Deleting takes two steps: {what} are gone for good"
+      "deleteHintCounts": "Deleting takes two steps. Gone for good with it: {what}"
     },
     "estimation": {
       "source": "Setting",

@@ -3,6 +3,10 @@
 // /workspaces/:id/counts. Zero parts are left out — «3 доски и 0 задач» says
 // nothing a shorter phrase doesn't — and an empty string means there is nothing
 // to name (unknown yet, or an empty container): callers keep their generic line.
+//
+// A sentence with a verb puts the list after a colon («Будут удалены: …»): in
+// Russian the verb agrees with the list, and «1 доска будут удалены» is what the
+// mockup's word order gives for a lone count ending in 1.
 const ORDER = ['projects', 'boards', 'tasks']
 
 export function countsPhrase(t, counts) {
