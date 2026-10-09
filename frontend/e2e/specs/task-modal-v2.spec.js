@@ -124,7 +124,7 @@ test('комментарий удаляется со второго нажати
   await expect.poll(async () => (await backend.get(`/tasks/${task.id}/comments`)).length).toBe(0)
 })
 
-test('связь: форма у «Связать» — вид списком, задача по названию', async ({ page, backend }) => {
+test('связь: форма у «Связать» — вид сегментом, задача по названию', async ({ page, backend }) => {
   const { modal, task, board, columns } = await openTask(page, backend, 'rel')
   const other = await backend.post(`/boards/${board.id}/tasks`, {
     column_id: columns[0].id,
@@ -138,6 +138,9 @@ test('связь: форма у «Связать» — вид списком, з
   await expect(input).toBeFocused()
   await input.fill('Экспорт в PDF для')
   await input.press('Enter')
+  // Package J (#3118): the form stays open for the next link; Esc closes it.
+  await expect(input).toHaveValue('')
+  await page.keyboard.press('Escape')
   await expect(form).toHaveCount(0)
   await expect
     .poll(async () => (await backend.get(`/tasks/${task.id}/relations`)).map((r) => r.kind))

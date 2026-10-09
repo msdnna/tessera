@@ -334,7 +334,7 @@ defineExpose({ handleKey, move, pick, api, root })
           spellcheck="false"
           autocomplete="off"
         />
-        <ShortcutKeys v-if="keyId" :id="keyId" class="pp-fkey" />
+        <ShortcutKeys v-if="keyId && !showHeader" :id="keyId" class="pp-fkey" />
       </label>
 
       <div ref="listEl" class="pp-list" :class="{ dim: !!readonly }">
@@ -673,11 +673,16 @@ defineExpose({ handleKey, move, pick, api, root })
   overflow: hidden;
   text-overflow: ellipsis;
 }
+/* The name keeps its room; the second word (an email, a range) gives way. */
 .pp-label {
-  flex: 0 1 auto;
+  flex: 0 0 auto;
+  max-width: 68%;
+}
+.pp-text.two .pp-label {
+  max-width: none;
 }
 .pp-sub {
-  flex: 0 1 auto;
+  flex: 1 1 0;
   font-size: 12px;
   color: var(--t-text3);
 }
@@ -853,11 +858,13 @@ defineExpose({ handleKey, move, pick, api, root })
 }
 .pp-foot {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 10px;
-  height: 34px;
+  gap: 4px 10px;
+  min-height: 34px;
   margin: 4px -6px -6px;
-  padding: 0 12px;
+  padding: 6px 12px;
+  box-sizing: border-box;
   border-radius: 0 0 var(--t-r-card) var(--t-r-card);
   background: color-mix(in srgb, var(--t-pop) 55%, var(--t-bg));
   font-size: 11.5px;

@@ -67,15 +67,15 @@ watch(
   },
 )
 
-const altCap = isMac ? '⌥' : 'Alt '
+// The segment's caps: ⌥1 on a Mac; elsewhere only the digit — «Alt» is in
+// the footer («Alt 1–4 вид»), four of them would not fit the segment.
 const kinds = computed(() =>
   KINDS.map((k, i) => ({
     value: k,
     label: t(`task.relations.kind.${k}`),
-    cap: `${altCap}${i + 1}`,
+    cap: isMac ? `⌥${i + 1}` : String(i + 1),
   })),
-)
-// Numbers already linked with the kind the form is armed with — the same pair
+) // Numbers already linked with the kind the form is armed with — the same pair
 // and kind again would do nothing (ON CONFLICT DO NOTHING) but journal twice.
 const linkedNumbers = computed(
   () =>

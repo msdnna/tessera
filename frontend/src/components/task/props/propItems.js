@@ -569,7 +569,13 @@ export function parentItems({
       }),
     )
   }
-  const onBoard = boardTasks.filter((x) => !skip(x) && match(x))
+  // The board's own list may be older than the project's (a task made a
+  // moment ago in another tab): both, once each.
+  const seen = new Set()
+  const boardAll = [...boardTasks, ...projectTasks.filter((x) => x.board_id === boardId)].filter(
+    (x) => !seen.has(x.id) && seen.add(x.id),
+  )
+  const onBoard = boardAll.filter((x) => !skip(x) && match(x))
   const shownIds = new Set()
   const cap = ql ? 30 : 8
   if (onBoard.length) {

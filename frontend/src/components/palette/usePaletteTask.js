@@ -369,6 +369,18 @@ export function usePaletteTask() {
               () => (id ? tasksApi.setMilestone(tk.id, id) : tasksApi.clearMilestone(tk.id)),
               afterSingle(),
             ),
+          // In the palette the stage is created by the name typed — its dates
+          // are set later on the stage itself (the popover has the date form).
+          create: query.trim()
+            ? (name) =>
+                apply(async () => {
+                  const { data } = await projectsApi.createMilestone(boardInfo.value.project_id, {
+                    title: name,
+                  })
+                  milestones.value = [...milestones.value, data]
+                  await tasksApi.setMilestone(tk.id, data.id)
+                }, afterSingle())
+            : null,
         },
       })
     // assignees

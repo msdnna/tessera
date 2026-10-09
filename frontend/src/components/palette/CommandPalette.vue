@@ -385,6 +385,19 @@ const foot = computed(() => {
     },
   ]
 })
+// The field's chip in the input row (#3118, PackageJ «Палитра»): the field's
+// own name, as its picker calls it.
+const fieldLabel = computed(() => {
+  const f = field.value
+  if (!f) return ''
+  const own = {
+    status: 'props.status.title',
+    priority: 'props.priority.title',
+    assignees: 'props.assignees.title',
+    milestone: 'props.milestone.title',
+  }[f]
+  return t(own || `shell.palette.task.${f}`)
+})
 const formTitle = computed(() => (form.kind.value ? t(`shell.keys.form.${form.kind.value}`) : ''))
 const footRight = computed(() => {
   if (formMode.value) return `> ${formTitle.value}`
@@ -460,9 +473,12 @@ const enterLabel = (row) => {
                 <n-icon :component="CloseOutline" :size="13" />
               </button>
             </span>
-            <span v-if="field" class="cp-chip cp-chip-fname" data-testid="palette-field-chip">{{
-              t(`shell.palette.task.${field}`)
-            }}</span>
+            <span
+              v-if="scoped && field"
+              class="cp-chip cp-chip-on"
+              data-testid="palette-field-chip"
+              >{{ fieldLabel }}</span
+            >
             <input
               ref="inputEl"
               v-model="palette.query"
@@ -701,6 +717,11 @@ const enterLabel = (row) => {
 .cp-chip-cmd .cp-chip-title {
   font-weight: 600;
 }
+.cp-chip-on {
+  flex: none;
+  padding: 0 9px;
+  font-weight: 600;
+}
 .cp-chip-field {
   padding: 0 9px;
   background: var(--t-pill);
@@ -795,12 +816,6 @@ const enterLabel = (row) => {
 }
 .cp-gap {
   height: 6px;
-}
-/* The field the palette is narrowed to («Срок»), next to the task's chip. */
-.cp-chip-fname {
-  flex: none;
-  padding: 0 9px;
-  font-weight: 600;
 }
 .cp-group {
   display: flex;
