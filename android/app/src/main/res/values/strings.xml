@@ -241,6 +241,11 @@
     <string name="task_prop_tags">Теги</string>
     <string name="task_prop_milestone">Этап</string>
     <string name="task_prop_status">Статус</string>
+    <string name="task_subscribers_title">Подписаны</string>
+    <string name="task_subscribers_nobody">Никто</string>
+    <string name="task_subscribers_subscribe">Подписаться</string>
+    <string name="task_subscribers_unsubscribe">Отписаться</string>
+    <string name="task_subscribers_more">ещё %1$d</string>
     <string name="task_prop_parent">Родитель</string>
     <string name="task_prop_title">Заголовок</string>
     <string name="task_prop_column">Колонка</string>

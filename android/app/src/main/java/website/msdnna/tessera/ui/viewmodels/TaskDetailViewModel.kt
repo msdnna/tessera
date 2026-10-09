@@ -265,6 +265,19 @@ class TaskDetailViewModel(
         onTagsChanged()
     }
 
+    /**
+     * «Подписаться / Отписаться» (#2963). Not a [mutate]: following a task changes
+     * nothing in it, so an archived (read-only) task can be followed too — the web
+     * modal keeps the row outside its read-only veil as well. Nor does it mark the
+     * modal `changed`: the board has nothing to re-read.
+     */
+    fun toggleSubscription() = sideEffect {
+        val d = state.value.detail ?: return@sideEffect
+        taskRepo.setSubscription(d.id, !d.subscribed)
+        val fresh = taskRepo.detail(taskId)
+        _state.update { it.copy(detail = fresh) }
+    }
+
     fun toggleAssignee(userId: String) = mutate {
         val d = state.value.detail ?: return@mutate
         if (d.assignees.any { it.id == userId }) boardRepo.removeAssignee(d.id, userId) else boardRepo.addAssignee(d.id, userId)
@@ -338,6 +351,9 @@ class TaskDetailViewModel(
         if (summary != null && !summary.isEmpty) {
             reloadDetail()
             _state.update { it.copy(commandNotice = summary) }
+        } else if (state.value.detail?.subscribed == false) {
+            // Commenting makes the author a follower (#2963): «Подписаны» redraws.
+            reloadDetail()
         }
     }
 

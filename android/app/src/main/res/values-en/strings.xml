@@ -233,6 +233,11 @@
     <string name="task_prop_tags">Tags</string>
     <string name="task_prop_milestone">Milestone</string>
     <string name="task_prop_status">Status</string>
+    <string name="task_subscribers_title">Following</string>
+    <string name="task_subscribers_nobody">Nobody</string>
+    <string name="task_subscribers_subscribe">Follow</string>
+    <string name="task_subscribers_unsubscribe">Unfollow</string>
+    <string name="task_subscribers_more">%1$d more</string>
     <string name="task_prop_parent">Parent</string>
     <string name="task_prop_title">Title</string>
     <string name="task_prop_column">Column</string>
