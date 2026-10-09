@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"strings"
@@ -26,15 +28,77 @@ type prefsView struct {
 	QuietEndMinutes   int32  `json:"quiet_end_minutes"`
 	QuietTz           string `json:"quiet_tz"`
 	DigestMinutes     int32  `json:"digest_minutes"`
+	// In-app toasts (#3117): the «Показывать» switch, what to show (an object
+	// only the client reads), «И всплывающие в приложении» of the quiet hours
+	// and «Не беспокоить» — the last one is set through PUT
+	// /notification-prefs/dnd.
+	ToastsEnabled bool            `json:"toasts_enabled"`
+	Toasts        json.RawMessage `json:"toasts"`
+	QuietToasts   bool            `json:"quiet_toasts"`
+	DndUntil      *time.Time      `json:"dnd_until"`
 }
 
+// prefsUpdate is the PUT body. The scheduling fields are full-replace as they
+// always were; the toast fields came later (#3117) and are pointers, because
+// the Android client PUTs the prefs it knows about — an absent field must keep
+// what the web client stored, not reset it to false.
+type prefsUpdate struct {
+	DueEnabled        bool            `json:"due_enabled"`
+	DueLeadMinutes    int32           `json:"due_lead_minutes"`
+	DueRepeatMinutes  int32           `json:"due_repeat_minutes"`
+	ReminderEnabled   bool            `json:"reminder_enabled"`
+	QuietEnabled      bool            `json:"quiet_enabled"`
+	QuietStartMinutes int32           `json:"quiet_start_minutes"`
+	QuietEndMinutes   int32           `json:"quiet_end_minutes"`
+	QuietTz           string          `json:"quiet_tz"`
+	DigestMinutes     int32           `json:"digest_minutes"`
+	ToastsEnabled     *bool           `json:"toasts_enabled"`
+	Toasts            json.RawMessage `json:"toasts"`
+	QuietToasts       *bool           `json:"quiet_toasts"`
+}
+
+// maxToastsConfig bounds the client's toast object: a handful of switches, not
+// a place to park data.
+const maxToastsConfig = 4096
+
 func prefsViewOf(p db.NotificationPref) prefsView {
+	toasts := json.RawMessage(p.Toasts)
+	if len(toasts) == 0 {
+		toasts = json.RawMessage(`{}`)
+	}
+	// A moment already behind us is "off" for every reader; the row keeps it
+	// until the next write rather than being swept.
+	dnd := p.DndUntil
+	if dnd != nil && !dnd.After(time.Now()) {
+		dnd = nil
+	}
 	return prefsView{
 		DueEnabled: p.DueEnabled, DueLeadMinutes: p.DueLeadMinutes,
 		DueRepeatMinutes: p.DueRepeatMinutes, ReminderEnabled: p.ReminderEnabled,
 		QuietEnabled: p.QuietEnabled, QuietStartMinutes: p.QuietStartMinutes,
 		QuietEndMinutes: p.QuietEndMinutes, QuietTz: p.QuietTz, DigestMinutes: p.DigestMinutes,
+		ToastsEnabled: p.ToastsEnabled, Toasts: toasts, QuietToasts: p.QuietToasts, DndUntil: dnd,
 	}
+}
+
+// toastsConfig validates the client's toast object: absent (or null) keeps the
+// stored one, anything else must be a JSON object of a sane size.
+func toastsConfig(raw json.RawMessage, keep []byte) ([]byte, bool) {
+	trimmed := bytes.TrimSpace(raw)
+	if len(trimmed) == 0 || bytes.Equal(trimmed, []byte("null")) {
+		if len(keep) == 0 {
+			return []byte(`{}`), true
+		}
+		return keep, true
+	}
+	if len(trimmed) > maxToastsConfig || trimmed[0] != '{' {
+		return nil, false
+	}
+	var obj map[string]any
+	if err := json.Unmarshal(trimmed, &obj); err != nil {
+		return nil, false
+	}
+	return trimmed, true
 }
 
 // clampMinuteOfDay keeps a minutes-since-midnight value in [0, 1439].
@@ -64,7 +128,7 @@ func (h *API) GetMyNotificationPrefs(c *gin.Context) {
 
 // UpdateMyNotificationPrefs upserts the current user's scheduling prefs.
 func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
-	var req prefsView
+	var req prefsUpdate
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
@@ -116,6 +180,19 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 	if berr != nil {
 		before = defaultPrefs(uid)
 	}
+	toasts, ok := toastsConfig(req.Toasts, before.Toasts)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "настройки всплывающих — объект JSON не больше 4 КБ"})
+		return
+	}
+	toastsOn := before.ToastsEnabled
+	if req.ToastsEnabled != nil {
+		toastsOn = *req.ToastsEnabled
+	}
+	quietToasts := before.QuietToasts
+	if req.QuietToasts != nil {
+		quietToasts = *req.QuietToasts
+	}
 	p, err := h.q.UpsertNotificationPrefs(c, db.UpsertNotificationPrefsParams{
 		UserID: uid, DueEnabled: req.DueEnabled,
 		DueLeadMinutes: req.DueLeadMinutes, DueRepeatMinutes: req.DueRepeatMinutes,
@@ -125,6 +202,9 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 		QuietEndMinutes:   clampMinuteOfDay(req.QuietEndMinutes),
 		QuietTz:           tz,
 		DigestMinutes:     max(0, req.DigestMinutes),
+		ToastsEnabled:     toastsOn,
+		Toasts:            toasts,
+		QuietToasts:       quietToasts,
 	})
 	if err != nil {
 		fail(c, err)
@@ -132,6 +212,42 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 	}
 	if scheduleChanged(before, p) {
 		h.reanchorDeliveries(c, uid, p)
+	}
+	c.JSON(http.StatusOK, prefsViewOf(p))
+}
+
+// maxDnd bounds «Не беспокоить»: the menu offers an hour and «until tomorrow
+// 9:00»; a week covers any client-side preset without letting a typo silence
+// the toasts for good.
+const maxDnd = 7 * 24 * time.Hour
+
+// SetMyNotificationDnd switches «Не беспокоить» (#3117): `{"until": <RFC 3339>}`
+// silences the in-app toasts until then, `{"until": null}` turns it off. Its
+// own door, because the feed's moon sets it without holding the rest of the
+// prefs, and PUT /notification-prefs is a full replace of those.
+func (h *API) SetMyNotificationDnd(c *gin.Context) {
+	var req struct {
+		Until *time.Time `json:"until"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Until != nil {
+		now := time.Now()
+		if !req.Until.After(now) {
+			req.Until = nil
+		} else if req.Until.Sub(now) > maxDnd {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "«Не беспокоить» включается не больше чем на неделю"})
+			return
+		}
+	}
+	p, err := h.q.SetNotificationDnd(c, db.SetNotificationDndParams{
+		UserID: middleware.CurrentUser(c), DndUntil: req.Until,
+	})
+	if err != nil {
+		fail(c, err)
+		return
 	}
 	c.JSON(http.StatusOK, prefsViewOf(p))
 }

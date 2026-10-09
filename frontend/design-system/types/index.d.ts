@@ -324,6 +324,8 @@ export interface ActionMenuProps extends IslandHostProps {
   width?: number
   /** Key of a two-step item to show armed (red, «Точно удалить?»). */
   armed?: string
+  /** Key of a row with `children` to show its submenu open. */
+  openSub?: string
   items: Array<{
     key?: string
     label?: string
@@ -349,6 +351,35 @@ export interface ActionMenuProps extends IslandHostProps {
     failed?: { title: string; sub: string }
     /** A 6px group gap instead of a row. */
     gap?: boolean
+    /** Check mark on the right (the current priority, the open archive). */
+    checked?: boolean
+    /** A colour dot instead of the icon (#RRGGBB) — priorities, stages. */
+    dot?: string
+    /** A person's face instead of the icon. */
+    avatar?: { name: string; src?: string }
+    /** A section title row ('Интеграции') with an optional count on the right. */
+    heading?: string
+    aside?: string
+    /** Grey second line under the label; `noteWarn` paints it orange. */
+    note?: string
+    noteWarn?: boolean
+    /** A submenu: the row gets a chevron and opens these rows beside the menu (one level). */
+    children?: Array<{
+      key: string
+      label: string
+      icon?: string
+      caps?: string[]
+      checked?: boolean
+      dot?: string
+      avatar?: { name: string; src?: string }
+      danger?: boolean
+      confirm?: { title: string; sub?: string }
+      disabled?: boolean
+      stub?: number
+      gap?: boolean
+    }>
+    /** Submenu width in px (default 240). */
+    subWidth?: number
   }>
   onSelect?: (key: string, value?: unknown) => void
 }
@@ -357,7 +388,8 @@ export declare function ActionMenu(props: ActionMenuProps): ReactElement
 export interface UndoToastProps extends IslandHostProps {
   /** «Колонка «Бэклог» удалена · 14 задач в «К работе»». */
   caption?: string
-  icon?: 'trash' | 'archive'
+  /** check — completed, moon — snoozed («Входящие», #2997). */
+  icon?: 'trash' | 'archive' | 'check' | 'moon'
   status?: 'live' | 'busy' | 'done' | 'error'
   /** Time left, 0..1 (the bottom bar). */
   progress?: number
@@ -373,6 +405,20 @@ export interface UndoToastProps extends IslandHostProps {
   onClose?: () => void
 }
 export declare function UndoToast(props: UndoToastProps): ReactElement
+
+export interface ArmButtonProps extends IslandHostProps {
+  /** Tooltip and accessible name of the idle button («Удалить комментарий»). */
+  title?: string
+  /** What the armed button says (default «Удалить?»). */
+  confirm?: string
+  /** ionicons5 export name (default TrashOutline). */
+  icon?: string
+  /** Show the armed state (red, the `confirm` text and ↵). */
+  armed?: boolean
+  /** The second press. */
+  onConfirm?: () => void
+}
+export declare function ArmButton(props: ArmButtonProps): ReactElement
 
 // ── Board ───────────────────────────────────────────────────────────────────
 
@@ -516,6 +562,27 @@ export interface TagPillProps extends IslandHostProps {
 }
 export declare function TagPill(props: TagPillProps): ReactElement
 
+export interface TagPickerProps extends IslandHostProps {
+  /** Every tag of the task's project; `task_count` is the number on the right. */
+  tags: Array<{ id: string; name: string; color?: string; task_count?: number }>
+  /** Ids of the tags on the task («Теги задачи»). */
+  selected?: string[]
+  /** Scope → friendly label, keyed with the separator: { 'app::': 'Приложение' }. */
+  prefixNames?: Record<string, string>
+  /** Scopes owned by a GitLab label rule ('app::'): never offered; on the task they show a lock. */
+  lockedPrefixes?: string[]
+  /** Open with this search typed («Найдено», or «Создать тег «…»» when nothing matches). */
+  query?: string
+  /** Show «Управлять тегами…» (owner/admin). Default true. */
+  canManage?: boolean
+  /** A create is in flight: the create row spins. */
+  creating?: boolean
+  onToggle?: (tagId: string) => void
+  onCreate?: (name: string) => void
+  onManage?: (query: string) => void
+}
+export declare function TagPicker(props: TagPickerProps): ReactElement
+
 export interface UserAvatarProps extends IslandHostProps {
   /** Full name — initials are drawn from it when there is no photo. */
   name: string
@@ -548,8 +615,21 @@ export interface MarkdownEditorProps extends IslandHostProps {
   defaultValue?: string
   onChange?: (markdown: string) => void
   placeholder?: string
-  /** `default` = description editor with Write/Preview tabs; `boxed` = framed comment composer. */
-  variant?: 'default' | 'boxed'
+  /**
+   * `v2` = the task description / comment edit block: one bar with Написать · Просмотр
+   * and the tools, the field with a primary ring, a footer «# задача · @ человек ·
+   * Отмена Esc · Сохранить ⌘↵». `composer` = the 46px comment row: avatar, field,
+   * «Aa» (the v2 bar above the row), «Прикрепить», «Отправить ⌘↵». `default` = bare
+   * editor with a slim top bar (documents); `boxed` = framed composer (notes).
+   */
+  variant?: 'default' | 'boxed' | 'v2' | 'composer'
+  /** composer: whose avatar leads the row. */
+  avatar?: { id?: string; name: string; src?: string }
+  /** v2: the footer's primary button (default «Сохранить»); composer: the send caption via `sendLabel`. */
+  saveLabel?: string
+  sendLabel?: string
+  /** v2: show the footer (default true). */
+  footer?: boolean
   /** Boxed: show the send button (fires onSubmit, also Ctrl+Enter). */
   send?: boolean
   /** Boxed + send: posting in progress. */
@@ -570,8 +650,12 @@ export declare function MarkdownEditor(props: MarkdownEditorProps): ReactElement
 export interface EmptyStateProps extends IslandHostProps {
   /** ionicons5 export name (default FileTrayOutline). */
   icon?: string
+  /** Bold line over the text (17/700; 14/650 when small). */
+  title?: string
   text?: string
   size?: 'small' | 'medium'
+  /** The tile's hue — a hex or CSS colour; the accent when omitted. */
+  tone?: string
 }
 export declare function EmptyState(props: EmptyStateProps): ReactElement
 

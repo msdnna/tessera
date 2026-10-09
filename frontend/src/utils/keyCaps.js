@@ -9,4 +9,13 @@ export const CAPS = {
   tab: 'Tab',
   arrows: '↑↓',
   altEnter: isMac ? '⌥↵' : 'Alt ↵',
+  modEnter: isMac ? '⌘↵' : 'Ctrl ↵',
+  shiftEnter: isMac ? '⇧↵' : 'Shift ↵',
+  backspace: '⌫',
+  space: 'Space',
+  comma: ',',
 }
+
+// A single letter or digit key cap («B», «1») — the key itself, not a word to
+// translate. A function so templates stay free of bare strings.
+export const cap = (k) => String(k).toUpperCase()

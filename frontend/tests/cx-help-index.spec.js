@@ -106,8 +106,12 @@ describe('help index', () => {
 describe('help index: платформы', () => {
   it('у каждой статьи есть список платформ', () => {
     for (const a of articles) {
-      expect(a.platforms, a.slug).toContain('web')
+      expect(a.platforms?.length, a.slug).toBeGreaterThan(0)
     }
+    // Web reads every article except the two sections the web folded into
+    // «Входящие» (#2999); the Android client still has them as screens.
+    const androidOnly = articles.filter((a) => !a.platforms.includes('web')).map((a) => a.slug)
+    expect(androidOnly.sort()).toEqual(['notes', 'reminders'])
   })
 
   it('мобильный вариант не становится отдельной статьёй', () => {

@@ -21,25 +21,66 @@
     "shown": "showing: {tasks} ({total})",
     "shownFlat": "showing: {tasks}",
     "shownTitle": "Tasks shown: {tasks}; in brackets — {total} including subtasks",
-    "shownTitleFlat": "Tasks shown: {tasks} (no subtasks)"
+    "shownTitleFlat": "Tasks shown: {tasks} (no subtasks)",
+    "filters": "Filters",
+    "sorts": "Sorting"
   },
   "tools": {
     "autoOn": "Auto-sort by dependencies (on)",
     "autoOff": "Auto: sort by dependencies",
-    "customize": "Customize the view"
+    "customize": "Board view"
   },
   "views": {
-    "load": "Load a view",
-    "current": "View: {name}",
-    "save": "Save the view",
+    "chip": "Saved view",
+    "mine": "Mine",
+    "shared": "Shared on the board",
+    "sharedAside": "seen by {n} member | seen by {n} members",
+    "none": "No saved view",
+    "saveAs": "Save current as…",
+    "saveAsMine": "Save as mine",
+    "allInPanel": "All views in the panel",
     "namePlaceholder": "View name",
-    "overwrite": "Overwrite:",
-    "empty": "No saved views",
-    "deleteConfirm": "Delete the view “{name}”?",
+    "scopeMine": "Mine",
+    "scopeShared": "Shared",
+    "scopeToggle": "Save for yourself or for everybody on the board",
+    "empty": "Save the current filters and view to come back to them in one click",
+    "changed": "changed",
+    "changedTitle": "“{name}” changed:",
+    "update": "Update",
+    "reset": "Reset",
+    "default": "Open by default",
+    "defaultShared": "Open by default for everybody",
+    "defaultOn": "Default",
+    "locked": "Shared: the owner and admins can change it",
+    "rename": "Rename",
+    "overwrite": "Update from current",
+    "makeShared": "Make shared",
+    "makeMine": "Make personal",
+    "moveUp": "Move up",
+    "moveDown": "Move down",
+    "delete": "Delete",
+    "deleted": "View “{name}” deleted",
+    "restored": "View “{name}” restored",
+    "updated": "View “{name}” updated",
     "saved": "View “{name}” saved",
-    "nameTaken": "The name “{name}” is taken by a “{layout}” view — pick another",
-    "group": "Saved views",
-    "saveAs": "Save the view…"
+    "nameTaken": "This list already has that name",
+    "updateFailed": "Could not update",
+    "shareFailed": "Could not change who sees it",
+    "deleteFailed": "Could not delete",
+    "asNew": "as new",
+    "busy": "Applying…",
+    "area": {
+      "layout": "view → {value}",
+      "group": "grouping → {value}",
+      "sort": "sorting",
+      "filters": "filters",
+      "cards": "cards",
+      "columns": "columns",
+      "matrix": "matrix thresholds",
+      "list": "column widths",
+      "calendar": "calendar mode",
+      "scale": "scale"
+    }
   },
   "column": {
     "addTask": "New task",
@@ -81,7 +122,8 @@
     "restored": "Column “{name}” restored",
     "restoreFailed": "Couldn't restore the column",
     "renameHint": "Double-click to rename",
-    "tagLocked": "A tag is renamed in the project's tags"
+    "tagLocked": "A tag is renamed in the project's tags",
+    "position": "{name} · {n} of {total}"
   },
   "group": {
     "noMilestone": "No milestone",
@@ -95,65 +137,96 @@
     "restored": "Task restored from the archive",
     "boardGone": "The board was deleted — opened “Home”"
   },
-  "activity": {
-    "you": "You",
-    "someone": "Someone",
-    "open": "Open",
-    "link": "Link",
-    "copied": "Copied",
-    "hide": "Hide",
-    "verb": {
-      "created": "created a task",
-      "completed": "completed a task",
-      "reopened": "reopened a task",
-      "moved": "moved a task",
-      "updated": "changed a task"
-    }
-  },
   "layout": {
-    "board": "Board",
+    "board": "Kanban",
     "list": "List",
     "calendar": "Calendar",
     "timeline": "Timeline",
     "gantt": "Gantt",
-    "matrix": "Matrix",
-    "more": "More views"
+    "matrix": "Matrix"
   },
   "actions": {
     "view": "View",
     "tags": "Tags",
     "milestones": "Milestones",
-    "archive": "Archive"
+    "archive": "Archive",
+    "menu": "Board menu",
+    "more": "Board actions"
   },
   "customize": {
-    "title": "Customize the view",
+    "title": "Board view",
     "board": "Board",
     "boardName": "Board name",
-    "cardSize": "Card size",
-    "sizeCompact": "Compact",
-    "sizeMedium": "Medium",
-    "sizeLarge": "Expanded",
-    "fields": "Fields",
-    "stack": "Stack (in a column)",
-    "showEmpty": "Show empty fields",
+    "cardSize": "Size",
+    "size": {
+      "compact": "Compact",
+      "medium": "Medium",
+      "large": "Large"
+    },
+    "sizePlural": {
+      "compact": "Compact",
+      "medium": "Medium",
+      "large": "Large"
+    },
+    "cardsSummary": "{size} · {n} field | {size} · {n} fields",
+    "fields": "Fields on the card",
+    "fieldsCount": "{on} of {all}",
+    "stack": "Stacked",
+    "stackNote": "fields in a column",
+    "showEmpty": "Show empty",
+    "showEmptyNote": "as an icon without a value",
     "columns": "Columns",
     "autoCollapse": "Collapse empty columns",
-    "facets": "Grouping · sorting · filter",
+    "emptyCollapsed": "empty collapsed",
+    "subtasksOpen": "subtasks expanded",
     "subtasks": "Expand subtasks",
-    "views": "Views",
-    "autosave": "Autosave",
-    "autosaveNamed": "Autosave: {name}",
-    "viewsHint": "Saving and loading views — the folder and disk buttons on the board bar.",
+    "filtersCount": "{n} filter | {n} filters",
+    "hintSection": "section",
+    "hintOpen": "expand",
+    "hintView": "view",
+    "chartNote": "Scale and “Today” are in the sub-toolbar too.",
+    "chartHidden": "“Cards” and “Columns” are hidden — the timeline has none. A saved view remembers the view kind.",
+    "sec": {
+      "views": "Saved views",
+      "cards": "Cards",
+      "scale": "Scale",
+      "matrix": "Matrix",
+      "facets": "Grouping and filters",
+      "columns": "Columns",
+      "board": "Board"
+    },
+    "chart": {
+      "weekends": "Shade weekends",
+      "today": "“Today” line",
+      "progress": "Progress inside the bar",
+      "links": "Links between tasks",
+      "undated": "Undated tasks at the bottom"
+    },
+    "preview": {
+      "assignee": "MS +2",
+      "tags": "design",
+      "estimate": "6 h",
+      "milestone": "0.150",
+      "number": "#2950",
+      "gitlab": "!418"
+    },
     "field": {
       "priority": "Priority",
       "due": "Due date",
-      "assignee": "Assignee",
+      "assignee": "Assignees",
       "tags": "Tags",
       "estimate": "Estimate",
       "milestone": "Milestone",
       "description": "Description",
-      "number": "Number (#)",
+      "number": "Number",
       "gitlab": "GitLab"
+    },
+    "matrix": {
+      "due": "Urgent — due within",
+      "dueDays": "{n} day | {n} days",
+      "important": "Important — priority from",
+      "summary": "≤ {days} · ≥ {priority}",
+      "note": "Overdue tasks are always urgent. Dragging a card into a quadrant overrides where it sits."
     }
   },
   "facet": {
@@ -218,10 +291,44 @@
   },
   "calendar": {
     "today": "Today",
-    "noDue": "No due date"
+    "noDue": "No due date",
+    "todayMark": "today",
+    "byDue": "by due date",
+    "undated": "{n} undated",
+    "dragHint": "drag onto a day",
+    "more": "+{n} more",
+    "dropTo": "due → {date}",
+    "addTask": "Task on this day",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "prevWeek": "Previous week",
+    "nextWeek": "Next week",
+    "mode": {
+      "month": "Month",
+      "week": "Week"
+    }
   },
   "list": {
-    "empty": "— empty —"
+    "empty": "No tasks",
+    "addTask": "Task",
+    "complete": "Complete",
+    "reopen": "Reopen",
+    "assign": "Assign someone",
+    "resize": "Drag to resize; double-click to reset",
+    "hintOpen": "open",
+    "hintRename": "name",
+    "hintComplete": "complete",
+    "hintPriority": "priority",
+    "hintOrder": "order",
+    "col": {
+      "number": "No.",
+      "task": "Task",
+      "priority": "Priority",
+      "due": "Due",
+      "people": "People",
+      "estimate": "Estimate",
+      "tags": "Tags"
+    }
   },
   "matrix": {
     "urgent": "Urgent",
@@ -229,18 +336,20 @@
     "important": "Important",
     "notImportant": "Not important",
     "addTask": "Add a task",
-    "pinned": "Placed by hand — return to auto",
+    "pinned": "Placed by hand — back to automatic (⌫)",
     "pinnedShort": "by hand",
     "quadrant": {
-      "doTitle": "Urgent and important",
-      "doHint": "Do it now",
-      "planTitle": "Important, not urgent",
-      "planHint": "Schedule it",
-      "delegateTitle": "Urgent, not important",
-      "delegateHint": "Delegate it",
-      "dropTitle": "Neither urgent nor important",
-      "dropHint": "It can wait"
-    }
+      "doTitle": "Do",
+      "doHint": "urgent and important",
+      "planTitle": "Schedule",
+      "planHint": "important, not urgent",
+      "delegateTitle": "Delegate",
+      "delegateHint": "urgent, not important",
+      "dropTitle": "Later",
+      "dropHint": "neither urgent nor important"
+    },
+    "urgentAxis": "Urgent · due ≤ {days}",
+    "importantAxis": "Important · priority ≥ {priority}"
   },
   "chart": {
     "taskColumn": "Task",
@@ -267,19 +376,65 @@
     },
     "people": "People",
     "scale": {
-      "days": "Days",
-      "weeks": "Weeks",
-      "months": "Months"
+      "days": "Day",
+      "weeks": "Week",
+      "months": "Month",
+      "quarters": "Quarter"
     },
     "hintScroll": "scroll",
     "hintZoom": "zoom",
-    "settings": "Customize the view",
     "workDays": "{n} working day | {n} working days",
     "overdueBy": "{n} day overdue | {n} days overdue",
     "lanes": "Collapse / expand the group",
-    "shiftHint": "shift dates"
+    "shiftHint": "shift dates",
+    "quarter": "Q{q} {year}"
   },
   "members": {
-    "title": "Members · {count}"
+    "title": "On the board · {count}",
+    "tasks": "tasks",
+    "watching": "Who is looking now"
+  },
+  "stage": {
+    "title": "Filter by milestone",
+    "caption": "Milestone",
+    "all": "All tasks",
+    "allSub": "No milestone filter",
+    "backlogSub": "Tasks without a milestone",
+    "search": "Find a milestone",
+    "active": "Active",
+    "planned": "Planned",
+    "showClosed": "Show closed",
+    "manage": "Manage milestones…",
+    "gitlab": "GitLab milestone",
+    "left": "{n} day left | {n} days left"
+  },
+  "strip": {
+    "progress": "{done} of {total}",
+    "left": "{n} day | {n} days",
+    "overdue": "−{n} day | −{n} days",
+    "noGoals": "No goals — add goals →",
+    "fold": "Fold the milestone strip",
+    "unfold": "Unfold the milestone strip",
+    "goals": "Milestone goals",
+    "byEstimate": "By estimate",
+    "estOf": "{done} of {total}",
+    "afterStart": "After the start",
+    "scope": "scope {from} → {to}",
+    "overdueTitle": "Overdue",
+    "ofOpen": "of {n} open | of {n} open",
+    "pageArrow": "Milestone page →",
+    "page": "Milestone page",
+    "hide": "Hide the strip on this board",
+    "closeArmed": "Close «{name}»?"
+  },
+  "crumbs": {
+    "projectSettings": "Project settings",
+    "boards": "Project boards",
+    "favorite": "Add to favourites"
+  },
+  "empty": {
+    "title": "No tasks on the board yet",
+    "text": "The columns are set up — add the first task.",
+    "create": "Create a task"
   }
 }

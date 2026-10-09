@@ -225,7 +225,8 @@ describe('BoardGanttView dependency editing in the archive', () => {
   const gantt = src('src/components/BoardGanttView.vue')
 
   it('hides the link knob and gates the handler', () => {
-    expect(gantt).toContain(':linkable="!readonly"')
+    // …and with the links shown at all («Шкала», #3021).
+    expect(gantt).toContain(':linkable="!readonly && chart.links"')
     const fn = gantt.slice(gantt.indexOf('function onLinkDown'))
     expect(fn.slice(0, fn.indexOf('\n}'))).toContain('if (props.readonly) return')
   })

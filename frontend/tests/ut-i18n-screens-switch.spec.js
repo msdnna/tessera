@@ -9,7 +9,7 @@ import { prefixLabel, buildTagGroups } from '@/utils/tagGroups'
 import { createFormatters } from '@/utils/format'
 import NotFoundView from '@/views/NotFoundView.vue'
 import HomeView from '@/views/HomeView.vue'
-import MilestoneManager from '@/components/MilestoneManager.vue'
+import ProjectStagesTab from '@/components/project/ProjectStagesTab.vue'
 
 // Wave 9 of #2799 — the standalone screens (home, notes, reminders, milestones,
 // the sign-up/recovery/invite flow) and the three helpers they share.
@@ -77,13 +77,13 @@ afterEach(async () => {
 describe('404 screen', () => {
   it('falls back to the catalogue instead of a Russian prop default', async () => {
     const w = track(mount(NotFoundView, { global: { stubs: { RouterLink: true } } }))
-    expect(w.text()).toContain('Страница не найдена')
+    expect(w.text()).toContain('Такой страницы нет')
 
     await setI18nLocale('en')
     // Before the fix the default was the Russian wording, so `title || $t(…)`
     // never reached the catalogue and this stayed Russian.
-    expect(w.text()).toContain('Page not found')
-    expect(w.text()).not.toContain('Страница не найдена')
+    expect(w.text()).toContain('There is no such page')
+    expect(w.text()).not.toContain('Такой страницы нет')
   })
 
   it('still honours an explicit override', async () => {
@@ -125,29 +125,26 @@ describe('home screen', () => {
   })
 })
 
-describe('milestone manager', () => {
-  it('re-renders its texts on a mounted modal', async () => {
+describe('project stages tab', () => {
+  it('re-renders its texts once mounted', async () => {
     track(
       mount(
         {
           render: () =>
             h(NMessageProvider, null, {
-              default: () =>
-                h(MilestoneManager, { show: true, projectId: 'p1', projectName: 'Atlas' }),
+              default: () => h(ProjectStagesTab, { project: { id: 'p1', slug: 'atlas' } }),
             }),
         },
         { attachTo: document.body },
       ),
     )
     await new Promise((r) => setTimeout(r, 0))
-    expect(document.body.textContent).toContain('Этапы — Atlas')
+    expect(document.body.textContent).toContain('Этапов пока нет')
 
     await setI18nLocale('en')
-    // The card is teleported, so let the whole render queue drain — one tick on
-    // the wrapper is not enough to repaint the modal's own tree.
     await new Promise((r) => setTimeout(r, 0))
-    expect(document.body.textContent).toContain('Milestones — Atlas')
-    expect(document.body.textContent).not.toContain('Этапы — Atlas')
+    expect(document.body.textContent).toContain('No milestones yet')
+    expect(document.body.textContent).not.toContain('Этапов пока нет')
   })
 })
 

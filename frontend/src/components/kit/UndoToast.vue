@@ -10,8 +10,10 @@ import { NIcon } from 'naive-ui'
 import {
   AlertCircleOutline,
   ArchiveOutline,
+  CheckmarkDoneOutline,
   CheckmarkOutline,
   CloseOutline,
+  MoonOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 import Kbd from '@/components/Kbd.vue'
@@ -21,7 +23,8 @@ import { CAPS } from '@/utils/keyCaps'
 
 defineProps({
   caption: { type: String, default: '' },
-  icon: { type: String, default: 'trash' }, // 'trash' | 'archive'
+  // 'trash' | 'archive' | 'check' (completed, #2997) | 'moon' (snoozed, #2997)
+  icon: { type: String, default: 'trash' },
   status: { type: String, default: 'live' },
   // Time left, 0..1 — the 3px bar along the bottom edge.
   progress: { type: Number, default: 1 },
@@ -33,7 +36,12 @@ defineProps({
 })
 const emit = defineEmits(['undo', 'retry', 'close'])
 const { t } = useI18n()
-const ICONS = { trash: TrashOutline, archive: ArchiveOutline }
+const ICONS = {
+  trash: TrashOutline,
+  archive: ArchiveOutline,
+  check: CheckmarkDoneOutline,
+  moon: MoonOutline,
+}
 </script>
 
 <template>
@@ -237,6 +245,22 @@ const ICONS = { trash: TrashOutline, archive: ArchiveOutline }
   .ut,
   .ut-bar {
     transition: none;
+  }
+}
+
+/* A phone (#2976 — package G «Undo-тост»): the screen's width less 12+12,
+   52px, «Отменить» a 44px target. */
+@media (max-width: 768px) {
+  .ut {
+    width: calc(100vw - 24px);
+    max-width: none;
+    height: 52px;
+  }
+  .ut-text {
+    flex: 1;
+  }
+  .ut-action {
+    height: 44px;
   }
 }
 </style>

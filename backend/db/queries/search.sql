@@ -54,10 +54,12 @@ WHERE p.workspace_id = @workspace_id
 ORDER BY (b.name ILIKE '%' || @term || '%') DESC, p.name, b.position
 LIMIT 10;
 
+-- A private note (0081) is found only by its author.
 -- name: SearchNotes :many
 SELECT id, title, slug
 FROM notes
 WHERE workspace_id = $1
+  AND (visibility = 'workspace' OR author_id = @viewer::uuid)
   AND (title ILIKE '%' || $2 || '%' OR body ILIKE '%' || $2 || '%')
 ORDER BY updated_at DESC
 LIMIT 26;
@@ -71,3 +73,19 @@ WHERE workspace_id = $1
   AND title ILIKE '%' || $2 || '%'
 ORDER BY updated_at DESC
 LIMIT 26;
+
+-- InboxTaskChips reads what a «Входящие» record shows of its task (#2972): the
+-- same line the palette prints. Only tasks still in the record's workspace and
+-- on a live board come back — a record keeps its task_id after the task moves
+-- away, and the chip must not carry the stranger's title with it.
+-- name: InboxTaskChips :many
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title,
+       t.completed_at, t.due_date, t.column_id, b.name AS board_name,
+       bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color
+FROM tasks t
+JOIN boards b ON b.id = t.board_id
+JOIN projects p ON p.id = b.project_id
+JOIN board_columns bc ON bc.id = t.column_id
+WHERE t.id = ANY(@ids::uuid[])
+  AND p.workspace_id = @workspace_id
+  AND b.deleted_at IS NULL;

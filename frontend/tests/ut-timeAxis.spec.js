@@ -20,6 +20,9 @@ import {
   buildWeekRangeBands,
   buildYearBands,
   scaleOfTier,
+  SCALE_DAYW,
+  QUARTERS_MAX_DAYW,
+  buildQuarterBands,
 } from '@/utils/timeAxis'
 import { createFormatters } from '@/utils/format'
 
@@ -209,6 +212,23 @@ describe('months tier and scales', () => {
     expect(scaleOfTier('hours')).toBe('days')
     expect(scaleOfTier('weeks')).toBe('weeks')
     expect(scaleOfTier('months')).toBe('months')
+  })
+
+  // #3021: below QUARTERS_MAX_DAYW the axis groups by quarters over months.
+  it('groups by quarters at the far end of the zoom', () => {
+    expect(tierFor(QUARTERS_MAX_DAYW - 1)).toBe('quarters')
+    expect(tierFor(QUARTERS_MAX_DAYW)).toBe('months')
+    expect(scaleOfTier('quarters')).toBe('quarters')
+    expect(SCALE_DAYW.quarters).toBeLessThan(QUARTERS_MAX_DAYW)
+  })
+
+  it('bands the days by quarter', () => {
+    const start = new Date(2026, 8, 29).getTime()
+    const days = buildDays(start, 10, start)
+    expect(buildQuarterBands(days)).toEqual([
+      { key: '2026-3', q: 3, year: 2026, span: 2 },
+      { key: '2026-4', q: 4, year: 2026, span: 8 },
+    ])
   })
 })
 

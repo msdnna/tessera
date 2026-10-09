@@ -1,115 +1,374 @@
 {
-  "aria": "Guide",
+  "aria": "Get started",
   "gotIt": "Got it",
-  "skip": "Skip",
+  "abort": "Stop",
+  "back": "Back",
+  "done": "Done",
+  "toChecklist": "To the checklist",
+  "counted": "Counted · next step",
+  "loading": "Waiting for it to show up on screen…",
+  "waitDefault": "The step counts once you do it",
+  "position": "{chapter} · {n} of {of}",
+  "confirm": {
+    "title": "Stop the tour?",
+    "body": "Your progress stays in the checklist on «My tasks». You can continue from there or from «Help → Get started».",
+    "later": "Continue later",
+    "finish": "End the tour",
+    "toStep": "back to the step"
+  },
+  "missing": {
+    "title": "Can’t see where to point",
+    "body": "The element isn’t on screen — maybe it’s on another page or still loading. If it never shows up, the step can be skipped.",
+    "auto": "Skipping the step automatically in",
+    "seconds": "{n} s",
+    "skip": "Skip the step"
+  },
+  "chapters": {
+    "basics": {
+      "title": "Basics"
+    },
+    "task": {
+      "title": "The whole task"
+    },
+    "inbox": {
+      "title": "Inbox"
+    },
+    "stages": {
+      "title": "Stages"
+    },
+    "keys": {
+      "title": "Keyboard and ⌘K"
+    },
+    "tags": {
+      "title": "Grouping by tags"
+    },
+    "projects": {
+      "title": "Projects and groups"
+    },
+    "gitlab": {
+      "title": "GitLab"
+    },
+    "welcome": {
+      "title": "Welcome"
+    },
+    "mobile": {
+      "title": "Basics"
+    },
+    "whatschanged": {
+      "title": "What changed"
+    }
+  },
   "steps": {
     "workspaces": {
-      "title": "Workspaces",
-      "body": "This is where you switch workspaces: each has its own projects, members and tags. A new one is created right next to it — but let's start with the personal one."
+      "title": "Spaces",
+      "body": "On the left is the rail of spaces: each has its own projects, members and tags. A new one is created here too, but let’s start where you are."
     },
     "tree-add": {
-      "title": "The project tree",
-      "body": "Projects live on the left. Press “+” to add the first one."
-    },
-    "menu-project": {
-      "title": "Pick “Project”",
-      "body": "A group will come in handy later, once there are many projects."
+      "title": "Projects on the left",
+      "body": "Projects live in the tree. Press «+» above it and choose «Project».",
+      "wait": "Counts once the project form opens"
     },
     "project-create": {
       "title": "Name the project",
-      "body": "The name also decides the project address: /project/name. The address is assigned once — if it matters to you, set it by hand."
+      "body": "The name also sets the address: /project/name. The address is set once — if it matters, type it yourself.",
+      "wait": "Type a name and press ↵ — the step counts once the project appears in the tree"
     },
     "board-add": {
       "title": "Add a board",
-      "body": "Tasks live on boards, and a project may have several. Press “+” next to the project."
-    },
-    "board-create": {
-      "title": "Name the board",
-      "body": "Type a name and press Enter — the board appears in the tree with four columns."
-    },
-    "board-open": {
-      "title": "Open the board",
-      "body": "Click the board — the kanban opens."
+      "body": "Tasks live on boards. Press «+» next to the project, type a name and press Enter — the board opens with four columns.",
+      "wait": "Counts once the board opens"
     },
     "task-create": {
       "title": "Create a task",
-      "body": "Press “Create task” in the “{todo}” column, type a name and press Enter."
+      "body": "The «Create task» row at the foot of «{todo}» stays visible during this step. Type a title and press Enter.",
+      "wait": "Click the row or press C — counts once the card appears"
     },
     "card-fields": {
       "title": "Right on the card",
-      "body": "Priority, due date, tags and assignees are edited without opening the task — just click the icon on the card."
-    },
-    "card-open": {
-      "title": "Open the task",
-      "body": "Click the card — the full task form opens."
-    },
-    "tm-due": {
-      "title": "Due date",
-      "body": "Set a due date — the calendar is also where repetition and reminders are configured."
-    },
-    "tm-assignees": {
-      "title": "Assignees",
-      "body": "Choose who runs the task. While you are alone in the workspace — assign yourself."
-    },
-    "tm-priority": {
-      "title": "Priority",
-      "body": "Priority colours the dot on the card, and the board can be sorted by it."
-    },
-    "tm-tags": {
-      "title": "Tags",
-      "body": "A tag is created right here. The board can group into columns by tags — that is the main way to arrange tasks your own way."
-    },
-    "tm-description": {
-      "title": "Description",
-      "body": "Describe the task: Markdown, attachments and {'@'} mentions are supported."
-    },
-    "tm-tabs": {
-      "title": "Subtasks, activity, links",
-      "body": "Below the description — subtasks and the activity feed: comments mixed with the history of changes. Links to other tasks are in the properties panel."
-    },
-    "tm-close": {
-      "title": "Everything is saved",
-      "body": "Fields save as you change them — there is no separate «Save» button. Close the task: the card already shows your changes."
-    },
-    "board-tools": {
-      "title": "Board views and tools",
-      "body": "On the left — kanban, list, calendar and Gantt: the same tasks in different cuts. In the middle — search across the whole workspace, on the right — tags, milestones and the archive."
-    },
-    "board-composer": {
-      "title": "Grouping, sorting, filters",
-      "body": "The “+” on this bar adds grouping (including by tag), sorting and filters, and on the right is the card layout setting."
+      "body": "Priority, due date, tags and assignees are edited without opening the task — click the icon on the card."
     },
     "dnd-card": {
       "title": "Drag the card",
-      "body": "A task moves between columns by dragging — that is how its status changes on the board. Drag the card into “{inProgress}”."
+      "body": "A task’s status changes by moving it between columns. Drag the card to «{inProgress}» — with the mouse or the keyboard.",
+      "wait": "Counts once the card is in another column"
     },
-    "group-add": {
-      "title": "Projects group up too",
-      "body": "Once there are many projects, they go into groups. Press “+” above the tree once more."
+    "card-open": {
+      "title": "Open the task",
+      "body": "Click the card or press ↵ on the selected one — the task window opens with all its fields.",
+      "wait": "Counts once the task window opens"
     },
-    "menu-group": {
-      "title": "Pick “Group”",
-      "body": "The group is named right in the tree: type a name and press Enter."
-    },
-    "group-created": {
-      "title": "The group is created",
-      "body": "Rename it with a double-click on the name or with F2."
-    },
-    "dnd-project": {
-      "title": "Drag the project into the group",
-      "body": "The project tree drags the same way: pick a project up and drop it into a group."
-    },
-    "nav-sections": {
-      "title": "Notes, documents, reminders",
-      "body": "Besides boards, a workspace holds notes, collaborative documents and reminders."
-    },
-    "nav-footer": {
-      "title": "Settings and notifications",
-      "body": "At the bottom — your profile and settings; the bell with notifications is in the top right corner."
+    "tm-close": {
+      "title": "Everything saves itself",
+      "body": "There’s no «Save» button — fields save at once. Close the window: the changes are already on the card.",
+      "wait": "Counts once the window closes — by the button, Esc or a click outside"
     },
     "done": {
-      "title": "All set",
-      "body": "That is everything you need to start. The guide can be restarted from the same place, at the bottom of the sidebar."
+      "title": "Basics done",
+      "body": "Next come the optional chapters: in the checklist on «My tasks» and in «Help → Get started»."
+    },
+    "task-open": {
+      "title": "Open a task",
+      "body": "This chapter walks the task window. Open any card on the board.",
+      "wait": "Counts once the task window opens"
+    },
+    "tm-due": {
+      "title": "Due date and repeat",
+      "body": "Set a due date — repeat and reminder are set up in the same calendar.",
+      "wait": "Counts once the task has a due date"
+    },
+    "tm-assignees": {
+      "title": "Assignees",
+      "body": "Choose who works on the task — there can be several.",
+      "wait": "Counts once the task has an assignee"
+    },
+    "tm-priority": {
+      "title": "Priority",
+      "body": "Priority colours the card’s stripe, and the board can sort by it.",
+      "wait": "Counts once a priority is set"
+    },
+    "tm-tags": {
+      "title": "Tags",
+      "body": "A tag is created right here. The board can lay itself out in columns by tags — the main way to arrange tasks your way.",
+      "wait": "Counts once the task has a tag"
+    },
+    "tm-description": {
+      "title": "Description",
+      "body": "Markdown, attachments and mentions with {'@'}. Saved when you leave the field.",
+      "wait": "Counts once the description is saved"
+    },
+    "tm-tabs": {
+      "title": "Subtasks, activity, links",
+      "body": "Below the description are subtasks and the feed: comments mixed with the history of changes. Links to other tasks are in the properties panel."
+    },
+    "inbox-open": {
+      "title": "One feed for notes and reminders",
+      "body": "«Inbox» opens from the button in the top bar or with G I, and doesn’t cover the board.",
+      "wait": "Counts once the feed opens"
+    },
+    "inbox-feed": {
+      "title": "What’s in the feed",
+      "body": "Fired reminders on top, then today, later and notes. ↑↓ walk the records, 1–4 are filters."
+    },
+    "inbox-capture": {
+      "title": "Write a thought down",
+      "body": "«Record» or N M from anywhere. One line: with a time it’s a reminder, without — a note.",
+      "wait": "Counts once the record appears in the feed"
+    },
+    "inbox-actions": {
+      "title": "Sort a record out",
+      "body": "A record has its own keys: E — done, H — snooze, T — turn into a task. The rest is in the record’s menu."
+    },
+    "inbox-done": {
+      "title": "Inbox always at hand",
+      "body": "The number on the button counts fired reminders. Today’s summary of the feed is on «My tasks»."
+    },
+    "stage-select": {
+      "title": "The stage, right on the board",
+      "body": "This is where you choose what the board shows: a sprint, the backlog or all tasks. Key ⇧E."
+    },
+    "stage-strip": {
+      "title": "The stage strip",
+      "body": "When the board shows a stage, its goals and progress sit above the columns. ⇧H folds the strip to a line, and the board remembers."
+    },
+    "stage-page": {
+      "title": "The stage page",
+      "body": "The strip’s menu leads to the stage page — scope, burn-up and closing the stage. From the board — G E."
+    },
+    "stage-nav": {
+      "title": "All stages",
+      "body": "Stages of every project in the space are in «Stages» on the left."
+    },
+    "keys-palette": {
+      "title": "Everything from the keyboard",
+      "body": "The ⌘K palette finds tasks, boards and people and runs commands. Open it with a click or ⌘K.",
+      "wait": "Counts once the palette opens"
+    },
+    "keys-palette-tab": {
+      "title": "Actions on a task",
+      "body": "Pick a task and press Tab — its actions appear: status, due date, assignee. Esc closes the palette."
+    },
+    "keys-sheet": {
+      "title": "The cheat sheet",
+      "body": "Every key is in the cheat sheet. Open it with the «Keys» button or the ? key.",
+      "wait": "Counts once the cheat sheet opens"
+    },
+    "keys-sheet-read": {
+      "title": "Keys by section",
+      "body": "The board, a card, the task window, «Inbox» — each has its own keys. Esc closes the cheat sheet."
+    },
+    "keys-card": {
+      "title": "Cards by arrows",
+      "body": "On a board the arrows select a card, ↵ opens it, E completes it, P and a digit set the priority."
+    },
+    "tags-group": {
+      "title": "Columns by tags",
+      "body": "A board can be laid out by tags instead of statuses: each column is a tag. Switch it here."
+    },
+    "tags-columns": {
+      "title": "A task in several columns",
+      "body": "A task with two tags stands in two columns, and moving it between columns changes its tag."
+    },
+    "tags-window": {
+      "title": "Project tags",
+      "body": "Tags, their prefixes and merging are in the «Project» window, on the «Tags» tab. It opens from the board’s ⋯ menu or with ⌘,."
+    },
+    "group-add": {
+      "title": "Project groups",
+      "body": "When there are many projects, they go into groups. Press «+» above the tree and choose «Group».",
+      "wait": "Counts once the group appears in the tree"
+    },
+    "dnd-project": {
+      "title": "Drag a project into the group",
+      "body": "The tree drags just like a board: take a project and drop it into the group.",
+      "wait": "Counts once the project is in the group"
+    },
+    "project-window": {
+      "title": "The «Project» window",
+      "body": "A project’s tags, stages, estimation and address are in the «Project» window: the project’s menu, or ⌘, on its board."
+    },
+    "gitlab-board": {
+      "title": "GitLab on the board",
+      "body": "Connections, rules and the sync journal are in the GitLab window from the board’s ⋯ menu."
+    },
+    "gitlab-card": {
+      "title": "Tasks from GitLab",
+      "body": "Cards from GitLab carry the issue number. Edits go back to GitLab, and conflicts are sorted out in a window of their own."
+    },
+    "welcome-mine": {
+      "title": "Welcome to the team",
+      "body": "You were invited into a space where projects and boards already exist — there’s nothing to create. Let’s start with «My tasks»: everything assigned to you, from every board."
+    },
+    "welcome-board": {
+      "title": "The team’s boards",
+      "body": "Projects and boards are in the tree on the left. Open any board to see the team’s tasks."
+    },
+    "welcome-inbox": {
+      "title": "Inbox",
+      "body": "Notes and reminders in one feed. Opens from the button or with G I."
+    },
+    "welcome-search": {
+      "title": "Search and ⌘K",
+      "body": "Find a task, a board or a person and run a command — from the ⌘K palette."
+    },
+    "welcome-done": {
+      "title": "Done",
+      "body": "«Basics» and the optional chapters stay in the checklist on «My tasks» and in «Help → Get started»."
+    },
+    "m-nav": {
+      "title": "Navigation",
+      "body": "At the bottom are five tabs: «My tasks», «Board», «Inbox», «Search» and «More»."
+    },
+    "m-board": {
+      "title": "Boards",
+      "body": "«Board» opens your last board. Columns swipe sideways; the project tree slides out with a swipe from the left edge."
+    },
+    "m-fab": {
+      "title": "The «+» button",
+      "body": "A new task, reminder or note — from any screen."
+    },
+    "m-inbox": {
+      "title": "Inbox",
+      "body": "Notes and reminders in one feed. Swipe a record — done or snooze."
+    },
+    "m-search": {
+      "title": "Search",
+      "body": "Tasks, boards, people and commands — in one search."
+    },
+    "m-done": {
+      "title": "The tour is in «More»",
+      "body": "Settings and help are there too. You can take the tour again any time."
+    },
+    "wc-inbox": {
+      "title": "Inbox",
+      "body": "Notes and reminders moved here from their own sections — everything is in place. Open the feed — G I, write a thought down — N M."
+    },
+    "wc-capture": {
+      "title": "Capture in one line",
+      "body": "«+» → record: with a time it’s a reminder, without — a note. From the keyboard — N M or N R."
+    },
+    "wc-stage": {
+      "title": "The stage, right on the board",
+      "body": "A sprint, the backlog or all tasks — chosen here or with ⇧E. Above the columns is the stage strip with its goals."
+    },
+    "wc-view": {
+      "title": "Board view and saved views",
+      "body": "The sliders button opens a panel on the right: cards, fields and saved views. ⇧V."
+    },
+    "wc-project": {
+      "title": "The «Project» window",
+      "body": "A project’s tags, stages and estimation are in one window: ⌘, or the ⋯ menu on the board, the project’s menu in the tree."
+    },
+    "wc-palette": {
+      "title": "Everything from the keyboard",
+      "body": "Search, commands and actions on a task (Tab) — in one ⌘K palette. Every key is in the «?» cheat sheet."
     }
+  },
+  "items": {
+    "basics": {
+      "project": "Create a project",
+      "board": "Add a board",
+      "task": "Create a task",
+      "fields": "Fields on the card",
+      "move": "Move the card",
+      "open": "Open the whole task"
+    },
+    "task": {
+      "due": "Set a due date",
+      "assignees": "Assign someone",
+      "priority": "Set a priority",
+      "tags": "Add a tag",
+      "description": "Write a description"
+    },
+    "inbox": {
+      "open": "Open the feed",
+      "capture": "Write a thought down",
+      "handle": "Sort a record out"
+    },
+    "stages": {
+      "select": "Pick a stage on the board",
+      "strip": "The stage strip",
+      "page": "The stage page"
+    },
+    "keys": {
+      "palette": "The ⌘K palette",
+      "sheet": "The cheat sheet",
+      "card": "Cards from the keyboard"
+    },
+    "tags": {
+      "group": "Columns by tags",
+      "manage": "Project tags"
+    },
+    "projects": {
+      "group": "Create a group",
+      "move": "Move a project into a group",
+      "window": "The «Project» window"
+    },
+    "gitlab": {
+      "open": "The GitLab window",
+      "sync": "Sync"
+    }
+  },
+  "checklist": {
+    "title": "Get started",
+    "basicsOf": "Basics · {n} of {of}",
+    "chaptersOf": "Chapters · {n} of {of}",
+    "of": "{n} of {of}",
+    "optional": "Optional chapters",
+    "continue": "Continue",
+    "self": "done without the tour",
+    "fromHere": "start from this step",
+    "basicsDone": "Basics done",
+    "passed": "done",
+    "locked": "needs a GitLab project",
+    "collapse": "Collapse",
+    "expand": "Expand",
+    "restart": "Start over",
+    "hide": "Hide for good",
+    "menu": "«Get started» menu",
+    "doneTitle": "Tour complete",
+    "doneBody": "Basics and {n} chapter of {of}. | Basics and {n} chapters of {of}.",
+    "doneLocked": "The «GitLab» chapter opens once a GitLab project is connected to a board.",
+    "hideCard": "Hide the card",
+    "again": "Take a chapter again"
   }
 }

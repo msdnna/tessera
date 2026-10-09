@@ -48,3 +48,28 @@ export function columnStatusName({ isDone, first, name, nameKey }) {
   if (isReviewColumn(name)) return 'status-review'
   return 'status-progress'
 }
+
+// The status a task shows outside the kanban — the glyph and colour of its
+// column, as the column header draws them (the chart rows, the calendar pills).
+// `cols` sorted left to right; the done column is the board's own, else the
+// rightmost. A task outside the loaded columns reads as done or to-do by its flag.
+export function taskStatus(task, cols, doneColumnId) {
+  const list = cols || []
+  const col = list.find((c) => c.id === task.column_id)
+  if (!col) {
+    const done = !!task.completed_at
+    return { icon: done ? 'status-done' : 'status-todo', color: '', done }
+  }
+  const isDone = doneColumnId ? col.id === doneColumnId : col.id === list[list.length - 1]?.id
+  const done = isDone || !!task.completed_at
+  return {
+    icon: columnStatusName({
+      isDone: done,
+      first: col.id === list[0]?.id,
+      name: col.name,
+      nameKey: col.name_key,
+    }),
+    color: col.color || '',
+    done,
+  }
+}

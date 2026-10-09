@@ -19,6 +19,7 @@
 // return` on commit. These pin the same contract for the drawer.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
@@ -36,6 +37,8 @@ vi.mock('naive-ui', async () => {
 // reachable from the wrapper. jsdom ships no matchMedia, which useResponsive needs.
 const STUBS = { teleport: true, TesseraIcon: true }
 beforeEach(() => {
+  // The panel prints its due-date preview through useFormat (the theme store).
+  setActivePinia(createPinia())
   window.matchMedia = vi.fn().mockReturnValue({
     matches: false,
     addEventListener: () => {},
@@ -50,6 +53,7 @@ function mountPanel() {
     props: {
       show: true,
       readonly: false,
+      defaultOpen: ['board'],
       boardName: NAME,
       boardIcon: '',
       boardColor: '#7c5cff',

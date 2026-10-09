@@ -22,12 +22,25 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
 - `mermaid` is aliased to `design-system/src/stubs/mermaid.js` in the DS build: it
   was ~8 MB of a 10.7 MB bundle. RichContent catches the stub's throw, so ```mermaid
   blocks stay as code in MarkdownEditor's preview.
+- `@/utils/docImport` is aliased to `design-system/src/stubs/docImport.js` (2026-10-09,
+  #3109): «Входящие → в документ» (`useInboxActions`) imports it lazily, and the
+  single-file lib build inlines lazy imports — it dragged the whole document editor
+  (TipTap schema, pdf.js) in and doubled the bundle to 6.4 MB. The alias must stay
+  BEFORE the generic `@/` alias. If the bundle jumps again, grep `dist/index.js` for
+  `pdfjs`/`tiptap`/`prosemirror` and find the lazy import that pulls them.
 
 ## Environment
 
 - Converter deps (esbuild, ts-morph, @types/react, react@19, react-dom@19,
   playwright@1.62.0) live in `.ds-sync/node_modules` (gitignored, staged per run).
   `--node-modules .ds-sync/node_modules`, `--entry ./design-system/dist/index.js`.
+  `--node-modules ./node_modules` (the app's) fails at once: react is not there.
+- The sync runs in the worktree `~/GolandProjects/tessera-ds` (detached HEAD; it
+  holds `.ds-sync/`, `ds-bundle/` and the grades in `.design-sync/.cache/review`):
+  commit DS changes in the main tree first, then `git -C ../tessera-ds switch
+--detach <commit>`, `corepack yarn build:ds` there, re-copy the scripts and patch
+  the timeouts (below), save the project's `_ds_sync.json` to
+  `.design-sync/.cache/remote-sync.json`, run the driver.
 - `design-system/node_modules` must be a symlink to `../.ds-sync/node_modules`
   (gitignored; recreate per clone: `ln -sfn ../.ds-sync/node_modules design-system/node_modules`).
   Without it ts-morph can't find `@types/react` from the package dir → `[DTS_REACT]`
@@ -93,6 +106,17 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   own plain hover rule (TaskCard: avatar ring via `.card:hover :deep(.avatar)`).
   `/* @kind other */` hints don't survive — the DS build strips comments.
 
+- 2026-10-09 (#3109) Design flagged two more: Naive's `--n-*` re-declared with
+  `!important` on a component selector (`.auth .auth-alt`, 7 vars) — rewritten as
+  real properties (`background-color`, `display: none` on `.n-button__border`), and
+  `.plain` the same way pre-emptively; and `--app-vh` (declared twice on `:root`,
+  `100vh` then `100dvh` under `@supports`) — it wants `/* @kind other */`. The DS
+  build now KEEPS such hints: write `--x: v; /* @kind other */` in the source and
+  the `keepKindHints` plugin in `design-system/vite.config.js` re-inserts the comment
+  after every `--x:` declaration of the minified CSS. Don't override Naive by
+  re-declaring its `--n-*` variables in CSS that ships in the DS — set the real
+  property (use `:not(.n-…--disabled):hover` etc. for specificity).
+
 ## Known render warns
 
 - `[FONT_MISSING] "JetBrains Mono"` — it is the 3rd entry of a monospace stack
@@ -132,6 +156,12 @@ Project: **Tessera-v1-DS** (`projectId` in `config.json`). Config home = `fronte
   absolutely under the field, not on `body`). A change to the anchored/teleported
   path in the SFC is invisible in the cards; check the app too. ActionMenu reacts
   to `arm` with `immediate` — the card mounts it already open.
+- DS-only render switches in the app SFCs (#3109): ActionMenu `startSub` (opens a
+  submenu at mount; the DS prop is `openSub`), TagPicker `inline` + `initialQuery`
+  (no AnchorLayer), ArmButton `armedStill` (armed, no 4 s disarm). Like `arm`, they
+  only matter to the cards — the app never sets them.
+- `ActionMenu` and `ArmButton` joined the `cardMode: column` set (submenus and the
+  row composition are wider than a grid cell).
 - `UndoToast`, `InlineEdit`, `ColorIconPicker`, `FormField` are `cardMode: column`
   (their stories are wider than a grid cell — validate flags `GRID_OVERFLOW`).
 - `design-system/dist/` is NOT rebuilt by the driver: run `corepack yarn build:ds`

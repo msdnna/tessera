@@ -122,7 +122,7 @@ describe('MembersModal: развилка «участник или пригла�
 
   const typeAndInvite = async (w, mail) => {
     await w.find('.invite input').setValue(mail)
-    await w.findAll('.invite button')[0].trigger('click')
+    await w.find('[data-testid="members-invite-submit"]').trigger('click')
     await new Promise((r) => setTimeout(r, 0))
     await w.vm.$nextTick()
   }
@@ -147,7 +147,7 @@ describe('MembersModal: развилка «участник или пригла�
       email: 'stranger@example.com',
       role: 'member',
     })
-    expect(w.find('.link-box input').element.value).toBe('https://t/invite?token=x')
+    expect(w.find('.link-box').text()).toBe('https://t/invite?token=x')
   })
 
   // Негативный контроль: на любой другой отказ приглашение НЕ заводится —

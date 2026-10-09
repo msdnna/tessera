@@ -3,7 +3,7 @@ title: FAQ
 category: FAQ
 order: 90
 keywords: faq, questions, theme, dark, notifications, android, app, password, what's new
-updated: 2026-08-26
+updated: 2026-10-08
 ---
 
 ## How do I turn on the dark theme?
@@ -16,15 +16,15 @@ A task is made done by the board's **completing column**, and that column is set
 
 ## How do I invite someone into a workspace?
 
-The **Members** button (the people icon) in the sidebar header, to the right of the logo → “Invite by email”. The invitation arrives as an email with a link; the role is “Member” or “Admin”. You change the role of an existing member in the same window.
+The workspace menu (its name at the top of the sidebar) → **Members**: type the addresses — they turn into chips — and press **Invite**. The invitation arrives as an email with a link; the role is “Member” or “Admin”. You change the role of an existing member in the same window, with a click on its pill in the row.
 
 ## Is there a mobile app?
 
 Yes, there's an Android client — the install link is in the app, and there's a download button in the interface. The app works online and can send push notifications for reminders; the web version doesn't send push.
 
-## What is the “Notes” section and how does it differ from documents?
+## What is the Inbox, and how does a note differ from a document?
 
-**Notes** are quick jottings for yourself: open, write, close. **Documents** are for collaboration, with formatting, version history and comments. If a note is meant for colleagues or will outlive a week — it belongs in documents.
+The [Inbox](/help/inbox) holds quick records for yourself: notes and reminders in one feed, recorded from anywhere (**N, then M**). **Documents** are for collaboration, with formatting, version history and comments. If a note is meant for colleagues or will outlive a week — it belongs in documents.
 
 ## Where did the “What's new” window go?
 

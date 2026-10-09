@@ -212,8 +212,11 @@ function statusLabel(status) {
   color: var(--t-text2);
 }
 .panel-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .grow {
   flex: 1;
@@ -242,21 +245,24 @@ function statusLabel(status) {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 8px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  padding: 8px 10px 8px 12px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 12px;
+  background: var(--t-card);
   cursor: pointer;
   text-align: left;
   font: inherit;
   color: inherit;
 }
+.entry:hover {
+  background: var(--t-card-hover);
+}
+/* v2 (задача 3106): the entry being read carries the accent strip, no outline. */
 .entry.active {
-  border-color: transparent;
   background:
-    linear-gradient(var(--t-surface), var(--t-surface)) padding-box,
-    var(--t-accent-grad) border-box;
-  border: 1px solid transparent;
+    linear-gradient(var(--t-card), var(--t-card)) padding-box,
+    var(--t-accent-grad-vert) border-box;
 }
 /* A milestone someone asked to keep reads differently from an autosaved
    session — it is the entry people scroll the journal to find. */
@@ -299,8 +305,9 @@ function statusLabel(status) {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--t-border);
+  padding: 10px;
+  border-radius: 12px;
+  background: var(--t-col);
 }
 .diff-head {
   display: flex;

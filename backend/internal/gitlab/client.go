@@ -18,6 +18,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"tessera/internal/netguard"
@@ -276,9 +277,9 @@ type Issue struct {
 }
 
 const issuesQuery = `
-query($path: ID!, $username: String, $iids: [String!], $after: String, $updatedAfter: Time) {
+query($path: ID!, $username: String, $iids: [String!], $after: String, $updatedAfter: Time, $first: Int!) {
   project(fullPath: $path) {
-    issues(assigneeUsername: $username, iids: $iids, updatedAfter: $updatedAfter, first: 100, after: $after, sort: UPDATED_DESC) {
+    issues(assigneeUsername: $username, iids: $iids, updatedAfter: $updatedAfter, first: $first, after: $after, sort: UPDATED_DESC) {
       pageInfo { hasNextPage endCursor }
       nodes {
         id
@@ -346,9 +347,36 @@ func (c *Client) IssuesByIIDs(ctx context.Context, projectPath string, iids []st
 
 // queryIssues runs the issues query with the given filter vars, following
 // pagination and decoding each node into an Issue.
+// issuesPageSize is the first page size of the issues query. Every issue drags
+// its discussions and their notes along, so a page of busy issues can outrun
+// GitLab's own GraphQL deadline ("Timeout on Discussion.id") — queryIssues then
+// halves the page and asks again, down to minIssuesPageSize.
+const (
+	issuesPageSize    = 50
+	minIssuesPageSize = 1
+)
+
+// isGraphQLTimeout reports GitLab's server-side query deadline. It arrives as an
+// ordinary GraphQL error ("Timeout on Note.id"), not as an HTTP status, so a
+// retry with the same page would only time out again.
+func isGraphQLTimeout(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "gitlab graphql: Timeout on ")
+}
+
+// issuePageSizes remembers, per GitLab project, the page size that last got
+// through without a timeout. A Client lives for one sync run, so without it
+// every run would pay the same string of server-side timeouts (about a minute
+// each) before reaching a size that works.
+var issuePageSizes sync.Map // baseURL + "\x00" + projectPath → int
+
 func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map[string]any) ([]Issue, error) {
 	var out []Issue
 	var after *string
+	sizeKey := c.baseURL + "\x00" + projectPath
+	first := issuesPageSize
+	if v, ok := issuePageSizes.Load(sizeKey); ok {
+		first = v.(int)
+	}
 	for {
 		var data struct {
 			Project *struct {
@@ -361,11 +389,16 @@ func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map
 				} `json:"issues"`
 			} `json:"project"`
 		}
-		vars := map[string]any{"path": projectPath, "after": after}
+		vars := map[string]any{"path": projectPath, "after": after, "first": first}
 		for k, v := range filter {
 			vars[k] = v
 		}
 		if err := c.do(ctx, issuesQuery, vars, &data); err != nil {
+			if isGraphQLTimeout(err) && first > minIssuesPageSize {
+				first = max(first/2, minIssuesPageSize)
+				issuePageSizes.Store(sizeKey, first)
+				continue
+			}
 			return nil, err
 		}
 		if data.Project == nil {

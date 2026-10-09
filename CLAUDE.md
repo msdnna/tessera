@@ -189,10 +189,144 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   обратимое удаление — сразу + `stores/undo` (тост 7 с, ⌘Z), необратимое — двухшаговый
   пункт или ввод имени. **Новые мелкие модалки не заводить.** Функции из макетов, которых
   ещё нет, — видимые неактивные заглушки «Скоро · #N» через реестр `utils/featureStubs.js`.
+  Подменю — `children` у пункта ActionMenu (→ ← ↵; на телефоне — второй экран листа). Слой
+  внутри NModal (меню, поповер-форма, лист) — через `kit/AnchorLayer` (+ `inline`) или
+  `in-place`: телепорт в body фокус-ловушка модалки обесточивает (клавиатура и ввод мертвы).
+  Двухшаговая кнопка вне меню — `kit/ArmButton`. Меню задачи во всех видах — `useTaskMenu` +
+  `task/TaskActionMenu`, меню «⋯ Действия доски» — `useBoardActions` (и на телефоне).
+- **Ревью пилотов (#3109):** «Входящие» — только кнопка в шапке + G I (строки в сайдбаре
+  нет); справка — «?» рейла (Справочный центр · Обучение) и F1 на статье текущего экрана
+  (`utils/helpContext`), `HelpHint` в шапках не ставить. Крошки доски — двери (проект →
+  окно «Проект», доска → список досок). Уведомления «про меня» на бэкенде: `deleted`,
+  `unassigned`, `completed`, `reopened` (#3114).
+- **Тосты (#3117, пакет I, миграция 0082):** один каркас `toast/Toast`, две полосы
+  `toast/ToastLanes` — низ: ответы на мои действия + undo (`stores/undo`, правила пакета A);
+  верх справа под колокольчиком: «про меня» из сокета `notification` (те же слова, что строка
+  ленты), напоминания, звонки, активность доски (`toasts.activity()` из KanbanBoard, только
+  чужие, без дубля «про меня»), система, сводка. Правила — `utils/toastModel.js`, стор —
+  `stores/toasts.js`; на телефоне одна полоса с очередью. **Сообщения — только `useMessage`
+  из `@/composables/useMessage`, не из naive-ui** (`<n-message-provider>` нет; опции
+  `{ retry, line, action, duration, class }`); успех тостом — только если результата не видно.
+  Новое событие задачи, дающее тост, обязано нести `actor`. Настройки тостов и «Не беспокоить» —
+  `notification_prefs` (`toasts` jsonb, `toasts_enabled`, `quiet_toasts`, `dnd_until`; поля
+  PUT необязательны) + `PUT /notification-prefs/dnd`. Слой поверх карточки (пульс) — отдельный
+  fixed-элемент, не класс на `.card`. e2e-якоря: `toast` + `data-kind`, `toast-lane-top|bottom|phone`.
+- **Свойства задачи и редактор (#3118, пакет J):** все свойства — `kit/PropPicker` (поповер /
+  лист на телефоне / `shell="palette"`), строки полей — один модуль
+  `components/task/props/propItems.js` для модалки, карточки, «Списка» и палитры (новое поле —
+  построитель там, не своё меню). Хосты: модалка — `task/TaskPropPickers` (`openField`,
+  `fieldOpen`), карточка/Список — `task/props/TaskFieldPopover`; placement `below-or-side`
+  (слева от `[data-pop-side]`). Клавиши модалки: S A P D L, O оценка, M этап, U родитель,
+  ⇧L связь (форма остаётся открытой), повтор клавиши — следующее поле. Срок —
+  `due/DuePicker` (DueEditor удалён; модель `composables/useDueModel`, чистая часть
+  `utils/dueModel`, разбор `quickParse.parseDue`): шлёт `{ due_date, start_date, recurrence }`
+  целиком — **любой путь правки задачи обязан нести `recurrence`**; date-only — UTC-полночь,
+  время — пояс профиля, `recurrence.tz` следует за этим. Редактор — `MarkdownEditor`
+  `v2` | `composer` («Aa» помнит `tessera_composer_fmt`) | `full`; подсветка — прозрачная
+  textarea над `utils/mdHighlight` (в пропорциональном поле — только цвет). @ # / —
+  `utils/edSuggest` + `editor/EdSuggest` (на месте, не телепорт), клавиши поля — группа
+  `editor.*` (по физической клавише; ссылка ⌘⇧K — ⌘K у палитры). Описание — I (⇧E скрытый
+  алиас), «Отменить правки?» по Esc. Пузырь над текстом для чтения — `editor/EdReadBubble`
+  («Цитировать в ответ» через `utils/quoteBus`). Полноэкранный — `editor/FullscreenEditor` на
+  LargeWindow (⌘1–3, Esc свернуть с сохранением). Черновик комментария — на задачу
+  (`tessera_comment_draft:<taskId>`).
+- **Телефон (≤768px, #2976 — пакет G, модель A):** своя оболочка в `AppLayout` — шапка
+  `mobile/MobileTopbar` (на доске: проект/доска → дровер; иначе «‹ Ещё»), страница и нижняя
+  навигация `mobile/MobileTabBar` (Мои задачи · Доска · Входящие · Поиск · Ещё). Дерево —
+  `n-drawer` (тап по названию доски, повторный тап «Доска», свайп от края `useEdgeSwipe`),
+  гамбургера нет. «Ещё» — `/more`, лента уведомлений — `/notifications` (`NotifFeed`; на
+  десктопе оба адреса уводят в настройки / поповер). CSS-переменные `--safe-top/-bottom`,
+  `--mnav-h` (высота навигации, 0 без неё), `--m-head-h`, `--app-vh`, `--kb-h` (клавиатура,
+  `useVisualViewport`) — всё, что стоит над навигацией или клавиатурой, считается от них. На
+  таче ActionMenu/SnoozeMenu — лист снизу, `BottomSheet` — снапы и `page`, `kit/SwipeRow` —
+  свайп строк, kbd скрыты глобально (`kbd.kbd`, `.sk`, `.kbd-hint`). Закрывая оверлей ради
+  перехода — `utils/overlayNav.unwindOverlay`, иначе его `history.back()` отменит push.
 - **Мягкое удаление досок и колонок (миграция 0078):** `deleted_at` + `POST …/restore`,
   воркер `trash_purge` удаляет окончательно через сутки. Удалённая доска невидима всем
   читателям — новый запрос по задачам нескольких досок обязан фильтровать
   `b.deleted_at IS NULL`; колонка при удалении отдаёт задачи соседу (`column_deletion_moves`).
+- **«Вид доски» и представления (#2970, миграция 0079):** настройки доски — `kit/DockPanel`
+  (pop) справа внутри доски во всех 6 видах (⇧V), на телефоне — нижний лист. Представления:
+  `board_views.scope` user|board (у общих `user_id` NULL, автор в `created_by`, правят
+  owner/admin пространства), `is_default` (одна звезда на список, личная > общей, применяется
+  раз за сессию браузера), `position`; `PATCH /views/:id`. Автосохранения нет — «изменено» +
+  Обновить ⌘S / Сбросить ⌘⌫; логика — `composables/useBoardViews.js`, чистая часть —
+  `utils/boardViews.js`. Конфиг представления = состояние доски (`currentViewConfig`), поиск и
+  этап в него не входят. `boards.default_layout` — вид новой доски.
+- **Крупные окна (#2975):** общий каркас — `kit/LargeWindow` (шапка 56px с крошками и `#aside`,
+  колонка разделов `items` со счётчиками/заглушками `stub`/дверями `out`, `escape()` раздела,
+  цифры и Esc — общие `win.section`/`win.close` каталога, Back и возврат фокуса). На нём окно
+  «Проект», GitLab, конфликты, фоновые задания, участники, команды — новое крупное окно строить
+  только на нём. Карточка окна снимается сразу (`v-if`), без затухания: иначе клавиша сразу после
+  закрытия глоталась ещё видимой модалкой. `useOverlayBack` метит запись истории своим id — окна
+  можно ставить друг на друга (конфликты поверх GitLab). GitLab: состояние формы —
+  `gitlab/useGitlabForm` (provide/inject в разделы), привязка — один PUT всей формы, поэтому
+  явное сохранение панелью «Изменения не сохранены ⌘S» (как у конфликтов «Применить ⌘↵»);
+  выбор версии в конфликтах — по полю, на сервер уходит theirs / ours / manual со значениями.
+- **Окно «Проект», этапы и теги (#2971, миграция 0080):** настройки проекта — крупное окно
+  `components/project/ProjectWindow.vue` (стор `projectWindow.open(id, tab, {filter})`, ⌘,)
+  с вкладками Общее · Теги · Этапы · Оценка; TagManager/MilestoneManager удалены. Таблица тегов
+  (`utils/tagTable.js`): имя префикса — точечный `PATCH /projects/:id/tag-prefixes`, слияние
+  `POST …/tags/merge`, массовое удаление `POST …/tags/delete` + undo `POST …/tags/restore`
+  (теги возвращаются под прежними id), `tags.source` user|gitlab, замок — префиксы правил GitLab
+  проекта. Этап: два хранимых состояния + `closed_at`, «Запланирован» = активный со стартом
+  впереди (`utils/milestones.stageState`). Страница этапа `/project/<slug>/stage/<slug>` —
+  `views/StageView.vue` на `GET /milestones/:id/metrics`; объём/burn-up считаются по журналу
+  `milestone`/`milestone_removed` (несут `milestone_id`, при переносе `from_id`), поэтому
+  **любой новый путь смены `milestone_id` обязан журналить** (`journalMilestoneActor`). На доске
+  — селектор этапа в подбаре (⇧E) и полоса этапа (⇧H), выбор и свёрнутость — localStorage на
+  доску. GitLab-этапы read-only до #3010. Навигация из окна-оверлея — после отмотки его
+  history-записи (`ProjectWindow.navigate`), иначе `back()` из `useOverlayBack` отменит push.
+- **«Входящие» (#2972, миграция 0081):** заметки и напоминания — одна лента в `kit/DockPanel`
+  (variant sidebar) справа под шапкой (`components/inbox/*`, стор `stores/inbox` — лента
+  пространства из `GET /workspaces/:id/inbox`, сокет, часы; чистая часть — `utils/inbox.js`).
+  Захват — `inbox/CapturePop` у FAB (N M / N R, разбор `parseCapture` в `utils/quickParse`), в
+  модалке задачи — его inline-копия (фокус-ловушка NModal). Две таблицы, не одна сущность:
+  `notes.visibility` private|workspace (личная видна только автору **во всех чтениях и в сокете**
+  — новый запрос по заметкам обязан фильтровать `visibility = 'workspace' OR author_id = viewer`),
+  `notes.task_id`; у `reminders` — `body`, `done_at` (идёт за `done`), `snoozed_from`,
+  `workspace_id` (NULL — видно в любом пространстве). Разделов `/notes` `/reminders` больше нет
+  (редирект в панель); пилл-колокольчик на карточке — из стора, без запроса на карточку.
+- **Виды доски v2 (#2973, #3009):** Список (`BoardListView` + `list/ListRow`, геометрия и курсор —
+  `utils/listView.js`; строки фиксированной высоты → оконная отрисовка, держит 500+ задач),
+  Календарь (`BoardCalendarView` + `calendar/CalendarPill`, сетки и перенос срока —
+  `utils/calendarView.js`: date-only остаётся UTC-полночью, время — в поясе профиля), Матрица
+  (ручной квадрант — поле задачи `eisenhower_quadrant`, навигация — `utils/matrixNav.js`).
+  Ширины колонок списка, режим календаря и «Шкала» таймлайна/Ганта (`День/Неделя/Месяц/Квартал`
+  + переключатели) — ключи `list`/`calendar`/`chart` конфига представления (`utils/boardViews.js`).
+  Клавиши видов — свои id в каталоге (`list.*`, `cal.*`, `matrix.*`) плюс `card.*` с `when` на
+  свой вид; действия над задачами — общие функции KanbanBoard (`listActions`/`calendarActions`).
+- **Экраны с колонкой разделов (#3106):** Настройки и Администрирование — утопленная колонка
+  `--t-sub` слева, открытый раздел в `?s=`; секции настроек — `components/settings/*` (общие
+  классы `st-*` в `settings.css`). Документы — дерево `documents/DocTree` слева (прячется, если
+  не помещается рядом с текстом) и шапка документа `doc-head`: управление документом больше НЕ
+  телепортируется в topbar, topbar называет экран (`page-crumbs`). Меню `NSelect` подняты над
+  поповерами в `kit/kit.css` — селект внутри `PopoverForm` иначе рисуется под формой.
+- **Экраны аккаунта, конференции, справка, колокольчик (#3107):** все экраны входа и 404 —
+  `AuthLayout` (аврора «Моих задач» `HomeAurora frozen` + стеклянная карточка); корень обязан быть
+  ОДНИМ элементом (`App.vue` анимирует маршрут `mode="out-in"`: фрагмент — абстрактный
+  NConfigProvider или даже комментарий над корнем в dev — оставлял пустой экран после входа).
+  401 от `/auth/login|register` — отказ формы, не истёкшая сессия. Общая кнопка v2 с клавишей —
+  `.kit-btn` в `kit/kit.css`. Конференции: список по дням (`utils/confList`), звонок на всю
+  рабочую область, док кнопок, клавиши `meet.*` (N V, N J, ⇧J, ⌘D, ⌘E, ⌘⇧H, ⌘⇧M), мини-окно с
+  прилипанием к краям; на стенде нет SFU (токен 503) — экран звонка проверяется подменой рефов
+  `session.transport`/`room` (драйвер `.design-sync/.cache/v2e2.mjs`, `mockCall`). «Статья
+  помогла?» — ack `helpful:<slug>:<lang>:yes|no` без своей таблицы, итоги — `GET
+  /admin/help-feedback` и раздел «Справка» админки. F1 — справка.
+- **Тур «Начало работы» и подсказки (#3000, #3070):** тур — главы (`data/getStarted.js`:
+  «Основы» 10 шагов, главы по выбору, «Знакомство» для приглашённого, «Основы» телефона нижним
+  листом, мини-тур «Что изменилось»), движок `stores/tour.js` (правила `click/count/set/appear/
+  vanish/moved`, «Назад» по инфо-шагам, Esc → «Прервать?», «Засчитано»), слой `TourOverlay.vue`
+  («Не видим …» с отсчётом вместо молчаливого пропуска). Чек-лист на «Моих задачах» —
+  `stores/onboarding.js` считает **результаты** по событиям: свои события сокета (бэкенд кладёт
+  `actor` в создание/перенос проекта и группы, доски, этапа, теги/исполнителей — **новый
+  user-initiated broadcast делать `broadcastAs`**) и клиентские `tourEvent()` (`utils/tourEvents`).
+  Подсказки — `data/hints.js` + `stores/hints.js` + `tour/SpotlightHint.vue` (любой якорь,
+  «новое»/«при первой встрече», ≤2 за сессию, ждут свободный экран). Всё — в
+  `user_acknowledgements`: `getstarted:*` (done/skipped, `ch:<глава>`, `item:<результат>[:self]`,
+  `checklist:hidden`), `spotlight:<ключ>`, `hints:off:new|ctx`, `whatschanged:v2|later`;
+  сброс — `DELETE /users/me/acknowledgements?key=|prefix=`. Новый якорь шага — в `MARKUP`
+  `tests/dt-get-started.spec.js`; e2e-пользователи (`register()`) выключают тур и подсказки.
 - **Редактор описаний/комментариев — собственный `MarkdownEditor.vue`** (textarea +
   тулбар + Написать/Просмотр + @-mentions), хранит **Markdown**. **TipTap пробовали и
   отвергли** (тема/бандл) — не возвращать без явного запроса.

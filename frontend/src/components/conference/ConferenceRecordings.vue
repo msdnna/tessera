@@ -192,13 +192,17 @@ defineExpose({ load })
 </template>
 
 <style scoped>
+/* v2 (#3107): rows are --t-col surfaces, no outlines. */
 .recs {
-  margin-top: 16px;
+  margin-top: 20px;
 }
 .recs-h {
-  margin-bottom: 8px;
-  font-size: 13px;
-  color: var(--t-text2);
+  margin: 0 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .recs-err {
   display: flex;
@@ -206,28 +210,30 @@ defineExpose({ load })
   gap: 6px;
   margin-bottom: 8px;
   font-size: 12px;
-  color: #d03050;
+  color: #e0533d;
 }
 .rec-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .rec-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 52px;
   padding: 8px 12px;
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
+  box-sizing: border-box;
+  background: var(--t-col);
+  border-radius: 12px;
 }
 .rec-main {
   flex: 1;
   min-width: 0;
 }
 .rec-title {
-  font-size: 13px;
+  font-size: 13.5px;
+  font-weight: 600;
   color: var(--t-text1);
 }
 .rec-meta {
@@ -238,10 +244,10 @@ defineExpose({ load })
   color: var(--t-text3);
 }
 .rec-live {
-  color: #d03050;
+  color: #e0533d;
 }
 .rec-failed {
-  color: #d03050;
+  color: #e0533d;
 }
 .rec-exp {
   font-style: italic;

@@ -12,6 +12,85 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteUserAcknowledgement = `-- name: DeleteUserAcknowledgement :execrows
+DELETE FROM user_acknowledgements
+WHERE user_id = $1 AND key = $2
+`
+
+type DeleteUserAcknowledgementParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	Key    string    `json:"key"`
+}
+
+// «Показать снова» for one hint (#3100): the flag is gone, so the client puts
+// the hint back in its queue. Zero rows is not an error — the flag may never
+// have been written on this account.
+func (q *Queries) DeleteUserAcknowledgement(ctx context.Context, arg DeleteUserAcknowledgementParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserAcknowledgement, arg.UserID, arg.Key)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const deleteUserAcknowledgementsByPrefix = `-- name: DeleteUserAcknowledgementsByPrefix :execrows
+DELETE FROM user_acknowledgements
+WHERE user_id = $1 AND starts_with(key, $2::text)
+`
+
+type DeleteUserAcknowledgementsByPrefixParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	Prefix string    `json:"prefix"`
+}
+
+// «Показать подсказки заново» / «Начать с начала» (#3100): every flag under one
+// namespace at once (spotlight:, getstarted:). starts_with() rather than LIKE so
+// a key carrying % or _ can't widen the match.
+func (q *Queries) DeleteUserAcknowledgementsByPrefix(ctx context.Context, arg DeleteUserAcknowledgementsByPrefixParams) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteUserAcknowledgementsByPrefix, arg.UserID, arg.Prefix)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const helpFeedbackTotals = `-- name: HelpFeedbackTotals :many
+SELECT key, count(*)::bigint AS votes
+FROM user_acknowledgements
+WHERE key LIKE 'helpful:%'
+GROUP BY key
+ORDER BY key
+`
+
+type HelpFeedbackTotalsRow struct {
+	Key   string `json:"key"`
+	Votes int64  `json:"votes"`
+}
+
+// «Статья помогла?» (#3071): a vote is an acknowledgement keyed
+// helpful:<slug>:<lang>:yes|no, so the totals are a count per key. The prefix
+// is matched with a plain LIKE — the key is client-owned and has no index of
+// its own; the admin screen asks for this rarely and the table is small.
+func (q *Queries) HelpFeedbackTotals(ctx context.Context) ([]HelpFeedbackTotalsRow, error) {
+	rows, err := q.db.Query(ctx, helpFeedbackTotals)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []HelpFeedbackTotalsRow
+	for rows.Next() {
+		var i HelpFeedbackTotalsRow
+		if err := rows.Scan(&i.Key, &i.Votes); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUserAcknowledgements = `-- name: ListUserAcknowledgements :many
 SELECT key, ack_at FROM user_acknowledgements
 WHERE user_id = $1

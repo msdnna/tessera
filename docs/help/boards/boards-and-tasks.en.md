@@ -10,9 +10,14 @@ The board is the main working screen. Columns set the stages, cards are the task
 
 ![A board with tasks laid out across columns](../assets/board-light.png)
 
+## What's on the screen
+
+- **Header** — the breadcrumbs “project › board”: a click on the project opens the [«Project» window](/help/project-window), a click on the board opens the list of the project's boards for a quick jump. Next to them is the favourites star (coming soon).
+- **The “⋯” button on the right of the board bar** — the board menu: «Tags», «Milestones», «Project settings», GitLab and «Archive». Next to it is a cascade of avatars — the people who have tasks on this board.
+
 ## Grouping by tags
 
-A board's columns don't have to be stages. The board settings panel (the gear on the board bar) has a **“Grouping · sorting · filter”** section: switch the grouping to tags and you get a board where a column is a tag, not a stage. The very same set of tasks can be viewed either as a flow through stages or as a layout by direction, team or client — without rebuilding the board.
+A board's columns don't have to be stages. The **Board view** panel (the sliders button on the board bar, `⇧V`) has a **“Grouping and filters”** section: switch the grouping to tags and you get a board where a column is a tag, not a stage. The very same set of tasks can be viewed either as a flow through stages or as a layout by direction, team or client — without rebuilding the board.
 
 The same place is where sorting within columns and filters are set; the chosen conditions show up as chips, and an unwanted one is removed with its cross. The fastest way to switch is the grouping chip on the board bar itself — clicking it flips “Status” to “Tag” and back.
 
@@ -29,7 +34,7 @@ Besides Kanban, the board can show the same tasks differently — the view switc
 - **Timeline** and **Gantt** — duration and dependencies.
 - **Matrix** — a layout across two axes (for example, priority × assignee).
 
-The combination of view, filters and sorting you've assembled can be saved: the folder and disk buttons on the board bar. A saved view opens in a single click, while autosave (in the settings panel) picks up changes on the fly.
+The combination of view, filters and sorting you've assembled can be saved as a view in the Board view panel — see [Board views](/help/board-saved-views). A saved view opens in a single click; when the board drifts away from it, the view shows “changed” and offers “Update” or “Reset”.
 
 ## Task card
 

@@ -17,6 +17,7 @@
 // and KanbanBoard both passes the flag and refuses a stray updateBoard call.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
@@ -40,6 +41,8 @@ const STUBS = { teleport: true, TesseraIcon: true }
 // facet menu there instead of fanning submenus off-screen), and jsdom ships no
 // matchMedia — without this the mount throws before a single assertion runs.
 beforeEach(() => {
+  // The panel prints its due-date preview through useFormat (the theme store).
+  setActivePinia(createPinia())
   window.matchMedia = vi.fn().mockReturnValue({
     matches: false,
     addEventListener: () => {},
@@ -47,11 +50,16 @@ beforeEach(() => {
   })
 })
 
+// Every section open at once (⇧-click does that in the app), so a gate is
+// checked against the whole panel rather than whichever section happens to be open.
+const ALL = ['views', 'cards', 'scale', 'facets', 'columns', 'board']
 const mountPanel = (readonly) =>
   mount(BoardCustomizePanel, {
     props: {
       show: true,
       readonly,
+      layout: 'board',
+      defaultOpen: ALL,
       boardName: 'Доска релиза',
       boardIcon: '',
       boardColor: '#7c5cff',
@@ -70,7 +78,8 @@ describe('BoardCustomizePanel in the archive view', () => {
     const w = mountPanel(false)
     expect(w.find('.n-input').exists()).toBe(true)
     expect(w.find('.board-icp').exists()).toBe(true)
-    expect(w.findAll('.sec').length).toBe(6)
+    // cards · facets · columns · board (views is the board's slot, not given here)
+    expect(w.findAll('.cp-head').length).toBe(4)
     w.unmount()
   })
 
@@ -86,11 +95,11 @@ describe('BoardCustomizePanel in the archive view', () => {
   // local view state and must survive the gate.
   it('keeps the view settings, which are the reader’s own', () => {
     const w = mountPanel(true)
-    // five `.sec` blocks left: card size, fields, columns, facets, views
-    expect(w.findAll('.sec').length).toBe(5)
-    expect(w.findAll('.n-radio-button').length).toBe(3) // compact / medium / large
-    expect(w.findAll('.fld').length).toBe(9) // the per-field pill switches
-    expect(w.find('.pchip-add').exists()).toBe(true)
+    // three sections left: cards, facets, columns
+    expect(w.findAll('.cp-head').length).toBe(3)
+    expect(w.findAll('.cp-size').length).toBe(3) // compact / medium / large
+    expect(w.findAll('.cp-field').length).toBe(9) // the per-field pill switches
+    expect(w.find('.cp-chip-add').exists()).toBe(true)
     w.unmount()
   })
 
@@ -111,7 +120,9 @@ const kanban = readFileSync(resolve(process.cwd(), 'src/components/KanbanBoard.v
 describe('KanbanBoard wiring for the customize drawer', () => {
   it('hands the panel its archive flag', () => {
     const panel = kanban.slice(kanban.indexOf('<BoardCustomizePanel'))
-    expect(panel.slice(0, panel.indexOf('/>'))).toContain(':readonly="archivedMode"')
+    expect(panel.slice(0, panel.indexOf('</BoardCustomizePanel>'))).toContain(
+      ':readonly="archivedMode"',
+    )
   })
 
   // The name input commits on blur, so the call itself has to refuse too.

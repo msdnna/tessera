@@ -6,6 +6,12 @@ import { accountFlows } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { loginRouteForInvite, registerRouteForInvite } from '@/utils/inviteRoute'
+import {
+  PeopleOutline,
+  CheckmarkCircleOutline,
+  AlertCircleOutline,
+  SwapHorizontalOutline,
+} from '@vicons/ionicons5'
 import AuthLayout from '@/components/AuthLayout.vue'
 
 const route = useRoute()
@@ -13,6 +19,24 @@ const router = useRouter()
 const auth = useAuthStore()
 const ws = useWorkspacesStore()
 const state = ref('pending') // pending | ok | fail | wrongAccount | error
+
+// The badge per state: the workspace's people while the invitation is being
+// accepted, a check once in, a swap for the wrong account (the cure is to sign
+// in as someone else), a warning for a spent or broken one.
+const STATE_ICON = {
+  pending: PeopleOutline,
+  ok: CheckmarkCircleOutline,
+  fail: AlertCircleOutline,
+  wrongAccount: SwapHorizontalOutline,
+  error: AlertCircleOutline,
+}
+const STATE_TONE = {
+  pending: '',
+  ok: '#18a058',
+  fail: '#e0533d',
+  wrongAccount: '#f0a020',
+  error: '#e0533d',
+}
 
 // The server's own words, not the localized sentence: `message` is written in
 // whatever language the UI is in and is rewritten outright the day this sentinel
@@ -79,12 +103,18 @@ async function switchAccount() {
 </script>
 
 <template>
-  <auth-layout :title="$t('common.auth.invite.title')">
-    <p class="note">{{ $t(`common.auth.invite.${state}`) }}</p>
+  <auth-layout
+    :title="$t(`common.auth.invite.${state === 'pending' ? 'title' : `${state}Title`}`)"
+    :icon="STATE_ICON[state]"
+    :tone="STATE_TONE[state]"
+  >
+    <p class="note" data-testid="invite-state">{{ $t(`common.auth.invite.${state}`) }}</p>
     <n-button
       v-if="state === 'wrongAccount'"
       block
+      size="large"
       type="primary"
+      class="auth-submit auth-gap"
       data-testid="invite-switch-account"
       @click="switchAccount"
     >
@@ -95,11 +125,3 @@ async function switchAccount() {
     </div>
   </auth-layout>
 </template>
-
-<style scoped>
-.note {
-  color: #fff;
-  font-size: 14px;
-  line-height: 1.5;
-}
-</style>

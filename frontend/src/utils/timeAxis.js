@@ -86,20 +86,26 @@ export function spanOf(t) {
 //  - below ~8px/day even a week range doesn't fit a cell → group by months (v2);
 //  - below ~20px/day a 2-digit day number doesn't fit a cell → group by weeks;
 //  - at/above ~140px/day a day is wide enough to show ≥3 hour ticks → hours.
+//  - below ~3.5px/day a month is too narrow for its days to mean anything →
+//    quarters over months (#3021).
+export const QUARTERS_MAX_DAYW = 3.5
 export const MONTHS_MAX_DAYW = 8
 export const WEEKS_MAX_DAYW = 20
 export const HOURS_MIN_DAYW = 140
 export function tierFor(dayW) {
+  if (dayW < QUARTERS_MAX_DAYW) return 'quarters'
   if (dayW < MONTHS_MAX_DAYW) return 'months'
   if (dayW < WEEKS_MAX_DAYW) return 'weeks'
   if (dayW >= HOURS_MIN_DAYW) return 'hours'
   return 'days'
 }
 
-// The scale presets of the chart toolbar (v2, #2959): «Дни / Недели / Месяцы».
-// Each is a px-per-day landing inside its tier; the hours tier counts as «Дни».
-export const SCALE_DAYW = { days: 24, weeks: 10, months: 4 }
+// The scale presets of the chart toolbar (v2, #2959; «Квартал» — #3021):
+// «День / Неделя / Месяц / Квартал». Each is a px-per-day landing inside its
+// tier; the hours tier counts as «День».
+export const SCALE_DAYW = { days: 24, weeks: 10, months: 4, quarters: 2 }
 export function scaleOfTier(tier) {
+  if (tier === 'quarters') return 'quarters'
   if (tier === 'months') return 'months'
   if (tier === 'weeks') return 'weeks'
   return 'days'
@@ -194,6 +200,22 @@ export function buildMonthBands(days, fmt = defaultFormatters(), { short = false
 }
 
 // Year bands (months tier, v2): runs of consecutive same-year days.
+// Quarter bands — the top band of the quarters tier (#3021): { key, q (1–4),
+// year, span }. The caption is interface text («IV кв. 2026» / «Q4 2026»), so
+// the header builds it from these numbers through the locale files.
+export function buildQuarterBands(days) {
+  const out = []
+  for (const d of days) {
+    const dt = new Date(d.ms)
+    const q = Math.floor(dt.getMonth() / 3) + 1
+    const key = `${dt.getFullYear()}-${q}`
+    const last = out[out.length - 1]
+    if (last && last.key === key) last.span++
+    else out.push({ key, q, year: dt.getFullYear(), span: 1 })
+  }
+  return out
+}
+
 export function buildYearBands(days) {
   const out = []
   for (const d of days) {

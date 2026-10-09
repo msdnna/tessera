@@ -33,11 +33,59 @@ function inlinePublicUrls() {
   }
 }
 
+// Claude Design's token check reads a `/* @kind <kind> */` hint after a custom
+// property it can't classify (`--app-vh: 100dvh`). Minification strips comments,
+// so collect the hints from the sources and write them back after every
+// declaration of that property in the emitted CSS.
+function keepKindHints() {
+  const kinds = new Map()
+  const HINT = /(--[\w-]+)\s*:[^;{}]*;\s*\/\*\s*@kind\s+([\w-]+)\s*\*\//g
+  // Two halves: the sources are read before Vite's CSS handling strips the
+  // comments, the CSS asset only exists after Vite's own generateBundle.
+  const collect = {
+    name: 'tessera-ds-kind-hints-collect',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!/\.(css|vue)(\?|$)/.test(id) || !code.includes('@kind')) return null
+      for (const m of code.matchAll(HINT)) kinds.set(m[1], m[2])
+      return null
+    },
+  }
+  const write = {
+    name: 'tessera-ds-kind-hints-write',
+    enforce: 'post',
+    generateBundle(_, bundle) {
+      if (!kinds.size) return
+      for (const asset of Object.values(bundle)) {
+        if (asset.type !== 'asset' || !asset.fileName.endsWith('.css')) continue
+        let css = String(asset.source)
+        for (const [prop, kind] of kinds) {
+          const decl = new RegExp(`(${prop}:[^;{}]*)([;}])`, 'g')
+          // After the finished declaration, as written in the sources:
+          // `--app-vh:100dvh;/* @kind other */}`.
+          css = css.replace(
+            decl,
+            (_m, d, end) => `${d};/* @kind ${kind} */${end === ';' ? '' : end}`,
+          )
+        }
+        asset.source = css
+      }
+    },
+  }
+  return [collect, write]
+}
+
 export default defineConfig({
   root: import.meta.dirname,
-  plugins: [inlinePublicUrls(), vue()],
+  plugins: [inlinePublicUrls(), ...keepKindHints(), vue()],
   resolve: {
     alias: [
+      // See src/stubs/docImport.js — keeps the document editor and pdf.js (~3 MB)
+      // out of the bundle. Before the generic `@/` alias, which would win otherwise.
+      {
+        find: /^@\/utils\/docImport(\.js)?$/,
+        replacement: resolve(import.meta.dirname, 'src/stubs/docImport.js'),
+      },
       { find: /^@\//, replacement: resolve(root, 'src') + '/' },
       // See src/stubs/mermaid.js — keeps ~8 MB of diagram engine out of the bundle.
       { find: /^mermaid$/, replacement: resolve(import.meta.dirname, 'src/stubs/mermaid.js') },

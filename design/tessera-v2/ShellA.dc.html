@@ -87,6 +87,7 @@
 <sc-if value="{{ popStyle }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:64px;top:66px;z-index:20;width:340px"><dc-import name="PopForm" kind="spaceStyle" state="{{ pstate }}" hint-size="340px,330px"></dc-import></div></sc-if>
 <sc-if value="{{ palette }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;z-index:40;background:var(--v-scrim);display:flex;justify-content:center;align-items:flex-start;padding-top:72px"><dc-import name="PaletteForm" mode="{{ pmode }}" hint-size="680px,420px"></dc-import></div></sc-if>
 <sc-if value="{{ trOn }}" hint-placeholder-val="{{ false }}"><dc-import name="TourLayer" step="{{ trStep }}" style="position:absolute;left:0;top:0;width:1440px;height:900px;z-index:70" hint-size="1440px,900px"></dc-import></sc-if>
+<sc-if value="{{ hasToasts }}" hint-placeholder-val="{{ false }}"><dc-import name="ToastLayer" v="{{ toasts }}" style="position:absolute;left:0;top:0;width:1440px;height:900px;z-index:80" hint-size="1440px,900px"></dc-import></sc-if><sc-if value="{{ hasPP }}" hint-placeholder-val="{{ false }}"><dc-import name="PropLayer" v="{{ pp }}" style="position:absolute;left:0;top:0;width:1440px;height:900px;z-index:78" hint-size="1440px,900px"></dc-import></sc-if>
 </div>
 </x-dc>
 <script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;scene&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;base&quot;,&quot;create&quot;,&quot;palette&quot;,&quot;paletteCmd&quot;,&quot;rename&quot;,&quot;newBoard&quot;,&quot;newGroup&quot;,&quot;menu&quot;,&quot;slug&quot;,&quot;move&quot;,&quot;spaceNew&quot;,&quot;spaceStyle&quot;,&quot;colRename&quot;,&quot;colMenu&quot;,&quot;toast&quot;],&quot;default&quot;:&quot;base&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;pstate&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;normal&quot;,&quot;error&quot;,&quot;loading&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;normal&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
@@ -139,13 +140,13 @@ class Component extends DCLogic {
     const isC = C_SCENES.includes(sc);
     const isD = D_SCENES.includes(sc);
     const isE = sc.startsWith('e');
-    const pg = { eDocs: 'docs', eTpl: 'docs', eSet: 'set', eHints: 'set', eAdmin: 'admin', eMeet: 'meet', eCall: 'call' }[sc] || null;
+    const pg = { eDocs: 'docs', eTpl: 'docs', eSet: 'set', eHints: 'set', eToasts: 'set', eAdmin: 'admin', eMeet: 'meet', eCall: 'call' }[sc] || null;
     const vw = { dGantt: 'gantt', dList: 'list', dCal: 'cal', dMatrix: 'mx' }[sc] || 'board';
     const pnl = sc === 'dViews' || sc === 'dCards' || sc === 'dGantt' || trS === '19';
     const isStage = sc === 'stage' || sc === 'stageEdit' || sc === 'stageLow';
     const side0 = { create: 'create', rename: 'rename', menu: 'menu', slug: 'menu', move: 'menu', toast: 'deleted', newBoard: 'newBoard', newGroup: 'newGroup' }[sc] || 'base';
     const inb = sc === 'inbox' || sc === 'inboxEmpty' || sc === 'inboxSnooze' || trS === '25';
-    const side = isE ? ({ eDocs: 'eDocs', eTpl: 'eDocs', eMeet: 'eMeet', eCall: 'eMeet', eSet: 'ePage', eHints: 'ePage', eAdmin: 'ePage' }[sc] || 'eBoard') : isC ? (isStage ? 'cStage' : 'c') : isB ? (inb ? 'bInbox' : sc === 'home' ? 'bHome' : 'b') : side0;
+    const side = isE ? ({ eDocs: 'eDocs', eTpl: 'eDocs', eMeet: 'eMeet', eCall: 'eMeet', eSet: 'ePage', eHints: 'ePage', eToasts: 'ePage', eAdmin: 'ePage' }[sc] || 'eBoard') : isC ? (isStage ? 'cStage' : 'c') : isB ? (inb ? 'bInbox' : sc === 'home' ? 'bHome' : 'b') : side0;
     const colX = (i) => 16 + 56 + i * 268;
     return {
       dMode: isD, vBoard: vw === 'board', nvBoard: vw !== 'board', vList: vw === 'list', nvList: vw !== 'list', vGantt: vw === 'gantt', nvGantt: vw !== 'gantt', vCal: vw === 'cal', nvCal: vw !== 'cal', vMx: vw === 'mx', nvMx: vw !== 'mx',
@@ -164,7 +165,7 @@ class Component extends DCLogic {
       oGl: sc.startsWith('fGl'), glTab: { fGlConn: 'conn', fGlRules: 'rules', fGlWrite: 'write', fGlLog: 'log' }[sc] || 'conn', oConf: sc === 'fConflict', oJobs: sc === 'fJobs', oMembers: sc === 'fMembers', oCmds: sc === 'fCmds',
       oTpl: sc === 'eTpl', oHelp: sc === 'eHelp', oNew: sc === 'eNew', oNotif: sc === 'eNotif', oMini: sc === 'eMini',
       cap: sc.startsWith('cap'), fabClosed: !sc.startsWith('cap'), capState: { capEmpty: 'empty', capParsed: 'parsed', capBody: 'body' }[sc] || 'parsed',
-      inbox: inb, inboxState: sc === 'inboxEmpty' ? 'empty' : 'full', task: sc === 'task' || trS === '14', trOn: isTr || !!this.props.tour, trStep: this.props.tour || trS, cl: this.props.cl || '', setSec: sc === 'eHints' ? 'hints' : 'notif', popCreateB: trS === '04',
+      inbox: inb, inboxState: sc === 'inboxEmpty' ? 'empty' : 'full', task: sc === 'task' || trS === '14', trOn: isTr || !!this.props.tour, trStep: this.props.tour || trS, cl: this.props.cl || '', setSec: sc === 'eHints' ? 'hints' : sc === 'eToasts' ? 'toasts' : 'notif', hasToasts: !!this.props.toasts, hasPP: !!this.props.pp, pp: this.props.pp || '', toasts: this.props.toasts || '', popCreateB: trS === '04',
       plusOn: sc === 'spaceNew', plusOff: sc !== 'spaceNew', tileRing: sc === 'spaceStyle', tilePlain: sc !== 'spaceStyle',
       popCreate: sc === 'create', popMenu: sc === 'menu', popSlug: sc === 'slug', popMove: sc === 'move', popSpace: sc === 'spaceNew', popStyle: sc === 'spaceStyle',
       pstate: this.props.pstate || 'normal',

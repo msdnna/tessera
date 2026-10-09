@@ -43,9 +43,17 @@ func (h *API) CreateBoard(c *gin.Context) {
 	}
 	var req struct {
 		Name string `json:"name" binding:"required"`
+		// The view a new board opens in (#3017) — the inline row's Tab switches
+		// Канбан / Список. Absent = kanban, as before.
+		DefaultLayout string `json:"default_layout"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	layout, ok := boardLayout(req.DefaultLayout)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown board layout"})
 		return
 	}
 	maxPos, err := h.q.MaxBoardPosition(c, projectID)
@@ -61,7 +69,7 @@ func (h *API) CreateBoard(c *gin.Context) {
 		var err error
 		b, err = q.CreateBoard(c, db.CreateBoardParams{
 			ProjectID: projectID, Name: req.Name, Slug: slug,
-			Position: positionBetween(&maxPos, nil),
+			Position: positionBetween(&maxPos, nil), DefaultLayout: layout,
 		})
 		if err != nil {
 			return err
@@ -97,8 +105,20 @@ func (h *API) CreateBoard(c *gin.Context) {
 		return
 	}
 
-	h.broadcast(p.WorkspaceID, "board.created", b)
+	h.broadcastAs(c, p.WorkspaceID, "board.created", b)
 	c.JSON(http.StatusCreated, b)
+}
+
+// boardLayout validates a board view name (#3017): the layouts the web client
+// draws. "" means the default — kanban.
+func boardLayout(s string) (string, bool) {
+	switch s {
+	case "":
+		return "board", true
+	case "board", "list", "timeline", "gantt", "calendar", "matrix":
+		return s, true
+	}
+	return "", false
 }
 
 // doneColumnName is the default name for the task-completing column (used only
@@ -303,6 +323,8 @@ func (h *API) UpdateBoard(c *gin.Context) {
 		Icon     *string `json:"icon"`
 		Color    *string `json:"color"`
 		IconMode *string `json:"icon_mode"`
+		// Absent keeps the board's view for newcomers (#3017).
+		DefaultLayout *string `json:"default_layout"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -320,8 +342,18 @@ func (h *API) UpdateBoard(c *gin.Context) {
 	if req.IconMode != nil {
 		iconMode = normIconMode(*req.IconMode)
 	}
+	layout := b.DefaultLayout
+	if req.DefaultLayout != nil {
+		l, ok := boardLayout(*req.DefaultLayout)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown board layout"})
+			return
+		}
+		layout = l
+	}
 	updated, err := h.q.UpdateBoard(c, db.UpdateBoardParams{
 		ID: id, Name: req.Name, Position: b.Position, Icon: icon, Color: color, IconMode: iconMode,
+		DefaultLayout: layout,
 	})
 	if err != nil {
 		fail(c, err)
@@ -388,7 +420,7 @@ func (h *API) RestoreBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "board.created", b)
+	h.broadcastAs(c, wsID, "board.created", b)
 	c.JSON(http.StatusOK, b)
 }
 

@@ -11,6 +11,22 @@ import (
 	"github.com/google/uuid"
 )
 
+const deleteTagPrefix = `-- name: DeleteTagPrefix :exec
+DELETE FROM tag_prefixes WHERE project_id = $1 AND prefix = $2
+`
+
+type DeleteTagPrefixParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Prefix    string    `json:"prefix"`
+}
+
+// DeleteTagPrefix drops one prefix's display name (the point edit of #2990: the
+// group header of the tag table renames one prefix, not the whole set).
+func (q *Queries) DeleteTagPrefix(ctx context.Context, arg DeleteTagPrefixParams) error {
+	_, err := q.db.Exec(ctx, deleteTagPrefix, arg.ProjectID, arg.Prefix)
+	return err
+}
+
 const deleteTagPrefixesForProject = `-- name: DeleteTagPrefixesForProject :exec
 DELETE FROM tag_prefixes WHERE project_id = $1
 `

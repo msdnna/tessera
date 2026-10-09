@@ -389,6 +389,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// future onboarding. Keyed by an opaque client-owned string.
 			protected.GET("/users/me/acknowledgements", rh.ListMyAcknowledgements)
 			protected.POST("/users/me/acknowledgements", rh.AcknowledgeMe)
+			protected.DELETE("/users/me/acknowledgements", rh.ForgetMyAcknowledgements)
 
 			// Workspaces & membership.
 			protected.POST("/workspaces", rh.CreateWorkspace)
@@ -425,6 +426,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PUT("/admin/oauth/gitlab", rh.SetOAuthConfig)
 			// Background jobs panel (admin-only): observe/run/cancel background work.
 			protected.GET("/admin/metrics", rh.MetricsHandler)
+			// «Статья помогла?» totals (#3071).
+			protected.GET("/admin/help-feedback", rh.HelpFeedback)
 			protected.GET("/admin/jobs", rh.ListJobs)
 			protected.GET("/admin/jobs/:key", rh.GetJob)
 			protected.POST("/admin/jobs/:key/run", rh.RunJob)
@@ -444,6 +447,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Tag-prefix display names (provider-neutral; GitLab modal is one editor).
 			protected.GET("/projects/:id/tag-prefixes", rh.ListTagPrefixes)
 			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
+			// The tag table of the «Проект» window (#2990): one prefix's name,
+			// merging, bulk delete and its undo.
+			protected.PATCH("/projects/:id/tag-prefixes", rh.SetTagPrefix)
+			protected.POST("/projects/:id/tags/merge", rh.MergeTags)
+			protected.POST("/projects/:id/tags/delete", rh.DeleteTags)
+			protected.POST("/projects/:id/tags/restore", rh.RestoreTags)
 			protected.GET("/workspaces/:id/tag-prefixes", rh.ListWorkspaceTagPrefixes)
 
 			// Quick-action registry: built-in commands + the workspace's custom
@@ -458,6 +467,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Notes (workspace-scoped).
 			protected.POST("/workspaces/:id/notes", rh.CreateNote)
 			protected.GET("/workspaces/:id/notes", rh.ListNotes)
+			// «Входящие» (#2972): the caller's reminders + readable notes as one feed.
+			protected.GET("/workspaces/:id/inbox", rh.Inbox)
 
 			// Documents (workspace-scoped, nested via parent_id).
 			protected.POST("/workspaces/:id/documents", rh.CreateDocument)
@@ -491,6 +502,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/boards/:id/dependencies", rh.BoardDependencies)
 			protected.GET("/boards/:id/views", rh.ListBoardViews)
 			protected.POST("/boards/:id/views", rh.SaveBoardView)
+			protected.PATCH("/views/:id", rh.UpdateBoardView)
 			protected.DELETE("/views/:id", rh.DeleteBoardView)
 
 			protected.PATCH("/columns/:id", rh.UpdateColumn)
@@ -500,6 +512,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 			protected.GET("/tasks/:id", rh.GetTask)
 			protected.GET("/tasks/:id/description", rh.GetTaskDescription)
+			// The task modal's «Напоминания и заметки» (#2998): own reminders,
+			// readable notes.
+			protected.GET("/tasks/:id/reminders", rh.ListTaskReminders)
+			protected.GET("/tasks/:id/notes", rh.ListTaskNotes)
 			protected.PATCH("/tasks/:id", rh.UpdateTask)
 			protected.PATCH("/tasks/:id/move", rh.MoveTask)
 			protected.PATCH("/tasks/:id/eisenhower", rh.SetTaskEisenhower)
@@ -562,6 +578,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/notification-template-preview", rh.PreviewNotificationTemplate)
 			protected.GET("/notification-prefs", rh.GetMyNotificationPrefs)
 			protected.PUT("/notification-prefs", rh.UpdateMyNotificationPrefs)
+			protected.PUT("/notification-prefs/dnd", rh.SetMyNotificationDnd)
 			protected.PATCH("/tasks/:id/due-notify", rh.SetTaskDueNotify)
 			protected.GET("/notification-routes", rh.ListNotificationRoutes)
 			protected.POST("/notification-routes", rh.CreateNotificationRoute)
@@ -577,6 +594,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/projects/:id/milestones", rh.CreateMilestone)
 			protected.PATCH("/milestones/:id", rh.UpdateMilestone)
 			protected.DELETE("/milestones/:id", rh.DeleteMilestone)
+			// Stage page (#2992): progress, burn-up, scope change, pace in one read.
+			protected.GET("/milestones/:id/metrics", rh.MilestoneMetrics)
 			protected.POST("/tasks/:id/milestone", rh.SetTaskMilestone)
 			protected.DELETE("/tasks/:id/milestone", rh.ClearTaskMilestone)
 			protected.POST("/milestones/:id/gitlab", rh.PushMilestoneToGitlab)
@@ -726,6 +745,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/reminders", rh.CreateReminder)
 			protected.GET("/reminders", rh.ListReminders)
 			protected.PATCH("/reminders/:id", rh.UpdateReminder)
+			protected.POST("/reminders/:id/snooze", rh.SnoozeReminder)
 			protected.DELETE("/reminders/:id", rh.DeleteReminder)
 		}
 	}

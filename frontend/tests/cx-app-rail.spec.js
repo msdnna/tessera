@@ -5,7 +5,6 @@ import { setActivePinia, createPinia } from 'pinia'
 import { beforeEach, afterEach, describe, it, expect, vi } from 'vitest'
 import { nextTick } from 'vue'
 import { mount } from '@vue/test-utils'
-import { NPopconfirm } from 'naive-ui'
 
 // The badge poller would otherwise reach the network on mount.
 vi.mock('@/composables/useServerBadges', () => ({ useServerBadges: () => ({ poll: vi.fn() }) }))
@@ -52,6 +51,7 @@ beforeEach(() => {
 afterEach(() => {
   wrapper?.unmount()
   wrapper = null
+  document.body.innerHTML = ''
   delete window.__TAURI_INTERNALS__
   localStorage.clear()
 })
@@ -69,6 +69,38 @@ describe('AppRail on the web', () => {
     // An icon replaces the initials.
     expect(all[1].findComponent({ name: 'ProjectIcon' }).exists()).toBe(true)
     expect(wrapper.find('[data-tour="ws-switch"]').exists()).toBe(true)
+  })
+
+  // The tile's menu is the workspace menu on kit/ActionMenu (#3110): its name
+  // as the title, «Интеграции» a submenu, and «Удалить» locked on the last one.
+  it('opens the workspace menu at the pointer', async () => {
+    const ws = useWorkspacesStore()
+    ws.list = [{ ...WS[0], owner_id: 'u1' }]
+    ws.currentId = 'w1'
+    useAuthStore().user = { id: 'u1' }
+    mountRail()
+    await wrapper.find('[data-ws="w1"]').trigger('contextmenu', { clientX: 30, clientY: 40 })
+    await nextTick()
+    const menu = document.body.querySelector('[data-testid="rail-menu"]')
+    expect(menu.querySelector('.am-head').textContent).toContain('Тессера Дев')
+    const integrations = menu.querySelector('[data-testid="rail-menu-integrations"]')
+    expect(integrations.getAttribute('aria-haspopup')).toBe('menu')
+    integrations.click()
+    await nextTick()
+    expect(document.body.querySelector('[data-testid="rail-menu-gitlab"]')).not.toBeNull()
+    expect(
+      menu.querySelector('[data-testid="rail-menu-delete"]').getAttribute('aria-disabled'),
+    ).toBe('true')
+  })
+
+  // «?» is the one door to help (#3110): the centre (F1) and the tour.
+  it('«?» opens the help menu', async () => {
+    useAuthStore().token = 'x'
+    mountRail()
+    await wrapper.find('[data-tour="rail-help"]').trigger('click')
+    await nextTick()
+    expect(document.body.querySelector('[data-testid="help-menu-center"]')).not.toBeNull()
+    expect(document.body.querySelector('[data-testid="help-menu-tour"]')).not.toBeNull()
   })
 
   it('switches workspace on click', async () => {
@@ -135,43 +167,46 @@ describe('AppRail on desktop', () => {
   // Removing a profile purges its refresh token and, for the last one, replaces
   // it with a fresh profile aimed at the public default — the address of a
   // self-hosted server is gone with no undo. The menu item sits one row under
-  // «Изменить»; it must not fire on the slip (#2932).
+  // «Изменить»; it must not fire on the slip (#2932) — it is a two-step row of
+  // the server's ActionMenu (#3110).
   describe('removing a server asks first', () => {
+    const row = (id) => document.body.querySelector(`[data-testid="rail-menu-${id}"]`)
     async function pickRemove() {
       await wrapper.findAll('.ar-group')[1].find('button.rt.small').trigger('contextmenu')
-      // The context menu is the manual dropdown (the «+» one opens on click).
-      const menu = wrapper
-        .findAllComponents({ name: 'Dropdown' })
-        .find((d) => d.props('trigger') === 'manual')
-      menu.vm.$emit('select', 'server-remove')
+      await nextTick()
+      row('server-remove').click()
       await nextTick()
     }
 
-    it('keeps the profile until the confirm is answered', async () => {
+    it('keeps the profile until the second press', async () => {
       const { a, b } = twoServers()
       mountRail()
       await pickRemove()
       expect(listServers().map((s) => s.id)).toEqual([a.id, b.id])
-      expect(wrapper.findComponent(NPopconfirm).props('show')).toBe(true)
+      expect(row('server-remove-armed').textContent).toContain('Дом')
     })
 
-    it('drops the profile once confirmed', async () => {
+    it('drops the profile on the second press', async () => {
       const { a } = twoServers()
       mountRail()
       await pickRemove()
-      wrapper.findComponent(NPopconfirm).vm.$emit('positive-click')
+      row('server-remove-armed').click()
       await nextTick()
       expect(listServers().map((s) => s.id)).toEqual([a.id])
     })
 
-    it('leaves the profile alone when the confirm is dismissed', async () => {
+    it('leaves the profile alone when the menu is dismissed', async () => {
       const { a, b } = twoServers()
       mountRail()
       await pickRemove()
-      wrapper.findComponent(NPopconfirm).vm.$emit('clickoutside')
+      const menu = document.body.querySelector('[data-testid="rail-menu"]')
+      const esc = () =>
+        menu.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }))
+      esc()
+      esc()
       await nextTick()
       expect(listServers().map((s) => s.id)).toEqual([a.id, b.id])
-      expect(wrapper.findComponent(NPopconfirm).props('show')).toBe(false)
+      expect(document.body.querySelector('[data-testid="rail-menu"]')).toBeNull()
     })
   })
 

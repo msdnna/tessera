@@ -159,9 +159,9 @@ function tickWidth(depth) {
   flex-direction: column;
   gap: 6px;
   padding: 10px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  border-radius: var(--t-r-pop);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
 }
 @media (max-width: 900px) {
   .flyout {
@@ -191,7 +191,6 @@ function tickWidth(depth) {
   width: 100%;
   max-height: none;
   height: 100%;
-  box-shadow: 0 0 20px var(--t-border);
 }
 /* Full-width rows: on a phone the outline is the only thing on screen, so a
    heading has the whole width instead of an ellipsis after four words. */
@@ -206,8 +205,11 @@ function tickWidth(depth) {
   color: var(--t-text2);
 }
 .panel-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .grow {
   flex: 1;
@@ -231,7 +233,7 @@ function tickWidth(depth) {
   width: 100%;
   padding: 4px 6px;
   border: none;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
   color: var(--t-text2);
   font-size: 13px;
@@ -249,7 +251,8 @@ function tickWidth(depth) {
   color: var(--t-text1);
 }
 .entry.active {
-  color: var(--t-primary);
-  background: var(--t-hover);
+  color: var(--t-text1);
+  font-weight: 650;
+  background: var(--t-active);
 }
 </style>

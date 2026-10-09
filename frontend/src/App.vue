@@ -1,14 +1,16 @@
 <script setup>
-import { computed, onMounted, onUnmounted, watch, watchEffect } from 'vue'
+import { computed, onMounted, onUnmounted, provide, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
-import { NConfigProvider, NGlobalStyle, NMessageProvider } from 'naive-ui'
+import { NConfigProvider, NGlobalStyle } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { setI18nLocale } from '@/i18n'
 import { naivePack } from '@/i18n/naive'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
-import UpdateToast from '@/components/UpdateToast.vue'
+import { useToastsStore } from '@/stores/toasts'
+import { messageApi, MESSAGE_KEY } from '@/composables/useMessage'
+import { useAppUpdate } from '@/composables/useAppUpdate'
 import AppRail from '@/components/rail/AppRail.vue'
 import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.vue'
 import ConferenceAudioSink from '@/components/conference/ConferenceAudioSink.vue'
@@ -25,6 +27,30 @@ import { useResponsive } from '@/composables/useResponsive'
 
 const theme = useThemeStore()
 const router = useRouter()
+
+// The answers to my own actions are toasts of the bottom lane (#3117): the
+// message API is provided under the key naive's <n-message-provider> used, so
+// any `useMessage()` — ours or naive's — lands there.
+const toasts = useToastsStore()
+provide(MESSAGE_KEY, messageApi(toasts))
+
+// «Доступно обновление» (PWA prompt-mode update, #2748 → a top-lane toast,
+// #3117). Web only: mounting the watcher registers the service worker, and on
+// desktop the SW has no business running — it precaches the app shell and then
+// serves a stale one across app updates (#2930 rework; see the desktop SW purge
+// in main.js); desktop updates ship as new app builds. Kept at the app root so
+// the worker is registered on the sign-in screen too.
+if (!isTauri()) {
+  const { needRefresh, updateServiceWorker } = useAppUpdate()
+  toasts.setReloader(() => updateServiceWorker(true))
+  watch(
+    needRefresh,
+    (v) => {
+      if (v) toasts.update()
+    },
+    { immediate: true },
+  )
+}
 
 // Desktop rail: servers and their workspaces (#2930, #2955). On desktop it lives
 // at the app root — NOT inside AppLayout —
@@ -150,35 +176,26 @@ onUnmounted(() => unlistenOAuth?.())
     :date-locale="naiveDateLocale"
   >
     <n-global-style />
-    <n-message-provider>
-      <!-- Desktop server hotbar, docked at the app root so it survives on the
+    <!-- Desktop server hotbar, docked at the app root so it survives on the
            login and offline screens (which live outside AppLayout). A fixed
            gutter on the left; AppLayout and the connection overlay inset
            themselves past it via --app-rail-w. -->
-      <div v-if="showRail" class="app-rail-dock"><AppRail /></div>
-      <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </router-view>
-      <!-- Minimised conference (#2888): a floating window that keeps a call alive
+    <div v-if="showRail" class="app-rail-dock"><AppRail /></div>
+    <router-view v-slot="{ Component }">
+      <transition name="fade" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
+    <!-- Minimised conference (#2888): a floating window that keeps a call alive
            across route changes. Paints nothing unless a session is live and the
            open route is not that call's own room. -->
-      <conference-mini-window />
-      <!-- The call's audio, mounted for the life of the session so it plays on
+    <conference-mini-window />
+    <!-- The call's audio, mounted for the life of the session so it plays on
            every route — the mini-window shows one tile, but the room must still
            be heard in full (#2888). -->
-      <conference-audio-sink />
-    </n-message-provider>
+    <conference-audio-sink />
     <!-- Global "server slow / unreachable" overlay (branded loader + retry). -->
     <app-connection-overlay />
-    <!-- Global "new version deployed" toast (PWA prompt-mode update, #2748).
-         Web only: mounting it calls useRegisterSW(), which registers the service
-         worker. On desktop the SW has no business running — it precaches the app
-         shell and then serves a stale one across app updates (#2930 rework; see
-         the desktop SW purge in main.js) — and desktop updates ship as new app
-         builds, not PWA prompts. Gated so the worker is never even registered. -->
-    <update-toast v-if="!isTauri()" />
   </n-config-provider>
 </template>
 

@@ -8,7 +8,7 @@
 //  - No build for this platform (mac / iOS / unknown) → a round icon button that
 //    just opens the menu; no caret is drawn.
 //
-// Rounded ends match the sibling tool buttons. Links are version-correct URLs
+// Styled as the bar's other quiet controls (v2, #3107). Links are version-correct URLs
 // pulled from the published manifests at runtime (see composables/useDownloads.js
 // and DownloadMenu.vue).
 import { computed } from 'vue'
@@ -84,7 +84,7 @@ const primary = computed(() => {
       rel="noopener noreferrer"
       :title="t('app.download.forPlatform', { platform: detectedGroup.name })"
     >
-      <n-icon :component="detectedGroup.icon" :size="18" />
+      <n-icon :component="detectedGroup.icon" :size="15" />
       <span class="dl-split-label">{{
         t('app.download.forPlatform', { platform: detectedGroup.name })
       }}</span>
@@ -93,7 +93,7 @@ const primary = computed(() => {
     <n-popover trigger="click" placement="bottom-end">
       <template #trigger>
         <button class="dl-split-caret" type="button" :aria-label="t('app.download.otherPlatforms')">
-          <n-icon :component="ChevronDownOutline" :size="14" />
+          <n-icon :component="ChevronDownOutline" :size="12" />
         </button>
       </template>
       <DownloadMenu :groups="groups" />
@@ -109,7 +109,7 @@ const primary = computed(() => {
         :title="t('app.download.title')"
         :aria-label="t('app.download.title')"
       >
-        <n-icon :component="DownloadOutline" :size="18" />
+        <n-icon :component="DownloadOutline" :size="15" />
       </button>
     </template>
     <DownloadMenu :groups="groups" />
@@ -117,24 +117,24 @@ const primary = computed(() => {
 </template>
 
 <style scoped>
-/* Split button — neutral, fully-rounded ends to echo the circular tool buttons. */
+/* v2 (#3107): a quiet control in the auth screen's bottom bar and in Settings —
+   the --t-ctl level, the 8px radius, no outline. */
 .dl-split {
   display: inline-flex;
   align-items: stretch;
-  height: 40px;
-  border: 1px solid var(--t-border);
-  border-radius: 20px;
-  background: var(--t-surface);
+  height: 28px;
+  border-radius: 8px;
+  background: var(--t-ctl);
   overflow: hidden;
 }
 .dl-split-main {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 0 12px 0 15px;
-  color: var(--t-text1);
+  gap: 6px;
+  padding: 0 8px 0 10px;
+  color: var(--t-text2);
   text-decoration: none;
-  font-size: 13px;
+  font-size: 12.5px;
   font-weight: 500;
   white-space: nowrap;
   transition:
@@ -142,52 +142,54 @@ const primary = computed(() => {
     color 0.12s ease;
 }
 .dl-split-main:hover {
-  background: var(--t-hover, rgba(124, 108, 255, 0.1));
-  color: var(--t-primary);
-}
-.dl-split-sep {
-  width: 1px;
-  background: var(--t-border);
-  flex: none;
+  background: var(--t-hover);
+  color: var(--t-text1);
 }
 .dl-split-caret {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
+  width: 26px;
   border: none;
   background: transparent;
-  color: var(--t-text2);
+  color: var(--t-text3);
   cursor: pointer;
   transition:
     background 0.12s ease,
     color 0.12s ease;
 }
 .dl-split-caret:hover {
-  background: var(--t-hover, rgba(124, 108, 255, 0.1));
-  color: var(--t-primary);
+  background: var(--t-hover);
+  color: var(--t-text1);
 }
-
-/* Round icon button — same footprint/style as the theme & server tool buttons
-   (their `.auth-tool-btn` is scoped to AuthLayout, so it's restated here). */
+/* The separator is spacing now, not a line. */
+.dl-split-sep {
+  width: 2px;
+  flex: none;
+}
 .dl-round {
-  width: 40px;
-  height: 40px;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 50%;
-  border: 1px solid var(--t-border);
-  background: var(--t-surface);
+  border: 0;
+  border-radius: 8px;
+  background: var(--t-ctl);
   color: var(--t-text2);
   cursor: pointer;
   transition:
     background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
+    color 0.15s ease;
 }
 .dl-round:hover {
-  color: var(--t-primary);
-  border-color: var(--t-primary);
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.dl-split-main:focus-visible,
+.dl-split-caret:focus-visible,
+.dl-round:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
 }
 </style>

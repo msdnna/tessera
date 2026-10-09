@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -358,10 +359,7 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 		soft(c, "MarkGitlabEstimateOverridden", h.q.MarkGitlabEstimateOverridden(c, t.ID))
 	}
 	changes := h.journalUpdate(c, t, edited)
-	if len(changes) > 0 {
-		h.notifyTaskParticipants(c, updated, wsID, "updated",
-			msgUpdated(h.actorName(c), updated.Number, changes))
-	}
+	h.notifyTaskEdit(c, updated, wsID, changes)
 	// Mirror user-side changes back to a linked GitLab issue (opt-in per integration).
 	// These read `updated` deliberately: a writeback mirrors the state the task is
 	// actually left in, so a recurrence that moved the deadline is a deadline the
@@ -392,6 +390,32 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 	}
 	h.broadcastAs(c, wsID, "task.updated", updated)
 	return updated, nil
+}
+
+// notifyTaskEdit tells a task's participants about an edit. changes are
+// journalUpdate's field names. A close or a reopen is its own notification
+// (completed / reopened — what the reader wants to hear about, and a kind a
+// routing rule can pick on its own); whatever else the same request changed still
+// goes out as «изменил(а)» without the completion word in it.
+func (h *API) notifyTaskEdit(c *gin.Context, t db.Task, wsID uuid.UUID, changes []string) {
+	if len(changes) == 0 {
+		return
+	}
+	actor := h.actorName(c)
+	rest := make([]string, 0, len(changes))
+	for _, f := range changes {
+		switch f {
+		case "completed":
+			h.notifyTaskParticipants(c, t, wsID, kindCompleted, msgCompleted(actor, t.Number, t.Title))
+		case "reopened":
+			h.notifyTaskParticipants(c, t, wsID, kindReopened, msgReopened(actor, t.Number, t.Title))
+		default:
+			rest = append(rest, f)
+		}
+	}
+	if len(rest) > 0 {
+		h.notifyTaskParticipants(c, t, wsID, "updated", msgUpdated(actor, t.Number, rest))
+	}
 }
 
 // ── column move ────────────────────────────────────────────────
@@ -486,12 +510,12 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 			}
 		}
 		h.logEvent(c, t.ID, "moved", moved)
-		h.notifyTaskParticipants(c, updated, wsID, "moved",
-			msgMoved(h.actorName(c), updated.Number, col.Name, col.NameKey))
 	}
 
 	// Auto-toggle completion based on the board's configured "done" column:
-	// moving in completes the task, moving out reopens it.
+	// moving in completes the task, moving out reopens it. Which of the two (if
+	// either) happened decides the notification below.
+	completedNow, reopenedNow := false, false
 	if board, berr := h.q.GetBoard(c, t.BoardID); berr == nil {
 		doneID := doneColumnID(board)
 		targetIsDone := doneID != nil && *doneID == columnID
@@ -512,6 +536,7 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 				ExpectedUpdatedAt: &updated.UpdatedAt,
 			}); derr == nil {
 				updated = done
+				completedNow = true
 				h.logEvent(c, t.ID, "completed", nil)
 				// A "complete"-triggered recurring task bounces straight back out of
 				// done with its due date advanced — overriding the move just made.
@@ -533,9 +558,26 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 				Recurrence: updated.Recurrence, StartDate: updated.StartDate, Estimate: updated.Estimate,
 			}); derr == nil {
 				updated = reopened
+				reopenedNow = true
 				h.logEvent(c, t.ID, "reopened", nil)
 			}
 		}
+	}
+
+	// One notification per move, saying what the move meant to the reader: into
+	// the done column it is «выполнил(а)», out of it «вернул(а) в работу», any
+	// other column change a plain move. A completion without a column change (a
+	// reorder inside a done column that held an open task) is still a completion.
+	switch {
+	case completedNow:
+		h.notifyTaskParticipants(c, updated, wsID, kindCompleted,
+			msgCompleted(h.actorName(c), updated.Number, updated.Title))
+	case reopenedNow:
+		h.notifyTaskParticipants(c, updated, wsID, kindReopened,
+			msgReopened(h.actorName(c), updated.Number, updated.Title))
+	case t.ColumnID != columnID:
+		h.notifyTaskParticipants(c, updated, wsID, "moved",
+			msgMoved(h.actorName(c), updated.Number, col.Name, col.NameKey))
 	}
 
 	// Column-triggered recurrence: moving the task into its configured column
@@ -595,13 +637,23 @@ func (h *API) applyAssignee(c *gin.Context, t db.Task, wsID, userID uuid.UUID, a
 		h.logEvent(c, t.ID, "assigned", map[string]any{"user_id": userID})
 		h.notify(c, userID, wsID, &t.ID, "assigned",
 			msgAssigned(h.actorName(c), t.Number, t.Title))
-		h.broadcast(wsID, "task.assigned", gin.H{"task_id": t.ID, "user_id": userID})
+		h.broadcastAs(c, wsID, "task.assigned", gin.H{"task_id": t.ID, "user_id": userID})
 	} else {
-		if err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: t.ID, UserID: userID}); err != nil {
+		removed, err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: t.ID, UserID: userID})
+		if err != nil {
 			return err
 		}
 		h.logEvent(c, t.ID, "unassigned", map[string]any{"user_id": userID})
-		h.broadcast(wsID, "task.unassigned", gin.H{"task_id": t.ID, "user_id": userID})
+		// The mirror of "assigned to you" — only when someone was actually taken
+		// off: a repeated remove (two clients, a retried request) must not tell a
+		// person twice. notify skips taking yourself off, and the membership gate
+		// in deliverNotification skips an ex-member being cleaned off a task they
+		// can no longer open (the remove arm stays unguarded above for that case).
+		if removed > 0 {
+			h.notify(c, userID, wsID, &t.ID, kindUnassigned,
+				msgUnassigned(h.actorName(c), t.Number, t.Title))
+		}
+		h.broadcastAs(c, wsID, "task.unassigned", gin.H{"task_id": t.ID, "user_id": userID})
 	}
 	h.enqueueWriteback(c, t.ID, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	return nil
@@ -639,7 +691,7 @@ func (h *API) applyTag(c *gin.Context, taskID, wsID, tagID uuid.UUID, add bool) 
 		if rows > 0 {
 			h.logEvent(c, taskID, "tagged", map[string]any{"tag": tag.Name})
 		}
-		h.broadcast(wsID, "task.tagged", gin.H{"task_id": taskID, "tag_id": tagID})
+		h.broadcastAs(c, wsID, "task.tagged", gin.H{"task_id": taskID, "tag_id": tagID})
 	} else {
 		rows, err := h.q.RemoveTaskTag(c, db.RemoveTaskTagParams{TaskID: taskID, TagID: tagID})
 		if err != nil {
@@ -648,7 +700,7 @@ func (h *API) applyTag(c *gin.Context, taskID, wsID, tagID uuid.UUID, add bool) 
 		if rows > 0 {
 			h.logEvent(c, taskID, "untagged", map[string]any{"tag": tag.Name})
 		}
-		h.broadcast(wsID, "task.untagged", gin.H{"task_id": taskID, "tag_id": tagID})
+		h.broadcastAs(c, wsID, "task.untagged", gin.H{"task_id": taskID, "tag_id": tagID})
 	}
 	// Reconcile labels back to the linked issue (the worker reads the task's
 	// current tags, so the empty payload coalesces a burst into one row).
@@ -688,7 +740,7 @@ func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID
 	soft(c, "MarkGitlabMilestoneOverridden", h.q.MarkGitlabMilestoneOverridden(c, taskID))
 	h.enqueueWriteback(c, taskID, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
 	if t, err := h.q.GetTask(c, taskID); err == nil {
-		h.broadcast(wsID, "task.updated", t)
+		h.broadcastAs(c, wsID, "task.updated", t)
 	}
 	return nil
 }
@@ -703,29 +755,64 @@ func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID
 // reader cannot reconcile, and the /milestone quick action made it worse: the
 // history then showed "ran the commands" and not what the command did.
 //
-// The entry carries the milestone's TITLE rather than its id, for the reason the
+// The entry carries the milestone's TITLE for the reader, for the reason the
 // tag does: a milestone may be renamed or deleted (SetTaskMilestone's column is
-// ON DELETE SET NULL), and history must not decay into a dangling uuid. A
-// re-pin of the milestone the task already carries writes nothing — the same
-// no-op guard AddTaskTag gets from its rows count.
+// ON DELETE SET NULL), and history must not decay into a dangling uuid. Since
+// #2992 it also carries the ids — `milestone_id` (where the task landed, or the
+// stage it left on milestone_removed) and, on a move between stages, `from_id` /
+// `from_title` — because the stage page counts its scope change and burn-up
+// from these entries, and a title is not a key. A re-pin of the milestone the
+// task already carries writes nothing — the same no-op guard AddTaskTag gets
+// from its rows count.
 func (h *API) journalMilestone(c *gin.Context, taskID uuid.UUID, before, after *uuid.UUID, title string) {
+	h.journalMilestoneActor(c, taskID, middleware.CurrentUser(c), before, after, title)
+}
+
+// journalMilestoneActor is journalMilestone with an explicit actor, for the
+// paths outside a request (the GitLab sync, the recurrence worker); uuid.Nil
+// journals a system entry.
+func (h *API) journalMilestoneActor(ctx context.Context, taskID, actor uuid.UUID, before, after *uuid.UUID, title string) {
+	if data := milestoneEventData(ctx, h.q, before, after, title); data != nil {
+		kind := "milestone"
+		if after == nil {
+			kind = "milestone_removed"
+		}
+		h.logEventActor(ctx, taskID, actor, kind, data)
+	}
+}
+
+// milestoneTitler is the one read milestoneEventData needs (a *db.Queries).
+type milestoneTitler interface {
+	GetMilestone(ctx context.Context, id uuid.UUID) (db.Milestone, error)
+}
+
+// milestoneEventData builds the journal payload of a milestone change, or nil
+// when nothing changed. `title` is the new stage's (when there is one).
+func milestoneEventData(ctx context.Context, q milestoneTitler, before, after *uuid.UUID, title string) map[string]any {
 	switch {
 	case before == nil && after == nil:
-		return
+		return nil
 	case before != nil && after != nil && *before == *after:
-		return
-	case after != nil:
-		h.logEvent(c, taskID, "milestone", map[string]any{"title": title})
-	default:
-		// Cleared: the title of what was there is what the reader needs, and it is
-		// only reachable from the row the task pointed at a moment ago. A stage
-		// deleted in between leaves the bare phrase rather than a hole.
-		var was string
-		if m, err := h.q.GetMilestone(c, *before); err == nil {
+		return nil
+	}
+	// The title of what was there is only reachable from the row the task
+	// pointed at a moment ago. A stage deleted in between leaves the bare phrase
+	// rather than a hole.
+	var was string
+	if before != nil {
+		if m, err := q.GetMilestone(ctx, *before); err == nil {
 			was = m.Title
 		}
-		h.logEvent(c, taskID, "milestone_removed", map[string]any{"title": was})
 	}
+	if after == nil {
+		return map[string]any{"title": was, "milestone_id": before.String()}
+	}
+	data := map[string]any{"title": title, "milestone_id": after.String()}
+	if before != nil {
+		data["from_id"] = before.String()
+		data["from_title"] = was
+	}
+	return data
 }
 
 // milestonesLostToBoard names the tasks of a subtree whose milestone the move
@@ -766,7 +853,7 @@ func (h *API) milestonesLostToBoard(c *gin.Context, q *db.Queries, rootID, targe
 // journal write a move makes (TransferTask's reopened list does the same).
 func (h *API) journalLostMilestones(c *gin.Context, rows []db.SubtreeMilestonesOffProjectRow) {
 	for _, r := range rows {
-		h.logEvent(c, r.ID, "milestone_removed", map[string]any{"title": r.Title})
+		h.logEvent(c, r.ID, "milestone_removed", map[string]any{"title": r.Title, "milestone_id": r.MilestoneID.String()})
 	}
 }
 
@@ -1109,7 +1196,7 @@ func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach boo
 	h.logEvent(c, t.ID, "archived", nil)
 	h.notifyTaskParticipants(c, t, wsID, "archived",
 		msgArchived(h.actorName(c), t.Number, t.Title))
-	h.broadcast(wsID, "task.archived", gin.H{"id": t.ID})
+	h.broadcastAs(c, wsID, "task.archived", gin.H{"id": t.ID})
 	return nil
 }
 

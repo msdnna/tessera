@@ -5,7 +5,8 @@
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import { NIcon, NButton, useMessage } from 'naive-ui'
+import { NIcon, NButton } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   FolderOutline,
   ChevronForwardOutline,

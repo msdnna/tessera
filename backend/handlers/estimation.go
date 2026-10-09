@@ -4,7 +4,9 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"math"
 	"net/http"
+	"sort"
 	"strings"
 
 	"github.com/gin-gonic/gin"
@@ -22,6 +24,35 @@ type estimationConfig struct {
 	DaysPerWeek float64 `json:"days_per_week,omitempty"` // time only
 	PointsScale string  `json:"points_scale,omitempty"`  // points only: fibonacci | tshirt | linear
 	CustomLabel string  `json:"custom_label,omitempty"`  // custom only
+	// Values are the quick picks of the task's estimate picker (#3029), in the
+	// canonical unit — minutes for time, the number for points/custom. Empty =
+	// the built-in set (the points scale; no time presets).
+	Values []float64 `json:"values,omitempty"`
+}
+
+// maxEstimationValues bounds the picker's quick picks.
+const maxEstimationValues = 24
+
+// normalizeEstimationValues keeps the positive, finite, bounded values, once
+// each, ascending.
+func normalizeEstimationValues(in []float64) []float64 {
+	seen := map[float64]bool{}
+	out := make([]float64, 0, len(in))
+	for _, v := range in {
+		if math.IsNaN(v) || math.IsInf(v, 0) || v <= 0 || v > 1e9 || seen[v] {
+			continue
+		}
+		seen[v] = true
+		out = append(out, v)
+	}
+	sort.Float64s(out)
+	if len(out) > maxEstimationValues {
+		out = out[:maxEstimationValues]
+	}
+	if len(out) == 0 {
+		return nil
+	}
+	return out
 }
 
 // normalizeEstimationConfig validates a client-supplied config and returns its
@@ -62,6 +93,7 @@ func normalizeEstimationConfig(raw *json.RawMessage) (*json.RawMessage, string) 
 	default:
 		return nil, "unit must be time, points or custom"
 	}
+	cfg.Values = normalizeEstimationValues(cfg.Values)
 	out, err := json.Marshal(cfg)
 	if err != nil {
 		return nil, "invalid estimation config"

@@ -2,7 +2,6 @@
   "menu": {
     "addBoard": "New board",
     "rename": "Rename",
-    "estimation": "Task estimation…",
     "slug": "Change the address…",
     "milestones": "Milestones…",
     "treeMode": "Show in the tree",
@@ -30,7 +29,8 @@
     "delete": "Delete the board",
     "deleted": "Board “{name}” deleted",
     "restored": "Board “{name}” restored",
-    "restoreFailed": "Couldn't restore the board"
+    "restoreFailed": "Couldn't restore the board",
+    "kind": "Board view"
   },
   "milestone": {
     "backlog": "Backlog",
@@ -84,17 +84,8 @@
     "auto": "will be assigned automatically"
   },
   "tags": {
-    "head": "Project tags",
-    "namePlaceholder": "Tag name",
-    "renameHint": "{name} · double-click to rename",
-    "deleteConfirm": "Delete the tag? It will be removed from every task.",
-    "empty": "No tags yet.",
-    "newPlaceholder": "New tag",
-    "add": "Add",
     "prefixMode": "Short prefixes",
-    "prefixModeHint": "Show the raw prefix (e.g. “T”) instead of the friendly name",
-    "prefixNames": "Prefix names",
-    "prefixPlaceholder": "e.g. Status"
+    "prefixModeHint": "Show the raw prefix (e.g. “T”) instead of the friendly name"
   },
   "icon": {
     "search": "Find an icon",
@@ -113,5 +104,84 @@
     "searchPlaceholder": "Search by name: home, code, rocket…",
     "loading": "Loading the collection…",
     "notFound": "Nothing found"
+  },
+  "window": {
+    "title": "Project settings",
+    "outside": "Separate windows",
+    "members": "Members",
+    "tabsHint": "tabs",
+    "tab": {
+      "general": "General",
+      "tags": "Tags",
+      "stages": "Milestones",
+      "estimation": "Estimation"
+    },
+    "general": {
+      "autosave": "changes save at once",
+      "name": "Name",
+      "address": "Address",
+      "addressHint": "Used in links and the API",
+      "look": "Icon and colour",
+      "lookHint": "Shown in the sidebar, breadcrumbs and on the rail",
+      "group": "Group",
+      "danger": "Danger zone",
+      "dangerHint": "Archiving can be undone, deleting cannot",
+      "deleteArmed": "Delete «{name}» for good? Press again to delete",
+      "deleteHint": "Deleting takes two steps: the project’s boards, tasks and milestones are gone for good"
+    },
+    "estimation": {
+      "source": "Setting",
+      "workday": "Working time",
+      "hoursPerDay": "hours a day",
+      "daysPerWeek": "days a week",
+      "scaleHint": "Values in the estimate picker",
+      "addValue": "Add a value",
+      "resetValues": "Back to the default values",
+      "customEmpty": "With no values the picker keeps just the input field",
+      "kind": {
+        "time": "Hours",
+        "points": "Story points",
+        "tshirt": "T-shirt size",
+        "custom": "Custom unit"
+      }
+    }
+  },
+  "tagTable": {
+    "summary": "{tags} tags · {groups} groups",
+    "newPlaceholder": "New tag — «prefix::name» or just a name",
+    "newInvalid": "A tag name is needed after «::»",
+    "filter": "Filter",
+    "taken": "Tag «{name}» already exists — select both and merge",
+    "colTag": "Tag",
+    "colColor": "Colour",
+    "colTasks": "Tasks",
+    "colSource": "Source",
+    "empty": "No tags yet — create the first one in the field above",
+    "noMatch": "Nothing found",
+    "prefixAdd": "Add a friendly name",
+    "prefixPlaceholder": "Friendly prefix name",
+    "prefixNote": "friendly prefix name · shown in tags on cards",
+    "fromGitlab": "from GitLab",
+    "ruledTitle": "Managed by a GitLab rule",
+    "ruledSub": "{prefix}* from {path} · change it in GitLab",
+    "renameHint": "Rename — click, ↵ or F2",
+    "rename": "Rename",
+    "recolor": "Recolour",
+    "recolorMany": "Colour for {n} tags",
+    "delete": "Delete",
+    "merge": "Merge into…",
+    "clear": "clear",
+    "selected": "{n} selected",
+    "mergeTitle": "Merge {n} tags into one",
+    "mergeSub": "Tasks get the chosen tag, the others go away",
+    "mergeInto": "Merge into «{name}»",
+    "merged": "Tags merged: {n}",
+    "sourceUser": "Tessera",
+    "sourceGitlab": "GitLab label",
+    "sourceRule": "GitLab rule",
+    "deletedOne": "Tag «{name}» deleted",
+    "deletedMany": "Tags deleted: {n}",
+    "restoredOne": "Tag «{name}» restored",
+    "restoredMany": "Tags restored: {n}"
   }
 }

@@ -6,8 +6,14 @@
 // Cheap on purpose (see the animated-blur note in the project memory): the spots
 // are radial gradients that are soft by themselves, so there is no `filter:
 // blur` and no blend mode to recomposite every frame — only transforms move.
-// Reduced motion keeps the layer still; a hidden tab pauses it.
+// Reduced motion keeps the layer still; a hidden tab pauses it. `frozen` holds
+// it still too — the account screens (v2, #3107) draw the same seven spots
+// without motion: a form is being filled in under it.
 import { ref, onMounted, onBeforeUnmount } from 'vue'
+
+const props = defineProps({
+  frozen: { type: Boolean, default: false },
+})
 
 const SPOTS = [
   { c: '#7c5cff', l: '-4%', t: -230, s: 560, a: 'h-aur1 19s' },
@@ -25,7 +31,9 @@ let raf = 0
 let mx = 0
 let my = 0
 const still =
-  typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches
+  props.frozen ||
+  (typeof window !== 'undefined' &&
+    !!window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches)
 
 function apply() {
   raf = 0

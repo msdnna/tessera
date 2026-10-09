@@ -3,8 +3,9 @@
 // #number, the crumbs doubling as the «move to another board» menu — and, on the
 // right, the neighbour navigation (J/K), the layout switch, «⋯» and close.
 //
-// The «⋯» menu's contents stay with the modal (they act on its state: archive,
-// delete, GitLab); they come in through the `more` slot.
+// The «⋯» menu's rows stay with the modal (they act on its state: archive,
+// delete, GitLab): kit/ActionMenu rows in `moreItems`, the pick out as `more`
+// (#3112).
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NPopover } from 'naive-ui'
@@ -23,9 +24,9 @@ import { hueGrad } from '@/utils/gradient'
 import ProjectIcon from '../ProjectIcon.vue'
 import TesseraIcon from '../TesseraIcon.vue'
 import TaskLayoutSwitch from '../TaskLayoutSwitch.vue'
-import HelpHint from '../help/HelpHint.vue'
 import ShortcutKeys from '../ShortcutKeys.vue'
 import PopMenu from '../PopMenu.vue'
+import ActionMenu from '../kit/ActionMenu.vue'
 
 const props = defineProps({
   task: { type: Object, default: null },
@@ -38,8 +39,9 @@ const props = defineProps({
   narrow: { type: Boolean, default: false },
   shared: { type: Boolean, default: false },
   readonly: { type: Boolean, default: false },
+  moreItems: { type: Array, default: () => [] },
 })
-const emit = defineEmits(['navigate', 'update:layout', 'share', 'close', 'transfer'])
+const emit = defineEmits(['navigate', 'update:layout', 'share', 'close', 'transfer', 'more'])
 
 const { t } = useI18n()
 const store = useWorkspacesStore()
@@ -74,6 +76,7 @@ async function toggleProj(pid) {
 }
 
 const showMore = ref(false)
+const moreBtn = ref(null)
 const showMove = ref(false)
 const hasNav = computed(() => props.nav && props.nav.total > 1)
 // Esc in the modal closes an open header menu before the modal itself.
@@ -175,7 +178,7 @@ defineExpose({ closeMenus })
       </span>
       <button
         type="button"
-        class="tmh-btn"
+        class="tmh-btn tmh-arrow"
         :title="t('task.head.prev')"
         data-testid="task-prev"
         :disabled="nav.index <= 0"
@@ -185,7 +188,7 @@ defineExpose({ closeMenus })
       </button>
       <button
         type="button"
-        class="tmh-btn"
+        class="tmh-btn tmh-arrow"
         :title="t('task.head.next')"
         data-testid="task-next"
         :disabled="nav.index >= nav.total - 1"
@@ -201,18 +204,33 @@ defineExpose({ closeMenus })
       :value="layout"
       @update:value="emit('update:layout', $event)"
     />
-    <!-- The modal covers the topbar's «?», so it carries its own (#2794). -->
-    <HelpHint slug="boards-and-tasks" :size="16" class="tmh-help" />
-    <n-popover v-model:show="showMore" trigger="click" placement="bottom-end" :show-arrow="false">
-      <template #trigger>
-        <button type="button" class="tmh-btn" :title="t('task.head.more')" data-testid="task-more">
-          <n-icon :component="EllipsisHorizontalOutline" :size="17" />
-        </button>
-      </template>
-      <div class="menu tmh-more" @click="showMore = false">
-        <slot name="more" />
-      </div>
-    </n-popover>
+    <!-- Help is F1 — on the article about boards and tasks (#3112). -->
+    <button
+      ref="moreBtn"
+      type="button"
+      class="tmh-btn"
+      :class="{ on: showMore }"
+      :title="t('task.head.more')"
+      aria-haspopup="menu"
+      :aria-expanded="showMore"
+      data-testid="task-more"
+      @click="showMore = !showMore"
+    >
+      <n-icon :component="EllipsisHorizontalOutline" :size="17" />
+    </button>
+    <!-- In place, not in <body>: the modal's focus trap would pull the focus
+         back out of a menu drawn outside it. -->
+    <ActionMenu
+      v-model:show="showMore"
+      :anchor="() => moreBtn"
+      placement="bottom-end"
+      :offset="{ x: 0, y: 4 }"
+      :width="260"
+      :items="moreItems"
+      in-place
+      testid="task-more-menu"
+      @select="(key, value) => ((showMore = false), emit('more', key, value))"
+    />
     <button
       type="button"
       class="tmh-btn tmh-close"
@@ -333,6 +351,7 @@ defineExpose({ closeMenus })
     color 0.12s ease;
 }
 .tmh-btn:hover:not(:disabled),
+.tmh-btn.on,
 .tmh :deep(.head-btn:hover) {
   background: var(--t-hover);
   color: var(--t-text1);
@@ -348,12 +367,6 @@ defineExpose({ closeMenus })
 .tmh-close {
   width: auto;
   padding: 0 6px 0 8px;
-}
-.tmh-help {
-  margin: 0 4px;
-}
-.tmh-more {
-  min-width: 220px;
 }
 .move-menu {
   width: 240px;
@@ -408,9 +421,32 @@ defineExpose({ closeMenus })
     padding: 0 8px 0 14px;
   }
   .tmh-nav,
-  .tmh-crumb,
-  .tmh-help {
+  .tmh-crumb {
     display: none;
+  }
+}
+/* The phone's sheet (#2976): 40px targets; the arrows between tasks go — a
+   sheet is opened from a list and closed back to it. */
+@media (max-width: 768px) {
+  .tmh {
+    flex-basis: 52px;
+    gap: 2px;
+  }
+  .tmh-btn {
+    width: 40px;
+    height: 40px;
+    border-radius: 12px;
+  }
+  .tmh-arrow,
+  .tmh-space {
+    display: none;
+  }
+  .tmh-crumb:first-of-type {
+    display: inline;
+    max-width: 150px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 }
 </style>

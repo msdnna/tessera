@@ -5,13 +5,16 @@
 // published back through `update:attachments`.
 import { ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NButton, NPopconfirm, useMessage } from 'naive-ui'
-import { AttachOutline, DownloadOutline, TrashOutline } from '@vicons/ionicons5'
+import { NIcon } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
+import { AttachOutline, DownloadOutline } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { saveAttachment } from '@/utils/download'
 import { ATTACHMENT_MAX_BYTES, attachmentPickError, attachmentSizeText } from '@/utils/upload'
 import { formatFileSize } from '@/utils/docPdf'
 import EmptyState from '../EmptyState.vue'
+import TesseraSpinner from '../TesseraSpinner.vue'
+import ArmButton from '../kit/ArmButton.vue'
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -108,22 +111,23 @@ async function deleteAttachment(id) {
       <n-icon :component="AttachOutline" class="f-ico" />
       <button class="f-name" @click="downloadAttachment(a)">{{ a.filename }}</button>
       <span class="f-size">{{ attachmentSizeText(a.size) }}</span>
-      <button class="c-act" :title="t('task.files.download')" @click="downloadAttachment(a)">
-        <n-icon :component="DownloadOutline" />
-      </button>
-      <n-popconfirm
-        v-if="!readonly"
-        :positive-button-props="{ type: 'error' }"
-        :positive-text="t('common.action.delete')"
-        @positive-click="deleteAttachment(a.id)"
+      <button
+        type="button"
+        class="f-ibtn"
+        :title="t('task.files.download')"
+        :aria-label="t('task.files.download')"
+        @click="downloadAttachment(a)"
       >
-        <template #trigger>
-          <button class="c-act" :title="t('common.action.delete')">
-            <n-icon :component="TrashOutline" />
-          </button>
-        </template>
-        {{ t('task.files.deleteConfirm', { name: a.filename }) }}
-      </n-popconfirm>
+        <n-icon :component="DownloadOutline" :size="15" />
+      </button>
+      <!-- Deleting a file can't be undone: the two-step button of package A. -->
+      <ArmButton
+        v-if="!readonly"
+        :title="t('task.files.deleteConfirm', { name: a.filename })"
+        :confirm="t('task.arm.delete')"
+        testid="file-delete"
+        @confirm="deleteAttachment(a.id)"
+      />
     </div>
     <EmptyState
       v-if="!attachments.length"
@@ -132,10 +136,18 @@ async function deleteAttachment(id) {
       :text="t('task.files.empty')"
     />
     <input v-if="!readonly" ref="fileInput" type="file" hidden @change="onFileChosen" />
-    <n-button v-if="!readonly" size="small" :loading="uploading" @click="pickFile">
-      <template #icon><n-icon :component="AttachOutline" /></template>
+    <button
+      v-if="!readonly"
+      type="button"
+      class="kit-btn small f-attach"
+      :disabled="uploading"
+      data-testid="file-attach"
+      @click="pickFile"
+    >
+      <TesseraSpinner v-if="uploading" :size="13" />
+      <n-icon v-else :component="AttachOutline" :size="14" />
       {{ t('task.files.attach') }}
-    </n-button>
+    </button>
   </div>
 </template>
 
@@ -145,13 +157,41 @@ async function deleteAttachment(id) {
 .files {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 2px;
 }
 .filerow {
   display: flex;
   align-items: center;
   gap: 8px;
+  min-height: 34px;
+  padding: 0 4px 0 8px;
+  border-radius: 9px;
   font-size: 13px;
+}
+.filerow:hover {
+  background: var(--t-hover);
+}
+.f-ibtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.f-ibtn:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.f-attach {
+  align-self: flex-start;
+  margin-top: 6px;
 }
 .f-ico {
   color: var(--t-text3);

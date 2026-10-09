@@ -11,32 +11,21 @@ import {
   onBeforeUnmount,
   nextTick,
 } from 'vue'
+import { tourEvent } from '@/utils/tourEvents'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import {
-  NSpin,
-  NButton,
-  NInput,
-  NText,
-  NPopover,
-  NIcon,
-  NTooltip,
-  NDropdown,
-  NPopconfirm,
-  useMessage,
-} from 'naive-ui'
+import { NSpin, NIcon, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   GitNetworkOutline,
-  SaveOutline,
-  FolderOpenOutline,
-  TrashOutline,
   AddOutline,
+  AlbumsOutline,
   ChevronForwardOutline,
   ChevronDownOutline,
+  EllipsisHorizontalOutline,
   FunnelOutline,
   OptionsOutline,
-  RibbonOutline,
   ArchiveOutline,
   GitBranchOutline,
 } from '@vicons/ionicons5'
@@ -57,9 +46,10 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useBoardDragScroll } from '@/composables/useBoardDragScroll'
 import { useCardViewport, cardKey, VCARD_EST } from '@/composables/useCardViewport'
 import { useBoardViewConfig } from '@/composables/useBoardViewConfig'
-import { useBoardAutosave } from '@/composables/useBoardAutosave'
+import { useBoardViews } from '@/composables/useBoardViews'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
-import { useFacetAddMenu } from '@/composables/useFacetAddMenu'
+import { useFacetAddMenu, facetRows } from '@/composables/useFacetAddMenu'
+import { useBoardActions } from '@/composables/useBoardActions'
 import { tagLaneLabel, tagInPrefix, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumLaneEffort, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
@@ -78,10 +68,28 @@ import {
 import { emptyFilters, cloneFilters } from '@/utils/facetKeys'
 import { planColumnReorder, planColDrop, canSortWithinLane } from '@/utils/boardDnd'
 import { buildLists, collapseKey } from '@/utils/boardLists'
-import { viewLayout, conflictingViewLayout } from '@/utils/boardViews'
+import { dateOnlyISO } from '@/utils/calendarView'
+import {
+  LAYOUTS,
+  MATRIX_DEFAULTS,
+  matrixConfig,
+  listConfig,
+  calendarConfig,
+  chartConfig,
+  CHART_DEFAULTS,
+} from '@/utils/boardViews'
 import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
-import { BACKLOG_SCOPE, matchesScope, newTaskMilestoneId } from '@/utils/milestones'
+import {
+  BACKLOG_SCOPE,
+  matchesScope,
+  milestoneKey,
+  newTaskMilestoneId,
+  stagePath,
+} from '@/utils/milestones'
+import { useProjectWindowStore } from '@/stores/projectWindow'
+import StageSelect from './milestone/StageSelect.vue'
+import StageStrip from './milestone/StageStrip.vue'
 import { columnName } from '@/utils/defaultNames'
 import { normalizeTitle } from '@/utils/title'
 import { moveFocus, neighbourColumn, planShift, planComplete } from '@/utils/cardNav'
@@ -92,17 +100,25 @@ import { humanizeError } from '@/utils/errors'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { usePaletteStore } from '@/stores/palette'
 import { useUndoStore } from '@/stores/undo'
+import { useToastsStore } from '@/stores/toasts'
+import { useConflictsStore } from '@/stores/conflicts'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
-import BoardActivityToasts from './BoardActivityToasts.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardCustomizePanel from './BoardCustomizePanel.vue'
+import ViewsSection from './boardViews/ViewsSection.vue'
+import ViewChip from './boardViews/ViewChip.vue'
 import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
 import ChartControls from './chart/ChartControls.vue'
 import BoardMembers from './BoardMembers.vue'
 import ShortcutKeys from './ShortcutKeys.vue'
+import ActionMenu from './kit/ActionMenu.vue'
+import InlineEdit from './kit/InlineEdit.vue'
+import QuickAddField from './kit/QuickAddField.vue'
+import EmptyState from './EmptyState.vue'
+import './kit/kit.css'
 import BoardListView from './BoardListView.vue'
 import BoardCalendarView from './BoardCalendarView.vue'
 import BoardMatrixView from './BoardMatrixView.vue'
@@ -121,8 +137,9 @@ const { formatters } = useFormat()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
 const boardViewStore = useBoardViewStore()
-// Live board-activity toasts (separate from the bell): fed from realtime events.
-const activityToasts = ref(null)
+// The open board's activity (#3117): toasts of the top lane, folded into one
+// per burst; the card a toast is about pulses once.
+const toasts = useToastsStore()
 // `layout` lives in the store so the header switcher and the board stay in sync.
 const { layout } = storeToRefs(boardViewStore)
 // Timeline + Gantt share the same time-axis substrate (swimlanes, status sort/
@@ -193,11 +210,21 @@ const autoSort = ref(false)
 // manually expanded (an explicit `false` wins over autoCollapseEmpty).
 const colCollapse = reactive({})
 const autoCollapseEmpty = ref(false)
+// The Eisenhower thresholds (#3018): urgent = due within N days, important =
+// priority from M up. Part of the board's state and of a saved view.
+const matrixCfg = reactive({ ...MATRIX_DEFAULTS })
+// The list's field-column widths (#3020), the calendar's month/week mode (#3019)
+// and the timeline/Gantt «Шкала» (#3021): the board's state, saved with a view.
+const listCfg = reactive(listConfig())
+const calendarCfg = reactive(calendarConfig())
+const chartCfg = reactive({ ...CHART_DEFAULTS })
 // cardSize / stackFields / showEmpty / fieldVis are owned by the store (cards read
 // them from there) but remain part of this board's saved view — snapshotToolbar and
 // loadCustomize below read and write them exactly as before.
-const autosaveView = ref(false) // auto re-save the loaded named view on change
+// The «Вид доски» panel (#2986) — docked right of the board in every view.
 const customizeOpen = ref(false)
+const customizePanel = ref(null)
+watch([customizeOpen, isMobile], ([on, mobile]) => (boardViewStore.panelOpen = on && !mobile))
 // Board-name mirror for the customize panel's rename input (kept in sync with the
 // loaded board; committed via boards.update on blur/enter).
 const boardName = ref('')
@@ -291,15 +318,16 @@ watch(autoCollapseEmpty, (on) => {
     if (colCount(dcol) === 0 && k in colCollapse) delete colCollapse[k]
   }
 })
-// ── sub-toolbar fit (v2, #2954) ──
-// One row, never scrolled. Fitting starts from the full bar and gives ground in
-// a fixed order until the row fits: first the view switch takes only what the
-// rest leaves (it shows as many views as fit, the active one always), then the
-// grouping control drops its «Группировка» caption, then the composer folds
-// filter chips from the end into «+N», then the sort chips (taking back what
-// filter chips fit in the room they free), and last the shown-count. Every step
-// is a DOM update + measure inside one frame (the observer and nextTick both run
-// before paint), so nothing flickers.
+// ── sub-toolbar fit (v2, #2954, #2970) ──
+// One row, never scrolled. The view switch and the composer's chips own the
+// room (feedback: they are what the reader works with); everything else gives
+// way first. Fitting starts from the full bar and gives ground in a fixed order
+// until the row fits: the chart's text key hints → the «Группировка» caption →
+// the chart's scale segments (into a menu) → the view switch's captions (only
+// the active one keeps its own) → filter chips from the end into «+N» → the
+// sort chips (taking back what filter chips fit in the room they free) → the
+// board's people. Every step is a DOM update + measure inside one frame (the
+// observer and nextTick both run before paint), so nothing flickers.
 const subbarEl = ref(null)
 const composerEl = ref(null)
 const chipsClip = ref(null)
@@ -307,7 +335,10 @@ const switchAvail = ref(Infinity) // px the view switch may take
 const foldFilters = ref(0) // how many filter chips (from the end) sit in «+N»
 const foldSorts = ref(false) // sort chips folded into «+N» too
 const compactGroup = ref(false) // grouping control without its caption
+const compactStage = ref(false) // stage selector without its caption and progress
 const hideChartHints = ref(false) // Gantt/timeline: its text key hints go first
+const compactChart = ref(false) // Gantt/timeline: the scale as a menu
+const hidePeople = ref(false) // the board's avatars, the very last resort
 // The open Gantt / timeline view: its exposed controller drives ChartControls.
 const chartView = ref(null)
 // Its controls join the sub-toolbar once it mounts — fit the row again then.
@@ -337,24 +368,37 @@ async function fitSubbar() {
     foldFilters.value = 0
     foldSorts.value = false
     compactGroup.value = false
+    compactStage.value = false
     hideChartHints.value = false
+    compactChart.value = false
+    hidePeople.value = false
     switchAvail.value = Infinity
-    await nextTick()
-    // Whatever the rest of the row needs at full size, the switch may not take.
-    const sw = [...bar.children].find((el) => el.classList.contains('layout-switch'))
-    const rest = bar.scrollWidth - (sw ? sw.offsetWidth : 0)
-    switchAvail.value = Math.max(0, bar.clientWidth - rest)
     await nextTick()
     // The chart's key hints are only text: they give their room up first.
     if (overflowing(bar) && timelineLike.value) {
       hideChartHints.value = true
       await nextTick()
     }
-    // The composer outranks the grouping caption: drop the caption first.
+    // The switch and the chips outrank the grouping caption: drop it first.
     if (overflowing(bar)) {
       compactGroup.value = true
       await nextTick()
     }
+    // …and the stage selector's caption and mini progress right after (#2994).
+    if (overflowing(bar)) {
+      compactStage.value = true
+      await nextTick()
+    }
+    if (overflowing(bar) && timelineLike.value) {
+      compactChart.value = true
+      await nextTick()
+    }
+    // Whatever the rest of the row needs, the switch may not take: past that it
+    // drops its captions.
+    const sw = [...bar.children].find((el) => el.classList.contains('layout-switch'))
+    const rest = bar.scrollWidth - (sw ? sw.offsetWidth : 0)
+    switchAvail.value = Math.max(0, bar.clientWidth - rest)
+    await nextTick()
     for (let i = 0; i < filterChips.value.length && overflowing(bar); i++) {
       foldFilters.value = i + 1
       await nextTick()
@@ -373,9 +417,15 @@ async function fitSubbar() {
         }
       }
     }
+    if (overflowing(bar)) {
+      hidePeople.value = true
+      await nextTick()
+    }
   } finally {
     fitting = false
   }
+  // A focused control can scroll the clipped row sideways; the fit owns it.
+  bar.scrollLeft = 0
   if (refit) fitSubbar()
 }
 // Attach the bar's resize observer whenever the element itself arrives — the same
@@ -396,6 +446,8 @@ watch(subbarEl, (el) => {
   nextTick(fitSubbar)
 })
 const groupMode = ref('status') // 'status' | 'tag'
+// Columns by tags is the chapter «Группировка по тегам» of the checklist (#3000).
+watch(groupMode, (m) => m === 'tag' && tourEvent('board.grouped'))
 const tagPrefix = ref('') // when grouping by tag: only tags with this namespace prefix become columns
 // Friendly display names for tag prefixes (canonical prefix → label, owned by the
 // store) are loaded per-project. Falls back to the raw prefix where no name is
@@ -423,6 +475,25 @@ const archivedMode = computed(() => isArchiveQuery(route.query))
 // reserving the tile's 232px there — every column in an archived board came out that
 // much narrower between them, with a dead band along the right edge.
 const showAddColumn = computed(() => groupMode.value === 'status' && !archivedMode.value)
+// The board has columns but not one task yet (#3112, CatalogE «Пустая доска»):
+// a card over the lanes offers the first one. Not while one is being typed.
+const noTasks = computed(
+  () =>
+    !loading.value &&
+    !archivedMode.value &&
+    !isMobile.value &&
+    layout.value === 'board' &&
+    displayColumns.value.length > 0 &&
+    allTasks.value.length === 0 &&
+    addingInColumn.value === null,
+)
+function addFirstTask() {
+  const cols = colModel.value
+  const todo = groupMode.value === 'status' ? todoColumn(cols) : cols[0]
+  if (!todo) return
+  if (isColCollapsed(todo)) toggleCollapse(todo)
+  startAddTask(todo)
+}
 // Can the columns be dragged into a new order right now? Status grouping only (tag
 // and milestone lanes have no stored order to write back), never in the archive.
 // Asked in two places that must agree: the column draggable's `:disabled`, and the
@@ -438,21 +509,135 @@ function exitArchive() {
 // board (and de-highlights the sidebar sprint node). The value is passed to the
 // API verbatim — the server resolves slug or UUID.
 const milestoneScope = computed(() => (route.query.milestone ? String(route.query.milestone) : ''))
-const milestoneScopeLabel = computed(() => {
-  const s = milestoneScope.value
-  if (!s) return ''
-  if (s === BACKLOG_SCOPE) return t('board.scope.backlog')
-  // Keyed by id, so a slug scope needs a scan (a project has few milestones).
-  return (
-    (milestonesMap[s] || milestonesList.value.find((m) => matchesScope(m, s)))?.title ||
-    t('board.scope.milestoneFallback')
-  )
-})
 function clearMilestoneScope() {
   const q = { ...route.query }
   delete q.milestone
   router.replace({ query: q })
+  rememberStage('')
 }
+
+// ── stage selector and strip (#2994) ──
+// The selector in the sub-toolbar replaced the removable chip: it picks one
+// stage, «Бэклог» or «Все задачи», and the pick is remembered per board (local,
+// non-critical UX state). The strip over the board shows the picked stage.
+const projectWindow = useProjectWindowStore()
+const stageSel = ref(null)
+const stageKey = (name) => `tessera_stage_${name}_${props.boardId}`
+function rememberStage(key) {
+  try {
+    if (key) localStorage.setItem(stageKey('pick'), key)
+    else localStorage.removeItem(stageKey('pick'))
+  } catch {
+    // private mode: the pick just isn't remembered
+  }
+}
+function pickStage(v) {
+  const key = typeof v === 'string' ? v : milestoneKey(v)
+  const q = { ...route.query }
+  if (key) q.milestone = key
+  else delete q.milestone
+  router.replace({ query: q })
+  rememberStage(key)
+}
+// Coming back to a board without ?milestone= puts its remembered stage back —
+// once per visit, and only a stage that is still open (or the backlog).
+let stageRestored = ''
+watch(
+  () => [props.boardId, milestonesList.value.length],
+  () => {
+    if (!props.boardId || stageRestored === props.boardId || !milestonesList.value.length) return
+    stageRestored = props.boardId
+    if (route.query.milestone || route.query.archived) return
+    let saved = ''
+    try {
+      saved = localStorage.getItem(stageKey('pick')) || ''
+    } catch {
+      saved = ''
+    }
+    if (!saved) return
+    const ok =
+      saved === BACKLOG_SCOPE ||
+      milestonesList.value.some((m) => matchesScope(m, saved) && m.state !== 'closed')
+    if (ok) router.replace({ query: { ...route.query, milestone: saved } })
+    else rememberStage('')
+  },
+)
+const stripStage = computed(() => {
+  const s = milestoneScope.value
+  if (!s || s === BACKLOG_SCOPE) return null
+  return milestonesMap[s] || milestonesList.value.find((m) => matchesScope(m, s)) || null
+})
+function readFlag(name) {
+  try {
+    return localStorage.getItem(stageKey(name)) === '1'
+  } catch {
+    return false
+  }
+}
+function writeFlag(name, on) {
+  try {
+    if (on) localStorage.setItem(stageKey(name), '1')
+    else localStorage.removeItem(stageKey(name))
+  } catch {
+    // ignore
+  }
+}
+const stripOpen = ref(false)
+const stripHidden = ref(false)
+watch(
+  () => `${props.boardId}`,
+  () => {
+    stripOpen.value = readFlag('strip')
+    stripHidden.value = readFlag('striphide')
+  },
+  { immediate: true },
+)
+function setStripOpen(v) {
+  stripOpen.value = v
+  writeFlag('strip', v)
+}
+function hideStrip() {
+  stripHidden.value = true
+  writeFlag('striphide', true)
+}
+function toggleStrip() {
+  if (!stripStage.value) return
+  if (stripHidden.value) {
+    stripHidden.value = false
+    writeFlag('striphide', false)
+    return
+  }
+  setStripOpen(!stripOpen.value)
+}
+const stripRev = ref(0)
+// The strip's «18 из 31» comes from the stage rollups: when the board's tasks
+// change under a picked stage, re-read them (debounced — one request per burst).
+let stripTimer = 0
+watch(allTasks, () => {
+  if (!stripStage.value) return
+  clearTimeout(stripTimer)
+  stripTimer = setTimeout(() => {
+    reloadMilestones()
+    stripRev.value++
+  }, 800)
+})
+onBeforeUnmount(() => clearTimeout(stripTimer))
+// The property pickers (#3118) count what the board holds: tasks per column
+// for «Статус», open tasks per person («6 в работе») for «Исполнители».
+watch(
+  allTasks,
+  (list) => {
+    const counts = {}
+    const load = {}
+    for (const x of list || []) {
+      counts[x.column_id] = (counts[x.column_id] || 0) + 1
+      if (x.completed_at) continue
+      for (const uid of x.assignee_ids || []) load[uid] = (load[uid] || 0) + 1
+    }
+    boardViewStore.taskStats = { boardId: props.boardId, counts, load }
+  },
+  { immediate: true },
+)
 // ── composer facets: filters, multi-level sort, chips and the add menu ──
 // The facet layer (filter state + the menus and chips over it) lives in
 // `useBoardFacets`; grouping stays here because it builds the board's columns.
@@ -470,6 +655,7 @@ const {
   nextGroupModeLabel,
   addOptions,
   onAddFacet,
+  facetIsOn,
   removeChip,
   onChipClick,
   toggleSortDir,
@@ -495,19 +681,55 @@ const {
   clearMilestoneScope,
 })
 
-// Mobile: the "+" menu drills into one sub-list at a time (with a «Назад») rather
-// than fanning out side submenus that run off a narrow screen. The behaviour lives
-// in a composable because the customize drawer renders the same menu behind its own
-// «+» — and on a phone that drawer is the settings surface one can always reach.
-// Each call site keeps its own open/level state (one shared `show` would pop both
-// dropdowns at once), so this instance belongs to the composer's button alone.
-const {
-  show: addShow,
-  menuOptions: addMenuOptions,
-  renderLabel: renderAddLabel,
-  onSelect: onAddSelect,
-  onShow: onAddShow,
-} = useFacetAddMenu({ options: addOptions, isMobile, onPick: onAddFacet })
+// The composer's «+» (#3112): kit/ActionMenu with a submenu per section — on a
+// phone the sheet's second screen — and what is in force ticked. The «Вид доски»
+// panel has its own instance behind its own «+» (one shared `show` would pop
+// both menus at once).
+const addBtnEl = ref(null)
+const addMenu = useFacetAddMenu({ options: addOptions, isOn: facetIsOn, onPick: onAddFacet })
+
+// «+N»: the chips the bar had no room for, as menu rows — a sort row turns its
+// direction, a filter row (ticked: it is on) takes the filter off.
+const moreBtnEl = ref(null)
+const moreOpen = ref(false)
+const moreItems = computed(() => [
+  ...(foldSorts.value && sortLevels.value.length
+    ? [
+        { heading: t('board.composer.sorts') },
+        ...sortLevels.value.map((l) => ({
+          key: `sort:${l.field}`,
+          label: `${sortFieldLabel(l.field)} ${l.dir === 'desc' ? '↓' : '↑'}`,
+          icon: CHIP_ICONS.sort,
+        })),
+      ]
+    : []),
+  ...(hiddenChips.value.length
+    ? [
+        { heading: t('board.composer.filters') },
+        ...hiddenChips.value.map((ci) => ({
+          key: `chip:${ci}`,
+          label: filterChips.value[ci].text,
+          icon: filterChips.value[ci].icon,
+          checked: true,
+        })),
+      ]
+    : []),
+])
+function onMoreSelect(key) {
+  if (key.startsWith('sort:')) {
+    const l = sortLevels.value.find((x) => x.field === key.slice(5))
+    if (l) toggleSortDir(l)
+  } else if (key.startsWith('chip:')) {
+    const c = filterChips.value[Number(key.slice(5))]
+    if (c) removeChip(c)
+  }
+}
+
+// The board's own actions (#3112) — tags, stages, project settings, GitLab,
+// the archive — behind «⋯» after «Вид доски»; the phone's menu has the same rows.
+const boardActions = useBoardActions()
+const actionsBtnEl = ref(null)
+const actionsOpen = ref(false)
 function toggleSubtasksExpanded() {
   subtasksExpanded.value = !subtasksExpanded.value
 }
@@ -546,7 +768,6 @@ function toggleAuto() {
   groupMode.value = 'none'
   tagPrefix.value = ''
   sortLevels.value = []
-  currentViewName.value = ''
   autoSort.value = true
 }
 
@@ -564,11 +785,15 @@ function defaultToolbar(forLayout) {
     filters: emptyFilters(),
     colCollapse: {},
     autoCollapseEmpty: false,
-    cardSize: 'medium',
+    // The matrix draws compact cards two to a row (#2973, mockup MatrixView).
+    cardSize: forLayout === 'matrix' ? 'compact' : 'medium',
     stackFields: false,
     showEmpty: true,
     fieldVis: defaultFieldVis(),
-    autosaveView: false,
+    matrix: { ...MATRIX_DEFAULTS },
+    list: listConfig(),
+    calendar: calendarConfig(),
+    chart: { ...CHART_DEFAULTS },
   }
 }
 function snapshotToolbar() {
@@ -585,7 +810,10 @@ function snapshotToolbar() {
     stackFields: stackFields.value,
     showEmpty: showEmpty.value,
     fieldVis: { ...fieldVis },
-    autosaveView: autosaveView.value,
+    matrix: { ...matrixCfg },
+    list: listConfig(listCfg),
+    calendar: { ...calendarCfg },
+    chart: { ...chartCfg },
   }
 }
 function loadToolbar(s) {
@@ -608,7 +836,10 @@ function loadCustomize(s) {
   stackFields.value = !!s.stackFields
   showEmpty.value = s.showEmpty !== false
   Object.assign(fieldVis, defaultFieldVis(), s.fieldVis || {})
-  autosaveView.value = !!s.autosaveView
+  Object.assign(matrixCfg, matrixConfig(s.matrix))
+  Object.assign(listCfg, listConfig(s.list))
+  Object.assign(calendarCfg, calendarConfig(s.calendar))
+  Object.assign(chartCfg, chartConfig(s.chart))
 }
 
 // Rebuild a pre-per-layout blob into a toolbar snapshot. Built on top of the
@@ -658,7 +889,10 @@ watch(
     stackFields,
     showEmpty,
     fieldVis,
-    autosaveView,
+    matrixCfg,
+    listCfg,
+    calendarCfg,
+    chartCfg,
   ],
   persistView,
   { deep: true },
@@ -677,68 +911,36 @@ watch(
   () => nextTick(fitSubbar),
 )
 
-// ── saved views (per-user, server-side; cross-device) ──
-const savedViews = ref([])
-// Saved views are bound to a visualization: show only those for the current
-// layout (board views and timeline views are separate sets). Legacy views with
-// no stored layout default to 'board'.
-const viewsForLayout = computed(() =>
-  savedViews.value.filter((v) => viewLayout(v) === layout.value),
-)
-const currentViewName = ref('')
-// The visualization the loaded view was saved for. Tracked separately from `layout`
-// because the two come apart the moment the user switches layout with a view loaded.
-const currentViewLayout = ref('')
-const newViewName = ref('')
-const showSaveView = ref(false)
-const showLoadView = ref(false)
-
-async function loadViews() {
-  try {
-    savedViews.value = (await boards.views(props.boardId)).data || []
-  } catch {
-    savedViews.value = []
-  }
-}
-// Saved views are per-board, but the board does NOT remount when you switch boards —
-// so everything about the *loaded* view has to be dropped by hand, or it follows you
-// onto a board that has no such view: the button would still claim it as current, an
-// open save dialog would write the name typed for the previous board, and autosave
-// (its switch is per-board localStorage, so it can be on here) would materialise a
-// view named after the other board's on the first toolbar change. The list is emptied
-// too — `loadViews` is a request, and until it lands the popover offers the previous
-// board's views.
-function clearLoadedView() {
-  savedViews.value = []
-  currentViewName.value = ''
-  currentViewLayout.value = ''
-  newViewName.value = ''
-  showSaveView.value = false
-  showLoadView.value = false
-}
-// Snapshot / restore the full toolbar state that a view captures.
+// ── saved views (#2970): own + shared, server-side; the loaded one and its
+// «изменено» live in useBoardViews. The board hands over what a view captures
+// (currentViewConfig) and how to load one (applyViewConfig, as a bulk load). ──
+// Snapshot / restore the full toolbar state that a view captures. The header's
+// title search is the reader's moment, not part of a view.
 function currentViewConfig() {
   return {
     layout: layout.value,
     groupMode: groupMode.value,
     tagPrefix: tagPrefix.value,
-    sortLevels: sortLevels.value,
+    sortLevels: sortLevels.value.map((l) => ({ ...l })),
     subtasksExpanded: subtasksExpanded.value,
     autoSort: autoSort.value,
-    filters: cloneFilters(filters),
+    filters: { ...cloneFilters(filters), q: '' },
     colCollapse: { ...colCollapse },
     autoCollapseEmpty: autoCollapseEmpty.value,
     cardSize: cardSize.value,
     stackFields: stackFields.value,
     showEmpty: showEmpty.value,
     fieldVis: { ...fieldVis },
-    autosaveView: autosaveView.value,
+    matrix: { ...matrixCfg },
+    list: listConfig(listCfg),
+    calendar: { ...calendarCfg },
+    chart: { ...chartCfg },
   }
 }
 function applyViewConfig(c) {
   if (!c) return
   if (c.layout) layout.value = c.layout
-  if (c.groupMode) groupMode.value = c.groupMode
+  groupMode.value = c.groupMode || defaultToolbar(layout.value).groupMode
   tagPrefix.value = c.tagPrefix || ''
   if (Array.isArray(c.sortLevels)) sortLevels.value = c.sortLevels.map((l) => ({ ...l }))
   else if (c.sortBy && c.sortBy !== 'position')
@@ -751,80 +953,57 @@ function applyViewConfig(c) {
   // sort, which is what most views look like). Views predating the key read as
   // off — the state they were actually saved in, since it could not be captured.
   autoSort.value = !!c.autoSort
+  // The header search stays what the reader typed.
+  const q = filters.q
   Object.assign(filters, cloneFilters(c.filters))
+  filters.q = q
   loadCustomize(c)
 }
-async function saveView() {
-  const name = (newViewName.value || currentViewName.value).trim()
-  if (!name) return
-  // Names are per-board, not per-layout: the upsert key knows nothing about the
-  // visualization. Refuse rather than let the save quietly destroy a view the
-  // popover never listed (it only offers same-layout ones to overwrite).
-  const taken = conflictingViewLayout(savedViews.value, name, layout.value)
-  if (taken) {
-    message.error(t('board.views.nameTaken', { name, layout: t(`board.layout.${taken}`) }))
-    return
-  }
-  try {
-    await boards.saveView(props.boardId, { name, config: currentViewConfig() })
-    currentViewName.value = name
-    currentViewLayout.value = layout.value
-    newViewName.value = ''
-    showSaveView.value = false
-    await loadViews()
-    message.success(t('board.views.saved', { name }))
-  } catch (e) {
-    message.error(e.message)
-  }
+const bv = reactive(
+  useBoardViews({
+    boardId: toRef(props, 'boardId'),
+    currentConfig: currentViewConfig,
+    applyConfig: (c) => withViewLoad(() => applyViewConfig(c)),
+  }),
+)
+// The chip comes and goes with the loaded view, and its dot with «изменено».
+watch([() => bv.loaded?.name, () => bv.changed], () => nextTick(fitSubbar))
+function openPanel(section) {
+  customizeOpen.value = true
+  if (section) nextTick(() => customizePanel.value?.reveal(section))
 }
-function applyView(v) {
-  withViewLoad(() => {
-    applyViewConfig(v.config)
-    currentViewName.value = v.name
-    currentViewLayout.value = viewLayout(v)
-    showLoadView.value = false
-  })
-}
-async function deleteView(v) {
-  try {
-    await boards.deleteView(v.id)
-    if (currentViewName.value === v.name) {
-      currentViewName.value = ''
-      currentViewLayout.value = ''
-    }
-    await loadViews()
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-// Autosave: when enabled and a named view is loaded, re-save it (debounced,
-// silent) as the toolbar/customize state changes. Guarded by restoring/swapping
-// like persistView so applying a view doesn't immediately re-save it; the debounce
-// and its teardown live in the composable.
-useBoardAutosave({
-  enabled: autosaveView,
-  viewName: currentViewName,
-  config: currentViewConfig,
-  guarded: viewLoadInFlight,
-  save: async (name, config) => {
-    // A view belongs to the visualization it was saved for. Switching layout with a
-    // view loaded must not rewrite its layout behind the user's back: that drops it
-    // out of its own list (views are filtered by layout) — the same disappearance
-    // the composable's teardown guards against, just reached from the other side.
-    if (currentViewLayout.value && config.layout !== currentViewLayout.value) return
-    try {
-      await boards.saveView(props.boardId, { name, config })
-    } catch {
-      /* silent — a failed autosave shouldn't nag; manual save still surfaces errors */
-    }
-  },
-})
+// ⌘⇧S, the chip's «Сохранить текущее как…», a locked view's «Сохранить как
+// моё»: the panel opens on its views with the field ready.
+watch(
+  () => bv.saveAsDraft,
+  (d) => d && openPanel('views'),
+)
+// The closed «Представления» section's summary.
+const viewsSummary = computed(() =>
+  bv.loaded
+    ? bv.changed
+      ? `${bv.loaded.name} · ${t('board.views.changed')}`
+      : bv.loaded.name
+    : bv.views.length
+      ? String(bv.views.length)
+      : '',
+)
 
 // ── adaptive column width (#7): fill the viewport, leave room for "+ колонка";
 //    exactly one full-width column on mobile. We measure the real scroll
 //    container (clientWidth already excludes the sidebar, padding and its own
 //    scrollbar) instead of guessing from window size, so columns never overflow.
 const boardScroll = ref(null)
+// The column a phone's swipe rests on (#2976): the snapped one, read off the
+// strip's scroll offset in column steps.
+const mobileCol = ref(0)
+function onBoardScroll() {
+  const el = boardScroll.value
+  if (!el || !isMobile.value) return
+  const step = (colWidth.value || 1) + 12
+  const n = displayColumns.value.length
+  mobileCol.value = Math.max(0, Math.min(n - 1, Math.round(el.scrollLeft / step)))
+}
 const containerWidth = ref(0)
 let ro = null
 function measure() {
@@ -865,7 +1044,10 @@ const colWidth = computed(() =>
 )
 const colStyleVars = computed(() => ({ '--col-w': colWidth.value + 'px' }))
 // The grouping control lists the same choices as the add menu's «Группировка».
-const groupOptions = computed(() => addOptions.value.find((o) => o.key === 'group')?.children || [])
+const groupOpen = ref(false)
+const groupItems = computed(() =>
+  facetRows(addOptions.value.find((o) => o.key === 'group')?.children || [], facetIsOn),
+)
 // A column with no colour of its own (status column left on default, «Без тегов»)
 // is tinted with the neutral grey of the v2 lanes (#2954).
 const NEUTRAL_COLUMN = '#9aa0aa'
@@ -1503,6 +1685,46 @@ function cancelAddTask() {
   addingInColumn.value = null
   newTaskTitle.value = ''
 }
+function laneMilestoneId(dcol) {
+  return newTaskMilestoneId({
+    groupMode: groupMode.value,
+    lane: dcol,
+    scopeId: scopeMilestoneId(),
+  })
+}
+// A task typed into a lane of another view (the list's «＋ Задача» / C, #3020):
+// filed exactly as the kanban files one typed into that column — the status
+// column itself, or the first column pre-tagged / stamped with the lane's
+// tag / milestone. Extra fields (a calendar day's due) ride along. Resolves to
+// the new task, or null when it could not be created.
+async function createInLane(dcol, title, extra = {}) {
+  const name = normalizeTitle(title)
+  if (!name || !board.value) return null
+  const columnId = dcol && groupMode.value === 'status' ? dcol.key : columns.value[0]?.id
+  if (!columnId) {
+    message.warning(t('board.column.needStatus'))
+    return null
+  }
+  const milestoneId = dcol
+    ? laneMilestoneId(dcol)
+    : newTaskMilestoneId({ scopeId: scopeMilestoneId() })
+  suppress()
+  try {
+    const res = await boards.createTask(board.value.id, {
+      column_id: columnId,
+      title: name,
+      ...extra,
+    })
+    if (dcol && groupMode.value === 'tag' && dcol.tag)
+      await tasksApi.addTag(res.data.id, dcol.tag.id)
+    if (milestoneId) await tasksApi.setMilestone(res.data.id, milestoneId)
+    await load(props.boardId, { silent: true })
+    return res.data
+  } catch (e) {
+    message.error(e.message)
+    return null
+  }
+}
 async function submitAddTask(dcol) {
   // Enter is caught on keydown so the textarea never gets to insert its newline;
   // normalizeTitle is the backstop for pasted multi-line text.
@@ -1683,9 +1905,15 @@ function navigateTask(dir) {
   router.replace({ query: { ...route.query, task: numberOf(id) ?? id } })
 }
 
+// The task actions behind the keys (E, P 0–4, ⌘←/→), shared by the kanban's
+// selected card and the other views' own selections (list rows, matrix and
+// calendar picks — #2973). `reload: false` lets a batch (several list rows)
+// reload once at the end.
 async function completeFocused() {
   const task = focusedTask()
-  if (!task) return
+  if (task) await completeTask(task)
+}
+async function completeTask(task, { reload = true } = {}) {
   const plan = planComplete({
     completed: !!task.completed_at,
     columnId: task.column_id,
@@ -1701,7 +1929,7 @@ async function completeFocused() {
     } else {
       await tasksApi.update(task.id, { ...taskBasePatch(task), completed: plan.op === 'complete' })
     }
-    scheduleReload()
+    if (reload) scheduleReload()
   } catch (e) {
     message.error(e.message)
   }
@@ -1709,13 +1937,76 @@ async function completeFocused() {
 
 async function setFocusedPriority(value) {
   const task = focusedTask()
+  if (task) await setTaskPriority(task, value)
+}
+async function setTaskPriority(task, value, { reload = true } = {}) {
   if (!task || value > 4) return
   suppress()
   try {
     await tasksApi.update(task.id, { ...taskBasePatch(task), priority: value })
-    scheduleReload()
+    if (reload) scheduleReload()
   } catch (e) {
     message.error(e.message)
+  }
+}
+// A batch from another view's selection: every task once, one reload after.
+async function completeTasks(list) {
+  for (const task of list) await completeTask(task, { reload: false })
+  scheduleReload()
+}
+async function setTasksPriority(list, value) {
+  for (const task of list) await setTaskPriority(task, value, { reload: false })
+  scheduleReload()
+}
+// ⌘←/→ on list rows: each one into the lane next to its own, as on the kanban.
+async function shiftTasks(items, dir) {
+  suppress()
+  try {
+    for (const { task, laneKey } of items) {
+      const from = colModel.value.find((d) => d.key === laneKey)
+      const to = from && neighbourColumn(colModel.value, from.key, dir)
+      if (!to) continue
+      const intents = planShift({
+        groupMode: groupMode.value,
+        from,
+        to,
+        taskId: task.id,
+        tailId: null,
+      })
+      if (intents.length) await runIntents(intents)
+    }
+    await load(props.boardId, { silent: true })
+  } catch (e) {
+    message.error(e.message)
+    load(props.boardId)
+  }
+}
+// ⌘↑/↓ on a list row: one step up/down inside its status column. Only where the
+// list shows the stored order (status lanes, no composer sort) — the same rule
+// the kanban's card drag follows (utils/boardDnd canSortWithinLane).
+async function reorderTask({ task, laneKey, beforeId, afterId }) {
+  if (!canSortCards.value || groupMode.value !== 'status') return
+  suppress()
+  try {
+    await tasksApi.move(task.id, { column_id: laneKey, before_id: beforeId, after_id: afterId })
+    await load(props.boardId, { silent: true })
+  } catch (e) {
+    message.error(e.message)
+    load(props.boardId)
+  }
+}
+// F2 / double click on a list row: the title edited in place.
+async function renameTask(task, title) {
+  const next = normalizeTitle(title)
+  if (!next || next === task.title) return true
+  suppress()
+  try {
+    await tasksApi.update(task.id, { ...taskBasePatch(task), title: next })
+    await load(props.boardId, { silent: true })
+    return true
+  } catch (e) {
+    message.error(humanizeError(e))
+    return false
   }
 }
 
@@ -1746,8 +2037,8 @@ async function shiftFocused(dir) {
   }
 }
 
-// V, then 1–3: the three main views, in the order of the view switch.
-const LAYOUT_KEYS = ['board', 'list', 'timeline']
+// V, then 1–6: the six views, in the order of the view switch (#2970).
+const LAYOUT_KEYS = LAYOUTS
 const paletteStore = usePaletteStore()
 const openField = (field) => () => {
   const task = focusedTask()
@@ -1800,7 +2091,7 @@ useShortcuts(
 )
 useShortcuts(
   {
-    'board.filter': () => onAddShow(true),
+    'board.filter': () => (addMenu.show.value = true),
     'board.group': () => groupCtlEl.value?.click(),
     'board.layout': (n) => {
       const next = LAYOUT_KEYS[n - 1]
@@ -1810,8 +2101,27 @@ useShortcuts(
       const sizes = ['compact', 'medium', 'large']
       cardSize.value = sizes[(sizes.indexOf(cardSize.value) + 1) % sizes.length]
     },
+    'view.panel': () => (customizeOpen.value ? (customizeOpen.value = false) : openPanel()),
+    // Saved views (#2987): ⌘S updates the loaded one (or saves anew when none
+    // is loaded / it is not the reader's to change), ⌘⇧S saves as new, ⌘⌫ resets.
+    'views.update': () => bv.update(),
+    'views.saveAs': () => bv.requestSaveAs(''),
+    'views.reset': () => bv.reset(),
+    // The stage selector, the strip, and the page of the stage in front (#2994).
+    'board.stage': () => stageSel.value?.open(),
+    'board.stageStrip': () => toggleStrip(),
+    'nav.goStage': () => {
+      const p = wsStore.projects.find((x) => x.id === board.value?.project_id)
+      if (stripStage.value && p) router.push(stagePath(p.slug, stripStage.value))
+    },
   },
   { when: () => !!board.value && !isMobile.value },
+)
+// 1–9 / 0 pick a view while the panel is open (the chip's menu answers to the
+// digits on its own).
+useShortcuts(
+  { 'views.pick': (n) => bv.pick(n) },
+  { when: () => !!board.value && !isMobile.value && customizeOpen.value },
 )
 
 // «N, then T» on a board: the inline quick-add of the «К работе» column — the
@@ -1996,6 +2306,35 @@ function onChanged() {
   scheduleReload()
 }
 
+// What the list view's keys and in-place edits run (#3020): the same task
+// actions the kanban's selected card uses.
+const listActions = {
+  complete: (list) => completeTasks(list),
+  priority: (list, value) => setTasksPriority(list, value),
+  shift: (items, dir) => shiftTasks(items, dir),
+  reorder: (plan) => reorderTask(plan),
+  rename: (task, title) => renameTask(task, title),
+  create: (dcol, title) => createInLane(dcol, title),
+  field: (task, field) => paletteStore.openTask(task.id, field),
+}
+// The calendar's (#3019): the same, plus a due moved to another day and a task
+// typed into a day — due that day (date-only), in the board's first column.
+const calendarActions = {
+  ...listActions,
+  setDates: (task, dates) => setTaskDates(task, dates),
+  create: (day, title) => createInLane(null, title, { due_date: dateOnlyISO(day) }),
+}
+async function setTaskDates(task, { due_date, start_date }) {
+  suppress()
+  try {
+    await tasksApi.update(task.id, { ...taskBasePatch(task), due_date, start_date })
+    await load(props.boardId, { silent: true })
+  } catch (e) {
+    message.error(humanizeError(e))
+    load(props.boardId)
+  }
+}
+
 // Matrix view quick-add: create the task in the board's first column, then pin it
 // to the chosen Eisenhower quadrant (the matrix has no column to drop into).
 //
@@ -2024,7 +2363,14 @@ useRealtime((ev) => {
   // Surface a freshly detected write-back conflict so the user knows to resolve it
   // (the resolver lives in the GitLab modal's «Конфликты» entry).
   if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
-    message.warning(t('board.toast.gitlabConflict'))
+    // A warning with its way out (#3117): «Разрешить» opens the resolver on it.
+    const taskId = ev.data?.task_id || null
+    message.warning(t('board.toast.gitlabConflict'), {
+      action: {
+        label: () => t('toasts.act.resolve'),
+        run: () => useConflictsStore().openResolver(taskId),
+      },
+    })
   }
   // The open board was retired. DeleteBoard takes its columns, cards and uploads
   // with it and announces a bare `board.deleted`, so there is nothing left to
@@ -2040,14 +2386,18 @@ useRealtime((ev) => {
   }
   // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
   if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
+  // The board's shared views changed (#2988) → re-read the list.
+  if (ev.type === 'board_views.changed' && ev.data?.board_id === props.boardId) bv.load()
   // Custom command dictionary edited elsewhere → the `/`-popup picks it up live.
   if (ev.type === 'workspace_commands.updated') wsStore.setCustomCommands(ev.data?.commands || [])
   // A link between two tasks changed → nudge the Gantt to re-read its edge list.
   // Only pairs with an end on this board can move an arrow here, and only the
   // Gantt draws them, so this costs nothing on the other layouts.
   if (relationTouchesBoard(ev, props.boardId)) depsToken.value++
-  // Board-activity toast for create/move on THIS board (any actor).
-  if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
+  // Board-activity toast for create/move/delete on THIS board (the store
+  // decides whose actions show and folds bursts, #3117).
+  if (ev.type === 'task.created' || ev.type === 'task.moved' || ev.type === 'task.deleted')
+    pushActivity(ev)
   // A drag holds the board still (SortableJS needs a stable DOM), so the event
   // cannot be acted on now — but it must not be forgotten either: remember what it
   // would have cost and fetch that once the card lands (#2932).
@@ -2089,22 +2439,74 @@ useRealtime((ev) => {
 function pushActivity(ev) {
   const task = ev.data
   if (!task || typeof task !== 'object' || task.board_id !== props.boardId) return
-  let verb = ev.type === 'task.created' ? 'created' : 'moved'
+  // A deleted task is gone from the payload's columns; its title is on the card
+  // we still hold, or in the event itself (#3114).
+  const prev = allTasks.value.find((x) => x.id === task.id)
+  let verb =
+    ev.type === 'task.created' ? 'created' : ev.type === 'task.deleted' ? 'deleted' : 'moved'
   if (ev.type === 'task.moved') {
-    const prev = allTasks.value.find((x) => x.id === task.id)
     const wasDone = !!prev?.completed_at
     const isDone = !!task.completed_at
     if (isDone && !wasDone) verb = 'completed'
     else if (!isDone && wasDone) verb = 'reopened'
   }
-  activityToasts.value?.push({
-    id: task.id,
-    number: task.number ?? null,
-    title: task.title || t('task.fallbackTitle'),
+  const col = columns.value.find((c) => c.id === task.column_id)
+  toasts.activity({
+    taskId: task.id,
+    number: task.number ?? prev?.number ?? null,
+    title: task.title || prev?.title || t('task.fallbackTitle'),
     verb,
+    column: col ? columnName(col) : '',
     ...toastActor(ev, { selfId: auth.user?.id ?? null, members: membersMap }),
   })
 }
+
+// A toast about a card pulses it once — only a card in sight: the column is
+// not scrolled to bring one in (PackageI «Подсветка карточки»).
+watch(
+  () => toasts.pulse.seq,
+  () => {
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    // The ring is a layer of its own over the card, not a class on it: the
+    // card re-renders on the very event that raised the toast, and a class
+    // added from outside would be wiped by its own class binding.
+    for (const id of toasts.pulse.ids) {
+      const el = document.querySelector(`.card[data-task-id="${id}"]`)
+      if (!el || !inSight(el)) continue
+      const r = el.getBoundingClientRect()
+      const ring = document.createElement('div')
+      ring.className = 't-pulse-ring'
+      ring.dataset.testid = 'card-pulse'
+      Object.assign(ring.style, {
+        left: `${r.left}px`,
+        top: `${r.top}px`,
+        width: `${r.width}px`,
+        height: `${r.height}px`,
+        borderRadius: getComputedStyle(el).borderRadius,
+      })
+      document.body.appendChild(ring)
+      setTimeout(() => ring.remove(), reduced ? 1500 : 900)
+    }
+  },
+)
+function inSight(el) {
+  const r = el.getBoundingClientRect()
+  if (r.bottom <= 0 || r.top >= window.innerHeight || r.width === 0) return false
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY
+    if (oy !== 'auto' && oy !== 'scroll') continue
+    const b = p.getBoundingClientRect()
+    if (r.bottom <= b.top || r.top >= b.bottom) return false
+  }
+  return true
+}
+
+// While a card is dragged new toasts wait for it to land (PackageI «Автотишина»).
+watch(
+  () => !!(dragging.value || layoutDragging.value),
+  (on) => toasts.setHold('drag', on),
+)
+onBeforeUnmount(() => toasts.setHold('drag', false))
 
 // Relation-change counter handed to the Gantt view. The chart owns its edge list
 // (a fetch of its own), and a relation change touches no task row, so a plain
@@ -2140,22 +2542,20 @@ watch(
 // gear carries.
 watch(
   () => boardViewStore.customizeNonce,
-  () => {
-    if (!timelineLike.value) customizeOpen.value = true
-  },
+  () => openPanel(),
 )
 
-// Saved views, same story one button over — except the folder and the disk have no
-// fallback trigger at all, so from a phone a view could be neither loaded nor
-// saved. Publish the list the menu has to offer (only this layout's views: a view
-// belongs to its visualization) plus which one is loaded, and answer what the menu
-// asks. The work stays here because the config a save captures is this component's
-// whole toolbar state (currentViewConfig).
+// The phone's board menu lists the saved views too (it has no sub-toolbar chip
+// room to spare): publish the list and the loaded one, answer its ask.
 watch(
-  [viewsForLayout, currentViewName],
+  [() => bv.views, () => bv.loadedId],
   () => {
-    boardViewStore.savedViews = viewsForLayout.value.map((v) => ({ id: v.id, name: v.name }))
-    boardViewStore.currentViewName = currentViewName.value
+    boardViewStore.savedViews = bv.views.map((v) => ({
+      id: v.id,
+      name: v.name,
+      layout: v.config?.layout || 'board',
+    }))
+    boardViewStore.currentViewId = bv.loadedId
   },
   { immediate: true },
 )
@@ -2164,16 +2564,9 @@ watch(
   (req) => {
     if (!req) return
     if (req.op === 'apply') {
-      // Look the view up in the full list, not in the published summaries: applyView
-      // needs its `config`, and the ask can name a view the list has since dropped.
-      const v = savedViews.value.find((x) => x.id === req.id)
-      if (v) applyView(v)
-      return
-    }
-    if (req.op === 'save') {
-      newViewName.value = req.name || ''
-      saveView()
-    }
+      const v = bv.views.find((x) => x.id === req.id)
+      if (v) bv.apply(v)
+    } else if (req.op === 'clear') bv.clear()
   },
 )
 
@@ -2210,6 +2603,30 @@ async function applyTaskQuery() {
   }
 }
 
+// Opening a board: its locally remembered state, then the board itself, then its
+// saved views — the default one wins on the first open of a session. A board
+// this device has never shown, with no default view, opens in the view it was
+// created in (#3017: boards.default_layout — Канбан or Список).
+async function openBoard(id) {
+  let seen
+  try {
+    seen = !!localStorage.getItem(`tessera_view_${id}`)
+  } catch {
+    seen = true // no storage — leave the layout alone
+  }
+  restoreView()
+  // A view picked while the board was still loading is the reader's choice: the
+  // star and the board's own kind must not take it back.
+  const before = layout.value
+  await load(id)
+  await bv.load()
+  const untouched = layout.value === before
+  const applied = bv.onOpen({ applyDefault: untouched })
+  const start = board.value?.default_layout
+  if (untouched && !applied && !seen && start && start !== layout.value) layout.value = start
+  applyTaskQuery()
+}
+
 onMounted(async () => {
   window.addEventListener('pointerdown', onAnyPointer, true)
   ro = new ResizeObserver(() => measure())
@@ -2223,10 +2640,7 @@ onMounted(async () => {
   subbarRO = new ResizeObserver(() => fitSubbar())
   if (subbarEl.value) subbarRO.observe(subbarEl.value)
   nextTick(fitSubbar)
-  restoreView()
-  await load(props.boardId)
-  loadViews()
-  applyTaskQuery()
+  await openBoard(props.boardId)
 })
 onBeforeUnmount(() => {
   window.removeEventListener('pointerdown', onAnyPointer, true)
@@ -2244,13 +2658,9 @@ watch(
   async (id) => {
     if (!id) return
     resetCardViewport()
-    // Before restoreView: clearing the name makes the autosave signature empty, so a
-    // write armed on the board we are leaving is disarmed instead of landing here.
-    clearLoadedView()
-    restoreView()
-    await load(id)
-    loadViews()
-    applyTaskQuery()
+    // The loaded view is per-board: drop it before this board's state comes in.
+    bv.forget()
+    await openBoard(id)
   },
 )
 watch(
@@ -2314,6 +2724,8 @@ async function restoreFromArchive(taskId) {
       <div ref="subbarEl" class="subbar">
         <!-- On a phone the view switch is part of the header's board menu. -->
         <BoardLayoutSwitch v-if="!isMobile" :available="switchAvail" @measured="fitSubbar" />
+        <!-- The loaded saved view (#2987): its chip and quick menu. -->
+        <ViewChip :bv="bv" @open-panel="openPanel('views')" />
         <div
           ref="composerEl"
           class="composer"
@@ -2334,21 +2746,6 @@ async function restoreFromArchive(taskId) {
                 class="facet-x"
                 :title="t('board.scope.archiveExit')"
                 @click.stop="exitArchive"
-              >
-                ×
-              </button>
-            </span>
-            <span
-              v-if="milestoneScope"
-              class="facet facet-accent"
-              :title="t('board.scope.milestoneTitle')"
-            >
-              <n-icon class="facet-ic" :component="RibbonOutline" :size="13" />
-              {{ milestoneScopeLabel }}
-              <button
-                class="facet-x"
-                :title="t('board.scope.milestoneClear')"
-                @click.stop="clearMilestoneScope"
               >
                 ×
               </button>
@@ -2406,64 +2803,54 @@ async function restoreFromArchive(taskId) {
             </template>
           </div>
 
-          <n-popover v-if="foldedCount" trigger="click" placement="bottom-start">
-            <template #trigger>
-              <button
-                type="button"
-                class="facet facet-more"
-                data-testid="composer-more"
-                :title="t('board.composer.more', { count: foldedCount })"
-              >
-                +{{ foldedCount }}
-              </button>
-            </template>
-            <div class="more-chips">
-              <template v-if="foldSorts">
-                <span
-                  v-for="l in sortLevels"
-                  :key="l.field"
-                  class="facet sortable"
-                  @click="toggleSortDir(l)"
-                >
-                  <n-icon class="facet-ic" :component="CHIP_ICONS.sort" :size="13" />
-                  {{ sortFieldLabel(l.field) }} {{ l.dir === 'desc' ? '↓' : '↑' }}
-                  <button
-                    class="facet-x"
-                    :title="t('board.composer.remove')"
-                    @click.stop="removeSort(l)"
-                  >
-                    ×
-                  </button>
-                </span>
-              </template>
-              <span v-for="ci in hiddenChips" :key="ci" class="facet">
-                <n-icon class="facet-ic" :component="filterChips[ci].icon" :size="13" />
-                {{ filterChips[ci].text }}
-                <button
-                  class="facet-x"
-                  :title="t('board.composer.remove')"
-                  @click.stop="removeChip(filterChips[ci])"
-                >
-                  ×
-                </button>
-              </span>
-            </div>
-          </n-popover>
-
-          <n-dropdown
-            :show="addShow"
-            scrollable
-            trigger="click"
-            placement="bottom-start"
-            :options="addMenuOptions"
-            :render-label="renderAddLabel"
-            @update:show="onAddShow"
-            @select="onAddSelect"
+          <button
+            v-if="foldedCount"
+            ref="moreBtnEl"
+            type="button"
+            class="facet facet-more"
+            :class="{ open: moreOpen }"
+            data-testid="composer-more"
+            :title="t('board.composer.more', { count: foldedCount })"
+            aria-haspopup="menu"
+            :aria-expanded="moreOpen"
+            @click="moreOpen = !moreOpen"
           >
-            <button class="facet-add" :title="t('board.composer.add')">
-              <n-icon :component="AddOutline" :size="14" />
-            </button>
-          </n-dropdown>
+            +{{ foldedCount }}
+          </button>
+          <ActionMenu
+            v-model:show="moreOpen"
+            :anchor="() => moreBtnEl"
+            placement="bottom-start"
+            :offset="{ x: 0, y: 6 }"
+            :width="260"
+            :items="moreItems"
+            testid="composer-more-menu"
+            @select="onMoreSelect"
+          />
+
+          <button
+            ref="addBtnEl"
+            type="button"
+            class="facet-add"
+            :class="{ open: addMenu.show.value }"
+            :title="t('board.composer.add')"
+            aria-haspopup="menu"
+            :aria-expanded="addMenu.show.value"
+            data-testid="facet-add"
+            @click="addMenu.show.value = !addMenu.show.value"
+          >
+            <n-icon :component="AddOutline" :size="14" />
+          </button>
+          <ActionMenu
+            v-model:show="addMenu.show.value"
+            :anchor="() => addBtnEl"
+            placement="bottom-start"
+            :offset="{ x: -6, y: 8 }"
+            :width="240"
+            :items="addMenu.items.value"
+            testid="facet"
+            @select="addMenu.onSelect"
+          />
 
           <button
             v-if="hasClearableFacets"
@@ -2478,56 +2865,79 @@ async function restoreFromArchive(taskId) {
         <!-- Grouping: its own control next to the composer (v2, #2954) — a
              setting of the board, not one more filter. Opens the same grouping
              options as the composer's add menu. -->
-        <n-dropdown
+        <button
           v-if="groupChip"
-          trigger="click"
-          placement="bottom-start"
-          :options="groupOptions"
-          @select="onAddFacet"
+          ref="groupCtlEl"
+          type="button"
+          class="group-ctl"
+          :class="{ open: groupOpen }"
+          data-testid="group-control"
+          data-tour="board-grouping"
+          aria-haspopup="menu"
+          :aria-expanded="groupOpen"
+          @click="groupOpen = !groupOpen"
         >
-          <button
-            ref="groupCtlEl"
-            type="button"
-            class="group-ctl"
-            data-testid="group-control"
-            data-tour="board-grouping"
-          >
-            <n-icon class="gc-ic" :component="groupChip.icon" :size="14" />
-            <span v-if="!isMobile && !compactGroup" class="gc-lbl">{{
-              t('board.facet.menu.group')
-            }}</span>
-            <span class="gc-val">{{ groupChip.text }}</span>
-            <n-icon class="gc-ic" :component="ChevronDownOutline" :size="12" />
-          </button>
-        </n-dropdown>
+          <n-icon class="gc-ic" :component="groupChip.icon" :size="14" />
+          <span v-if="!isMobile && !compactGroup" class="gc-lbl">{{
+            t('board.facet.menu.group')
+          }}</span>
+          <span class="gc-val">{{ groupChip.text }}</span>
+          <n-icon class="gc-ic" :component="ChevronDownOutline" :size="12" />
+        </button>
+        <ActionMenu
+          v-model:show="groupOpen"
+          :anchor="() => groupCtlEl"
+          placement="bottom-start"
+          :offset="{ x: 0, y: 6 }"
+          :width="260"
+          :header="t('board.facet.menu.group')"
+          :items="groupItems"
+          testid="group-menu"
+          @select="onAddFacet"
+        />
+
+        <!-- Stage selector (#2994): one stage, «Бэклог» or «Все задачи» — in place
+             of the scope chip that used to sit among the filters. Hidden while the
+             project has no stages at all. -->
+        <StageSelect
+          v-if="milestonesList.length || milestoneScope"
+          ref="stageSel"
+          :stages="milestonesList"
+          :scope="milestoneScope"
+          :compact="isMobile || compactStage"
+          :disabled="archivedMode"
+          @pick="pickStage"
+          @manage="projectWindow.open(board.project_id, 'stages')"
+        />
 
         <!-- Gantt / timeline: scale, today, key hints, view settings (v2, #2959) -->
         <ChartControls
           v-if="timelineLike"
           :ctl="chartView?.ctl"
           :hints="!hideChartHints && !isMobile"
-          :compact="isMobile"
+          :compact="isMobile || compactChart"
         />
 
-        <BoardMembers v-if="!isMobile" class="subbar-people" />
+        <BoardMembers v-if="!isMobile && !hidePeople" :tasks="allTasks" class="subbar-people" />
 
         <!-- Right-side tools — slide off to the right while the composer is
              expanded so the full chip set has room. -->
         <div class="bar-tools">
-          <!-- Subtasks: compact rows on the card ⇄ full child cards (v2: a tool of
-               its own, out of the composer). -->
+          <!-- v2 icon buttons, 34px (#3112). Subtasks: compact rows on the card ⇄
+               full child cards (a tool of its own, out of the composer). -->
           <n-tooltip>
             <template #trigger>
-              <n-button
-                size="small"
-                quaternary
-                class="ngrad bar-btn"
-                :type="subtasksExpanded ? 'primary' : 'default'"
+              <button
+                type="button"
+                class="bar-ic"
+                :class="{ on: subtasksExpanded }"
+                :aria-pressed="subtasksExpanded"
+                :aria-label="t('board.composer.subtasksOff')"
                 data-testid="subtasks-toggle"
                 @click="toggleSubtasksExpanded"
               >
-                <template #icon><n-icon :component="GitBranchOutline" /></template>
-              </n-button>
+                <n-icon :component="GitBranchOutline" :size="17" />
+              </button>
             </template>
             {{ t(subtasksExpanded ? 'board.composer.subtasksOn' : 'board.composer.subtasksOff') }}
           </n-tooltip>
@@ -2536,234 +2946,242 @@ async function restoreFromArchive(taskId) {
              no-group/no-sort and orders rows by the blocking graph. -->
           <n-tooltip v-if="layout === 'gantt'">
             <template #trigger>
-              <n-button
-                size="small"
-                quaternary
-                class="ngrad bar-btn"
-                :type="autoActive ? 'primary' : 'default'"
+              <button
+                type="button"
+                class="bar-ic"
+                :class="{ on: autoActive }"
+                :aria-pressed="autoActive"
+                :aria-label="t('board.tools.autoOff')"
+                data-testid="gantt-auto"
                 @click="toggleAuto"
               >
-                <template #icon><n-icon :component="GitNetworkOutline" /></template>
-              </n-button>
+                <n-icon :component="GitNetworkOutline" :size="17" />
+              </button>
             </template>
             {{ t(autoActive ? 'board.tools.autoOn' : 'board.tools.autoOff') }}
           </n-tooltip>
 
-          <n-tooltip v-if="!timelineLike">
+          <!-- «Вид доски» (#2986): the one entry to every board setting, in every
+               view. The dot says the loaded view has been changed. -->
+          <n-tooltip>
             <template #trigger>
-              <n-button
-                size="small"
-                quaternary
-                class="ngrad bar-btn"
-                :type="customizeOpen ? 'primary' : 'default'"
-                data-tour="board-customize"
-                @click="customizeOpen = true"
-              >
-                <template #icon><n-icon :component="OptionsOutline" /></template>
-              </n-button>
+              <span class="panel-wrap">
+                <button
+                  type="button"
+                  class="bar-ic"
+                  :class="{ on: customizeOpen }"
+                  :aria-pressed="customizeOpen"
+                  :aria-label="t('board.tools.customize')"
+                  data-tour="board-customize"
+                  data-testid="board-customize-btn"
+                  @click="customizeOpen ? (customizeOpen = false) : openPanel()"
+                >
+                  <n-icon :component="OptionsOutline" :size="17" />
+                </button>
+                <span v-if="bv.changed" class="panel-dot" data-testid="board-customize-dot" />
+              </span>
             </template>
-            {{ t('board.tools.customize') }}
+            <span class="bar-tip">
+              {{ t('board.tools.customize') }} <ShortcutKeys id="view.panel" />
+            </span>
           </n-tooltip>
 
-          <!-- saved views: load (folder) + save (disk) -->
-          <n-popover v-model:show="showLoadView" trigger="click" placement="bottom-start">
+          <!-- «⋯ Действия доски» (#3112, Board.dc): tags, stages, the project's
+               settings, GitLab, the archive. -->
+          <n-tooltip :disabled="actionsOpen">
             <template #trigger>
-              <n-tooltip>
-                <template #trigger>
-                  <n-button
-                    size="small"
-                    quaternary
-                    class="ngrad bar-btn"
-                    :type="currentViewName ? 'primary' : 'default'"
-                  >
-                    <template #icon><n-icon :component="FolderOpenOutline" /></template>
-                  </n-button>
-                </template>
-                {{
-                  currentViewName
-                    ? t('board.views.current', { name: currentViewName })
-                    : t('board.views.load')
-                }}
-              </n-tooltip>
+              <button
+                ref="actionsBtnEl"
+                type="button"
+                class="bar-ic"
+                :class="{ on: actionsOpen || boardActions.isArchive.value }"
+                :aria-label="t('board.actions.more')"
+                aria-haspopup="menu"
+                :aria-expanded="actionsOpen"
+                data-tour="board-actions"
+                data-testid="board-more"
+                @click="actionsOpen = !actionsOpen"
+              >
+                <n-icon :component="EllipsisHorizontalOutline" :size="17" />
+              </button>
             </template>
-            <div class="views-pop">
-              <div v-for="v in viewsForLayout" :key="v.id" class="view-row">
-                <button
-                  class="view-name"
-                  :class="{ active: v.name === currentViewName }"
-                  @click="applyView(v)"
-                >
-                  {{ v.name }}
-                </button>
-                <n-popconfirm
-                  :positive-button-props="{ type: 'error' }"
-                  :positive-text="t('common.action.delete')"
-                  @positive-click="deleteView(v)"
-                >
-                  <template #trigger>
-                    <n-button text size="tiny" type="error"
-                      ><n-icon :component="TrashOutline"
-                    /></n-button>
-                  </template>
-                  {{ t('board.views.deleteConfirm', { name: v.name }) }}
-                </n-popconfirm>
-              </div>
-              <n-text v-if="!viewsForLayout.length" depth="3" class="views-empty">
-                {{ t('board.views.empty') }}
-              </n-text>
-            </div>
-          </n-popover>
-
-          <n-popover v-model:show="showSaveView" trigger="click" placement="bottom-start">
-            <template #trigger>
-              <n-tooltip>
-                <template #trigger>
-                  <n-button size="small" quaternary class="ngrad bar-btn">
-                    <template #icon><n-icon :component="SaveOutline" /></template>
-                  </n-button>
-                </template>
-                {{ t('board.views.save') }}
-              </n-tooltip>
-            </template>
-            <div class="views-pop">
-              <n-input
-                v-model:value="newViewName"
-                size="small"
-                :placeholder="t('board.views.namePlaceholder')"
-                @keyup.enter="saveView"
-              />
-              <div v-if="viewsForLayout.length" class="views-over">
-                <n-text depth="3" class="views-lbl">{{ t('board.views.overwrite') }}</n-text>
-                <button
-                  v-for="v in viewsForLayout"
-                  :key="v.id"
-                  class="view-chip"
-                  @click="newViewName = v.name"
-                >
-                  {{ v.name }}
-                </button>
-              </div>
-              <n-button type="primary" size="small" block @click="saveView">{{
-                t('common.action.save')
-              }}</n-button>
-            </div>
-          </n-popover>
+            {{ t('board.actions.more') }}
+          </n-tooltip>
+          <ActionMenu
+            v-model:show="actionsOpen"
+            :anchor="() => actionsBtnEl"
+            placement="bottom-end"
+            :offset="{ x: 0, y: 6 }"
+            :width="260"
+            :header="t('board.actions.more')"
+            :items="boardActions.items.value"
+            testid="board-more-menu"
+            @select="boardActions.select"
+          />
         </div>
       </div>
 
-      <BoardListView
-        v-if="layout === 'list'"
-        :columns="displayColumns"
-        :status-columns="columns"
-        :lists="lists"
-        :tags-map="tagsMap"
-        :members-map="membersMap"
-        :gitlab-members="gitlabMembersList"
-        :tag-prefix-names="tagPrefixNames"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @restore="restoreFromArchive"
+      <!-- The stage strip (#2994): the picked stage's goals and progress between
+           the sub-toolbar and the columns. -->
+      <StageStrip
+        v-if="stripStage && !stripHidden && !archivedMode"
+        :stage="stripStage"
+        :project-slug="wsStore.projects.find((p) => p.id === board.project_id)?.slug || ''"
+        :open="stripOpen"
+        :estimation="wsStore.estimationFor(board.project_id)"
+        :mobile="isMobile"
+        :revision="stripRev"
+        @update:open="setStripOpen"
+        @hide="hideStrip"
+        @changed="reloadMilestones"
       />
 
-      <BoardCalendarView
-        v-else-if="layout === 'calendar'"
-        :tasks="filteredTasks"
-        :status-columns="columns"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @restore="restoreFromArchive"
-      />
+      <!-- The board and its «Вид доски» panel side by side (#2986): the panel is
+           docked, not floating — whatever the view, it gives up the width. -->
+      <div class="board-body">
+        <div class="board-main">
+          <BoardListView
+            v-if="layout === 'list'"
+            :columns="colModel"
+            :status-columns="columns"
+            :lists="lists"
+            :group-mode="groupMode"
+            :done-column-id="doneColumnId"
+            :counts="countsByCol"
+            :subtasks-by-parent="filteredSubtasksByParent"
+            :est-cfg="estCfg"
+            :tags-map="tagsMap"
+            :members-map="membersMap"
+            :gitlab-members="gitlabMembersList"
+            :tag-prefix-names="tagPrefixNames"
+            :widths="listCfg.widths"
+            :is-folded="isColCollapsed"
+            :can-reorder="canSortCards && groupMode === 'status'"
+            :actions="listActions"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @restore="restoreFromArchive"
+            @fold="toggleCollapse"
+            @resize="(k, w) => (listCfg.widths[k] = w)"
+          />
 
-      <BoardTimelineView
-        v-else-if="layout === 'timeline'"
-        ref="chartView"
-        :done-column-id="board?.done_column_id || null"
-        :tasks="filteredTasks"
-        :status-columns="columns"
-        :members-map="membersMap"
-        :gitlab-members="gitlabMembersList"
-        :tags-map="tagsMap"
-        :group-mode="groupMode"
-        :tag-prefix="tagPrefix"
-        :tag-prefix-names="tagPrefixNames"
-        :project-id="board?.project_id"
-        :subtasks-by-parent="filteredSubtasksByParent"
-        :milestones="milestonesList"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @restore="restoreFromArchive"
-      />
+          <BoardCalendarView
+            v-else-if="layout === 'calendar'"
+            :tasks="filteredTasks"
+            :status-columns="columns"
+            :done-column-id="doneColumnId"
+            :mode="calendarCfg.mode"
+            :actions="calendarActions"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @restore="restoreFromArchive"
+            @update:mode="(m) => (calendarCfg.mode = m)"
+            @drag-state="onLayoutDragState"
+          />
 
-      <BoardGanttView
-        v-else-if="layout === 'gantt'"
-        ref="chartView"
-        :done-column-id="board?.done_column_id || null"
-        :board-id="boardId"
-        :tasks="filteredTasks"
-        :status-columns="columns"
-        :members-map="membersMap"
-        :gitlab-members="gitlabMembersList"
-        :tags-map="tagsMap"
-        :group-mode="groupMode"
-        :tag-prefix="tagPrefix"
-        :tag-prefix-names="tagPrefixNames"
-        :project-id="board?.project_id"
-        :auto-sort="autoActive"
-        :subtasks-by-parent="filteredSubtasksByParent"
-        :milestones="milestonesList"
-        :deps-token="depsToken"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @restore="restoreFromArchive"
-      />
+          <BoardTimelineView
+            v-else-if="layout === 'timeline'"
+            ref="chartView"
+            :done-column-id="board?.done_column_id || null"
+            :tasks="filteredTasks"
+            :status-columns="columns"
+            :members-map="membersMap"
+            :gitlab-members="gitlabMembersList"
+            :tags-map="tagsMap"
+            :group-mode="groupMode"
+            :tag-prefix="tagPrefix"
+            :tag-prefix-names="tagPrefixNames"
+            :project-id="board?.project_id"
+            :subtasks-by-parent="filteredSubtasksByParent"
+            :milestones="milestonesList"
+            :chart="chartCfg"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @restore="restoreFromArchive"
+            @update:scale="(sc) => (chartCfg.scale = sc)"
+          />
 
-      <BoardMatrixView
-        v-else-if="layout === 'matrix'"
-        :tasks="filteredTasks"
-        :subtasks-by-parent="sortedSubtasksByParent"
-        :subtasks-total-by-parent="subtasksByParent"
-        :subtasks-expanded="subtasksExpanded"
-        :readonly="archivedMode"
-        @open="openTask"
-        @changed="onChanged"
-        @create="createInQuadrant"
-        @restore="restoreFromArchive"
-        @drag-state="onLayoutDragState"
-      />
+          <BoardGanttView
+            v-else-if="layout === 'gantt'"
+            ref="chartView"
+            :done-column-id="board?.done_column_id || null"
+            :board-id="boardId"
+            :tasks="filteredTasks"
+            :status-columns="columns"
+            :members-map="membersMap"
+            :gitlab-members="gitlabMembersList"
+            :tags-map="tagsMap"
+            :group-mode="groupMode"
+            :tag-prefix="tagPrefix"
+            :tag-prefix-names="tagPrefixNames"
+            :project-id="board?.project_id"
+            :auto-sort="autoActive"
+            :subtasks-by-parent="filteredSubtasksByParent"
+            :milestones="milestonesList"
+            :deps-token="depsToken"
+            :chart="chartCfg"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @restore="restoreFromArchive"
+            @update:scale="(sc) => (chartCfg.scale = sc)"
+          />
 
-      <div v-else ref="boardScroll" class="board-scroll" :style="colStyleVars">
-        <draggable
-          :list="colModel"
-          group="columns"
-          item-key="key"
-          handle=".col-drag"
-          :disabled="!canReorderColumns"
-          class="cols"
-          :class="{ dragging }"
-          :animation="150"
-          :delay="160"
-          :delay-on-touch-only="true"
-          :touch-start-threshold="6"
-          @start="onDragStart"
-          @end="onBoardDragEnd"
-          @change="onColumnReorder"
-        >
-          <template #item="{ element: dcol }">
-            <div
-              class="col"
-              data-testid="column"
-              :data-column-key="dcol.key"
-              :data-column-name="dcol.rawName"
-              :class="{ collapsed: colCollapsedNow(dcol) }"
-              :style="{ '--col-c': dcol.color || NEUTRAL_COLUMN }"
-              @mouseenter="hoveredColKey = dcol.key"
-              @mouseleave="hoveredColKey === dcol.key && (hoveredColKey = null)"
+          <BoardMatrixView
+            v-else-if="layout === 'matrix'"
+            :tasks="filteredTasks"
+            :subtasks-by-parent="sortedSubtasksByParent"
+            :subtasks-total-by-parent="subtasksByParent"
+            :subtasks-expanded="subtasksExpanded"
+            :urgent-window-days="matrixCfg.dueDays"
+            :important-priority="matrixCfg.minPriority"
+            :actions="listActions"
+            :readonly="archivedMode"
+            @open="openTask"
+            @changed="onChanged"
+            @create="createInQuadrant"
+            @restore="restoreFromArchive"
+            @drag-state="onLayoutDragState"
+          />
+
+          <div
+            v-else
+            ref="boardScroll"
+            class="board-scroll"
+            :style="colStyleVars"
+            @scroll.passive="onBoardScroll"
+          >
+            <draggable
+              :list="colModel"
+              group="columns"
+              item-key="key"
+              handle=".col-drag"
+              :disabled="!canReorderColumns"
+              class="cols"
+              :class="{ dragging }"
+              :animation="150"
+              :delay="160"
+              :delay-on-touch-only="true"
+              :touch-start-threshold="6"
+              @start="onDragStart"
+              @end="onBoardDragEnd"
+              @change="onColumnReorder"
             >
-              <!-- Collapsed strip: rotated title + count, click to expand. The real
+              <template #item="{ element: dcol }">
+                <div
+                  class="col"
+                  data-testid="column"
+                  :data-column-key="dcol.key"
+                  :data-column-name="dcol.rawName"
+                  :class="{ collapsed: colCollapsedNow(dcol) }"
+                  :style="{ '--col-c': dcol.color || NEUTRAL_COLUMN }"
+                  @mouseenter="hoveredColKey = dcol.key"
+                  @mouseleave="hoveredColKey === dcol.key && (hoveredColKey = null)"
+                >
+                  <!-- Collapsed strip: rotated title + count, click to expand. The real
                    header + card list stay in the DOM below (hidden via CSS) so the
                    drop target survives.
                    A real `<button>`, not a clickable div: the collapse chevron in
@@ -2781,160 +3199,247 @@ async function restoreFromArchive(taskId) {
                    column could not be reordered at all, and with «collapse empty
                    columns» on that is EVERY empty column — precisely the ones being
                    arranged while a board is still being set up. -->
-              <button
-                v-if="colCollapsedNow(dcol)"
-                class="col-strip"
-                :class="{ 'col-drag': canReorderColumns }"
-                type="button"
-                :title="stripTitle(dcol)"
-                @click="toggleCollapse(dcol)"
-              >
-                <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
-                <span class="strip-title">{{ dcol.name }}</span>
-                <span class="strip-count" :title="colCountTitle(dcol)">{{
-                  colCounts(dcol).tasks
-                }}</span>
-              </button>
-              <ColumnHeader
-                :dcol="dcol"
-                :count="colCounts(dcol).tasks"
-                :total="colCounts(dcol).total"
-                :estimate="columnEstimate(dcol)"
-                :editable="groupMode === 'status'"
-                :readonly="archivedMode"
-                :is-done="groupMode === 'status' && dcol.key === doneColumnId"
-                :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
-                :collapsed="isColCollapsed(dcol)"
-                :prefix-names="tagPrefixNames"
-                :last="groupMode === 'status' && dcol.key === colModel[colModel.length - 1]?.key"
-                :can-delete="groupMode === 'status' && colModel.length > 1"
-                :rename-request="colRenameReq"
-                @changed="onChanged"
-                @set-done="onSetDone"
-                @toggle-collapse="toggleCollapse(dcol)"
-                @rename-next="renameNextColumn(dcol)"
-                @delete="deleteColumn(dcol)"
-                @move="(dir) => moveColumn(dcol, dir)"
-                @add-right="startAddColumn(dcol)"
-              />
-              <draggable
-                :list="lists[dcol.key]"
-                group="tasks"
-                item-key="id"
-                class="drop t-hoverscroll"
-                ghost-class="ghost"
-                :force-fallback="true"
-                :fallback-on-body="true"
-                filter=".add-sub, .sub-add-input"
-                :prevent-on-filter="false"
-                :disabled="archivedMode"
-                :sort="canSortCards"
-                :animation="150"
-                :delay="160"
-                :delay-on-touch-only="true"
-                :touch-start-threshold="6"
-                @start="onCardDragStart"
-                @end="onBoardDragEnd"
-                @change="onColChange($event, dcol)"
-              >
-                <template #item="{ element, index }">
-                  <div
-                    :ref="(el) => regCard(el, cardKey(dcol.key, element.id))"
-                    class="card-wrap"
-                    :data-card="cardKey(dcol.key, element.id)"
+                  <button
+                    v-if="colCollapsedNow(dcol)"
+                    class="col-strip"
+                    :class="{ 'col-drag': canReorderColumns }"
+                    type="button"
+                    :title="stripTitle(dcol)"
+                    @click="toggleCollapse(dcol)"
                   >
-                    <div
-                      v-if="
-                        colCollapsedNow(dcol) || !(vis[cardKey(dcol.key, element.id)] ?? index < 12)
-                      "
-                      class="card-ph"
-                      :style="{
-                        height: (cardH[cardKey(dcol.key, element.id)] || VCARD_EST) + 'px',
-                      }"
-                    />
-                    <TaskCard
-                      v-else
-                      :task="element"
-                      :subtasks="sortedSubtasksByParent[element.id] || []"
-                      :subtasks-total="(subtasksByParent[element.id] || []).length"
-                      :subtasks-expanded="subtasksExpanded"
-                      :sorted="composerSorted"
-                      :dragging="draggingCard"
-                      :readonly="archivedMode"
-                      :selected="isFocused(dcol, element.id)"
-                      @open="(id) => onCardOpen(dcol, id)"
-                      @changed="onChanged"
-                      @restore="restoreFromArchive"
-                    />
-                  </div>
-                </template>
-              </draggable>
-
-              <template v-if="!archivedMode">
-                <div
-                  v-if="addingInColumn === dcol.key"
-                  class="add-task-input"
-                  data-testid="add-task-input"
-                >
-                  <n-input
-                    :ref="(el) => (taskInput = el)"
-                    v-model:value="newTaskTitle"
-                    type="textarea"
-                    size="small"
-                    :autosize="{ minRows: 1, maxRows: 4 }"
-                    :placeholder="t('board.column.taskPlaceholder')"
-                    @keydown.enter.exact.prevent="submitAddTask(dcol)"
-                    @keyup.esc="cancelAddTask"
-                    @blur="submitAddTask(dcol)"
+                    <n-icon class="strip-chevron" :component="ChevronForwardOutline" />
+                    <span class="strip-title">{{ dcol.name }}</span>
+                    <span class="strip-count" :title="colCountTitle(dcol)">{{
+                      colCounts(dcol).tasks
+                    }}</span>
+                  </button>
+                  <ColumnHeader
+                    :dcol="dcol"
+                    :count="colCounts(dcol).tasks"
+                    :total="colCounts(dcol).total"
+                    :estimate="columnEstimate(dcol)"
+                    :editable="groupMode === 'status'"
+                    :readonly="archivedMode"
+                    :is-done="groupMode === 'status' && dcol.key === doneColumnId"
+                    :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
+                    :collapsed="isColCollapsed(dcol)"
+                    :prefix-names="tagPrefixNames"
+                    :last="
+                      groupMode === 'status' && dcol.key === colModel[colModel.length - 1]?.key
+                    "
+                    :can-delete="groupMode === 'status' && colModel.length > 1"
+                    :rename-request="colRenameReq"
+                    @changed="onChanged"
+                    @set-done="onSetDone"
+                    @toggle-collapse="toggleCollapse(dcol)"
+                    @rename-next="renameNextColumn(dcol)"
+                    @delete="deleteColumn(dcol)"
+                    @move="(dir) => moveColumn(dcol, dir)"
+                    @add-right="startAddColumn(dcol)"
                   />
+                  <draggable
+                    :list="lists[dcol.key]"
+                    group="tasks"
+                    item-key="id"
+                    class="drop t-hoverscroll"
+                    ghost-class="ghost"
+                    :force-fallback="true"
+                    :fallback-on-body="true"
+                    filter=".add-sub, .sub-add-input"
+                    :prevent-on-filter="false"
+                    :disabled="archivedMode"
+                    :sort="canSortCards"
+                    :animation="150"
+                    :delay="160"
+                    :delay-on-touch-only="true"
+                    :touch-start-threshold="6"
+                    @start="onCardDragStart"
+                    @end="onBoardDragEnd"
+                    @change="onColChange($event, dcol)"
+                  >
+                    <template #item="{ element, index }">
+                      <div
+                        :ref="(el) => regCard(el, cardKey(dcol.key, element.id))"
+                        class="card-wrap"
+                        :data-card="cardKey(dcol.key, element.id)"
+                      >
+                        <div
+                          v-if="
+                            colCollapsedNow(dcol) ||
+                            !(vis[cardKey(dcol.key, element.id)] ?? index < 12)
+                          "
+                          class="card-ph"
+                          :style="{
+                            height: (cardH[cardKey(dcol.key, element.id)] || VCARD_EST) + 'px',
+                          }"
+                        />
+                        <TaskCard
+                          v-else
+                          :task="element"
+                          :subtasks="sortedSubtasksByParent[element.id] || []"
+                          :subtasks-total="(subtasksByParent[element.id] || []).length"
+                          :subtasks-expanded="subtasksExpanded"
+                          :sorted="composerSorted"
+                          :dragging="draggingCard"
+                          :readonly="archivedMode"
+                          :selected="isFocused(dcol, element.id)"
+                          @open="(id) => onCardOpen(dcol, id)"
+                          @changed="onChanged"
+                          @restore="restoreFromArchive"
+                        />
+                      </div>
+                    </template>
+                  </draggable>
+
+                  <template v-if="!archivedMode">
+                    <div
+                      v-if="addingInColumn === dcol.key"
+                      class="add-task-input"
+                      data-testid="add-task-input"
+                    >
+                      <QuickAddField
+                        :ref="(el) => (taskInput = el)"
+                        v-model="newTaskTitle"
+                        :placeholder="t('board.column.taskPlaceholder')"
+                        @submit="submitAddTask(dcol)"
+                        @cancel="cancelAddTask"
+                        @blur="submitAddTask(dcol)"
+                      />
+                    </div>
+                    <button
+                      v-else
+                      type="button"
+                      class="add-task"
+                      data-testid="add-task-button"
+                      @click="startAddTask(dcol)"
+                    >
+                      <n-icon :component="AddOutline" :size="15" />
+                      <span class="add-task-label">{{ t('board.column.addTask') }}</span>
+                      <ShortcutKeys v-if="!isMobile" id="board.addTask" class="add-task-key" />
+                    </button>
+                  </template>
                 </div>
-                <button
-                  v-else
-                  type="button"
-                  class="add-task"
-                  data-testid="add-task-button"
-                  @click="startAddTask(dcol)"
-                >
-                  <n-icon :component="AddOutline" :size="15" />
-                  <span class="add-task-label">{{ t('board.column.addTask') }}</span>
-                  <ShortcutKeys v-if="!isMobile" id="board.addTask" class="add-task-key" />
-                </button>
               </template>
-            </div>
-          </template>
-        </draggable>
+            </draggable>
 
-        <!-- inline new column (status mode; never in the archive — the tile would
+            <!-- inline new column (status mode; never in the archive — the tile would
              create a live column on the board from a read-only view) -->
-        <div v-if="showAddColumn" class="add-col" :class="{ 'add-col-mobile': isMobile }">
-          <n-input
-            v-if="addingColumn"
-            ref="colInput"
-            v-model:value="newColumnName"
-            size="small"
-            :loading="columnInFlight"
-            :placeholder="t('board.column.namePlaceholder')"
-            @keyup.enter="submitAddColumn"
-            @keyup.esc="addingColumn = false"
-            @blur="submitAddColumn"
-          />
-          <button
-            v-else
-            type="button"
-            class="add-col-btn"
-            data-testid="add-column"
-            @click="startAddColumn"
+            <div v-if="showAddColumn" class="add-col" :class="{ 'add-col-mobile': isMobile }">
+              <InlineEdit
+                v-if="addingColumn"
+                ref="colInput"
+                v-model="newColumnName"
+                variant="header"
+                hint="create"
+                class="add-col-edit"
+                :busy="columnInFlight"
+                :placeholder="t('board.column.namePlaceholder')"
+                @commit="submitAddColumn"
+                @cancel="addingColumn = false"
+              />
+              <button
+                v-else
+                type="button"
+                class="add-col-btn"
+                data-testid="add-column"
+                @click="startAddColumn"
+              >
+                <n-icon :component="AddOutline" :size="16" />
+                <span>{{ t('board.column.add') }}</span>
+              </button>
+            </div>
+          </div>
+          <!-- A phone (#2976 — package G «Доска»): which column the swipe is on,
+               over the bottom navigation. -->
+          <div
+            v-if="isMobile && layout === 'board' && displayColumns.length > 1"
+            class="m-colpos"
+            data-testid="mobile-column-position"
           >
-            <n-icon :component="AddOutline" :size="16" />
-            <span>{{ t('board.column.add') }}</span>
-          </button>
-        </div>
-      </div>
+            <span class="m-dots" aria-hidden="true">
+              <span
+                v-for="(c, i) in displayColumns"
+                :key="c.key"
+                class="m-dot"
+                :class="{ on: i === mobileCol }"
+              />
+            </span>
+            <span class="m-colpos-l">{{
+              t('board.column.position', {
+                name: displayColumns[mobileCol]?.name || '',
+                n: mobileCol + 1,
+                total: displayColumns.length,
+              })
+            }}</span>
+          </div>
 
-      <div v-if="layout === 'board' && !displayColumns.length" class="empty-board">
-        <n-text depth="3">
-          {{ t(groupMode === 'status' ? 'board.column.emptyStatus' : 'board.column.emptyTag') }}
-        </n-text>
+          <EmptyState
+            v-if="layout === 'board' && !displayColumns.length"
+            class="empty-board"
+            :icon="AlbumsOutline"
+            :text="t(groupMode === 'status' ? 'board.column.emptyStatus' : 'board.column.emptyTag')"
+          />
+          <!-- Columns, not a task yet (CatalogE «Пустая доска»): a card under the
+               lanes. «Из бэклога» of the mockup is not here — moving tasks out of
+               the backlog is the stage selector's (⇧E) job, not a board action. -->
+          <div v-if="noTasks" class="empty-tasks" data-testid="board-empty">
+            <EmptyState
+              class="empty-tasks-card"
+              :icon="AlbumsOutline"
+              :title="t('board.empty.title')"
+              :text="t('board.empty.text')"
+            >
+              <button type="button" class="kit-btn primary" @click="addFirstTask">
+                {{ t('board.empty.create') }}
+                <ShortcutKeys id="board.addTask" />
+              </button>
+            </EmptyState>
+          </div>
+        </div>
+        <BoardCustomizePanel
+          ref="customizePanel"
+          v-model:show="customizeOpen"
+          v-model:board-name="boardName"
+          v-model:card-size="cardSize"
+          v-model:stack-fields="stackFields"
+          v-model:show-empty="showEmpty"
+          v-model:auto-collapse-empty="autoCollapseEmpty"
+          v-model:subtasks-expanded="subtasksExpanded"
+          :layout="layout"
+          :readonly="archivedMode"
+          :field-vis="fieldVis"
+          :facet-chips="facetChips"
+          :filters="filters"
+          :group-next-label="nextGroupModeLabel"
+          :group-label="groupChip?.text || ''"
+          :add-options="addOptions"
+          :facet-is-on="facetIsOn"
+          :board-icon="board?.icon || ''"
+          :board-color="board?.color || ''"
+          :board-icon-mode="board?.icon_mode || 'badge'"
+          :chart-ctl="timelineLike ? chartView?.ctl || null : null"
+          :views-summary="viewsSummary"
+          :matrix="matrixCfg"
+          :chart="chartCfg"
+          :digits-hint="bv.views.length > 0"
+          @update:matrix="(m) => Object.assign(matrixCfg, matrixConfig(m))"
+          @update:chart="
+            (c) => Object.assign(chartCfg, chartConfig({ ...c, scale: chartCfg.scale }))
+          "
+          @set-field="setFieldVis"
+          @add-facet="onAddFacet"
+          @remove-chip="removeChip"
+          @chip-click="onChipClick"
+          @update-board="updateBoard"
+        >
+          <template #views>
+            <ViewsSection
+              :bv="bv"
+              :can-share="wsStore.canManage"
+              :members="boardViewStore.membersList.length"
+            />
+          </template>
+        </BoardCustomizePanel>
       </div>
     </div>
   </n-spin>
@@ -2954,33 +3459,6 @@ async function restoreFromArchive(taskId) {
     @open="openTask"
     @restore="restoreFromArchive"
   />
-
-  <BoardActivityToasts ref="activityToasts" @open="openTask" />
-
-  <BoardCustomizePanel
-    v-model:show="customizeOpen"
-    v-model:board-name="boardName"
-    v-model:card-size="cardSize"
-    v-model:stack-fields="stackFields"
-    v-model:show-empty="showEmpty"
-    v-model:auto-collapse-empty="autoCollapseEmpty"
-    v-model:subtasks-expanded="subtasksExpanded"
-    v-model:autosave-view="autosaveView"
-    :readonly="archivedMode"
-    :field-vis="fieldVis"
-    :facet-chips="facetChips"
-    :group-next-label="nextGroupModeLabel"
-    :add-options="addOptions"
-    :current-view-name="currentViewName"
-    :board-icon="board?.icon || ''"
-    :board-color="board?.color || ''"
-    :board-icon-mode="board?.icon_mode || 'badge'"
-    @set-field="setFieldVis"
-    @add-facet="onAddFacet"
-    @remove-chip="removeChip"
-    @chip-click="onChipClick"
-    @update-board="updateBoard"
-  />
 </template>
 
 <style scoped>
@@ -2996,6 +3474,38 @@ async function restoreFromArchive(taskId) {
 }
 .subbar-spacer {
   flex: 1;
+}
+/* The board and its docked «Вид доски» panel (#2986): the views take what the
+   panel leaves. */
+.board-body {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.board-main {
+  flex: 1;
+  min-width: 0;
+}
+.panel-wrap {
+  position: relative;
+  display: inline-flex;
+}
+/* «изменено»: the loaded view no longer matches the board. */
+.panel-dot {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 7px;
+  height: 7px;
+  border-radius: 4px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #f0a020 86%, #000),
+    #f0a020 50%,
+    color-mix(in srgb, #f0a020 86%, #fff)
+  );
+  box-shadow: 0 0 0 2px var(--t-bg);
+  pointer-events: none;
 }
 .subbar-people {
   flex: none;
@@ -3022,10 +3532,41 @@ async function restoreFromArchive(taskId) {
   min-height: calc(100vh - 52px);
   box-sizing: border-box;
 }
-/* Right-side toolbar buttons match the composer bar's height. */
-.bar-btn {
-  height: 34px;
+/* Right-side toolbar buttons (v2, #3112): 34px, radius 10, the hover well;
+   on — the accent wash, like the header's «Входящие». */
+.bar-ic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.bar-ic:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.bar-ic.on {
+  background: color-mix(in srgb, var(--t-primary) 18%, transparent);
+  color: var(--t-primary);
+}
+.bar-ic:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+.bar-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .bar-tools {
   display: flex;
@@ -3071,12 +3612,6 @@ async function restoreFromArchive(taskId) {
   font-weight: 600;
   cursor: pointer;
 }
-.more-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  max-width: 320px;
-}
 .facet {
   display: inline-flex;
   align-items: center;
@@ -3115,7 +3650,8 @@ async function restoreFromArchive(taskId) {
   white-space: nowrap;
   cursor: pointer;
 }
-.group-ctl:hover {
+.group-ctl:hover,
+.group-ctl.open {
   background: var(--t-hover);
 }
 .gc-ic {
@@ -3127,11 +3663,6 @@ async function restoreFromArchive(taskId) {
 .gc-val {
   font-weight: 600;
   color: var(--t-text1);
-}
-/* Sprint scope chip: the accent capsule like any filter. */
-.facet-accent .facet-ic {
-  color: var(--t-primary);
-  opacity: 1;
 }
 /* Archive scope chip: amber capsule. */
 .facet-archive {
@@ -3179,7 +3710,8 @@ async function restoreFromArchive(taskId) {
   cursor: pointer;
   flex: none;
 }
-.facet-add:hover {
+.facet-add:hover,
+.facet-add.open {
   color: var(--t-text1);
 }
 /* Reference figure, not a control — flat neutral grey, no accent gradient. */
@@ -3240,61 +3772,6 @@ async function restoreFromArchive(taskId) {
   margin-top: 2px;
   align-self: flex-start;
 }
-.views-pop {
-  width: 240px;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.view-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
-.view-name {
-  flex: 1;
-  text-align: left;
-  border: none;
-  background: none;
-  cursor: pointer;
-  padding: 6px 8px;
-  border-radius: 7px;
-  color: var(--t-text1);
-  font-size: 13px;
-}
-.view-name:hover {
-  background: var(--t-hover);
-}
-.view-name.active {
-  color: var(--t-primary);
-  font-weight: 600;
-}
-.views-empty {
-  font-size: 12px;
-}
-.views-over {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  align-items: center;
-}
-.views-lbl {
-  font-size: 11px;
-  width: 100%;
-}
-.view-chip {
-  border: none;
-  background: var(--t-pill);
-  border-radius: 999px;
-  padding: 2px 8px;
-  font-size: 11px;
-  cursor: pointer;
-  color: var(--t-text2);
-}
-.view-chip:hover {
-  color: var(--t-text1);
-}
 .task-search {
   width: 220px;
   max-width: 40%;
@@ -3306,7 +3783,7 @@ async function restoreFromArchive(taskId) {
   .board-wrap.has-bg {
     margin: -12px;
     padding: 12px;
-    min-height: calc(100dvh - 52px);
+    min-height: calc(var(--app-vh, 100vh) - var(--m-head-h, 52px) - var(--mnav-h, 0px));
   }
   .sb-label {
     display: none;
@@ -3377,12 +3854,13 @@ async function restoreFromArchive(taskId) {
    stretch the columns to fill the screen so the whole area is a drop target
    (offset ≈ header + sub-toolbar; tune if a gap/extra scroll appears). */
 @media (max-width: 768px) {
+  /* The screen under the header and over the bottom navigation, less the
+     sub-toolbar and the column indicator (#2976). */
   .board-scroll {
     scroll-snap-type: x mandatory;
     scroll-behavior: smooth;
     align-items: stretch;
-    height: calc(100vh - 130px);
-    height: calc(100dvh - 130px);
+    height: calc(var(--app-vh, 100vh) - var(--m-head-h, 52px) - var(--mnav-h, 0px) - 108px);
   }
   .cols {
     align-items: stretch;
@@ -3394,6 +3872,33 @@ async function restoreFromArchive(taskId) {
   .col {
     align-self: stretch;
     max-height: none;
+  }
+}
+/* The phone's column indicator (#2976). */
+@media (max-width: 768px) {
+  .m-colpos {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    height: 24px;
+    font-size: 12.5px;
+    color: var(--t-text3);
+  }
+  .m-dots {
+    display: inline-flex;
+    gap: 5px;
+  }
+  .m-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--t-kbd);
+    transition: width 0.15s ease;
+  }
+  .m-dot.on {
+    width: 18px;
+    background: var(--t-accent-grad);
   }
 }
 .add-task-input {
@@ -3664,6 +4169,24 @@ async function restoreFromArchive(taskId) {
   width: 100%;
 }
 .empty-board {
-  padding: 24px;
+  padding: 48px 24px;
+}
+/* «На доске пока нет задач»: under the (empty, short) lanes rather than over
+   them — a card laid over the lanes hid their «Создать задачу» from the hover
+   that unfolds it. */
+.empty-tasks {
+  display: flex;
+  justify-content: center;
+  padding: 32px 16px 24px;
+}
+.empty-tasks-card {
+  max-width: 340px;
+  padding: 26px 30px;
+  border-radius: 18px;
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
+}
+.add-col-edit {
+  margin-left: 0;
 }
 </style>

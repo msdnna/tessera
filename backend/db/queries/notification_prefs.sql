@@ -6,9 +6,10 @@ SELECT * FROM notification_prefs WHERE user_id = $1;
 -- name: UpsertNotificationPrefs :one
 INSERT INTO notification_prefs (
     user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled,
-    quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz, digest_minutes, updated_at
+    quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz, digest_minutes,
+    toasts_enabled, toasts, quiet_toasts, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, now())
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
 ON CONFLICT (user_id) DO UPDATE
 SET due_enabled = EXCLUDED.due_enabled,
     due_lead_minutes = EXCLUDED.due_lead_minutes,
@@ -19,6 +20,20 @@ SET due_enabled = EXCLUDED.due_enabled,
     quiet_end_minutes = EXCLUDED.quiet_end_minutes,
     quiet_tz = EXCLUDED.quiet_tz,
     digest_minutes = EXCLUDED.digest_minutes,
+    toasts_enabled = EXCLUDED.toasts_enabled,
+    toasts = EXCLUDED.toasts,
+    quiet_toasts = EXCLUDED.quiet_toasts,
+    updated_at = now()
+RETURNING *;
+
+-- SetNotificationDnd switches «Не беспокоить» (#3117): until a moment, or off
+-- (NULL). A user who never customised gets a row with the column defaults —
+-- the same values defaultPrefs answers with.
+-- name: SetNotificationDnd :one
+INSERT INTO notification_prefs (user_id, dnd_until, updated_at)
+VALUES ($1, $2, now())
+ON CONFLICT (user_id) DO UPDATE
+SET dnd_until = EXCLUDED.dnd_until,
     updated_at = now()
 RETURNING *;
 

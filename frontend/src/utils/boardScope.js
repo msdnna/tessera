@@ -17,7 +17,8 @@
 //     silently dead exactly where the reader expects it to take them back.
 //
 // The only way out was the scope chip's «×» down in the board composer, which is
-// a different control in a different place from the one that got you in.
+// a different control in a different place from the one that got you in. Both
+// menus now draw one row, composables/useBoardActions (#3112).
 
 // Query for entering the archive.
 //

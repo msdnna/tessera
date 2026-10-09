@@ -111,3 +111,99 @@ export function milestoneRange(m, fmt = defaultFormatters()) {
   if (s) return t('milestones.range.from', { date: s })
   return ''
 }
+
+// ── stage state, days left, progress (#2971) ──────────────────────
+
+// A stage date as its UTC calendar day (stage dates are date-only), at midnight
+// UTC — comparable with `todayUTC()`.
+export function stageDay(iso) {
+  if (!iso) return null
+  const d = new Date(iso)
+  if (Number.isNaN(d.getTime())) return null
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate())
+}
+
+// Today as the same kind of number, read on the reader's own calendar: «today»
+// is the day the reader is living, whatever the UTC clock says.
+export function todayUTC(now = new Date()) {
+  return Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+}
+
+const DAY = 86400000
+
+// Two states are stored, as in GitLab (active / closed); «Запланирован» is
+// derived — an active stage whose start is still ahead (decision in #2971).
+export function stageState(m, today = todayUTC()) {
+  if (!m) return 'active'
+  if (m.state === 'closed') return 'closed'
+  const start = stageDay(m.start_date)
+  if (start != null && start > today) return 'planned'
+  return 'active'
+}
+
+// Whole days until the due date (0 on the day itself, negative past it), or
+// null without one.
+export function daysLeft(m, today = todayUTC()) {
+  const due = stageDay(m?.due_date)
+  if (due == null) return null
+  return Math.round((due - today) / DAY)
+}
+
+// Done / total of a stage row (the rollups on GET /projects/:id/milestones).
+export function stageProgress(m) {
+  const total = Number(m?.task_count) || 0
+  const done = Number(m?.done_count) || 0
+  return { done, total, pct: total ? Math.round((done / total) * 100) : 0 }
+}
+
+// Stage rows in the order the window, the selector and the sidebar list them:
+// active first (by due date, the nearest first), then planned (by start), then
+// closed (the most recently closed first).
+export function sortStages(list, today = todayUTC()) {
+  const rank = { active: 0, planned: 1, closed: 2 }
+  const key = (m) => {
+    const s = stageState(m, today)
+    if (s === 'closed') return -(stageDay(m.closed_at) ?? stageDay(m.due_date) ?? 0)
+    if (s === 'planned') return stageDay(m.start_date) ?? 0
+    return stageDay(m.due_date) ?? Number.MAX_SAFE_INTEGER
+  }
+  return [...(list || [])].sort((a, b) => {
+    const ra = rank[stageState(a, today)]
+    const rb = rank[stageState(b, today)]
+    if (ra !== rb) return ra - rb
+    return key(a) - key(b)
+  })
+}
+
+// The stage page's address: /project/<project>/stage/<stage> — slugs, like the
+// board's (no UUIDs in URLs).
+export function stagePath(projectSlug, m) {
+  return `/project/${projectSlug}/stage/${m.slug || m.id}`
+}
+
+// The compact stage window the v2 surfaces print (mockup: «12 – 26 окт.»,
+// «28 сент. – 11 окт.», «до 30 окт.»): the month once when both ends share it,
+// the year only when it is not the current one.
+export function milestoneRangeShort(m, fmt = defaultFormatters(), now = new Date()) {
+  if (!m) return ''
+  const s = m.start_date ? new Date(m.start_date) : null
+  const d = m.due_date ? new Date(m.due_date) : null
+  const year = (x) => (isDateOnly(x) ? x.getUTCFullYear() : x.getFullYear())
+  const month = (x) => (isDateOnly(x) ? x.getUTCMonth() : x.getMonth())
+  const thisYear = now.getFullYear()
+  const opts = (x) => ({
+    day: 'numeric',
+    month: 'short',
+    ...(year(x) !== thisYear ? { year: 'numeric' } : {}),
+  })
+  const f = (x, o) => fmt.formatDate(x.toISOString(), o)
+  if (s && d) {
+    if (year(s) === year(d) && month(s) === month(d)) {
+      return `${f(s, { day: 'numeric' })} – ${f(d, opts(d))}`
+    }
+    return `${f(s, { day: 'numeric', month: 'short' })} – ${f(d, opts(d))}`
+  }
+  if (d) return t('milestones.range.until', { date: f(d, opts(d)) })
+  if (s) return t('milestones.range.from', { date: f(s, opts(s)) })
+  return ''
+}

@@ -42,6 +42,8 @@ const notesApi = {
   remove: vi.fn(),
 }
 const glApi = { conflicts: vi.fn() }
+// «Входящие» (#2972): the feed replaced the «Заметки» section.
+const inboxApi = { list: vi.fn() }
 // v2 «Мои задачи» (#2960) also reads the reminders.
 const remApi = { list: vi.fn(() => Promise.resolve({ data: [] })) }
 vi.mock('@/api', () => ({
@@ -49,13 +51,14 @@ vi.mock('@/api', () => ({
   notes: notesApi,
   gitlab: glApi,
   reminders: remApi,
+  inbox: inboxApi,
   tasks: { update: vi.fn() },
   getAccessToken: () => null,
 }))
 
 const { default: HomeView } = await import('@/views/HomeView.vue')
 const { default: MilestonesView } = await import('@/views/MilestonesView.vue')
-const { default: NotesView } = await import('@/views/NotesView.vue')
+const { useInboxStore } = await import('@/stores/inbox')
 const { useWorkspacesStore } = await import('@/stores/workspaces')
 const { useAuthStore } = await import('@/stores/auth')
 const { useConflictsStore } = await import('@/stores/conflicts')
@@ -132,13 +135,18 @@ async function mountAt(component, path) {
 beforeEach(() => {
   setActivePinia(createPinia())
   localStorage.clear()
-  // useResponsive (NotesView) reads matchMedia on mount; jsdom has none.
+  // useResponsive reads matchMedia on mount; jsdom has none.
   window.matchMedia = vi.fn().mockReturnValue({
     matches: false,
     addEventListener: () => {},
     removeEventListener: () => {},
   })
-  for (const fn of [...Object.values(wsApi), ...Object.values(notesApi), glApi.conflicts]) {
+  for (const fn of [
+    ...Object.values(wsApi),
+    ...Object.values(notesApi),
+    glApi.conflicts,
+    inboxApi.list,
+  ]) {
     fn.mockReset()
   }
   for (const fn of Object.values(toast)) fn.mockReset()
@@ -256,50 +264,39 @@ describe('«Вехи» ignore the workspace the reader has left', () => {
   })
 })
 
-describe('«Заметки» ignore the workspace the reader has left', () => {
+describe('«Входящие» ignore the workspace the reader has left', () => {
   it('keeps the new workspace when the previous one answers last', async () => {
-    const store = useWorkspacesStore()
-    const { w } = await mountAt(NotesView, '/')
-
+    const inbox = useInboxStore()
     const oldWs = deferred()
-    notesApi.list.mockReturnValueOnce(oldWs.promise)
-    store.currentId = 'ws2'
-    await flushPromises()
+    inboxApi.list.mockReturnValueOnce(oldWs.promise)
+    const first = inbox.load('ws2')
 
-    notesApi.list.mockResolvedValueOnce({
-      data: [note({ id: 'n2', slug: 'vtoraya', title: 'Заметка второго' })],
+    inboxApi.list.mockResolvedValueOnce({
+      data: { reminders: [], notes: [note({ id: 'n2', title: 'Заметка второго' })] },
     })
-    store.currentId = 'ws3'
-    await flushPromises()
-    expect(w.text()).toContain('Заметка второго')
+    await inbox.load('ws3')
+    expect(inbox.notes.map((n) => n.title)).toEqual(['Заметка второго'])
 
-    oldWs.resolve({ data: [note({ id: 'n1', slug: 'pervaya', title: 'Заметка первого' })] })
-    await flushPromises()
-
-    expect(w.text()).toContain('Заметка второго')
-    expect(w.text()).not.toContain('Заметка первого')
+    oldWs.resolve({
+      data: { reminders: [], notes: [note({ id: 'n1', title: 'Заметка первого' })] },
+    })
+    await first
+    expect(inbox.wsId).toBe('ws3')
+    expect(inbox.notes.map((n) => n.title)).toEqual(['Заметка второго'])
   })
 
-  it('does not open a note of the workspace the reader has left', async () => {
-    const store = useWorkspacesStore()
-    // A deep link into a note: the list answer is what opens it.
-    const { w } = await mountAt(NotesView, '/?note=pervaya')
-
-    const oldWs = deferred()
-    notesApi.list.mockReturnValueOnce(oldWs.promise)
-    store.currentId = 'ws2'
-    await flushPromises()
-
-    notesApi.list.mockResolvedValueOnce({ data: [] })
-    store.currentId = 'ws3'
-    await flushPromises()
-
-    oldWs.resolve({ data: [note({ id: 'n1', slug: 'pervaya', title: 'Заметка первого' })] })
-    await flushPromises()
-
-    // Selecting it would put a foreign note under the editor — and the next
-    // Сохранить would write into it.
-    expect(w.vm.selected).toBe(null)
+  it('drops a note event from another workspace', async () => {
+    const inbox = useInboxStore()
+    inboxApi.list.mockResolvedValueOnce({ data: { reminders: [], notes: [] } })
+    await inbox.load('ws3')
+    inbox.onEvent({ scope: 'ws2', type: 'note.created', data: note({ workspace_id: 'ws2' }) })
+    expect(inbox.notes).toEqual([])
+    inbox.onEvent({
+      scope: 'ws3',
+      type: 'note.created',
+      data: note({ id: 'n3', workspace_id: 'ws3' }),
+    })
+    expect(inbox.notes.map((n) => n.id)).toEqual(['n3'])
   })
 })
 

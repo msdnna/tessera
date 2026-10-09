@@ -2,27 +2,27 @@
 // The Gantt / timeline controls in the board's sub-toolbar (v2, #2959) — what
 // used to be the chart's own second toolbar row. Driven by the controller the
 // open chart view exposes (useChartView → `ctl`): the scale segments, «Сегодня T»,
-// the key hints and «Настроить вид» (the task column, the counters, the hint).
+// the key hints. Its own «Настроить вид» (the task column, the counters, the link
+// hint) moved into the board's view panel, section «Шкала» (#2986): one set of
+// sliders in the sub-toolbar for every view.
 //
 // `hints` is decided by the sub-toolbar's fit: the text hints are the first thing
 // to give their room up.
-import { computed, ref } from 'vue'
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopover, NSwitch, NDropdown } from 'naive-ui'
-import { LocateOutline, OptionsOutline, ChevronDownOutline } from '@vicons/ionicons5'
+import { NIcon, NDropdown } from 'naive-ui'
+import { LocateOutline, ChevronDownOutline } from '@vicons/ionicons5'
 import Kbd from '../Kbd.vue'
 import ShortcutKeys from '../ShortcutKeys.vue'
 
-const props = defineProps({
+defineProps({
   ctl: { type: Object, default: null },
   hints: { type: Boolean, default: true },
   compact: { type: Boolean, default: false },
 })
 
 const { t } = useI18n()
-const SCALES = ['days', 'weeks', 'months']
-const showSettings = ref(false)
-const counters = computed(() => props.ctl?.counters || [])
+const SCALES = ['days', 'weeks', 'months', 'quarters']
 // A phone has no room for three segments: the scale becomes a menu.
 const scaleOptions = computed(() =>
   SCALES.map((s) => ({ key: s, label: t(`board.chart.scale.${s}`) })),
@@ -81,36 +81,6 @@ const scaleOptions = computed(() =>
         {{ t('board.chart.hintZoom') }}
       </span>
     </span>
-    <n-popover v-model:show="showSettings" trigger="click" placement="bottom-end">
-      <template #trigger>
-        <button
-          type="button"
-          class="cc-btn cc-icon"
-          :title="t('board.chart.settings')"
-          data-testid="chart-settings"
-        >
-          <n-icon :component="OptionsOutline" :size="16" />
-          <span v-if="counters.some((c) => c.overdue)" class="cc-dot" />
-        </button>
-      </template>
-      <div class="cc-pop">
-        <div class="cc-row">
-          <span>{{ t('board.chart.showTasks') }}</span>
-          <n-switch size="small" :value="!ctl.leftCollapsed" @update:value="ctl.toggleLeft()" />
-        </div>
-        <div v-if="counters.length" class="cc-counters">
-          <span
-            v-for="c in counters"
-            :key="c.key"
-            class="cc-counter"
-            :class="{ overdue: c.overdue }"
-            >{{ c.text }}</span
-          >
-        </div>
-        <!-- the link hint describes a hover-only knob: no use on a touch screen -->
-        <div v-if="ctl.hint && !compact" class="cc-note">{{ ctl.hint }}</div>
-      </div>
-    </n-popover>
   </div>
 </template>
 
@@ -173,20 +143,6 @@ const scaleOptions = computed(() =>
   color: var(--t-text1);
   background: var(--t-hover);
 }
-.cc-icon {
-  width: 34px;
-  padding: 0;
-  justify-content: center;
-}
-.cc-dot {
-  position: absolute;
-  top: 7px;
-  right: 7px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #e0533d;
-}
 .cc-hints {
   display: inline-flex;
   align-items: center;
@@ -211,43 +167,5 @@ const scaleOptions = computed(() =>
 .cc-kbd-btn:disabled {
   opacity: 0.4;
   cursor: default;
-}
-.cc-pop {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 240px;
-  max-width: 300px;
-}
-.cc-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  font-size: 13px;
-}
-.cc-counters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.cc-counter {
-  height: 22px;
-  padding: 0 9px;
-  border-radius: 11px;
-  display: inline-flex;
-  align-items: center;
-  background: var(--t-pill);
-  color: var(--t-text2);
-  font-size: 12px;
-}
-.cc-counter.overdue {
-  background: color-mix(in srgb, #e0533d 16%, var(--t-pop));
-  color: #e0533d;
-}
-.cc-note {
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--t-text3);
 }
 </style>

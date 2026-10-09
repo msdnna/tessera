@@ -6,7 +6,8 @@
 // patching its own copy.
 import { ref, computed, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NInput, NPopover, useMessage } from 'naive-ui'
+import { NIcon, NInput, NPopover } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AddOutline,
   CheckmarkCircleOutline,
@@ -411,8 +412,10 @@ async function moveSubtask(sub, columnId) {
 /* Borderless inline composer — same treatment as the modal's own plain inputs. */
 .plain {
   flex: 1;
-  --n-color: transparent !important;
-  --n-color-focus: transparent !important;
+}
+.plain.n-input,
+.plain.n-input.n-input--focus {
+  background-color: transparent !important;
 }
 .plain :deep(.n-input__border),
 .plain :deep(.n-input__state-border) {

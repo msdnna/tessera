@@ -4,11 +4,23 @@
 
 -- ListMilestones returns a project's milestones with their GitLab link info (null
 -- columns when native), so the UI can tell native from GitLab-sourced.
+--
+-- Each row also carries the project-level rollups the «Проект» window and the
+-- sidebar show next to a stage (#2992): task_count / done_count and Σ estimate
+-- (total and done), counted the way ListWorkspaceMilestones counts them —
+-- archived tasks and tasks of deleted boards excluded.
 -- name: ListMilestones :many
-SELECT m.*, l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id
+SELECT m.*, l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id, l.gl_iid AS gl_iid,
+       COUNT(t.id) AS task_count,
+       COUNT(t.id) FILTER (WHERE t.completed_at IS NOT NULL) AS done_count,
+       COALESCE(SUM(t.estimate), 0)::float8 AS estimate_sum,
+       COALESCE(SUM(t.estimate) FILTER (WHERE t.completed_at IS NOT NULL), 0)::float8 AS done_estimate
 FROM milestones m
 LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
+LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL
+    AND EXISTS (SELECT 1 FROM boards tb WHERE tb.id = t.board_id AND tb.deleted_at IS NULL)
 WHERE m.project_id = $1
+GROUP BY m.id, l.gl_web_url, l.gl_global_id, l.gl_iid
 ORDER BY m.position, m.created_at;
 
 -- ListWorkspaceMilestones returns every milestone across a workspace's projects with
@@ -17,7 +29,7 @@ ORDER BY m.position, m.created_at;
 -- «Этапы» roadmap screen (one query, no per-project fan-out).
 -- name: ListWorkspaceMilestones :many
 SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date,
-       m.state, m.position, m.slug, m.created_at, m.updated_at,
+       m.state, m.position, m.slug, m.created_at, m.updated_at, m.closed_at,
        l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id,
        p.name AS project_name, p.slug AS project_slug,
        COALESCE((SELECT b.slug FROM boards b WHERE b.project_id = p.id AND b.deleted_at IS NULL
@@ -52,16 +64,21 @@ UPDATE milestones SET slug = $2 WHERE id = $1;
 
 -- CreateMilestone appends a milestone (position = max+1 within the project).
 -- name: CreateMilestone :one
-INSERT INTO milestones (project_id, title, description, start_date, due_date, state, slug, position)
+-- A stage born closed (a GitLab milestone first seen closed) is stamped closed now.
+INSERT INTO milestones (project_id, title, description, start_date, due_date, state, slug, position, closed_at)
 VALUES (
-    $1, $2, $3, $4, $5, COALESCE(sqlc.narg('state'), 'active'), $6,
-    (SELECT COALESCE(MAX(position), 0) + 1 FROM milestones WHERE project_id = $1)
+    $1, $2, $3, $4, $5, COALESCE(sqlc.narg('state')::text, 'active'), $6,
+    (SELECT COALESCE(MAX(position), 0) + 1 FROM milestones WHERE project_id = $1),
+    CASE WHEN sqlc.narg('state')::text = 'closed' THEN now() END
 )
 RETURNING *;
 
+-- closed_at follows the state (#3027): closing stamps it once — a later edit of
+-- a closed stage keeps the day it was closed — and reopening clears it.
 -- name: UpdateMilestone :one
 UPDATE milestones
-SET title = $2, description = $3, start_date = $4, due_date = $5, state = $6, updated_at = now()
+SET title = $2, description = $3, start_date = $4, due_date = $5, state = $6, updated_at = now(),
+    closed_at = CASE WHEN $6 = 'closed' THEN COALESCE(closed_at, now()) END
 WHERE id = $1
 RETURNING *;
 
@@ -116,8 +133,82 @@ WITH RECURSIVE down AS (
     UNION
     SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
 )
-SELECT t.id, m.title
+SELECT t.id, m.title, m.id AS milestone_id
 FROM tasks t
 JOIN milestones m ON m.id = t.milestone_id
 WHERE t.id IN (SELECT down.id FROM down)
   AND m.project_id IS DISTINCT FROM @project_id;
+
+-- ── stage page metrics (#2992) ──────────────────────────────────
+
+-- MilestoneTasks lists the tasks a stage holds right now — the population of
+-- every metric on the stage page — with what the page shows per task: its
+-- column (status), board, dates and estimate. Same exclusions as the rollups:
+-- archived tasks and tasks of deleted boards are not in the stage.
+-- name: MilestoneTasks :many
+SELECT t.id, t.number, t.title, t.parent_id, t.board_id, t.column_id, t.priority,
+       t.due_date, t.start_date, t.estimate, t.completed_at, t.created_at,
+       c.name AS column_name, c.color AS column_color, c.position AS column_position,
+       b.slug AS board_slug, b.name AS board_name
+FROM tasks t
+JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
+JOIN board_columns c ON c.id = t.column_id
+WHERE t.milestone_id = $1 AND t.archived_at IS NULL
+ORDER BY c.position, t.position;
+
+-- MilestoneTaskAssignees: who carries the stage's tasks (for «По исполнителям»).
+-- name: MilestoneTaskAssignees :many
+SELECT ta.task_id, u.id AS user_id, u.name, u.email
+FROM task_assignees ta
+JOIN tasks t ON t.id = ta.task_id
+JOIN users u ON u.id = ta.user_id
+WHERE t.milestone_id = $1 AND t.archived_at IS NULL
+ORDER BY u.name;
+
+-- MilestoneMembershipEvents returns every journal entry that moved a task into
+-- or out of the stage: `milestone` names where the task landed (milestone_id)
+-- and, since #2992, where it came from (from_id); `milestone_removed` names the
+-- stage it left. Entries written before the ids were journalled carry only the
+-- title — those are matched by title on the tasks of the stage's project, the
+-- best reading that history allows.
+-- name: MilestoneMembershipEvents :many
+SELECT e.task_id, e.kind, e.data, e.created_at
+FROM task_events e
+WHERE e.kind IN ('milestone', 'milestone_removed')
+  AND (
+        e.data->>'milestone_id' = @milestone_id::text
+     OR e.data->>'from_id' = @milestone_id::text
+     OR (
+            NOT (e.data ? 'milestone_id')
+        AND (e.data->>'title' = @title::text OR e.data->>'from_title' = @title::text)
+        AND EXISTS (SELECT 1 FROM tasks t JOIN boards b ON b.id = t.board_id
+                    WHERE t.id = e.task_id AND b.project_id = @project_id)
+        )
+      )
+ORDER BY e.created_at;
+
+-- PreviousMilestones: the project's other stages closed before @before (the
+-- stage's own close, or now while it runs) — the «Темп» comparison. Newest
+-- first; done_count is what each finished.
+-- name: PreviousMilestones :many
+SELECT m.id, m.title, m.slug, m.start_date, m.due_date, m.closed_at,
+       COUNT(t.id) FILTER (WHERE t.completed_at IS NOT NULL) AS done_count,
+       COUNT(t.id) AS task_count
+FROM milestones m
+LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL
+    AND EXISTS (SELECT 1 FROM boards tb WHERE tb.id = t.board_id AND tb.deleted_at IS NULL)
+WHERE m.project_id = @project_id AND m.id <> @milestone_id AND m.state = 'closed'
+  AND COALESCE(m.closed_at, m.due_date, m.updated_at) <= @before::timestamptz
+GROUP BY m.id
+ORDER BY COALESCE(m.closed_at, m.due_date, m.updated_at) DESC
+LIMIT @lim;
+
+-- MilestoneEventTasks reads the tasks the stage's journal names: those still in
+-- it and those that left. Archived tasks and tasks of deleted boards come back
+-- flagged — the page leaves them out of every figure, as the rollups do.
+-- name: MilestoneEventTasks :many
+SELECT t.id, t.estimate, t.completed_at, t.created_at,
+       (t.archived_at IS NOT NULL OR b.deleted_at IS NOT NULL)::boolean AS gone
+FROM tasks t
+JOIN boards b ON b.id = t.board_id
+WHERE t.id = ANY(@ids::uuid[]);

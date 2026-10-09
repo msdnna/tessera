@@ -12,18 +12,17 @@
 // the editor emits carries it.
 //
 // Which zone, though, is not free: it has to be the one the grid above the rule is
-// drawn in. The whole editor builds its instants from LOCAL calendar fields
-// (`new Date(y, m, d)`) and labels them with `timeZone: null` on purpose (#2798) —
-// the day the user clicks is a *browser* day, and the due date leaves as browser
-// midnight. Handing the server the profile zone instead made the rule name days off
-// a calendar nobody drew: for a profile zone west of the browser's, browser midnight
-// is still the previous day there, so `WithAnchor` read a monthly rule picked on the
-// 6th as the 5th while the editor kept highlighting the 6th.
+// drawn in. The due picker (#3118) draws its grid in the reader's PROFILE zone —
+// the zone every label of a due is read in — and a date-only due (a pure UTC
+// midnight) is a UTC day. So a timed due ships the profile zone, a date-only one
+// 'UTC' (the server reads the due in the rule's zone to find its day: a UTC
+// midnight read in New York would be the evening before). The old DueEditor drew
+// a browser-local grid and shipped the browser zone; with the grid gone, so is
+// the mismatch between a profile zone and the browser's.
 import { describe, it, expect, beforeEach, afterEach, afterAll, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
-import { h, nextTick } from 'vue'
+import { nextTick } from 'vue'
+import { loadPicker, mountPicker, lastApply as lastApplyOf, day } from './helpers/duePicker'
 import { setActivePinia, createPinia } from 'pinia'
-import { NMessageProvider } from 'naive-ui'
 
 // The browser zone is pinned so "profile zone ≠ browser zone" is expressible at
 // all; Europe/Moscow (UTC+3) sits east of the profile zones used below, which is
@@ -43,30 +42,20 @@ vi.mock('@/api', () => ({
   gitlab: { projectConfig: vi.fn(() => Promise.reject(new Error('no integration'))) },
 }))
 
-const DueEditor = (await import('@/components/DueEditor.vue')).default
+const DuePicker = await loadPicker()
 const { useThemeStore } = await import('@/stores/theme')
 const { resolvedTimezone } = await import('@/utils/format')
 
 let wrapper = null
 
 function mountWith(props) {
-  wrapper = mount(
-    { render: () => h(NMessageProvider, null, { default: () => h(DueEditor, props) }) },
-    { attachTo: document.body },
-  )
+  wrapper = mountPicker(DuePicker, props)
   return wrapper
 }
 
-const editor = (w) => w.findComponent(DueEditor)
-
-// The last `apply` payload the editor emitted (due_date + start_date + recurrence).
-function lastApply(w) {
-  const events = editor(w).emitted('apply') || []
-  return events.length ? events[events.length - 1][0] : null
-}
-function lastRule(w) {
-  return lastApply(w)?.recurrence ?? null
-}
+const model = (w) => w.findComponent(DuePicker).vm.model
+const lastApply = (w) => lastApplyOf(w, DuePicker)
+const lastRule = (w) => lastApply(w)?.recurrence ?? null
 
 // What the backend's `WithAnchor` derives from that payload: it reads the due
 // instant in the rule's own zone (`due.In(r.loc())`, recur.go) and takes the day.
@@ -98,21 +87,32 @@ describe('recurrence rule timezone', () => {
     theme.timezone = 'Europe/Moscow'
     const w = mountWith({ due: Date.UTC(2026, 3, 5, 21, 0), recurrence: null })
     await nextTick()
-    editor(w).vm.setFreq('weekly')
+    model(w).setFreq('weekly')
     await nextTick()
     expect(lastRule(w)).toMatchObject({ freq: 'weekly', tz: 'Europe/Moscow' })
   })
 
-  it('names the grid zone, not the profile zone, when the two differ', async () => {
+  it('names the grid zone — the profile one — when profile and browser differ', async () => {
     const theme = useThemeStore()
     theme.timezone = 'Europe/London' // west of the browser's Europe/Moscow
-    const w = mountWith({ due: Date.UTC(2026, 3, 5, 21, 0), recurrence: null })
+    const w = mountWith({ due: Date.UTC(2026, 3, 5, 12, 0), recurrence: null })
     await nextTick()
-    editor(w).vm.setFreq('weekly')
+    model(w).setFreq('weekly')
     await nextTick()
-    // The weekday list the panel offers is read off the browser-local grid, so the
-    // zone shipped with it has to be that grid's.
-    expect(lastRule(w).tz).toBe('Europe/Moscow')
+    // The grid and every label of the due are read in the profile zone, so the
+    // weekdays the panel offers are that zone's days.
+    expect(lastRule(w).tz).toBe('Europe/London')
+  })
+
+  it('ships UTC for a date-only due — its day is a UTC day', async () => {
+    const theme = useThemeStore()
+    theme.timezone = 'America/New_York'
+    const w = mountWith({ due: Date.UTC(2026, 3, 6), recurrence: null })
+    await nextTick()
+    model(w).setFreq('weekly')
+    await nextTick()
+    expect(lastRule(w).tz).toBe('UTC')
+    expect(anchorDay(lastApply(w))).toBe(6)
   })
 
   it('keeps a monthly anchor on the day that was clicked', async () => {
@@ -120,9 +120,9 @@ describe('recurrence rule timezone', () => {
     theme.timezone = 'Europe/London'
     const w = mountWith({ due: null, recurrence: null })
     await nextTick()
-    editor(w).vm.setFreq('monthly')
+    model(w).setFreq('monthly')
     await nextTick()
-    editor(w).vm.onDayClick(new Date(2026, 6, 6)) // Mon 6 Jul 2026, as drawn
+    model(w).pickDay(day(2026, 6, 6)) // Mon 6 Jul 2026, as drawn
     await nextTick()
     expect(anchorDay(lastApply(w))).toBe(6)
   })
@@ -133,7 +133,7 @@ describe('recurrence rule timezone', () => {
     const browser = resolvedTimezone('')
     const w = mountWith({ due: Date.UTC(2026, 3, 5, 21, 0), recurrence: null })
     await nextTick()
-    editor(w).vm.setFreq('daily')
+    model(w).setFreq('daily')
     await nextTick()
     // An environment with no Intl data resolves to '' — there the rule may omit it.
     if (browser) expect(lastRule(w).tz).toBe(browser)
@@ -142,17 +142,17 @@ describe('recurrence rule timezone', () => {
 
   it('re-stamps a rule loaded from elsewhere with the zone it is edited in', async () => {
     const theme = useThemeStore()
-    theme.timezone = 'Asia/Vladivostok'
+    theme.timezone = '' // the browser's Europe/Moscow
     const w = mountWith({
       due: Date.UTC(2026, 3, 5, 14, 0),
       recurrence: { freq: 'weekly', interval: 1, weekdays: [1], tz: 'Asia/Vladivostok' },
     })
     await nextTick()
-    editor(w).vm.toggleWeekday(3)
+    model(w).toggleWeekday(3)
     await nextTick()
     const rule = lastRule(w)
-    // The new weekday was picked off this browser's grid, so the list as a whole now
-    // describes this browser's days — the stored zone has to follow it.
+    // The new weekday was picked off this reader's grid, so the list as a whole now
+    // describes this reader's days — the stored zone has to follow it.
     expect(rule.weekdays).toEqual([1, 3])
     expect(rule.tz).toBe('Europe/Moscow')
   })

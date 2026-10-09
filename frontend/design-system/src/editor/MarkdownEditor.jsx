@@ -1,8 +1,11 @@
 /**
  * MarkdownEditor — Tessera's own Markdown editor for task descriptions and
  * comments: textarea + formatting toolbar + Write/Preview tabs, @-mentions and
- * /-commands. `variant="boxed"` is the framed comment composer with a bottom
- * toolbar and send button. Stores plain Markdown.
+ * /-commands. `variant="v2"` is the task-description edit block (bar with
+ * Написать · Просмотр and the tools, ringed field, footer with Отмена Esc ·
+ * Сохранить ⌘↵); `variant="composer"` the 46px comment row (avatar, field, «Aa»,
+ * «Прикрепить», «Отправить ⌘↵»); `boxed` the framed note composer. Stores plain
+ * Markdown.
  * @category Editor
  */
 import MarkdownEditorVue from '@/components/MarkdownEditor.vue'
@@ -29,5 +32,9 @@ export const MarkdownEditor = vueIsland(MarkdownEditorVue, {
     toolbar: p.toolbar ?? true,
     expandable: false,
     split: !!p.split,
+    avatar: p.avatar ?? null,
+    saveLabel: p.saveLabel ?? null,
+    sendLabel: p.sendLabel ?? null,
+    footer: p.footer ?? true,
   }),
 })

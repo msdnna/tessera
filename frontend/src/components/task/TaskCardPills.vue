@@ -6,15 +6,16 @@
 // from the board store, not from props — so the card passes only the task it
 // renders. The row decides for itself whether it has anything to show: when no
 // field survives the size preset and the customize toggles it renders nothing.
+import { tourEvent } from '@/utils/tourEvents'
 import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopover, NTooltip, NInput, useMessage } from 'naive-ui'
+import { NIcon, NPopover, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   FlagOutline,
   CalendarClearOutline,
   PersonAddOutline,
   PricetagOutline,
-  CheckmarkOutline,
   RepeatOutline,
   TimerOutline,
   RibbonOutline,
@@ -24,8 +25,8 @@ import {
 import { storeToRefs } from 'pinia'
 import { tasks as tasksApi, projects as projectsApi } from '@/api'
 import { PRIORITY_COLORS } from '@/styles/tokens'
-import { priorityLabel, priorityOptions as buildPriorityOptions } from '@/utils/priority'
-import { hueGrad, softFill, readableHue, onColor } from '@/utils/gradient'
+import { priorityLabel } from '@/utils/priority'
+import { softFill, readableHue } from '@/utils/gradient'
 import { buildTagGroups, matchTagByName } from '@/utils/tagGroups'
 import { milestoneRange } from '@/utils/milestones'
 import { useFormat } from '@/composables/useFormat'
@@ -36,19 +37,24 @@ import {
   sumEstimates,
 } from '@/utils/estimation'
 import { cardFieldVisible } from '@/utils/cardFields'
-import { glAssigneesOf, glPickerMembers } from '@/utils/assignees'
+import { glAssigneesOf } from '@/utils/assignees'
 import { isTaskOverdue } from '@/utils/taskFilter'
-import { uiCollator } from '@/i18n'
 import { taskBasePatch } from '@/utils/taskPatch'
-import PopMenu from '../PopMenu.vue'
 import UserAvatar from '../UserAvatar.vue'
-import DueEditor from '../DueEditor.vue'
+import DuePicker from '../due/DuePicker.vue'
+import { recurrenceHint } from '@/utils/dueModel'
 import RichContent from '../RichContent.vue'
 import TagPill from '../TagPill.vue'
+import TagPicker from './TagPicker.vue'
+import ReminderPill from './ReminderPill.vue'
+import TaskFieldPopover from './props/TaskFieldPopover.vue'
+import { nextField } from './props/propItems'
 import { useThemeStore } from '@/stores/theme'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
+import { useInboxStore } from '@/stores/inbox'
+import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useTagFit } from '@/composables/useTagFit'
 
 const props = defineProps({
@@ -65,6 +71,13 @@ const theme = useThemeStore()
 const wsStore = useWorkspacesStore()
 const conflictsStore = useConflictsStore()
 const hasConflict = computed(() => conflictsStore.has(props.task.id))
+// The reader's next open reminder on this task (#2998) — read from the shell's
+// «Входящие» copy (one map for the whole board), shown after the due pill.
+// A done task carries no bell.
+const inbox = useInboxStore()
+const reminder = computed(() =>
+  props.task.completed_at ? null : inbox.byTask.get(props.task.id)?.[0] || null,
+)
 const { formatDue, formatters } = useFormat()
 const { t } = useI18n()
 const message = useMessage()
@@ -106,6 +119,7 @@ const hasAnyPill = computed(
     hasConflict.value ||
     (show('priority') && (showEmpty.value || stackFields.value || props.task.priority)) ||
     (show('due') && (showEmpty.value || stackFields.value || due.value)) ||
+    (show('due') && !!reminder.value) ||
     (show('estimate') && (stackFields.value || estText.value)) ||
     (show('milestone') && (stackFields.value || taskMilestone.value)) ||
     (show('description') && !stackFields.value && hasDescription.value) ||
@@ -118,18 +132,24 @@ const hasAnyPill = computed(
         glAssignees.value.length)),
 )
 
-// Picker tags grouped by prefix (friendly name); a single prefix-less bucket
-// renders flat without a header.
-const tagPickerGroups = computed(() =>
-  buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value),
-)
-const tagPickerHeaders = computed(() => tagPickerGroups.value.length > 1)
-// Flat picker set — what a typed name is matched against, so the answer covers
+// The pickable tags — what a typed name is matched against, so the answer covers
 // exactly the tags the reader could have clicked instead (GitLab meta-prefixed
-// tags are hidden here on purpose: attaching one desyncs from the field it drives).
-const tagPickerFlat = computed(() => tagPickerGroups.value.flatMap((g) => g.tags))
-const newTagName = ref('')
+// tags are left out on purpose: attaching one desyncs from the field it drives).
+const tagPickerFlat = computed(() =>
+  buildTagGroups(tags.value, tagPrefixNames, metaTagPrefixes.value).flatMap((g) => g.tags),
+)
 const creatingTag = ref(false)
+// The v2 tag picker (#3113): opened from whichever tag pill this card draws,
+// standing beside the card (the mockup) — over it, it would hide the pill.
+const tagOpen = ref(false)
+const tagBtn = ref(null)
+// «Управлять тегами…»: the project window on «Теги», filtered by what was typed.
+const projectWindow = useProjectWindowStore()
+function manageTags(typed = '') {
+  if (!projectId.value) return
+  tagOpen.value = false
+  projectWindow.open(projectId.value, 'tags', { filter: (typed || '').trim() })
+}
 
 const taskTags = computed(() => (props.task.tag_ids || []).map((id) => tagsMap[id]).filter(Boolean))
 // Stacked tags row: fit as many chips as the row width allows, rest → +N.
@@ -207,44 +227,6 @@ const people = computed(() => {
 const shownPeople = computed(() => people.value.slice(0, PEOPLE_SHOWN))
 const extraPeople = computed(() => Math.max(0, people.value.length - PEOPLE_SHOWN))
 
-// Assignee picker: a search box + a list capped at 10, ordered assigned →
-// recently-picked → alphabetical. "Recent" is a small cross-board localStorage
-// MRU of user ids the user has assigned, so the people you actually use surface
-// first; falls back to alphabetical when there's no history.
-const RECENT_ASSIGNEES_KEY = 'tessera_recent_assignees'
-function readRecentAssignees() {
-  try {
-    const v = JSON.parse(localStorage.getItem(RECENT_ASSIGNEES_KEY) || '[]')
-    return Array.isArray(v) ? v : []
-  } catch {
-    return []
-  }
-}
-const assigneeQuery = ref('')
-const recentAssignees = ref(readRecentAssignees())
-const pickerMembers = computed(() => {
-  const q = assigneeQuery.value.trim().toLowerCase()
-  if (q) return members.value.filter((m) => (m.name || '').toLowerCase().includes(q))
-  // No query: assigned first, then MRU, then alphabetical — deduped, capped at 10
-  // (but never hiding a currently-assigned member so they can be removed).
-  const byId = new Map(members.value.map((m) => [m.user_id, m]))
-  const seen = new Set()
-  const out = []
-  const add = (id) => {
-    if (seen.has(id) || !byId.has(id)) return
-    seen.add(id)
-    out.push(byId.get(id))
-  }
-  const assigned = props.task.assignee_ids || []
-  assigned.forEach(add)
-  recentAssignees.value.forEach(add)
-  const cmp = uiCollator()
-  ;[...members.value]
-    .sort((a, b) => cmp.compare(a.name || '', b.name || ''))
-    .forEach((m) => add(m.user_id))
-  return out.slice(0, Math.max(10, assigned.length))
-})
-
 const due = computed(() => formatDue(props.task.due_date))
 // Long form (capitalised, full weekday) for the stacked row, where the terse
 // lowercase pill form would clash with capitalised siblings like the priority.
@@ -253,8 +235,21 @@ const dueLong = computed(() => formatDue(props.task.due_date, { long: true }))
 // facet — a card painted red has to be one the «Просрочено» filter still lists
 // (it also owns the "a closed task is never late" half, which used to live here).
 const overdue = computed(() => isTaskOverdue(props.task, new Date(), formatters.value))
-const dueTs = computed(() => (props.task.due_date ? Date.parse(props.task.due_date) : null))
-const startTs = computed(() => (props.task.start_date ? Date.parse(props.task.start_date) : null))
+// The due picker (#3118): mounted only while open — a board has hundreds of pills.
+// `openDue` is the card's one way in (a click on the pill; J1's field cycling).
+const dueOpen = ref(false)
+const dueBtn = ref(null)
+function openDue() {
+  if (props.readonly) return
+  dueOpen.value = !dueOpen.value
+}
+const recurHint = computed(() =>
+  recurrenceHint(props.task.recurrence, props.task.due_date, {
+    fmt: formatters.value,
+    weekStart: theme.weekStart === 0 ? 0 : 1,
+    columns: columns.value,
+  }),
+)
 // Estimate chip: the task's own estimate, or — if unset — the rollup sum of its
 // subtasks (so a parent shows "Σ …"). Unit resolved from the project config.
 const estCfg = computed(() => wsStore.estimationFor(projectId.value))
@@ -276,15 +271,10 @@ const estTooltip = computed(() => {
     ? t('task.estimate.rollupTooltip', { value: body })
     : t('task.estimate.tooltip', { value: body })
 })
-// Computed, not a plain array: the labels have to re-resolve on a language switch.
-const priorityOptions = computed(() => buildPriorityOptions())
 // Shared flag gradient defs live in App.vue (one per priority level), so a board
 // with 100s of cards references 4 defs instead of inlining an <svg> per card.
 const flagGradId = computed(() => (props.task.priority ? `t-prio-grad-${props.task.priority}` : ''))
 
-function isAssigned(uid) {
-  return (props.task.assignee_ids || []).includes(uid)
-}
 function hasTag(id) {
   return (props.task.tag_ids || []).includes(id)
 }
@@ -337,13 +327,14 @@ async function run(fn) {
     return false
   }
   emit('changed')
+  // «Поля на карточке» of the «Начало работы» checklist (#3000).
+  tourEvent('task.fields')
   return true
 }
 // Inline edits send the full-replace body minus the description — see
 // utils/taskPatch.js for why omitting it matters.
 const apply = (patch) =>
   run(() => tasksApi.update(props.task.id, { ...taskBasePatch(props.task), ...patch }))
-const setPriority = (p) => apply({ priority: p })
 
 // Per-task due-notification override sentinels (-1 / 'inherit' = user default).
 const dueEnabledSel = computed(() => {
@@ -369,22 +360,20 @@ const toggleTag = (id) =>
   run(() =>
     hasTag(id) ? tasksApi.removeTag(props.task.id, id) : tasksApi.addTag(props.task.id, id),
   )
-async function createTag() {
-  const n = newTagName.value.trim()
+// Resolves true once the tag is on the task — the picker clears its query then.
+async function createTag(name) {
+  const n = (name || '').trim()
   // The guard is what makes a second Enter harmless: the field is cleared only once
   // the tag is on the task, so an impatient repeat used to send a second create —
   // and the second one came back «имя занято» about the tag the first had just made.
-  if (!n || creatingTag.value) return
+  if (!n || creatingTag.value) return false
   // A name the project already carries is a request for THAT tag, not for a twin:
-  // the grid above is not filtered by what's typed, so on a long tag list typing the
-  // name is the way to reach it. Creating was a dead end — the server refuses the
-  // duplicate (409) and the task stays untagged.
+  // the server refuses the duplicate (409) and the task would stay untagged.
   const existing = matchTagByName(tagPickerFlat.value, n)
   if (existing) {
-    newTagName.value = ''
     if (hasTag(existing.id)) message.info(t('task.tags.alreadyOn'))
     else await run(() => tasksApi.addTag(props.task.id, existing.id))
-    return
+    return true
   }
   const palette = ['#7c5cff', '#2f80ed', '#0eb0a9', '#18a058', '#f0a020', '#e0533d', '#eb2f96']
   // The name is cleared only once both calls are through: a create that landed
@@ -403,44 +392,39 @@ async function createTag() {
   } finally {
     creatingTag.value = false
   }
-  if (ok) newTagName.value = ''
+  return !!ok
 }
-async function toggleAssignee(uid) {
-  const adding = !isAssigned(uid)
-  const ok = await run(() =>
-    adding ? tasksApi.addAssignee(props.task.id, uid) : tasksApi.removeAssignee(props.task.id, uid),
-  )
-  // The MRU is «people you actually assign», so a refused pick must not enter it
-  // — it would push a name nobody was assigned to the top of every other picker.
-  if (ok && adding) {
-    // Bump to the front of the MRU list (cap the stored history).
-    const next = [uid, ...recentAssignees.value.filter((x) => x !== uid)].slice(0, 30)
-    recentAssignees.value = next
-    localStorage.setItem(RECENT_ASSIGNEES_KEY, JSON.stringify(next))
-  }
-}
-// GitLab half of the picker: the project roster plus whoever this task already
-// carries that the roster has since dropped — otherwise a person who left the
-// GitLab project stays assigned with no row to un-assign them from (see
-// utils/assignees). Shares the search box with the Tessera half above.
-const glPickerList = computed(() =>
-  glPickerMembers(gitlabMembers.value, glAssignees.value, assigneeQuery.value),
+// The property pickers of the pills (#3118, PackageJ «Карточка на доске»): one
+// PropPicker at a time, at its pill. The open pill wears the focus ring and its
+// hover card stays shut.
+const pickField = ref('')
+const prioBtn = ref(null)
+const peopleBtn = ref(null)
+const estBtn = ref(null)
+const msBtn = ref(null)
+const pillOf = { priority: prioBtn, assignees: peopleBtn, estimate: estBtn, milestone: msBtn }
+const pickAnchor = () => pillOf[pickField.value]?.value || null
+// Assignees open to the left, under the avatars at the card's right edge.
+const pickPlacement = computed(() =>
+  pickField.value === 'assignees' ? 'bottom-end' : 'bottom-start',
 )
-// GitLab-member assignees: board tasks carry their logins in gitlab_assignee_logins.
-const glAssigneeLogins = computed(() => props.task.gitlab_assignee_logins || [])
-function isGlAssigned(username) {
-  return glAssigneeLogins.value.includes(username)
+function togglePick(f) {
+  if (props.readonly) return
+  tagOpen.value = false
+  pickField.value = pickField.value === f ? '' : f
 }
-const toggleGlAssignee = (m) =>
-  run(() =>
-    isGlAssigned(m.gl_username)
-      ? tasksApi.removeGitlabAssignee(props.task.id, m.gl_username)
-      : tasksApi.pinGitlabAssignee(props.task.id, {
-          gl_username: m.gl_username,
-          gl_name: m.gl_name,
-          gl_avatar_url: m.gl_avatar_url,
-        }),
-  )
+watch(tagOpen, (on) => on && (pickField.value = ''))
+// The field's key again in an open picker: the next field of S A P D L the
+// card has a picker for (status and due go through the palette's keys).
+function cycleCard(from) {
+  const can = { priority: true, assignees: true, tags: show('tags') }
+  let f = nextField(from)
+  for (let i = 0; i < 5 && f && !can[f]; i++) f = nextField(f)
+  pickField.value = ''
+  if (f === 'tags') tagOpen.value = true
+  else if (f && f !== from) setTimeout(() => (pickField.value = f))
+}
+defineExpose({ openDue })
 </script>
 
 <template>
@@ -460,119 +444,126 @@ const toggleGlAssignee = (m) =>
          "icon + value" rows — same triggers/pickers, so every field stays
          clickable; hover highlights the row (see .pills.stacked CSS). -->
     <!-- priority -->
-    <n-popover
+    <button
       v-if="show('priority') && (showEmpty || task.priority || stackFields)"
-      trigger="click"
-      placement="bottom-start"
+      ref="prioBtn"
+      class="pill prio-pill"
+      :class="{ set: task.priority, 'pp-open': pickField === 'priority' }"
+      :style="task.priority ? { '--pc': PRIORITY_COLORS[task.priority] } : null"
+      :title="stackFields ? t('task.field.priority') : ''"
+      data-tour="card-priority"
+      data-testid="card-pill-priority"
+      @click.stop="togglePick('priority')"
     >
-      <template #trigger>
-        <button
-          class="pill prio-pill"
-          :class="{ set: task.priority }"
-          :style="task.priority ? { '--pc': PRIORITY_COLORS[task.priority] } : null"
-          :title="stackFields ? t('task.field.priority') : ''"
-          data-tour="card-priority"
-          @click.stop
-        >
-          <n-icon
-            :component="FlagOutline"
-            :size="13"
-            :style="
-              task.priority
-                ? {
-                    color: PRIORITY_COLORS[task.priority],
-                    '--icon-grad': `url(#${flagGradId})`,
-                  }
-                : {}
-            "
-          />
-          <span v-if="stackFields" class="pill-text" :class="{ 'sf-empty': !task.priority }">{{
-            task.priority ? priorityLabel(task.priority) : '—'
-          }}</span>
-        </button>
-      </template>
-      <PopMenu>
-        <div
-          v-for="o in priorityOptions"
-          :key="o.value"
-          class="menu-item"
-          @click="setPriority(o.value)"
-        >
-          <span class="dot" :style="{ background: hueGrad(PRIORITY_COLORS[o.value]) }" />
-          {{ o.label }}
-        </div>
-      </PopMenu>
-    </n-popover>
+      <n-icon
+        :component="FlagOutline"
+        :size="13"
+        :style="
+          task.priority
+            ? {
+                color: PRIORITY_COLORS[task.priority],
+                '--icon-grad': `url(#${flagGradId})`,
+              }
+            : {}
+        "
+      />
+      <span v-if="stackFields" class="pill-text" :class="{ 'sf-empty': !task.priority }">{{
+        task.priority ? priorityLabel(task.priority) : '—'
+      }}</span>
+    </button>
 
-    <!-- due date: opens the calendar directly -->
-    <n-popover
+    <!-- due date: opens the due picker (#3118); a repeating one tells its rule on hover -->
+    <n-tooltip
       v-if="show('due') && (showEmpty || due || stackFields)"
-      trigger="click"
-      placement="bottom-start"
+      :disabled="!task.recurrence || dueOpen"
     >
       <template #trigger>
         <button
+          ref="dueBtn"
           class="pill"
-          :class="{ set: due, overdue }"
-          :title="stackFields ? t('task.field.due') : ''"
+          :class="{ set: due, overdue, 'pill-on': dueOpen }"
+          :title="stackFields && !task.recurrence ? t('task.field.due') : ''"
           data-tour="card-due"
-          @click.stop
+          data-testid="card-due-pill"
+          @click.stop="openDue"
         >
           <n-icon :component="CalendarClearOutline" :size="13" />
           <span v-if="due" class="pill-text">{{ stackFields ? dueLong : due }}</span>
           <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
-          <n-icon
-            v-if="task.recurrence"
-            :component="RepeatOutline"
-            :size="11"
-            class="pill-recur"
-            :title="t('task.field.recurring')"
-          />
+          <n-icon v-if="task.recurrence" :component="RepeatOutline" :size="11" class="pill-recur" />
         </button>
       </template>
-      <DueEditor
-        :due="dueTs"
-        :start="startTs"
-        :recurrence="task.recurrence"
-        :notify="{ enabled: dueEnabledSel, lead: dueLeadSel, repeat: dueRepeatSel }"
-        :columns="columns"
-        @apply="apply"
-        @notify="saveDueNotify"
-      />
-    </n-popover>
+      {{ recurHint }}
+    </n-tooltip>
+    <DuePicker
+      v-if="dueOpen"
+      :show="dueOpen"
+      :anchor="() => dueBtn"
+      :due="task.due_date || null"
+      :start="task.start_date || null"
+      :recurrence="task.recurrence || null"
+      :notify="{ enabled: dueEnabledSel, lead: dueLeadSel, repeat: dueRepeatSel }"
+      :columns="columns"
+      key-id="card.due"
+      testid="card-due-picker"
+      @update:show="dueOpen = $event"
+      @apply="apply"
+      @notify="saveDueNotify"
+    />
 
-    <!-- estimate: display-only chip (own value, or Σ subtask rollup) -->
-    <n-tooltip v-if="show('estimate') && (estText || stackFields)">
+    <!-- reminder bell (#2998): right after the due date -->
+    <ReminderPill
+      v-if="show('due') && reminder"
+      :reminder="reminder"
+      :task="task"
+      :readonly="readonly"
+    />
+
+    <!-- estimate: own value, or Σ subtask rollup; a click opens its picker -->
+    <n-tooltip
+      v-if="show('estimate') && (estText || stackFields)"
+      :disabled="pickField === 'estimate'"
+    >
       <template #trigger>
-        <div
+        <button
+          ref="estBtn"
           class="pill"
-          :class="{ set: estText, 'est-pill': estText }"
+          :class="{ set: estText, 'est-pill': estText, 'pp-open': pickField === 'estimate' }"
           :title="stackFields ? t('task.field.estimate') : ''"
+          data-testid="card-pill-estimate"
+          @click.stop="togglePick('estimate')"
         >
           <n-icon :component="TimerOutline" :size="13" />
           <span v-if="estText" class="pill-text">{{ estIsRollup ? 'Σ ' : '' }}{{ estText }}</span>
           <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
-        </div>
+        </button>
       </template>
       {{ estText ? estTooltip : t('task.field.estimate') }}
     </n-tooltip>
 
-    <!-- milestone («Этап»): display-only chip; editing lives in the task modal -->
-    <n-tooltip v-if="show('milestone') && (taskMilestone || stackFields)">
+    <!-- milestone («Этап»): a click opens the stage picker -->
+    <n-tooltip
+      v-if="show('milestone') && (taskMilestone || stackFields)"
+      :disabled="pickField === 'milestone'"
+    >
       <template #trigger>
-        <div
+        <button
+          ref="msBtn"
           class="pill"
           :class="{
             set: taskMilestone,
             'ms-pill': taskMilestone,
             closed: taskMilestone && taskMilestone.state === 'closed',
+            'pp-open': pickField === 'milestone',
           }"
           :title="stackFields ? t('task.field.milestone') : ''"
+          data-testid="card-pill-milestone"
+          @click.stop="togglePick('milestone')"
         >
           <n-icon :component="RibbonOutline" :size="13" />
           <span v-if="taskMilestone" class="pill-text">{{ taskMilestone.title }}</span>
           <span v-else-if="stackFields" class="pill-text sf-empty">—</span>
-        </div>
+        </button>
       </template>
       <template v-if="taskMilestone">
         {{
@@ -614,140 +605,116 @@ const toggleGlAssignee = (m) =>
       </div>
     </n-popover>
 
-    <!-- tags: stacked when >1; hover previews full list, click opens picker -->
+    <!-- tags: stacked when >1; hover previews the full list, a click opens the
+         v2 tag picker (#3113) -->
     <n-popover
       v-if="show('tags') && (showEmpty || taskTags.length || stackFields)"
-      trigger="click"
-      placement="bottom-start"
+      trigger="hover"
+      :disabled="taskTags.length < 2 || tagOpen"
+      placement="top-start"
     >
       <template #trigger>
-        <n-popover trigger="hover" :disabled="taskTags.length < 2" placement="top-start">
-          <template #trigger>
-            <!-- Three mutually exclusive shapes, one anchor: whichever renders is
-                 the tag pill the guide points at (#2759). -->
-            <button
-              v-if="!stackFields && !taskTags.length"
-              class="pill"
-              data-tour="card-tags"
-              @click.stop
-            >
-              <n-icon :component="PricetagOutline" :size="13" />
-            </button>
-            <button
-              v-else-if="!stackFields"
-              class="pill tag-pill"
-              data-tour="card-tags"
-              @click.stop
-            >
-              <!-- v2 (#2954): the first tag in its own outline pill, the rest
-                   counted as plain «+N» text beside it. -->
-              <TagPill class="tname" :tag="taskTags[0]" :prefix-names="tagPrefixNames" />
-              <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
-            </button>
-            <!-- stacked: leading tag icon + outlined-oval chips that fit on the
-                 row, rest → +N (same behaviour as the task modal). -->
-            <button
-              v-else
-              class="pill"
-              :title="t('task.field.tags')"
-              data-tour="card-tags"
-              @click.stop
-            >
-              <n-icon
-                :component="PricetagOutline"
-                :size="13"
-                :style="taskTags.length ? { color: tagText(taskTags[0].color) } : {}"
-              />
-              <span v-if="taskTags.length" ref="stagValEl" class="stag-val">
-                <TagPill
-                  v-for="tag in taskTags.slice(0, visibleTagCount)"
-                  :key="tag.id"
-                  class="mchip"
-                  :tag="tag"
-                  :prefix-names="tagPrefixNames"
-                  variant="outline"
-                />
-                <span
-                  v-if="visibleTagCount < taskTags.length"
-                  class="mchip chip-more"
-                  :style="{
-                    color: tagText(taskTags[0].color),
-                    background: softFill(taskTags[0].color),
-                  }"
-                  >+{{ taskTags.length - visibleTagCount }}</span
-                >
-                <!-- measurement copies must be the same component with the same
-                     props, or the scope segment wouldn't be measured (useTagFit). -->
-                <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
-                  <TagPill
-                    v-for="tag in taskTags"
-                    :key="`m${tag.id}`"
-                    class="mchip"
-                    :tag="tag"
-                    :prefix-names="tagPrefixNames"
-                    variant="outline"
-                  />
-                </span>
-              </span>
-              <span v-else class="pill-text sf-empty">—</span>
-            </button>
-          </template>
-          <div class="preview">
+        <!-- Three mutually exclusive shapes, one anchor: whichever renders is
+             the tag pill the guide points at (#2759). -->
+        <button
+          v-if="!stackFields && !taskTags.length"
+          ref="tagBtn"
+          class="pill"
+          data-tour="card-tags"
+          @click.stop="!readonly && (tagOpen = !tagOpen)"
+        >
+          <n-icon :component="PricetagOutline" :size="13" />
+        </button>
+        <button
+          v-else-if="!stackFields"
+          ref="tagBtn"
+          class="pill tag-pill"
+          data-tour="card-tags"
+          @click.stop="!readonly && (tagOpen = !tagOpen)"
+        >
+          <!-- v2 (#2954): the first tag in its own outline pill, the rest
+               counted as plain «+N» text beside it. -->
+          <TagPill class="tname" :tag="taskTags[0]" :prefix-names="tagPrefixNames" />
+          <span v-if="taskTags.length > 1" class="more">+{{ taskTags.length - 1 }}</span>
+        </button>
+        <!-- stacked: leading tag icon + outlined-oval chips that fit on the
+             row, rest → +N (same behaviour as the task modal). -->
+        <button
+          v-else
+          ref="tagBtn"
+          class="pill"
+          :title="t('task.field.tags')"
+          data-tour="card-tags"
+          @click.stop="!readonly && (tagOpen = !tagOpen)"
+        >
+          <n-icon
+            :component="PricetagOutline"
+            :size="13"
+            :style="taskTags.length ? { color: tagText(taskTags[0].color) } : {}"
+          />
+          <span v-if="taskTags.length" ref="stagValEl" class="stag-val">
             <TagPill
-              v-for="tag in taskTags"
+              v-for="tag in taskTags.slice(0, visibleTagCount)"
               :key="tag.id"
-              class="chip"
+              class="mchip"
               :tag="tag"
               :prefix-names="tagPrefixNames"
-              variant="ghost"
+              variant="outline"
             />
-          </div>
-        </n-popover>
+            <span
+              v-if="visibleTagCount < taskTags.length"
+              class="mchip chip-more"
+              :style="{
+                color: tagText(taskTags[0].color),
+                background: softFill(taskTags[0].color),
+              }"
+              >+{{ taskTags.length - visibleTagCount }}</span
+            >
+            <!-- measurement copies must be the same component with the same
+                 props, or the scope segment wouldn't be measured (useTagFit). -->
+            <span ref="stagMeasureEl" class="stag-measure" aria-hidden="true">
+              <TagPill
+                v-for="tag in taskTags"
+                :key="`m${tag.id}`"
+                class="mchip"
+                :tag="tag"
+                :prefix-names="tagPrefixNames"
+                variant="outline"
+              />
+            </span>
+          </span>
+          <span v-else class="pill-text sf-empty">—</span>
+        </button>
       </template>
-      <PopMenu class="tagmenu">
-        <div class="chip-groups">
-          <div v-for="g in tagPickerGroups" :key="g.key" class="chip-group">
-            <div v-if="tagPickerHeaders" class="chip-grp-head">{{ g.label }}</div>
-            <div class="chip-grid">
-              <button
-                v-for="tag in g.tags"
-                :key="tag.id"
-                class="tagchip"
-                :class="{ on: hasTag(tag.id) }"
-                :style="
-                  hasTag(tag.id)
-                    ? {
-                        background: hueGrad(tag.color),
-                        color: onColor(tag.color),
-                        borderColor: 'transparent',
-                      }
-                    : {
-                        background: softFill(tag.color),
-                        color: tagText(tag.color),
-                        borderColor: (tag.color || '#888') + '66',
-                      }
-                "
-                @click="toggleTag(tag.id)"
-              >
-                <TagPill
-                  :tag="tag"
-                  :prefix-names="tagPrefixNames"
-                  variant="inherit"
-                  :scope-mode="tagPickerHeaders ? 'hide' : 'auto'"
-                />
-              </button>
-            </div>
-          </div>
-        </div>
-        <n-input
-          v-model:value="newTagName"
-          size="tiny"
-          :placeholder="t('task.tags.newPlaceholder')"
-          @keyup.enter="createTag"
-          @click.stop
+      <div class="preview">
+        <TagPill
+          v-for="tag in taskTags"
+          :key="tag.id"
+          class="chip"
+          :tag="tag"
+          :prefix-names="tagPrefixNames"
+          variant="ghost"
         />
-      </PopMenu>
+      </div>
     </n-popover>
+    <TagPicker
+      v-if="!readonly && show('tags')"
+      :show="tagOpen"
+      :anchor="() => tagBtn?.closest?.('.card') || tagBtn"
+      placement="right-start"
+      :tags="tags"
+      :selected="task.tag_ids || []"
+      :prefix-names="tagPrefixNames"
+      :locked-prefixes="metaTagPrefixes"
+      :creating="creatingTag"
+      :create="createTag"
+      :can-manage="!!projectId"
+      key-id="card.tags"
+      testid="card-tag-picker"
+      @update:show="tagOpen = $event"
+      @toggle="toggleTag"
+      @manage="manageTags"
+    />
 
     <!-- author + assignees merged into one overlapping avatar group: the
          author (muted) leads, then the assignee(s). Hover shows the full
@@ -762,110 +729,71 @@ const toggleGlAssignee = (m) =>
       class="people"
     >
       <n-popover
-        trigger="click"
+        trigger="hover"
         placement="bottom-end"
-        @update:show="(v) => !v && (assigneeQuery = '')"
+        :delay="400"
+        :show-arrow="false"
+        :disabled="pickField === 'assignees'"
+        raw
+        class="people-pop"
       >
         <template #trigger>
-          <n-popover
-            trigger="hover"
-            placement="bottom-end"
-            :delay="400"
-            :show-arrow="false"
-            raw
-            class="people-pop"
+          <button
+            ref="peopleBtn"
+            class="pill assignee-pill"
+            :class="{ 'pp-open': pickField === 'assignees' }"
+            :title="stackFields ? t('task.field.assignee') : ''"
+            data-tour="card-assignees"
+            data-testid="card-pill-assignees"
+            @click.stop="togglePick('assignees')"
           >
-            <template #trigger>
-              <button
-                class="pill assignee-pill"
-                :title="stackFields ? t('task.field.assignee') : ''"
-                data-tour="card-assignees"
-                @click.stop
-              >
-                <n-icon
-                  v-if="stackFields"
-                  :component="PersonAddOutline"
-                  :size="13"
-                  class="sf-people-ic"
-                />
-                <UserAvatar
-                  v-for="p in shownPeople"
-                  :key="p.key"
-                  class="avatar"
-                  :class="{ 'author-ava': p.role === 'author', 'ext-ava': p.ext }"
-                  :user-id="p.userId"
-                  :src="p.src"
-                  :name="p.name"
-                />
-                <span v-if="extraPeople" class="avatar more-ava">+{{ extraPeople }}</span>
-                <n-icon
-                  v-if="!stackFields && !people.length"
-                  :component="PersonAddOutline"
-                  :size="14"
-                  class="no-people"
-                />
-                <span v-else-if="stackFields && !people.length" class="pill-text sf-empty">—</span>
-              </button>
-            </template>
-            <div class="people-list">
-              <div v-for="p in people" :key="p.key" class="people-row">
-                <UserAvatar class="avatar sm" :user-id="p.userId" :src="p.src" :name="p.name" />
-                <span class="people-name">{{ p.name }}</span>
-                <span class="people-role">{{ t(`task.people.role.${p.role}`) }}</span>
-              </div>
-              <div v-if="!people.length" class="people-row people-none">
-                {{ t('task.people.none') }}
-              </div>
-            </div>
-          </n-popover>
+            <n-icon
+              v-if="stackFields"
+              :component="PersonAddOutline"
+              :size="13"
+              class="sf-people-ic"
+            />
+            <UserAvatar
+              v-for="p in shownPeople"
+              :key="p.key"
+              class="avatar"
+              :class="{ 'author-ava': p.role === 'author', 'ext-ava': p.ext }"
+              :user-id="p.userId"
+              :src="p.src"
+              :name="p.name"
+            />
+            <span v-if="extraPeople" class="avatar more-ava">+{{ extraPeople }}</span>
+            <n-icon
+              v-if="!stackFields && !people.length"
+              :component="PersonAddOutline"
+              :size="14"
+              class="no-people"
+            />
+            <span v-else-if="stackFields && !people.length" class="pill-text sf-empty">—</span>
+          </button>
         </template>
-        <PopMenu class="assignee-menu">
-          <n-input
-            v-model:value="assigneeQuery"
-            size="tiny"
-            :placeholder="t('common.action.search')"
-            clearable
-            @click.stop
-          />
-          <div class="assignee-list">
-            <div
-              v-for="m in pickerMembers"
-              :key="m.user_id"
-              class="menu-item assignee-item"
-              @click="toggleAssignee(m.user_id)"
-            >
-              <UserAvatar class="avatar sm" :user-id="m.user_id" :name="m.name" />
-              <span class="aname">{{ m.name }}</span>
-              <n-icon v-if="isAssigned(m.user_id)" :component="CheckmarkOutline" class="chk" />
-            </div>
-            <template v-if="glPickerList.length">
-              <div class="assignee-sep">GitLab</div>
-              <div
-                v-for="m in glPickerList"
-                :key="m.gl_username"
-                class="menu-item assignee-item"
-                @click="toggleGlAssignee(m)"
-              >
-                <UserAvatar
-                  class="avatar sm"
-                  :src="m.gl_avatar_url"
-                  :name="m.gl_name || m.gl_username"
-                />
-                <span class="aname">{{ m.gl_name || m.gl_username }}</span>
-                <n-icon
-                  v-if="isGlAssigned(m.gl_username)"
-                  :component="CheckmarkOutline"
-                  class="chk"
-                />
-              </div>
-            </template>
-            <div v-if="!pickerMembers.length && !glPickerList.length" class="assignee-empty">
-              {{ t('task.people.noMatches') }}
-            </div>
+        <div class="people-list">
+          <div v-for="p in people" :key="p.key" class="people-row">
+            <UserAvatar class="avatar sm" :user-id="p.userId" :src="p.src" :name="p.name" />
+            <span class="people-name">{{ p.name }}</span>
+            <span class="people-role">{{ t(`task.people.role.${p.role}`) }}</span>
           </div>
-        </PopMenu>
+          <div v-if="!people.length" class="people-row people-none">
+            {{ t('task.people.none') }}
+          </div>
+        </div>
       </n-popover>
     </div>
+    <TaskFieldPopover
+      v-model:field="pickField"
+      :task="task"
+      :anchor="pickAnchor"
+      :placement="pickPlacement"
+      :subtasks="subtasks"
+      :readonly="readonly"
+      @changed="emit('changed')"
+      @cycle="cycleCard"
+    />
   </div>
 </template>
 
@@ -1056,6 +984,10 @@ const toggleGlAssignee = (m) =>
 .pill-recur {
   color: inherit;
 }
+/* The pill whose picker is open (#3118): a focus ring. */
+.pill.pill-on {
+  box-shadow: 0 0 0 2px var(--t-primary);
+}
 /* Flag (priority) icon carries the active priority's gradient (set --icon-grad
    inline on the flag only; the date pill is also .pill.set but has no
    --icon-grad, so it falls back to currentColor). */
@@ -1215,95 +1147,14 @@ const toggleGlAssignee = (m) =>
   background: var(--t-text3);
   opacity: 0.85;
 }
-/* Assignee picker: a pinned search box above a scrollable, capped list. */
-.assignee-menu {
-  gap: 6px;
-}
-.assignee-list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-  max-height: 240px;
-  overflow-y: auto;
-}
-.assignee-empty {
-  padding: 8px 6px;
-  text-align: center;
-  font-size: 12px;
-  color: var(--t-text3);
-}
-.assignee-sep {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--t-text3);
-  padding: 6px 6px 2px;
-}
 /* external GitLab assignee (no Tessera account): neutral, slightly muted */
 .ext-ava {
   background: var(--t-text3);
   opacity: 0.9;
 }
-.menu {
-  min-width: 180px;
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.tagmenu {
-  width: 300px;
-  max-width: 80vw;
-  max-height: 260px;
-  overflow-y: auto;
-}
-.chip-grp-head {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  opacity: 0.6;
-  margin: 6px 0 4px;
-}
-.chip-group:first-child .chip-grp-head {
-  margin-top: 0;
-}
-.chip-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 5px;
-  margin-bottom: 8px;
-}
-.tagchip {
-  font-size: 12px;
-  padding: 2px 9px;
-  border-radius: 10px;
-  border: 1px solid transparent;
-  background: transparent;
-  cursor: pointer;
-}
-.tagchip.on {
-  font-weight: 600;
-}
-.menu-item {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 5px 6px;
-  border-radius: 7px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.menu-item:hover {
-  background: var(--t-hover);
-}
-.assignee-item .aname {
-  flex: 1;
-}
-.assignee-item .chk {
-  color: var(--t-primary);
-}
-.dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
+/* The pill whose picker is open (#3118): the focus ring of the mockup. */
+.pill.pp-open {
+  opacity: 1;
+  box-shadow: 0 0 0 2px var(--t-primary);
 }
 </style>

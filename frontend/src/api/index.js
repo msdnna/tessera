@@ -3,6 +3,7 @@ import { humanizeError } from '@/utils/errors'
 import { reqStart, reqEnd, setOffline } from '@/composables/useConnection'
 import { apiBaseURL, isTauri } from '@/utils/serverBase'
 import { sGet, sSet, sRemove } from '@/utils/serverStorage'
+import { noteFailure } from '@/utils/lastFailure'
 
 // Web: apiBaseURL() === '/api' (same-origin). Desktop (Tauri): '<server>/api',
 // where <server> is the login-configured origin. See utils/serverBase.js.
@@ -191,10 +192,16 @@ api.interceptors.response.use(
     const original = err.config
     const isUnauthorized = err.response?.status === 401
     const isRefreshCall = original?.url?.includes('/auth/refresh')
+    // A 401 from the sign-in form itself is a wrong password, not an expired
+    // session: there is nothing to refresh, and treating it as one ran the whole
+    // sign-out teardown — which put the auth screen back on the browser's
+    // language, so a reader who had switched it to Russian saw the form flip to
+    // English under the «wrong password» banner (#3107).
+    const isCredentialCall = /\/auth\/(login|register)$/.test(original?.url || '')
     // Tracks why a refresh attempt on this response failed, so the teardown
     // below can tell "the session is over" from "we couldn't ask".
     let refreshOffline = false
-    if (isUnauthorized && original && !original._retry && !isRefreshCall) {
+    if (isUnauthorized && original && !original._retry && !isRefreshCall && !isCredentialCall) {
       original._retry = true
       const { token: newToken, offline } = await refreshAccessToken()
       if (newToken) {
@@ -208,7 +215,7 @@ api.interceptors.response.use(
     // reach the server the session is left intact and the request just fails —
     // the connection overlay is already up, and the next attempt (once the link
     // is back) refreshes normally instead of landing on /login.
-    if (isUnauthorized && !isRefreshCall && !refreshOffline) {
+    if (isUnauthorized && !isRefreshCall && !isCredentialCall && !refreshOffline) {
       setAccessToken('')
       sRemove('tessera_refresh_token')
       sRemove('tessera_user')
@@ -239,6 +246,16 @@ api.interceptors.response.use(
     // because the refresh couldn't get through — a connectivity failure, and
     // callers that retry on `offline` should retry this.
     wrapped.offline = !reached || refreshOffline
+    // For the error toast's «Подробнее» (#3117): the request, the answer and the
+    // server's request id, whichever caller ends up reporting the failure.
+    noteFailure({
+      method: String(original?.method || 'get').toUpperCase(),
+      url: original?.url || '',
+      status: err.response?.status || 0,
+      raw,
+      offline: wrapped.offline,
+      requestId: err.response?.headers?.['x-request-id'] || '',
+    })
     return Promise.reject(wrapped)
   },
 )
@@ -351,6 +368,12 @@ export const meta = {
 export const acknowledgements = {
   list: () => api.get('/users/me/acknowledgements', { skipLoader: true }),
   ack: (key) => api.post('/users/me/acknowledgements', { key }, { skipLoader: true }),
+  // One exact key, or a whole namespace (`prefix` must end in «:») — #3100.
+  forget: ({ key, prefix }) =>
+    api.delete('/users/me/acknowledgements', {
+      params: key ? { key } : { prefix },
+      skipLoader: true,
+    }),
 }
 
 // Global-admin panel (every endpoint re-checks is_admin server-side).
@@ -368,6 +391,8 @@ export const admin = {
     api.post(`/admin/jobs/${encodeURIComponent(key)}/run`, null, { skipLoader: true }),
   cancelJob: (key) =>
     api.post(`/admin/jobs/${encodeURIComponent(key)}/cancel`, null, { skipLoader: true }),
+  // «Статья помогла?» totals per article and language (#3071).
+  helpFeedback: () => api.get('/admin/help-feedback'),
 }
 
 export const workspaces = {
@@ -436,6 +461,14 @@ export const projects = {
   deleteTag: (tagId) => api.delete(`/tags/${tagId}`),
   tagPrefixes: (id) => sharedGet(`/projects/${id}/tag-prefixes`),
   setTagPrefixes: (id, prefixes) => api.put(`/projects/${id}/tag-prefixes`, { prefixes }),
+  // One prefix's friendly name (#2990); an empty label clears it.
+  setTagPrefix: (id, prefix, label) => api.patch(`/projects/${id}/tag-prefixes`, { prefix, label }),
+  // The «Проект» window's tag table (#2990): merge duplicates into one tag, and
+  // delete several at once — the answer is what the undo hands back to restore.
+  mergeTags: (id, targetId, sourceIds) =>
+    api.post(`/projects/${id}/tags/merge`, { target_id: targetId, source_ids: sourceIds }),
+  deleteTags: (id, ids) => api.post(`/projects/${id}/tags/delete`, { ids }),
+  restoreTags: (id, tags) => api.post(`/projects/${id}/tags/restore`, { tags }),
   // Per-project estimation override; `null` clears it to inherit the workspace default.
   setEstimation: (id, config) => api.put(`/projects/${id}/estimation`, config),
   // Milestones («Этап»): project-scoped.
@@ -448,6 +481,8 @@ export const milestones = {
   remove: (id) => api.delete(`/milestones/${id}`),
   // Explicitly create this native milestone in GitLab + link them (opt-in per milestone).
   pushToGitlab: (id) => api.post(`/milestones/${id}/gitlab`),
+  // Everything the stage page draws (#2992): progress, burn-up, scope, pace.
+  metrics: (id) => api.get(`/milestones/${id}/metrics`),
 }
 
 export const groups = {
@@ -478,9 +513,12 @@ export const boards = {
   // Whole-board blocking dependency graph for the Gantt view (raw edge rows).
   dependencies: (id) => api.get(`/boards/${id}/dependencies`),
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
-  // Per-user saved board views (layouts).
+  // Saved board views (#2970): the reader's own + the board's shared ones.
   views: (id) => api.get(`/boards/${id}/views`),
-  saveView: (id, data) => api.post(`/boards/${id}/views`, data), // { name, config }
+  // { name, config, scope?: 'user' | 'board', is_default? } — upserts by name.
+  saveView: (id, data) => api.post(`/boards/${id}/views`, data),
+  // Partial: { name?, config?, scope?, is_default?, before_id?, after_id? }.
+  updateView: (viewId, data) => api.patch(`/views/${viewId}`, data),
   deleteView: (viewId) => api.delete(`/views/${viewId}`),
 }
 
@@ -490,6 +528,14 @@ export const notes = {
   get: (id) => api.get(`/notes/${id}`),
   update: (id, data) => api.patch(`/notes/${id}`, data),
   remove: (id) => api.delete(`/notes/${id}`),
+  // The task modal's «Напоминания и заметки» (#2998): notes tied to the task.
+  forTask: (taskId) => api.get(`/tasks/${taskId}/notes`),
+}
+
+// «Входящие» (#2972): the caller's reminders of the workspace (and those outside
+// every workspace) + the notes they may read, each with its task chip.
+export const inbox = {
+  list: (wsId) => api.get(`/workspaces/${wsId}/inbox`),
 }
 
 export const documents = {
@@ -655,6 +701,9 @@ export const reminders = {
   create: (data) => api.post('/reminders', data),
   update: (id, data) => api.patch(`/reminders/${id}`, data),
   remove: (id) => api.delete(`/reminders/${id}`),
+  // Moves the reminder later; the server keeps the first time in snoozed_from.
+  snooze: (id, remindAt) => api.post(`/reminders/${id}/snooze`, { remind_at: remindAt }),
+  forTask: (taskId) => api.get(`/tasks/${taskId}/reminders`),
 }
 
 export const columns = {
@@ -782,6 +831,8 @@ export const notificationRoutes = {
 export const notificationPrefs = {
   get: () => api.get('/notification-prefs'),
   update: (data) => api.put('/notification-prefs', data),
+  // «Не беспокоить» (#3117): an ISO moment, or null to switch it off.
+  dnd: (until) => api.put('/notification-prefs/dnd', { until }),
 }
 
 export const gitlab = {

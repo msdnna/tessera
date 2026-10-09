@@ -20,7 +20,8 @@
 // every screenshot of every call in memory for the life of the tab.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NInput, NModal, NPopconfirm, NSpin, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NModal, NPopconfirm, NSpin, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AttachOutline,
   CloseOutline,
@@ -606,8 +607,8 @@ onBeforeUnmount(() => {
 }
 .thumb {
   padding: 0;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
+  border: 0;
+  border-radius: 10px;
   overflow: hidden;
   background: var(--t-hover);
   cursor: pointer;
@@ -634,8 +635,8 @@ onBeforeUnmount(() => {
   padding: 4px 8px;
   font-size: 12px;
   color: var(--t-text2);
-  background: var(--t-hover);
-  border: 1px solid var(--t-border);
+  background: var(--t-ctl);
+  border: 0;
   border-radius: 8px;
   cursor: pointer;
 }

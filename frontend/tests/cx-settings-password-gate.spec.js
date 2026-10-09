@@ -17,32 +17,6 @@ const apiMock = vi.hoisted(() => ({
 }))
 vi.mock('@/api', () => apiMock)
 
-// The notification card is a whole subsystem of its own (channels, routes,
-// device registration) and nothing here touches it.
-vi.mock('@/components/NotificationSettings.vue', () => ({
-  default: { name: 'NotificationSettings', template: '<div />' },
-}))
-
-const themeState = vi.hoisted(() => ({
-  themeMode: 'system',
-  activeTheme: { key: 'purple' },
-  boardBackground: '',
-  language: 'ru',
-  weekStart: 1,
-  timeFormat: '24h',
-  dateFormat: 'medium',
-  timezone: '',
-  country: '',
-  setThemeMode: vi.fn(),
-  selectColor: vi.fn(),
-  setBoardBackground: vi.fn(),
-  setLocale: vi.fn(),
-}))
-vi.mock('@/stores/theme', () => ({
-  useThemeStore: () => themeState,
-  COLOR_THEMES: [{ key: 'purple', color: '#7c5cff' }],
-}))
-
 const authState = vi.hoisted(() => ({
   user: null,
   setUser: vi.fn(),
@@ -50,26 +24,16 @@ const authState = vi.hoisted(() => ({
 }))
 vi.mock('@/stores/auth', () => ({ useAuthStore: () => authState }))
 
-vi.mock('@/composables/useDesktopUpdate', () => ({
-  useDesktopUpdate: () => ({
-    busy: { value: false },
-    status: { value: '' },
-    newVersion: { value: '' },
-    error: { value: '' },
-    check: vi.fn(),
-    install: vi.fn(),
-  }),
-}))
-vi.mock('@/composables/useApiImage', () => ({ useApiImage: () => ({ value: '' }) }))
-
-import SettingsView from '@/views/SettingsView.vue'
+// v2 (#3106): Security is its own section component; the settings page shows
+// one section at a time, so the gate is checked on the section itself.
+import SettingsSecurity from '@/components/settings/SettingsSecurity.vue'
 
 let wrapper = null
 
 function mountWith(user) {
   authState.user = user
   const i18n = createI18n({ legacy: false, locale: 'ru', messages: { ru } })
-  wrapper = mount(SettingsView, { global: { plugins: [i18n] } })
+  wrapper = mount(SettingsSecurity, { global: { plugins: [i18n] } })
   return wrapper
 }
 

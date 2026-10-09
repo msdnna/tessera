@@ -29,8 +29,7 @@ vi.mock('vue-router', () => ({
 const { default: BoardMobileMenu } = await import('@/components/BoardMobileMenu.vue')
 
 const STUBS = { TagManager: true, MilestoneManager: true, TesseraIcon: true }
-const flat = (options) => options.flatMap((o) => (o.children ? [o, ...o.children] : [o]))
-const entry = (w) => flat(w.vm.options).find((o) => o.key === 'customize')
+const entry = (w) => w.vm.items.find((o) => o.key === 'customize')
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -46,17 +45,8 @@ describe('BoardMobileMenu «Настроить вид» entry', () => {
     w.unmount()
   })
 
-  it('is hidden on the time-axis layouts, exactly like the gear', () => {
-    for (const layout of ['timeline', 'gantt']) {
-      const w = mount(BoardMobileMenu, { global: { stubs: STUBS } })
-      useBoardViewStore().layout = layout
-      expect(entry(w)).toBeUndefined()
-      w.unmount()
-    }
-  })
-
-  it('stays on the layouts that do have a customize panel', () => {
-    for (const layout of ['board', 'list', 'calendar', 'matrix']) {
+  it('stays on every layout — the view panel works in all of them (#2986)', () => {
+    for (const layout of ['board', 'list', 'timeline', 'gantt', 'calendar', 'matrix']) {
       const w = mount(BoardMobileMenu, { global: { stubs: STUBS } })
       useBoardViewStore().layout = layout
       expect(entry(w)).toBeTruthy()
@@ -98,9 +88,9 @@ describe('boardView store', () => {
 const kanban = readFileSync(resolve(process.cwd(), 'src/components/KanbanBoard.vue'), 'utf8')
 
 describe('KanbanBoard answers the ask', () => {
-  it('watches the store nonce and opens the drawer', () => {
+  it('watches the store nonce and opens the panel, whatever the view', () => {
     expect(kanban).toContain('() => boardViewStore.customizeNonce')
-    expect(kanban).toContain('if (!timelineLike.value) customizeOpen.value = true')
+    expect(kanban).toContain('() => openPanel(),')
   })
 
   it('keeps the desktop gear — the phone menu is the other way in, not a replacement', () => {

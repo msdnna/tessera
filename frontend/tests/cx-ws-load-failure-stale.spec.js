@@ -33,6 +33,11 @@ vi.mock('naive-ui', async () => {
   const actual = await vi.importActual('naive-ui')
   return { ...actual, useMessage: () => toast }
 })
+// The message API moved out of naive (composables/useMessage, #3117): route it
+// to the naive mock above, where this spec keeps its spies.
+vi.mock('@/composables/useMessage', async () => ({
+  useMessage: (await import('naive-ui')).useMessage,
+}))
 
 const wsApi = {
   summary: vi.fn(),
@@ -49,6 +54,8 @@ const notesApi = {
   remove: vi.fn(),
 }
 const glApi = { conflicts: vi.fn() }
+// «Входящие» (#2972) replaced the «Заметки» section.
+const inboxApi = { list: vi.fn() }
 // v2 «Мои задачи» (#2960) also reads the reminders and completes tasks in place.
 const remApi = { list: vi.fn() }
 vi.mock('@/api', () => ({
@@ -56,13 +63,14 @@ vi.mock('@/api', () => ({
   notes: notesApi,
   gitlab: glApi,
   reminders: remApi,
+  inbox: inboxApi,
   tasks: { update: vi.fn() },
   getAccessToken: () => null,
 }))
 
 const { default: HomeView } = await import('@/views/HomeView.vue')
 const { default: MilestonesView } = await import('@/views/MilestonesView.vue')
-const { default: NotesView } = await import('@/views/NotesView.vue')
+const { useInboxStore } = await import('@/stores/inbox')
 const { useWorkspacesStore } = await import('@/stores/workspaces')
 const { useAuthStore } = await import('@/stores/auth')
 
@@ -138,7 +146,7 @@ async function mountAt(component, path) {
 beforeEach(() => {
   setActivePinia(createPinia())
   localStorage.clear()
-  // useResponsive (NotesView) reads matchMedia on mount; jsdom has none.
+  // useResponsive reads matchMedia on mount; jsdom has none.
   window.matchMedia = vi.fn().mockReturnValue({
     matches: false,
     addEventListener: () => {},
@@ -297,32 +305,30 @@ describe('«Вехи» drop the workspace they failed to leave (#2932)', () => {
   })
 })
 
-describe('«Заметки» drop the workspace they failed to leave (#2932)', () => {
+describe('«Входящие» drop the workspace they failed to leave (#2932)', () => {
   it('a refused switch does not keep the previous space’s notes', async () => {
-    notesApi.list.mockResolvedValue({ data: [note({ title: 'Заметка первого' })] })
-    const { w } = await mountAt(NotesView, '/')
-    expect(w.text()).toContain('Заметка первого')
+    const inbox = useInboxStore()
+    inboxApi.list.mockResolvedValueOnce({
+      data: { reminders: [], notes: [note({ title: 'Заметка первого' })] },
+    })
+    await inbox.load('ws1')
+    expect(inbox.notes).toHaveLength(1)
 
-    notesApi.list.mockRejectedValue(refused())
-    useWorkspacesStore().currentId = 'ws2'
-    await flushPromises()
-
-    expect(toast.error).toHaveBeenCalled()
-    // Clicking one of these opens a foreign note; Сохранить then writes into it.
-    expect(w.text()).not.toContain('Заметка первого')
+    inboxApi.list.mockRejectedValueOnce(refused())
+    await inbox.load('ws2')
+    // Opening one of these would edit a foreign note.
+    expect(inbox.notes).toEqual([])
+    expect(inbox.error).toBeTruthy()
   })
 
   it('a failed refetch of the SAME workspace keeps the list (control)', async () => {
-    notesApi.list.mockResolvedValue({ data: [note({ title: 'Заметка первого' })] })
-    const { w } = await mountAt(NotesView, '/')
-    expect(w.text()).toContain('Заметка первого')
-
-    // A save/delete refetch that goes missing says nothing about the rows on
-    // screen — they are this workspace's, and still current.
-    notesApi.list.mockRejectedValue(refused('Сервер не ответил', 500))
-    await w.vm.loadList()
-    await flushPromises()
-
-    expect(w.text()).toContain('Заметка первого')
+    const inbox = useInboxStore()
+    inboxApi.list.mockResolvedValueOnce({
+      data: { reminders: [], notes: [note({ title: 'Заметка первого' })] },
+    })
+    await inbox.load('ws1')
+    inboxApi.list.mockRejectedValueOnce(refused('Сервер не ответил', 500))
+    await inbox.load('ws1')
+    expect(inbox.notes.map((n) => n.title)).toEqual(['Заметка первого'])
   })
 })

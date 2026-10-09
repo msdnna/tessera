@@ -12,17 +12,23 @@ import Kbd from '@/components/Kbd.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
 import TesseraIcon from '@/components/TesseraIcon.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import PropPicker from '@/components/kit/PropPicker.vue'
 import { usePaletteStore } from '@/stores/palette'
 import { useOverlayBack } from '@/composables/useOverlayBack'
+import { useResponsive } from '@/composables/useResponsive'
 import { pushBlocker } from '@/shortcuts/dispatcher'
 import { hasModKey } from '@/utils/keys'
 import { highlight } from '@/utils/fuzzy'
 import { usePaletteResults } from './usePaletteResults'
 import { usePaletteTask } from './usePaletteTask'
 import { usePaletteForm } from './usePaletteForm'
+import PaletteDueCalendar from './PaletteDueCalendar.vue'
 
 const { t } = useI18n()
 const palette = usePaletteStore()
+// A phone (#2976 — package G «Поиск»): the palette is the whole screen, with
+// «Отмена» next to the field instead of Esc.
+const { isMobile } = useResponsive()
 const results = usePaletteResults()
 const taskScope = usePaletteTask()
 const form = usePaletteForm()
@@ -42,6 +48,26 @@ const groups = computed(() => {
   return scoped.value ? taskScope.groupsFor(palette.query) : results.groups.value
 })
 const flat = computed(() => groups.value.flatMap((g) => g.rows))
+// A field drawn by the PropPicker rows (#3118): status, people, priority, stage.
+const picker = computed(() => (groups.value.length === 1 && groups.value[0].picker) || null)
+const pickerEl = ref(null)
+// Each row resolves to what the palette does next ('close' | 'back' | 'stay').
+const pickerItems = computed(() =>
+  (picker.value?.items || []).map((r) =>
+    r.kind === 'row' && r.run
+      ? {
+          ...r,
+          close: false,
+          run: async () => {
+            const next = (await r.run()) || 'stay'
+            if (next === 'close') palette.hide()
+            else if (next === 'back') back()
+            inputEl.value?.focus()
+          },
+        }
+      : r,
+  ),
+)
 const loading = computed(() => {
   if (formMode.value) return false
   return scoped.value ? taskScope.loading.value : results.loading.value && !flat.value.length
@@ -132,6 +158,56 @@ onBeforeUnmount(() => releaseBlocker?.())
 const openRef = computed(() => palette.open)
 useOverlayBack(openRef, () => palette.hide())
 
+// ── «Срок» (#3118): Tab opens the calendar under the field, a second Tab goes
+// back; the digits 1–5 and 0 pick a preset once the arrows have moved — before
+// that a digit is a date being typed («14.10»).
+const dueCal = ref(false)
+const dueCalRef = ref(null)
+let dueNavigated = false
+watch(field, () => (dueCal.value = false))
+watch(
+  () => palette.open,
+  (open) => !open && (dueCal.value = false),
+)
+watch(
+  () => palette.query,
+  () => (dueNavigated = false),
+)
+function onDueKey(e) {
+  if (dueCal.value) {
+    if (e.key === 'Tab') {
+      dueCal.value = false
+      if (e.shiftKey) return false // ⇧Tab: back to the actions, as anywhere
+      e.preventDefault()
+      return true
+    }
+    if (e.key === 'Escape') return false
+    return !!dueCalRef.value?.onKey(e)
+  }
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault()
+    dueCal.value = true
+    return true
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') dueNavigated = true
+  if (dueNavigated && /^[0-5]$/.test(e.key) && !hasModKey(e)) {
+    const row = flat.value.find((r) => r.digit === e.key)
+    if (row) {
+      e.preventDefault()
+      runRow(row, e)
+      return true
+    }
+  }
+  return false
+}
+async function onDuePick(ep) {
+  const next = await taskScope.writeDue(ep)
+  dueCal.value = false
+  if (next === 'close') palette.hide()
+  else if (next === 'back') back()
+  inputEl.value?.focus()
+}
+
 // ── navigation ──
 function move(delta) {
   const n = flat.value.length
@@ -145,7 +221,8 @@ function move(delta) {
 async function runRow(row, e) {
   if (!row || row.disabled) return
   const next = (await row.run({ newTab: !!e && hasModKey(e) })) || 'close'
-  if (next === 'close') palette.hide()
+  if (next === 'calendar') dueCal.value = true
+  else if (next === 'close') palette.hide()
   else if (next === 'back') back()
   inputEl.value?.focus()
 }
@@ -231,6 +308,12 @@ function onFormKey(e) {
 function onKeydown(e) {
   if (e.isComposing) return
   if (formMode.value && onFormKey(e)) return
+  if (field.value === 'due' && onDueKey(e)) return
+  // The field's PropPicker takes the list's keys: ↑↓, ↵, Space (after the
+  // arrows), the digits — Tab, ⇧Tab, Esc and ⌫ stay the palette's.
+  if (picker.value && !['Tab', 'Escape', 'Backspace'].includes(e.key)) {
+    if (pickerEl.value?.handleKey(e)) return
+  }
   const mod = hasModKey(e)
   switch (e.key) {
     case 'ArrowDown':
@@ -301,6 +384,19 @@ const foot = computed(() => {
       label: t(field.value ? 'shell.palette.foot.toActions' : 'shell.palette.foot.toResults'),
     },
   ]
+})
+// The field's chip in the input row (#3118, PackageJ «Палитра»): the field's
+// own name, as its picker calls it.
+const fieldLabel = computed(() => {
+  const f = field.value
+  if (!f) return ''
+  const own = {
+    status: 'props.status.title',
+    priority: 'props.priority.title',
+    assignees: 'props.assignees.title',
+    milestone: 'props.milestone.title',
+  }[f]
+  return t(own || `shell.palette.task.${f}`)
 })
 const formTitle = computed(() => (form.kind.value ? t(`shell.keys.form.${form.kind.value}`) : ''))
 const footRight = computed(() => {
@@ -377,6 +473,12 @@ const enterLabel = (row) => {
                 <n-icon :component="CloseOutline" :size="13" />
               </button>
             </span>
+            <span
+              v-if="scoped && field"
+              class="cp-chip cp-chip-on"
+              data-testid="palette-field-chip"
+              >{{ fieldLabel }}</span
+            >
             <input
               ref="inputEl"
               v-model="palette.query"
@@ -392,6 +494,16 @@ const enterLabel = (row) => {
               {{ t('shell.palette.back') }}
             </span>
             <ShortcutKeys id="palette.close" />
+            <button
+              v-if="isMobile"
+              type="button"
+              class="cp-cancel"
+              data-testid="palette-cancel"
+              @mousedown.prevent
+              @click="palette.hide()"
+            >
+              {{ t('common.action.cancel') }}
+            </button>
           </div>
 
           <div v-if="formMode && form.error.value" class="cp-error" role="alert">
@@ -413,15 +525,36 @@ const enterLabel = (row) => {
             </button>
           </div>
 
-          <div ref="listEl" class="cp-list">
+          <PaletteDueCalendar
+            v-if="dueCal && field === 'due' && taskScope.task.value"
+            ref="dueCalRef"
+            :current="taskScope.dueNow()"
+            :query="palette.query"
+            @pick="onDuePick"
+          />
+          <div v-else ref="listEl" class="cp-list">
             <div v-if="loading" class="cp-empty"><n-spin size="small" /></div>
+            <PropPicker
+              v-else-if="picker"
+              :key="field"
+              ref="pickerEl"
+              inline
+              shell="palette"
+              :show="palette.open"
+              :items="pickerItems"
+              :cursor="picker.cursor"
+              :query="palette.query"
+              :empty="{ title: t('shell.palette.nothing') }"
+              testid="palette-picker"
+            />
             <div v-else-if="!flat.length" class="cp-empty">
               {{
                 palette.query.trim() ? t('shell.palette.nothing') : t('shell.palette.typeToSearch')
               }}
             </div>
             <template v-for="g in groups" v-else :key="g.id">
-              <div class="cp-group">
+              <div v-if="!g.title" class="cp-gap" />
+              <div v-else class="cp-group">
                 <span>{{ g.title }}</span>
                 <span v-if="g.count" class="cp-group-n">{{ g.count }}</span>
               </div>
@@ -584,6 +717,11 @@ const enterLabel = (row) => {
 .cp-chip-cmd .cp-chip-title {
   font-weight: 600;
 }
+.cp-chip-on {
+  flex: none;
+  padding: 0 9px;
+  font-weight: 600;
+}
 .cp-chip-field {
   padding: 0 9px;
   background: var(--t-pill);
@@ -675,6 +813,9 @@ const enterLabel = (row) => {
   padding: 28px 0 24px;
   font-size: 13px;
   color: var(--t-text3);
+}
+.cp-gap {
+  height: 6px;
 }
 .cp-group {
   display: flex;
@@ -846,8 +987,65 @@ const enterLabel = (row) => {
 }
 
 @media (max-width: 768px) {
+  /* The whole screen, over the keyboard's top edge (#2976). */
   .cp-scrim {
-    padding: 12px 8px;
+    padding: 0;
+    background: var(--t-bg);
+  }
+  .cp {
+    width: 100%;
+    height: calc(var(--app-vh, 100vh) - var(--kb-h, 0px));
+    max-height: none;
+    padding-top: calc(10px + var(--safe-top));
+    box-sizing: border-box;
+    border-radius: 0;
+    background: var(--t-bg);
+    box-shadow: none;
+  }
+  .cp-input {
+    height: 48px;
+    margin: 0 10px 10px 12px;
+    padding: 0 6px 0 14px;
+    gap: 10px;
+    border-radius: 14px;
+    background: var(--t-sub);
+    box-shadow: inset 0 0 0 2px var(--t-primary);
+  }
+  .cp-cancel {
+    flex: none;
+    height: 44px;
+    margin-right: -88px;
+    padding: 0 4px 0 18px;
+    border: 0;
+    background: transparent;
+    color: var(--t-primary);
+    font: inherit;
+    font-size: 15px;
+    font-weight: 650;
+    cursor: pointer;
+  }
+  .cp-input:has(.cp-cancel) {
+    margin-right: 92px;
+  }
+  /* The areas scroll sideways in one row of 34px chips. */
+  .cp-tabs {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding: 0 12px 10px;
+    scrollbar-width: none;
+  }
+  .cp-tabs::-webkit-scrollbar {
+    display: none;
+  }
+  .cp-tab {
+    flex: none;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 17px;
+    font-size: 13.5px;
+  }
+  .cp-row {
+    min-height: 56px;
   }
   .cp-foot {
     display: none;

@@ -6,7 +6,7 @@
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { useMessage } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import PopoverForm from '@/components/kit/PopoverForm.vue'
 import FormField from '@/components/kit/FormField.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'

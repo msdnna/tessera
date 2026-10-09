@@ -11,36 +11,51 @@ import {
   NDrawerContent,
   NTooltip,
   NIcon,
-  useMessage,
 } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import ShortcutKeys from './ShortcutKeys.vue'
 import ShortcutPending from './ShortcutPending.vue'
 import CommandPalette from './palette/CommandPalette.vue'
-import UndoToastHost from '@/components/kit/UndoToastHost.vue'
+import ToastLanes from '@/components/toast/ToastLanes.vue'
 import QuickActionsFab from './QuickActionsFab.vue'
 import QuickCreateModal from './QuickCreateModal.vue'
+import InboxPanel from './inbox/InboxPanel.vue'
 import ShortcutsModal from './ShortcutsModal.vue'
 import WorkspaceDialogsHost from './WorkspaceDialogsHost.vue'
+import ProjectWindow from './project/ProjectWindow.vue'
+import { useProjectWindowStore } from '@/stores/projectWindow'
+import { useBoardViewStore } from '@/stores/boardView'
 import Sidebar from './Sidebar.vue'
 import AppRail from './rail/AppRail.vue'
 import Topbar from './Topbar.vue'
+import MobileTopbar from './mobile/MobileTopbar.vue'
+import MobileTabBar from './mobile/MobileTabBar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
-import WhatsNewModal from './WhatsNewModal.vue'
-import SidebarSpotlight from './SidebarSpotlight.vue'
+import WhatsNewV2 from './tour/WhatsNewV2.vue'
+import SpotlightHint from './tour/SpotlightHint.vue'
 import TourOverlay from './TourOverlay.vue'
 import HelpDrawer from './help/HelpDrawer.vue'
 import HelpCenterModal from './help/HelpCenterModal.vue'
-import { notificationChannels } from '@/api'
+import { notificationChannels, gitlab as gitlabApi } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
 import { isTauri } from '@/utils/serverBase'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useInboxStore } from '@/stores/inbox'
+import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useTourStore } from '@/stores/tour'
+import { useOnboardingStore } from '@/stores/onboarding'
+import { useWsDialogsStore } from '@/stores/wsDialogs'
+import { useQuickStore } from '@/stores/quick'
+import { useTourLauncher } from '@/composables/useTourLauncher'
+import { setTourEventSink } from '@/utils/tourEvents'
 import { useResponsive } from '@/composables/useResponsive'
+import { useVisualViewport } from '@/composables/useVisualViewport'
+import { useEdgeSwipe } from '@/composables/useEdgeSwipe'
 import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
 import { useOverlayBack } from '@/composables/useOverlayBack'
@@ -49,7 +64,10 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { install as installShortcuts } from '@/shortcuts/dispatcher'
 import { useThemeStore } from '@/stores/theme'
 import { usePaletteStore } from '@/stores/palette'
+import { useHelpStore } from '@/stores/help'
 import { sGet } from '@/utils/serverStorage'
+import { unwindOverlay } from '@/utils/overlayNav'
+import { helpSlugForPath } from '@/utils/helpContext'
 import { treeEventNeedsRefresh } from '@/utils/treeEvents'
 import { resyncShell } from '@/utils/shellResync'
 
@@ -57,11 +75,20 @@ const { t } = useI18n()
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
+const inbox = useInboxStore()
+const toasts = useToastsStore()
 const conflicts = useConflictsStore()
 const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
+const onboarding = useOnboardingStore()
 const { isMobile } = useResponsive()
 const { collapsed, layoutWidth, toggle } = useSidebarSize()
+// ≤1024px the «Входящие» panel lies over the content instead of squeezing it.
+const narrow = ref(typeof window !== 'undefined' && window.innerWidth <= 1024)
+const onResize = () => (narrow.value = window.innerWidth <= 1024)
+onMounted(() => window.addEventListener('resize', onResize))
+onBeforeUnmount(() => window.removeEventListener('resize', onResize))
+const inboxOver = computed(() => narrow.value && inbox.panelOpen)
 
 // The rail (#2955). On desktop it is docked at the app root (App.vue), so it also
 // covers the login/offline screens (#2930); on the web it has nothing to offer
@@ -77,6 +104,8 @@ onBeforeUnmount(() => {
   if (!isTauri()) document.documentElement.style.setProperty('--app-rail-w', '0px')
 })
 const route = useRoute()
+const projectWindow = useProjectWindowStore()
+const boardViewStore = useBoardViewStore()
 const router = useRouter()
 // The start screen's header is translucent and lies over the page, so the
 // aurora runs under it (v2, #2960).
@@ -96,6 +125,7 @@ onBeforeUnmount(() => uninstallShortcuts?.())
 
 const theme = useThemeStore()
 const palette = usePaletteStore()
+const help = useHelpStore()
 useShortcuts({
   'nav.palette': () => palette.toggle(),
   // v2 (#2953): no drag-resizing — one width, collapsed to the icon rail by the
@@ -104,8 +134,29 @@ useShortcuts({
   'nav.goMine': () => router.push('/'),
   // The board the user last had open (BoardView remembers it); Home if none.
   'nav.goBoard': () => router.push(sGet('tessera_last_board') || '/'),
-  'nav.goInbox': () => notes.requestFeed(),
+  // «Входящие» (#2997): open with the focus in the list; from inside — close.
+  'nav.goInbox': () => {
+    if (!inbox.panelOpen) return inbox.open({ focus: true })
+    const inside = document.activeElement?.closest?.('[data-testid="inbox-panel"]')
+    if (inside) inbox.close()
+    else inbox.open({ focus: true })
+  },
+  'nav.goNotifications': () => notes.requestFeed(),
+  // F1 (#3112): the help centre on the article about the screen in front of you.
+  'nav.help': () =>
+    help.centerShown ? help.closeCenter() : help.openCenter(helpSlugForPath(route.path)),
+  'go.documents': () => router.push('/documents'),
+  'go.settings': () => router.push('/settings'),
   'view.theme': () => theme.toggle(),
+  // ⌘, — the «Проект» window of the project in front of you (#2971): the open
+  // board's, or the one in the address (a stage page). Toggles.
+  'project.window': () => {
+    if (projectWindow.projectId) return projectWindow.close()
+    const id =
+      (boardViewStore.active && boardViewStore.projectId) ||
+      ws.projects.find((p) => p.slug === route.params.projectSlug)?.id
+    if (id) projectWindow.open(id, 'general')
+  },
 })
 
 // Live notifications for the bell + native device notifications, addressed to the
@@ -114,6 +165,11 @@ useShortcuts({
 useRealtime(
   (ev) => {
     notes.onEvent(ev, authStore.user?.id)
+    // …and the same record as a toast «про меня» (#3117).
+    toasts.onSocket(ev, authStore.user?.id)
+    inbox.onEvent(ev)
+    // The «Начало работы» checklist counts what the user did themselves (#3102).
+    onboarding.onSocket(ev, authStore.user?.id)
     conflicts.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
@@ -144,7 +200,11 @@ useRealtime(
   // the notification feed and the GitLab conflicts. See utils/shellResync.js for
   // why each one belongs there; all three are loaded once in onMounted below and
   // would otherwise stay at their pre-outage frame until a page reload (#2932).
-  () => resyncShell({ workspaces: ws, notifications: notes, conflicts }),
+  () => {
+    resyncShell({ workspaces: ws, notifications: notes, conflicts })
+    // The «Входящие» feed is socket-fed as well (#2972).
+    inbox.load()
+  },
 )
 
 // An admin changing a project's address rewrites the URL of every board under
@@ -182,6 +242,50 @@ const drawerOpen = ref(false)
 // Browser Back closes the mobile sidebar drawer instead of navigating.
 useOverlayBack(drawerOpen, () => (drawerOpen.value = false))
 
+// ── the phone shell (v2, #2976 — package G, navigation model A) ──
+// A header per screen, the page, and the bottom navigation; the project tree is
+// a drawer opened from the board's name, the «Доска» tab or a swipe in from the
+// left edge.
+const { keyboardOpen } = useVisualViewport()
+useEdgeSwipe(() => (drawerOpen.value = true), {
+  enabled: computed(() => isMobile.value && !drawerOpen.value),
+})
+// Screens with their own large title and nothing to go back to carry no header:
+// «Мои задачи», «Ещё», the notification feed. A call has a bar of its own.
+const inConference = computed(() => /^\/conferences\/./.test(route.path))
+const mobileHeader = computed(
+  () => !['/', '/more', '/notifications'].includes(route.path) && !inConference.value,
+)
+// The tab bar steps away while typing (the keyboard takes its place) and for a
+// call, which owns the whole screen.
+const mobileNav = computed(() => isMobile.value && !keyboardOpen.value && !inConference.value)
+watchEffect(() => {
+  const root = document.documentElement.style
+  root.setProperty('--mnav-h', mobileNav.value ? 'calc(64px + var(--safe-bottom))' : '0px')
+  root.setProperty(
+    '--m-head-h',
+    isMobile.value && mobileHeader.value ? 'calc(56px + var(--safe-top))' : '0px',
+  )
+})
+onBeforeUnmount(() => {
+  document.documentElement.style.setProperty('--mnav-h', '0px')
+  document.documentElement.style.removeProperty('--m-head-h')
+})
+// «Найти доску» in the drawer: the palette on «Доски и этапы», once the drawer's
+// history entry has unwound (utils/overlayNav).
+async function findBoard() {
+  await unwindOverlay(() => (drawerOpen.value = false))
+  palette.show()
+  palette.section = 'boards'
+}
+// The page's padding: the feed is edge to edge; the title screens start under
+// the status bar.
+const mobilePad = computed(() => {
+  if (route.path === '/notifications') return 'padding: 0'
+  if (!mobileHeader.value) return 'padding: calc(12px + var(--safe-top)) 12px 12px'
+  return 'padding: 4px 12px 12px'
+})
+
 onMounted(async () => {
   await authStore.verify()
   await ws.loadWorkspaces()
@@ -197,9 +301,18 @@ onMounted(async () => {
   // stays silent for. Only when the acks were actually read (`load()` → true):
   // an empty set from a failed request would re-run the guide for a user who has
   // already been through it.
-  whatsNew
-    .load()
-    .then((ok) => ok && tour.autoStart({ acked: whatsNew.acked, mobile: isMobile.value }))
+  //
+  // An account invited into a space that already has projects gets «Знакомство»
+  // instead of «Основы» — it has nothing to create (#3000).
+  whatsNew.load().then(
+    (ok) =>
+      ok &&
+      tour.autoStart({
+        acked: whatsNew.acked,
+        mobile: isMobile.value,
+        invited: ws.current?.my_role !== 'owner' && ws.projects.length > 0,
+      }),
+  )
   // On desktop, ask for notification permission up front so reminders can fire
   // without waiting for the first event (best-effort).
   if (isTauri()) {
@@ -232,6 +345,102 @@ watch(
 watch(
   () => ws.currentId,
   (id) => conflicts.load(id),
+)
+// «Входящие» (#2972): the feed of the current workspace, and a clock that slides
+// a reminder into «Сработало» when its minute comes.
+watch(
+  () => ws.currentId,
+  (id) => id && inbox.load(id),
+  { immediate: true },
+)
+const inboxClock = setInterval(() => inbox.tick(), 30000)
+// `?inbox=notes|reminders[&note=<slug|id>]` — where the old /notes and
+// /reminders addresses redirect (#2999), and what a search result names.
+watch(
+  () => [route.query.inbox, route.query.note, inbox.loaded],
+  ([which, note]) => {
+    if (!which) return
+    if (note && !inbox.loaded) return inbox.load()
+    if (note) {
+      const n = inbox.notes.find((x) => x.slug === note || x.id === note)
+      if (n) inbox.reveal('note', n.id)
+      else inbox.open({ filter: 'notes' })
+    } else inbox.open({ filter: which === 'reminders' ? 'reminders' : 'notes' })
+    const query = { ...route.query }
+    delete query.inbox
+    delete query.note
+    router.replace({ ...route, query })
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => clearInterval(inboxClock))
+
+// ── «Начало работы» (#3000): the checklist's client-side events, the tour from
+// an address, and whether the GitLab chapter is open ──
+setTourEventSink((name) => onboarding.note(name))
+onBeforeUnmount(() => setTourEventSink(null))
+const wsDialogs = useWsDialogsStore()
+const quick = useQuickStore()
+watch(
+  () => route.query.task,
+  (v) => v && onboarding.note('task.opened'),
+)
+watch(
+  () => route.path,
+  (p) => /\/stage\//.test(p) && onboarding.note('stage.page'),
+  { immediate: true },
+)
+watch(
+  () => inbox.panelOpen,
+  (v) => v && onboarding.note('inbox.opened'),
+)
+watch(
+  () => palette.open,
+  (v) => v && onboarding.note('palette.opened'),
+)
+watch(
+  () => quick.sheetOpen,
+  (v) => v && onboarding.note('sheet.opened'),
+)
+watch(
+  () => [projectWindow.projectId, projectWindow.tab],
+  ([id, tab]) => {
+    if (!id) return
+    onboarding.note('project.window')
+    if (tab === 'tags') onboarding.note('tags.opened')
+  },
+)
+watch(
+  () => wsDialogs.current,
+  (v) => v === 'gitlab' && onboarding.note('gitlab.opened'),
+)
+// `?tour=<chapter>|start` — ⌘K «Обучение», links from the help articles.
+const { launch: launchTour } = useTourLauncher()
+watch(
+  () => route.query.tour,
+  async (which) => {
+    if (!which) return
+    const query = { ...route.query }
+    delete query.tour
+    await router.replace({ ...route, query })
+    launchTour(String(which))
+  },
+  { immediate: true },
+)
+// The GitLab chapter waits for a GitLab project bound in this space.
+watch(
+  () => ws.currentId,
+  async (id) => {
+    onboarding.gitlabBound = false
+    if (!id) return
+    try {
+      const { data } = await gitlabApi.listIntegrations(id)
+      if (ws.currentId === id) onboarding.gitlabBound = (data || []).length > 0
+    } catch {
+      /* no rights or offline — the chapter stays locked */
+    }
+  },
+  { immediate: true },
 )
 </script>
 
@@ -287,35 +496,44 @@ watch(
         <n-layout-header :class="{ 'hdr-glass': homeGlass }">
           <Topbar />
         </n-layout-header>
-        <n-layout-content
-          class="page-slot page-slot--desktop"
-          :content-style="homeGlass ? 'padding: 68px 16px 16px' : 'padding: 16px'"
+        <!-- The content and the «Входящие» panel side by side (#2997): the panel
+             docks under the top bar and the page gives up the width. -->
+        <div
+          class="work-row"
+          :class="{ 'inbox-over': inboxOver }"
           :style="{ height: homeGlass ? '100vh' : 'calc(100vh - 52px)' }"
         >
-          <router-view v-slot="{ Component }">
-            <!-- NOT mode="out-in": leaving a heavy view (BoardView / KanbanBoard,
+          <n-layout-content
+            class="page-slot page-slot--desktop"
+            :content-style="homeGlass ? 'padding: 68px 16px 16px' : 'padding: 16px'"
+            style="height: 100%"
+          >
+            <router-view v-slot="{ Component }">
+              <!-- NOT mode="out-in": leaving a heavy view (BoardView / KanbanBoard,
                  a multi-root component) stalls the out-in enter and blanks the
                  content until reload (#2708). The leaving page is taken out of
                  flow (position:absolute, see .page-leave-active) so the incoming
                  page doesn't jump while the old one fades. -->
-            <transition name="page">
-              <component :is="Component" />
-            </transition>
-          </router-view>
-        </n-layout-content>
+              <transition name="page">
+                <component :is="Component" />
+              </transition>
+            </router-view>
+          </n-layout-content>
+          <InboxPanel class="inbox-slot" :class="{ glass: homeGlass }" />
+        </div>
         <QuickActionsFab />
       </n-layout>
     </n-layout>
 
-    <!-- Mobile: hamburger opens the sidebar in a drawer -->
-    <n-layout v-else class="work-pane" :class="{ 'home-glass': homeGlass }" style="height: 100vh">
-      <n-layout-header :class="{ 'hdr-glass': homeGlass }">
-        <Topbar :mobile="true" @menu="drawerOpen = true" />
+    <!-- Phone (#2976): header · page · bottom navigation; the tree in a drawer. -->
+    <n-layout v-else class="work-pane m-pane">
+      <n-layout-header v-if="mobileHeader" class="m-head">
+        <MobileTopbar @drawer="drawerOpen = true" />
       </n-layout-header>
       <n-layout-content
         class="page-slot page-slot--mobile"
-        :content-style="homeGlass ? 'padding: 64px 12px 12px' : 'padding: 12px'"
-        :style="{ height: homeGlass ? '100vh' : 'calc(100vh - 52px)' }"
+        :content-style="mobilePad"
+        style="height: calc(var(--app-vh) - var(--m-head-h, 0px) - var(--mnav-h, 0px))"
       >
         <router-view v-slot="{ Component }">
           <!-- see the desktop branch: no out-in, leaving page goes absolute (#2708) -->
@@ -325,19 +543,27 @@ watch(
         </router-view>
       </n-layout-content>
       <QuickActionsFab />
-      <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
+      <InboxPanel />
+      <MobileTabBar v-if="mobileNav" @drawer="drawerOpen = true" />
+      <n-drawer
+        v-model:show="drawerOpen"
+        width="min(340px, 88vw)"
+        placement="left"
+        class="m-drawer"
+      >
         <n-drawer-content body-content-style="padding: 0">
           <!-- The rail rides along in the drawer on a phone (#2955). -->
           <div class="drawer-split">
             <AppRail />
-            <Sidebar :mobile="true" class="drawer-sidebar" />
+            <Sidebar :mobile="true" class="drawer-sidebar" @find="findBoard" />
           </div>
         </n-drawer-content>
       </n-drawer>
     </n-layout>
 
-    <!-- Undo toasts of the v2 interaction model (#2969), over the work area. -->
-    <UndoToastHost />
+    <!-- The toast lanes (#3117): the answers to my actions and the undo toasts
+         (#2969) at the bottom, what came from outside under the bell. -->
+    <ToastLanes />
 
     <!-- App-level conflict resolver: opened from any surface via the conflicts store
        (e.g. the «Конфликт» pill on a task card). -->
@@ -348,13 +574,14 @@ watch(
       @resolved="conflicts.load()"
     />
 
-    <!-- "Что нового" after an update, then one-at-a-time sidebar spotlight hints
-         with an animated arrow to the new section (#2749). -->
-    <WhatsNewModal />
-    <SidebarSpotlight />
+    <!-- «Что нового» after an update (v2: WhatsNewV2, with the «Что изменилось»
+         mini-tour for v1 users), then one-at-a-time spotlight hints at any
+         element (#2749 → #3000). -->
+    <WhatsNewV2 />
+    <SpotlightHint />
 
-    <!-- Get Started guide (#2753). Inert until the tour store is started — the
-         autostart / «Обучение» entry point is wired up separately. -->
+    <!-- The «Начало работы» tour (#2753, chapters since #3000). Inert until the
+         tour store is started — by the autostart, the checklist, «Обучение». -->
     <TourOverlay />
 
     <!-- Contextual help (#2794): one drawer for the whole app, opened by the «?»
@@ -372,6 +599,8 @@ watch(
     <QuickCreateModal />
     <ShortcutsModal />
     <WorkspaceDialogsHost />
+    <!-- The «Проект» window (#2971), opened from any of its doors. -->
+    <ProjectWindow />
 
     <!-- «G …» while a multi-key shortcut waits for its next key (#2956). -->
     <ShortcutPending />
@@ -402,7 +631,7 @@ watch(
    overflow:hidden pins the shell to the viewport — the scrolling belongs to the
    n-layout-content inside, never to the page itself (#2930). */
 .app-shell {
-  height: 100vh;
+  height: var(--app-vh, 100vh);
   overflow: hidden;
   /* Reserve the gutter for the app-root server rail (#2930); 0 on web/mobile
      where --app-rail-w is unset/0. border-box so the padding eats into the
@@ -422,9 +651,40 @@ watch(
   display: flex;
   height: 100%;
 }
+/* The phone shell (#2976). */
+.m-pane {
+  height: var(--app-vh, 100vh);
+}
+.m-head {
+  padding-top: var(--safe-top);
+}
 .drawer-sidebar {
   flex: 1;
   min-width: 0;
+}
+/* The page and the «Входящие» panel (#2997). */
+.work-row {
+  position: relative;
+  display: flex;
+  min-height: 0;
+}
+.work-row > .page-slot {
+  flex: 1;
+  min-width: 0;
+}
+/* On the start screen the header lies over the page: the panel starts under it. */
+.inbox-slot.glass {
+  padding-top: 52px;
+}
+/* ≤1024px: over the content, with the popover shadow it now needs. */
+.work-row.inbox-over .inbox-slot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 8;
+}
+.work-row.inbox-over .inbox-slot :deep(.dock) {
+  box-shadow: var(--t-sh-pop);
 }
 /* Positioning context for the working-area version footer. */
 .work-pane {

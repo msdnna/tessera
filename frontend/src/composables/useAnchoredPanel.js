@@ -11,15 +11,18 @@ import { pushBlocker } from '@/shortcuts/dispatcher'
 //   panel      ref<Element> — the panel itself (for measuring and click-outside)
 //   onOutside  called on a pointerdown outside panel and anchor
 //   placement  'right-start' (to the right, tops aligned) | 'bottom-start' |
-//              'bottom-end' | 'point' (at the {x, y} itself)
+//              'bottom-end' | 'top-end' | 'point' (at the {x, y} itself) |
+//              'below-or-side' (under the row, else left of its panel)
 //   offset     { x, y } nudges from the anchor edge (mockup: 4px right, −6px up)
+//   (placement and offset may be getters — read on every placement, so one
+//   panel can open at a pointer one time and under a button the next)
 export function useAnchoredPanel({
   show,
   anchor,
   panel,
   onOutside,
-  placement = 'right-start',
-  offset = { x: 4, y: -6 },
+  placement: placementOpt = 'right-start',
+  offset: offsetOpt = { x: 4, y: -6 },
 }) {
   const style = ref({ left: '0px', top: '0px' })
   let release = null
@@ -38,6 +41,8 @@ export function useAnchoredPanel({
     const r = anchorRect()
     const el = panel.value
     if (!r || !el) return
+    const placement = typeof placementOpt === 'function' ? placementOpt() : placementOpt
+    const offset = typeof offsetOpt === 'function' ? offsetOpt() : offsetOpt
     const w = el.offsetWidth
     const h = el.offsetHeight
     let left
@@ -51,10 +56,30 @@ export function useAnchoredPanel({
         left = r.right - w + offset.x
         top = r.bottom + offset.y
         break
+      // Above the anchor, right edges aligned — for a control at the bottom of
+      // the screen (the comment composer, #3113).
+      case 'top-end':
+        left = r.right - w + offset.x
+        top = r.top - h - offset.y
+        break
       case 'point':
         left = r.left + offset.x
         top = r.top + offset.y
         break
+      // A property picker at its row (#3118): under the row, right edges
+      // aligned; when it would run off the bottom — to the left of the panel the
+      // row lives in (`[data-pop-side]`), centred on the row.
+      case 'below-or-side': {
+        left = r.right - w + offset.x
+        top = r.bottom + offset.y
+        if (top + h > window.innerHeight - 8) {
+          const a = anchor()
+          const side = a?.closest?.('[data-pop-side]')?.getBoundingClientRect?.() || r
+          left = side.left - w - 4
+          top = r.top + r.height / 2 - h / 2
+        }
+        break
+      }
       default:
         left = r.right + offset.x
         top = r.top + offset.y
@@ -77,9 +102,14 @@ export function useAnchoredPanel({
     // A popover's own pickers (Naive selects, menus, a nested icon search) live
     // in teleported layers: clicking them is not "outside".
     const el = target instanceof Element ? target : target.parentElement
-    return !!el?.closest(
+    const layer = el?.closest(
       '.n-popover, .n-dropdown-menu, .n-modal-container, .n-base-select-menu, .v-binder-follower-container',
     )
+    if (!layer) return false
+    // …unless that layer is the popover's own ground: opened from inside a modal
+    // (the task modal, #3113), a click elsewhere in that modal is a click outside.
+    if (a && typeof a.contains === 'function' && layer.contains(a)) return false
+    return !layer.contains(panel.value)
   }
 
   function onPointerDown(e) {

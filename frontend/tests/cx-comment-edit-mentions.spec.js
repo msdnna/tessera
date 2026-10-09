@@ -78,8 +78,8 @@ const open = async (list = [MINE]) => {
 // редактор, который в ней появился.
 const startEdit = async (w, id) => {
   const row = `[data-comment-id="${id}"]`
-  const pencil = w.findAll(`${row} .c-act`).find((b) => b.text() === '✎')
-  expect(pencil).toBeTruthy()
+  const pencil = w.find(`${row} [data-testid="comment-edit"]`)
+  expect(pencil.exists()).toBe(true)
   await pencil.trigger('click')
   const editor = w
     .findAllComponents({ name: 'MarkdownEditor' })

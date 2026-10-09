@@ -40,7 +40,13 @@ export const PANEL_SEL = [
 // The kit's popover form and bottom sheet (#2969) took over from the small
 // create modals, so they are surfaces the same way: the guide names a project
 // inside one.
-export const SURFACE_SEL = ['.n-modal', '.n-drawer', '.kit-form', '.kit-sheet'].join(',')
+// The tour's own sheet on a phone (#3000) is not a surface the user opened.
+export const SURFACE_SEL = [
+  '.n-modal',
+  '.n-drawer',
+  '.kit-form',
+  '.kit-sheet:not([data-testid="tour-sheet"])',
+].join(',')
 
 // The container an advanceOn.moved spec's element currently sits in, read as a
 // plain string so the store can compare "before" with "now" without holding on

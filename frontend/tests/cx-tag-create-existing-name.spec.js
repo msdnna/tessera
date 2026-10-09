@@ -1,10 +1,10 @@
 // Набрать в пикере имя тега, который у проекта УЖЕ есть (#2932).
 //
-// Под сеткой тегов в обоих пикерах задачи (модалка и карточка на доске) стоит
-// свободное поле «Новый тег, Enter». Сетка по набранному тексту НЕ фильтруется, а
-// теги проект копит — они разложены по префиксным группам, список прокручивается,
-// плюс всё, что принёс импорт из GitLab. Поэтому набрать имя существующего тега —
-// это обычный способ до него добраться, а не промах.
+// В пикере тегов (v2, #3113 — модалка и карточка на доске) сверху поле поиска:
+// оно фильтрует теги проекта, ↵ отмечает подсвеченный, «Создать тег «…»» (⌘↵)
+// появляется, когда так не называется ни один тег. Набрать имя существующего
+// тега — обычный способ до него добраться, а не промах: теги проект копит, плюс
+// всё, что принёс импорт из GitLab.
 //
 // Дороги дальше не было: Enter уходил создавать, упирался в UNIQUE(project_id,
 // name) и возвращался отказом «тег с таким именем уже есть в проекте» (409 — до
@@ -47,7 +47,12 @@ vi.mock('@/api', () => ({
     events: vi.fn(() => Promise.resolve({ data: [] })),
     documents: vi.fn(() => Promise.resolve({ data: [] })),
   },
-  projects: { createTag: (...a) => createTag(...a), createMilestone: vi.fn() },
+  projects: {
+    createTag: (...a) => createTag(...a),
+    createMilestone: vi.fn(),
+    tags: vi.fn(() => Promise.resolve({ data: [] })),
+    tagPrefixes: vi.fn(() => Promise.resolve({ data: [] })),
+  },
   boards: {
     get: vi.fn(() => Promise.resolve({ data: { name: 'Доска', project_id: 'p1' } })),
     columns: vi.fn(() => Promise.resolve({ data: [{ id: 'c1', name: 'К работе', position: 1 }] })),
@@ -55,7 +60,10 @@ vi.mock('@/api', () => ({
     createTask: vi.fn(),
   },
   workspaces: { members: vi.fn(() => Promise.resolve({ data: [] })) },
-  gitlab: { issueTemplates: vi.fn(() => Promise.resolve({ data: [] })) },
+  gitlab: {
+    issueTemplates: vi.fn(() => Promise.resolve({ data: [] })),
+    listIntegrations: vi.fn(() => Promise.resolve({ data: { integrations: [] } })),
+  },
   columns: { update: vi.fn(), remove: vi.fn() },
   users: { updatePrefs: vi.fn() },
 }))
@@ -112,7 +120,7 @@ const modalStubs = {
   ...Object.fromEntries(Object.entries(naiveStubs).map(([k, v]) => ['N' + k, v])),
   MarkdownEditor: true,
   RichContent: true,
-  DueEditor: true,
+  DuePicker: true,
   draggable: {
     template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>',
     props: ['list'],
@@ -153,15 +161,17 @@ async function openModalPicker(task = TASK) {
   )
   shown.value = true
   await flush(wrapper)
-  return wrapper.find('[data-tour="tm-tags"] input').element
+  await wrapper.find('[data-testid="task-tags-open"]').trigger('click')
+  await flush(wrapper)
+  return document.querySelector('[data-testid="tag-picker-search"]')
 }
 
-// Ввод + Enter в поле «новый тег»: пикер уезжает в teleport, поэтому идём через DOM.
-async function typeEnter(input, text) {
+// Ввод + Enter в поле поиска: пикер уезжает в teleport, поэтому идём через DOM.
+async function typeEnter(input, text, mod = false) {
   input.value = text
   input.dispatchEvent(new Event('input', { bubbles: true }))
   await nextTick()
-  input.dispatchEvent(new KeyboardEvent('keyup', { key: 'Enter', bubbles: true }))
+  input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', ctrlKey: mod, bubbles: true }))
   await nextTick()
   await nextTick()
 }
@@ -183,7 +193,7 @@ async function openPillsPicker(task = TASK) {
   await wrapper.find('[data-tour="card-tags"]').trigger('click')
   await nextTick()
   await nextTick()
-  return document.querySelector('.tagmenu input')
+  return document.querySelector('[data-testid="tag-picker-search"]')
 }
 
 beforeEach(() => {
@@ -243,7 +253,16 @@ describe('пикер тегов карточки · набрано занято�
     await typeEnter(input, 'баг')
     expect(createTag).not.toHaveBeenCalled()
     expect(addTag).not.toHaveBeenCalled()
+    // ↵ по набранному имени никогда не СНИМАЕТ тег.
+    expect(removeTag).not.toHaveBeenCalled()
     expect(input.value).toBe('')
+  })
+
+  it('⌘↵ по занятому имени — тот же тег, а не близнец', async () => {
+    const input = await openPillsPicker()
+    await typeEnter(input, 'баг', true)
+    expect(createTag).not.toHaveBeenCalled()
+    expect(addTag).toHaveBeenCalledWith('t1', 'tg-bug')
   })
 
   it('незанятое имя по-прежнему создаёт тег и цепляет его', async () => {
@@ -314,29 +333,35 @@ describe('пикер тегов модалки задачи · набрано з
   })
 })
 
-// Менеджер тегов проекта — то же поле и та же нетерпеливость. Разрешать имя в
-// существующий тег тут нечего (тег уже виден в списке над полем), а вот второе
-// создание по второму Enter гасится ровно так же.
-describe('менеджер тегов проекта · двойной Enter', () => {
+// Таблица тегов окна «Проект» (#2990) — то же поле «Новый тег» и та же
+// нетерпеливость: второе создание по второму Enter гасится ровно так же.
+describe('таблица тегов проекта · двойной Enter', () => {
   it('не шлёт второе создание, пока первое в полёте', async () => {
     let release
     createTag.mockImplementationOnce(
       () => new Promise((res) => (release = () => res({ data: { id: 'new' } }))),
     )
-    const TagManager = (await import('@/components/TagManager.vue')).default
+    const ProjectTagsTab = (await import('@/components/project/ProjectTagsTab.vue')).default
     wrapper = mount(
       {
         render: () =>
           h(naive.NMessageProvider, null, {
-            default: () => h(TagManager, { projectId: 'p1', tags: TAGS }),
+            default: () => h(ProjectTagsTab, { project: { id: 'p1', slug: 'p' } }),
           }),
       },
       { attachTo: document.body },
     )
     await nextTick()
-    const input = wrapper.find('.add input').element
-    await typeEnter(input, 'совсем новый')
-    await typeEnter(input, 'совсем новый')
+    const input = wrapper.find('[data-testid="tag-new-input"]').element
+    const enter = async (text) => {
+      input.value = text
+      input.dispatchEvent(new Event('input', { bubbles: true }))
+      await nextTick()
+      input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true }))
+      await nextTick()
+    }
+    await enter('совсем новый')
+    await enter('совсем новый')
     expect(createTag).toHaveBeenCalledTimes(1)
     release()
     await nextTick()

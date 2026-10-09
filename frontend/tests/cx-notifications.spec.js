@@ -45,6 +45,34 @@ describe('notificationText', () => {
         'Иван упомянул(а) вас в #7 «глянь»',
         'Иван mentioned you in #7 “глянь”',
       ],
+      // What was done to a task the reader takes part in (#3114).
+      [
+        { event: 'task_unassigned', actor: 'Иван', task_number: 42, title: 'Полить цветы' },
+        'Иван снял(а) вас с задачи #42 «Полить цветы»',
+        'Иван unassigned you from task #42 “Полить цветы”',
+      ],
+      [
+        { event: 'task_completed', actor: 'Иван', task_number: 42 },
+        'Иван выполнил(а) задачу #42',
+        'Иван completed task #42',
+      ],
+      [
+        { event: 'task_reopened', actor: 'Иван', task_number: 42 },
+        'Иван вернул(а) в работу задачу #42',
+        'Иван reopened task #42',
+      ],
+      // The task is gone: number, title and board travel in the payload alone.
+      [
+        {
+          event: 'task_deleted',
+          actor: 'Иван',
+          task_number: 42,
+          title: 'Очень длинное название задачи',
+          board_id: 'b-1',
+        },
+        'Иван удалил(а) задачу #42 «Очень длинное название задачи»',
+        'Иван deleted task #42 “Очень длинное название задачи”',
+      ],
       [
         { event: 'task_due_soon', task_number: 7, title: 'Полить цветы' },
         'Приближается срок задачи #7 «Полить цветы»',
@@ -206,7 +234,11 @@ describe('notificationTitle', () => {
   it('titles a native notification by kind', async () => {
     expect(notificationTitle('mention')).toBe('Вас упомянули')
     expect(notificationTitle('conference_invite')).toBe('Приглашение в конференцию')
+    expect(notificationTitle('deleted')).toBe('Задача удалена')
+    expect(notificationTitle('unassigned')).toBe('Вас сняли с задачи')
     await setI18nLocale('en')
+    expect(notificationTitle('completed')).toBe('Task completed')
+    expect(notificationTitle('reopened')).toBe('Task reopened')
     expect(notificationTitle('mention')).toBe('You were mentioned')
     expect(notificationTitle('conference_invite')).toBe('Conference invitation')
   })
@@ -238,6 +270,15 @@ describe('notificationRoute', () => {
       notificationRoute({ kind: 'integration_sync', payload: { event: 'integration_sync_ok' } }),
     ).toBe(null)
     expect(notificationRoute({ task_id: 't-1' })).toBe(null)
+    // A deleted task (#3114): the row has no task_id, the payload names a board
+    // the task is no longer on — there is nothing to open.
+    expect(
+      notificationRoute({
+        kind: 'deleted',
+        task_id: null,
+        payload: { event: 'task_deleted', task_number: 42, board_id: 'b-1' },
+      }),
+    ).toBe(null)
     expect(notificationRoute(null)).toBe(null)
   })
 })

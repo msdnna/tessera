@@ -6,7 +6,7 @@ import { computed } from 'vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
-import { useOverlayBack } from '@/composables/useOverlayBack'
+import { useShortcuts } from '@/composables/useShortcuts'
 import { DEFAULT_ESTIMATION } from '@/utils/estimation'
 import { workspaceName } from '@/utils/defaultNames'
 import MembersModal from './MembersModal.vue'
@@ -40,8 +40,12 @@ const appearance = slot('appearance')
 const create = slot('create')
 const del = slot('delete')
 
-// Browser Back closes these modals instead of leaving the board.
-for (const s of [members, gitlab, commands, jobs]) useOverlayBack(s, () => (s.value = false))
+// Browser Back closes the large windows instead of leaving the board — they
+// take care of it themselves (kit/LargeWindow, #2975).
+
+// G J — background jobs (#2975, JobsWin), for administrators: nobody else has
+// the window.
+useShortcuts({ 'nav.goJobs': () => auth.isAdmin && dialogs.open('jobs') })
 
 const target = computed(() => dialogs.target || ws.current)
 

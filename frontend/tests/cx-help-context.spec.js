@@ -17,8 +17,9 @@ describe('helpSlugForPath', () => {
   it('разделы приложения ведут на свои статьи', () => {
     expect(helpSlugForPath('/documents')).toBe('documents')
     expect(helpSlugForPath('/documents/plan-2026')).toBe('documents')
-    expect(helpSlugForPath('/notes')).toBe('notes')
-    expect(helpSlugForPath('/reminders')).toBe('reminders')
+    // «Заметки» and «Напоминания» are the «Входящие» panel now (#2999): their old
+    // addresses redirect to the start screen and carry no article of their own.
+    expect(helpSlugForPath('/notes')).toBe('first-steps')
     expect(helpSlugForPath('/milestones')).toBe('milestones')
     expect(helpSlugForPath('/settings')).toBe('faq')
   })
@@ -35,8 +36,8 @@ describe('helpSlugForPath', () => {
   })
 
   it('не путает префикс с отдельным словом', () => {
-    // /notesomething is not the notes screen; /boardgames is not a board.
-    expect(helpSlugForPath('/notesomething')).toBe('first-steps')
+    // /documentsomething is not the documents screen; /boardgames is not a board.
+    expect(helpSlugForPath('/documentsomething')).toBe('first-steps')
     expect(helpSlugForPath('/boardgames')).toBe('first-steps')
   })
 })
@@ -86,13 +87,13 @@ describe('help store — контекстная панель', () => {
 
   it('closeDrawer прячет панель, но текст остаётся в кэше для следующего показа', async () => {
     const help = useHelpStore()
-    await help.openDrawer('notes')
+    await help.openDrawer('documents')
     const body = help.drawerBody
     help.closeDrawer()
     expect(help.drawerShown).toBe(false)
     // Reopening the same article is synchronous off the cache: no await, the
     // body is already there.
-    help.openDrawer('notes')
+    help.openDrawer('documents')
     expect(help.drawerShown).toBe(true)
     expect(help.drawerBody).toBe(body)
   })

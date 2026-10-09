@@ -5,6 +5,10 @@
     "task_updated": "{actor} изменил(а) задачу #{ref}: {fields}",
     "task_moved": "{actor} переместил(а) задачу #{ref} → «{column}»",
     "task_archived": "{actor} архивировал(а) задачу #{ref}{ctx}",
+    "task_deleted": "{actor} удалил(а) задачу #{ref}{ctx}",
+    "task_unassigned": "{actor} снял(а) вас с задачи #{ref}{ctx}",
+    "task_completed": "{actor} выполнил(а) задачу #{ref}{ctx}",
+    "task_reopened": "{actor} вернул(а) в работу задачу #{ref}{ctx}",
     "task_comment": "{actor} прокомментировал #{ref}{ctx}",
     "task_thread_reply": "{actor} ответил(а) в обсуждении #{ref}{ctx}",
     "task_mention": "{actor} упомянул(а) вас в #{ref}{ctx}",
@@ -32,6 +36,10 @@
     "updated": "Задача изменена",
     "moved": "Задача перемещена",
     "archived": "Задача архивирована",
+    "deleted": "Задача удалена",
+    "unassigned": "Вас сняли с задачи",
+    "completed": "Задача выполнена",
+    "reopened": "Задача возвращена в работу",
     "due_soon": "Скоро дедлайн",
     "reminder": "Напоминание",
     "integration_sync": "Синхронизация завершена",
@@ -45,5 +53,27 @@
   },
   "reason": {
     "unknown": "неизвестная ошибка"
+  },
+  "pop": {
+    "settings": "Настройки уведомлений",
+    "filter": {
+      "all": "Все",
+      "mentions": "Упоминания",
+      "assigned": "Назначения",
+      "gitlab": "GitLab"
+    },
+    "fresh": "Новые",
+    "earlier": "Ранее",
+    "emptyFilter": "Здесь пока ничего",
+    "accept": "Принять",
+    "decline": "Отклонить",
+    "select": "выбрать",
+    "open": "открыть",
+    "read": "прочитано",
+    "all": "Все уведомления",
+    "now": "только что",
+    "minutes": "{n} мин",
+    "quote": "«{text}»",
+    "hours": "{n} ч"
   }
 }

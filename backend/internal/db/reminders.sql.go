@@ -13,16 +13,18 @@ import (
 )
 
 const createReminder = `-- name: CreateReminder :one
-INSERT INTO reminders (user_id, task_id, remind_at, message)
-VALUES ($1, $2, $3, $4)
-RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at
+INSERT INTO reminders (user_id, task_id, remind_at, message, body, workspace_id)
+VALUES ($1, $2, $3, $4, $5, $6)
+RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id
 `
 
 type CreateReminderParams struct {
-	UserID   uuid.UUID  `json:"user_id"`
-	TaskID   *uuid.UUID `json:"task_id"`
-	RemindAt time.Time  `json:"remind_at"`
-	Message  string     `json:"message"`
+	UserID      uuid.UUID  `json:"user_id"`
+	TaskID      *uuid.UUID `json:"task_id"`
+	RemindAt    time.Time  `json:"remind_at"`
+	Message     string     `json:"message"`
+	Body        string     `json:"body"`
+	WorkspaceID *uuid.UUID `json:"workspace_id"`
 }
 
 func (q *Queries) CreateReminder(ctx context.Context, arg CreateReminderParams) (Reminder, error) {
@@ -31,6 +33,8 @@ func (q *Queries) CreateReminder(ctx context.Context, arg CreateReminderParams) 
 		arg.TaskID,
 		arg.RemindAt,
 		arg.Message,
+		arg.Body,
+		arg.WorkspaceID,
 	)
 	var i Reminder
 	err := row.Scan(
@@ -42,6 +46,10 @@ func (q *Queries) CreateReminder(ctx context.Context, arg CreateReminderParams) 
 		&i.Done,
 		&i.CreatedAt,
 		&i.NotifiedAt,
+		&i.Body,
+		&i.DoneAt,
+		&i.SnoozedFrom,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
@@ -56,7 +64,7 @@ func (q *Queries) DeleteReminder(ctx context.Context, id uuid.UUID) error {
 }
 
 const getReminder = `-- name: GetReminder :one
-SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at FROM reminders WHERE id = $1
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders WHERE id = $1
 `
 
 func (q *Queries) GetReminder(ctx context.Context, id uuid.UUID) (Reminder, error) {
@@ -71,12 +79,66 @@ func (q *Queries) GetReminder(ctx context.Context, id uuid.UUID) (Reminder, erro
 		&i.Done,
 		&i.CreatedAt,
 		&i.NotifiedAt,
+		&i.Body,
+		&i.DoneAt,
+		&i.SnoozedFrom,
+		&i.WorkspaceID,
 	)
 	return i, err
 }
 
+const inboxReminders = `-- name: InboxReminders :many
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders
+WHERE user_id = $1
+  AND (workspace_id = $2 OR workspace_id IS NULL)
+  AND (NOT done OR done_at > now() - interval '36 hours')
+ORDER BY remind_at
+`
+
+type InboxRemindersParams struct {
+	UserID      uuid.UUID  `json:"user_id"`
+	WorkspaceID *uuid.UUID `json:"workspace_id"`
+}
+
+// InboxReminders is the reminder half of the «Входящие» feed (#2972): the
+// user's reminders of this workspace plus those outside every workspace (0081:
+// old ones without a task), open ones and the ones done in the last day and a
+// half — the client keeps «done today» struck through until its own midnight.
+func (q *Queries) InboxReminders(ctx context.Context, arg InboxRemindersParams) ([]Reminder, error) {
+	rows, err := q.db.Query(ctx, inboxReminders, arg.UserID, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Reminder
+	for rows.Next() {
+		var i Reminder
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.TaskID,
+			&i.RemindAt,
+			&i.Message,
+			&i.Done,
+			&i.CreatedAt,
+			&i.NotifiedAt,
+			&i.Body,
+			&i.DoneAt,
+			&i.SnoozedFrom,
+			&i.WorkspaceID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listReminders = `-- name: ListReminders :many
-SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at FROM reminders WHERE user_id = $1 ORDER BY remind_at
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders WHERE user_id = $1 ORDER BY remind_at
 `
 
 func (q *Queries) ListReminders(ctx context.Context, userID uuid.UUID) ([]Reminder, error) {
@@ -97,6 +159,54 @@ func (q *Queries) ListReminders(ctx context.Context, userID uuid.UUID) ([]Remind
 			&i.Done,
 			&i.CreatedAt,
 			&i.NotifiedAt,
+			&i.Body,
+			&i.DoneAt,
+			&i.SnoozedFrom,
+			&i.WorkspaceID,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTaskReminders = `-- name: ListTaskReminders :many
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders
+WHERE task_id = $1 AND user_id = $2
+ORDER BY done, remind_at
+`
+
+type ListTaskRemindersParams struct {
+	TaskID *uuid.UUID `json:"task_id"`
+	UserID uuid.UUID  `json:"user_id"`
+}
+
+func (q *Queries) ListTaskReminders(ctx context.Context, arg ListTaskRemindersParams) ([]Reminder, error) {
+	rows, err := q.db.Query(ctx, listTaskReminders, arg.TaskID, arg.UserID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Reminder
+	for rows.Next() {
+		var i Reminder
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.TaskID,
+			&i.RemindAt,
+			&i.Message,
+			&i.Done,
+			&i.CreatedAt,
+			&i.NotifiedAt,
+			&i.Body,
+			&i.DoneAt,
+			&i.SnoozedFrom,
+			&i.WorkspaceID,
 		); err != nil {
 			return nil, err
 		}
@@ -110,31 +220,47 @@ func (q *Queries) ListReminders(ctx context.Context, userID uuid.UUID) ([]Remind
 
 const updateReminder = `-- name: UpdateReminder :one
 UPDATE reminders
-SET remind_at   = $2,
-    message     = $3,
-    done        = $4,
-    notified_at = CASE WHEN remind_at IS DISTINCT FROM $2 THEN NULL ELSE notified_at END
-WHERE id = $1
-RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at
+SET remind_at    = $1,
+    message      = $2,
+    done         = $3,
+    body         = $4,
+    task_id      = $5,
+    workspace_id = $6,
+    snoozed_from = $7,
+    done_at      = CASE WHEN NOT $3::boolean THEN NULL
+                        WHEN done THEN done_at
+                        ELSE now() END,
+    notified_at  = CASE WHEN remind_at IS DISTINCT FROM $1 THEN NULL ELSE notified_at END
+WHERE id = $8
+RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id
 `
 
 type UpdateReminderParams struct {
-	ID       uuid.UUID `json:"id"`
-	RemindAt time.Time `json:"remind_at"`
-	Message  string    `json:"message"`
-	Done     bool      `json:"done"`
+	RemindAt    time.Time  `json:"remind_at"`
+	Message     string     `json:"message"`
+	Done        bool       `json:"done"`
+	Body        string     `json:"body"`
+	TaskID      *uuid.UUID `json:"task_id"`
+	WorkspaceID *uuid.UUID `json:"workspace_id"`
+	SnoozedFrom *time.Time `json:"snoozed_from"`
+	ID          uuid.UUID  `json:"id"`
 }
 
 // Moving a reminder to a new time re-arms channel delivery (notified_at back to
 // NULL), the way due_notification_state re-arms when a task's due date moves.
 // Editing only the message or the done flag keeps the fired mark, so what already
-// went out is not sent a second time.
+// went out is not sent a second time. done_at (0081) follows the flag: stamped
+// when it turns on, kept while it stays on, cleared when it turns off.
 func (q *Queries) UpdateReminder(ctx context.Context, arg UpdateReminderParams) (Reminder, error) {
 	row := q.db.QueryRow(ctx, updateReminder,
-		arg.ID,
 		arg.RemindAt,
 		arg.Message,
 		arg.Done,
+		arg.Body,
+		arg.TaskID,
+		arg.WorkspaceID,
+		arg.SnoozedFrom,
+		arg.ID,
 	)
 	var i Reminder
 	err := row.Scan(
@@ -146,6 +272,10 @@ func (q *Queries) UpdateReminder(ctx context.Context, arg UpdateReminderParams) 
 		&i.Done,
 		&i.CreatedAt,
 		&i.NotifiedAt,
+		&i.Body,
+		&i.DoneAt,
+		&i.SnoozedFrom,
+		&i.WorkspaceID,
 	)
 	return i, err
 }

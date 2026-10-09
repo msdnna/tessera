@@ -1,0 +1,113 @@
+{
+  "sheetDone": "Done",
+  "retry": "Retry",
+  "readonly": "View only — this task can't be changed right now",
+  "readonlyArchived": "View only — the task is archived",
+  "foot": {
+    "pick": "select",
+    "apply": "apply",
+    "done": "done",
+    "toggle": "toggle",
+    "column": "column",
+    "priority": "priority",
+    "value": "value",
+    "noStage": "no stage",
+    "create": "create",
+    "chips": "to chips",
+    "clear": "clear",
+    "close": "close",
+    "makeSub": "make subtask",
+    "detach": "detach",
+    "link": "link",
+    "kind": "kind",
+    "field": "to field"
+  },
+  "status": {
+    "title": "Status",
+    "search": "Find a status…",
+    "actions": "Actions",
+    "shift": "Move to “{name}”",
+    "complete": "Complete",
+    "reopen": "Reopen",
+    "finishes": "completes"
+  },
+  "priority": {
+    "title": "Priority"
+  },
+  "assignees": {
+    "title": "Assignees",
+    "search": "Find a person…",
+    "self": "Assign to me",
+    "assigned": "Assigned",
+    "recent": "Recent",
+    "members": "Members",
+    "gitlab": "GitLab",
+    "load": "{n} in progress",
+    "notInTessera": "not in Tessera",
+    "clear": "Unassign all",
+    "none": "Nobody found",
+    "noneMail": "No one in the workspace has this email",
+    "noneName": "Try another name or email",
+    "invite": "Invite “{email}”",
+    "inviteWhere": "“Members” window",
+    "error": "Couldn't load the members",
+    "errorSub": "No connection to the server"
+  },
+  "estimate": {
+    "title": "Estimate",
+    "titleScale": "Estimate · {scale}",
+    "unset": "Not set",
+    "points": "point | points",
+    "rollup": "Σ subtasks: {value}",
+    "scale": "Project scale…",
+    "scaleWhere": "“Project” window",
+    "preview": "= {full}",
+    "previewDay": "{hours} h with a {day}-hour day",
+    "unreadable": "Can't read “{value}” — e.g. 3d 4h, 90m, 1w",
+    "scales": {
+      "fibonacci": "Fibonacci",
+      "tshirt": "T-shirt",
+      "linear": "Linear",
+      "custom": "custom scale"
+    }
+  },
+  "milestone": {
+    "title": "Stage",
+    "search": "Find a stage…",
+    "none": "No stage",
+    "active": "Active",
+    "planned": "Planned",
+    "closed": "Closed",
+    "fromGitlab": "from GitLab · read-only",
+    "gitlabNote": "Stages from GitLab are changed in GitLab only",
+    "left": "{n} day left | {n} days left",
+    "create": "Create a stage…",
+    "createNamed": "Create stage “{name}”",
+    "formTitle": "New stage",
+    "name": "Name",
+    "namePlaceholder": "E.g. Sprint 43",
+    "start": "Start",
+    "due": "End",
+    "createBtn": "Create and assign",
+    "nothing": "No stages found"
+  },
+  "parent": {
+    "title": "Parent",
+    "search": "Find a task on the board or in the project…",
+    "current": "Parent",
+    "board": "This board",
+    "recent": "Recent",
+    "project": "Other boards of the project",
+    "detach": "Detach",
+    "note": "The task itself and its subtasks are not listed",
+    "make": "Make a subtask…",
+    "nothing": "Nothing found"
+  },
+  "relation": {
+    "title": "Link #{number} to a task",
+    "titleBare": "Link to a task",
+    "search": "Task number or title…",
+    "nothing": "Nothing found",
+    "open": "Link"
+  }
+}

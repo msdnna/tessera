@@ -1,3 +1,7 @@
+// v2 (#2970): saving moved into the board's view panel (a bottom sheet on a
+// phone), so the phone menu only lists the views, ticks the loaded one and can
+// drop it. The history below is why it lists them at all.
+//
 // Saved board views had exactly two triggers — the folder (load) and the disk
 // (save) in the composer's right-hand tools. Those tools are the same strip that
 // hides the customize gear: `.bar-tools.hidden` sets `max-width: 0` AND
@@ -29,15 +33,14 @@ vi.mock('vue-router', () => ({
 const { default: BoardMobileMenu } = await import('@/components/BoardMobileMenu.vue')
 
 const STUBS = { TagManager: true, MilestoneManager: true, TesseraIcon: true }
-const flat = (options) => options.flatMap((o) => (o.children ? [o, ...o.children] : [o]))
-const keys = (w) => flat(w.vm.options).map((o) => o.key)
-const entry = (w, key) => flat(w.vm.options).find((o) => o.key === key)
+const keys = (w) => w.vm.items.map((o) => o.key)
+const isActive = (w, key) => !!w.vm.items.find((i) => i.key === key)?.active
 
 function menuWithViews(views, current = '') {
   const w = mount(BoardMobileMenu, { global: { stubs: STUBS } })
   const store = useBoardViewStore()
   store.savedViews = views
-  store.currentViewName = current
+  store.currentViewId = current
   return { w, store }
 }
 
@@ -49,24 +52,26 @@ beforeEach(() => {
 })
 
 describe('BoardMobileMenu saved views', () => {
-  it('lists the board views the phone otherwise cannot reach', () => {
+  it('lists every view of the board, whatever view kind it was saved in', () => {
     const { w } = menuWithViews([
-      { id: 'v1', name: 'Мои' },
-      { id: 'v2', name: 'Спринт' },
+      { id: 'v1', name: 'Мои', layout: 'board' },
+      { id: 'v2', name: 'Гант', layout: 'gantt' },
     ])
     expect(keys(w)).toContain('view:v1')
     expect(keys(w)).toContain('view:v2')
     w.unmount()
   })
 
-  it('offers the save entry even with no views saved yet', () => {
+  it('has no views group and no save prompt of its own — saving lives in the panel', () => {
     const { w } = menuWithViews([])
-    expect(entry(w, 'view-save')).toBeTruthy()
+    expect(keys(w)).not.toContain('views')
+    expect(keys(w)).not.toContain('view-save')
+    expect(keys(w)).toContain('customize')
     w.unmount()
   })
 
   it('asks the board to apply the chosen view, by id and with a fresh nonce', () => {
-    const { w, store } = menuWithViews([{ id: 'v1', name: 'Мои' }])
+    const { w, store } = menuWithViews([{ id: 'v1', name: 'Мои', layout: 'board' }])
     w.vm.onSelect('view:v1')
     expect(store.viewRequest).toMatchObject({ op: 'apply', id: 'v1' })
     const first = store.viewRequest.nonce
@@ -77,68 +82,35 @@ describe('BoardMobileMenu saved views', () => {
     w.unmount()
   })
 
+  it('offers «Без представления» only while a view is loaded, and asks to clear', () => {
+    const { w, store } = menuWithViews([{ id: 'v1', name: 'Мои', layout: 'board' }])
+    expect(keys(w)).not.toContain('view-none')
+    store.currentViewId = 'v1'
+    expect(keys(w)).toContain('view-none')
+    w.vm.onSelect('view-none')
+    expect(store.viewRequest).toMatchObject({ op: 'clear' })
+    w.unmount()
+  })
+
   it('does not navigate — a view is board state, not a route', () => {
-    const { w } = menuWithViews([{ id: 'v1', name: 'Мои' }])
+    const { w } = menuWithViews([{ id: 'v1', name: 'Мои', layout: 'board' }])
     w.vm.onSelect('view:v1')
     expect(push).not.toHaveBeenCalled()
     expect(replace).not.toHaveBeenCalled()
     w.unmount()
   })
 
-  it('opens a name prompt for saving instead of saving blind, prefilled with the loaded view', () => {
-    const { w, store } = menuWithViews([{ id: 'v1', name: 'Мои' }], 'Мои')
-    w.vm.onSelect('view-save')
-    expect(w.vm.saveOpen).toBe(true)
-    expect(w.vm.saveName).toBe('Мои')
-    expect(store.viewRequest).toBe(null) // nothing sent until confirmed
+  it('marks the loaded view, like the active layout', () => {
+    const { w } = menuWithViews([{ id: 'v1', name: 'Мои', layout: 'board' }], 'v1')
+    expect(isActive(w, 'view:v1')).toBe(true)
+    expect(isActive(w, 'view:v2')).toBe(false)
+    expect(w.vm.items.find((i) => i.key === 'view:v1').active).toBe(true)
     w.unmount()
   })
 
-  it('sends the trimmed name on confirm and closes the prompt', () => {
-    const { w, store } = menuWithViews([])
-    w.vm.onSelect('view-save')
-    w.vm.saveName = '  Спринт  '
-    w.vm.confirmSave()
-    expect(store.viewRequest).toMatchObject({ op: 'save', name: 'Спринт' })
-    expect(w.vm.saveOpen).toBe(false)
-    w.unmount()
-  })
-
-  it('refuses an empty name when no view is loaded, and allows it when one is', () => {
-    const { w, store } = menuWithViews([])
-    w.vm.saveName = '   '
-    expect(w.vm.canSave).toBe(false)
-    w.vm.confirmSave()
-    expect(store.viewRequest).toBe(null)
-    // With a view loaded an empty name means "save over it" — the same fallback
-    // the desktop disk button's empty input has.
-    store.currentViewName = 'Мои'
-    expect(w.vm.canSave).toBe(true)
-    w.unmount()
-  })
-
-  it('ticks the loaded view, like the active layout', () => {
-    const { w } = menuWithViews([{ id: 'v1', name: 'Мои' }], 'Мои')
-    expect(w.vm.renderLabel({ key: 'view:v1', label: 'Мои' })).not.toBe('Мои')
-    expect(w.vm.renderLabel({ key: 'view:v1', label: 'Мои' })).toBeTypeOf('object')
-    w.unmount()
-  })
-
-  it('leaves an unloaded view untouched', () => {
-    const { w } = menuWithViews(
-      [
-        { id: 'v1', name: 'Мои' },
-        { id: 'v2', name: 'Спринт' },
-      ],
-      'Мои',
-    )
-    expect(w.vm.renderLabel({ key: 'view:v2', label: 'Спринт' })).toBe('Спринт')
-    w.unmount()
-  })
-
-  it('ticks nothing when no view is loaded — an empty name must not match', () => {
-    const { w } = menuWithViews([{ id: 'v1', name: '' }], '')
-    expect(w.vm.renderLabel({ key: 'view:v1', label: '' })).toBe('')
+  it('marks nothing when no view is loaded', () => {
+    const { w } = menuWithViews([{ id: 'v1', name: '', layout: 'board' }], '')
+    expect(isActive(w, 'view:v1')).toBe(false)
     w.unmount()
   })
 })
@@ -147,18 +119,12 @@ describe('boardView store', () => {
   it('reset clears the published views and any pending request', () => {
     const store = useBoardViewStore()
     store.savedViews = [{ id: 'v1', name: 'Мои' }]
-    store.currentViewName = 'Мои'
+    store.currentViewId = 'v1'
     store.requestApplyView('v1')
     store.reset()
     expect(store.savedViews).toEqual([])
-    expect(store.currentViewName).toBe('')
+    expect(store.currentViewId).toBe('')
     expect(store.viewRequest).toBe(null)
-  })
-
-  it('an empty save name is carried as-is (the board falls back to the loaded view)', () => {
-    const store = useBoardViewStore()
-    store.requestSaveView('')
-    expect(store.viewRequest).toMatchObject({ op: 'save', name: '' })
   })
 })
 
@@ -167,22 +133,21 @@ describe('boardView store', () => {
 const kanban = readFileSync(resolve(process.cwd(), 'src/components/KanbanBoard.vue'), 'utf8')
 
 describe('KanbanBoard answers the ask', () => {
-  it('publishes only the current layout views plus the loaded one', () => {
-    expect(kanban).toContain('boardViewStore.savedViews = viewsForLayout.value.map')
-    expect(kanban).toContain('boardViewStore.currentViewName = currentViewName.value')
+  it('publishes the whole list and the loaded view', () => {
+    expect(kanban).toContain('boardViewStore.savedViews = bv.views.map')
+    expect(kanban).toContain('boardViewStore.currentViewId = bv.loadedId')
   })
 
-  it('applies and saves through its own functions, which own the config', () => {
+  it('applies and clears through useBoardViews, which owns the config', () => {
     expect(kanban).toContain('() => boardViewStore.viewRequest')
-    expect(kanban).toMatch(/savedViews\.value\.find\(\(x\) => x\.id === req\.id\)/)
-    expect(kanban).toContain('if (v) applyView(v)')
-    expect(kanban).toContain('newViewName.value = req.name')
+    expect(kanban).toContain('if (v) bv.apply(v)')
+    expect(kanban).toContain("else if (req.op === 'clear') bv.clear()")
   })
 
-  it('keeps both desktop view buttons — the phone menu is the other way in', () => {
-    // See cx-board-customize-reach: v2 (#2954) no longer slides the tools away,
-    // and on a phone the header menu remains the entry (the cases above).
-    expect(kanban).toContain('showLoadView')
-    expect(kanban).toContain('showSaveView')
+  it('has no folder / disk buttons any more — the chip and the panel replaced them', () => {
+    expect(kanban).not.toContain('showLoadView')
+    expect(kanban).not.toContain('showSaveView')
+    expect(kanban).toContain('<ViewChip')
+    expect(kanban).toContain('<ViewsSection')
   })
 })

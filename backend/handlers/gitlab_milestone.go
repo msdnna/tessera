@@ -35,13 +35,30 @@ func gidNumericID(gid string) int64 {
 // reconcileTaskMilestone points a synced task at the milestone its GitLab issue
 // carries (creating/refreshing the native milestone + link), or clears it when the
 // issue has none. Skipped when the user overrode the task's milestone locally.
-func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegration, projectID, taskID uuid.UUID, issue gitlab.Issue, overridden bool) {
+//
+// A change on a task the sync already knew is journalled (#2992) with the sync's
+// actor, like every other field the sync moves: the stage page counts its scope
+// change from these entries, and a task GitLab moved into the sprint mid-way is
+// exactly the scope change it must show. A task the sync is creating right now
+// (`fresh`) is not: its first import says nothing about when it joined the stage,
+// and journalling it would book every task of a sprint imported mid-way as
+// "added after the start".
+func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegration, projectID, taskID uuid.UUID, issue gitlab.Issue, overridden, fresh bool, actorID uuid.UUID) {
 	if overridden {
 		return
+	}
+	var before *uuid.UUID
+	if !fresh {
+		if t, err := h.q.GetTask(ctx, taskID); err == nil {
+			before = t.MilestoneID
+		}
 	}
 	if issue.MilestoneGID == "" {
 		// GitLab removed the milestone — clear the (GitLab-sourced) one on the task.
 		soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: nil}))
+		if !fresh {
+			h.journalMilestoneActor(ctx, taskID, actorID, before, nil, "")
+		}
 		return
 	}
 	mID, err := h.ensureGitlabMilestone(ctx, integ, projectID, issue)
@@ -49,6 +66,9 @@ func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegra
 		return
 	}
 	soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: &mID}))
+	if !fresh {
+		h.journalMilestoneActor(ctx, taskID, actorID, before, &mID, issue.MilestoneTitle)
+	}
 }
 
 // ensureGitlabMilestone upserts the native milestone + link for a GitLab milestone,

@@ -7,21 +7,23 @@ import shell from './shell.json'
 import app from './app.json'
 import board from './board.json'
 import task from './task.json'
+import props from './props.json'
 import project from './project.json'
 import documents from './documents.json'
 import conferences from './conferences.json'
-import notes from './notes.json'
-import reminders from './reminders.json'
+import inbox from './inbox.json'
 import milestones from './milestones.json'
 import settings from './settings.json'
 import notifications from './notifications.json'
 import gitlab from './gitlab.json'
 import tour from './tour.json'
+import hints from './hints.json'
 import help from './help.json'
 import jobs from './jobs.json'
 import commands from './commands.json'
 import errors from './errors.json'
 import whatsNew from './whatsNew.json'
+import toasts from './toasts.json'
 
 export default {
   common,
@@ -29,19 +31,21 @@ export default {
   app,
   board,
   task,
+  props,
   project,
   documents,
   conferences,
-  notes,
-  reminders,
+  inbox,
   milestones,
   settings,
   notifications,
   gitlab,
   tour,
+  hints,
   help,
   jobs,
   commands,
   errors,
   whatsNew,
+  toasts,
 }

@@ -221,7 +221,7 @@ describe('card title rename — Esc (#2932)', () => {
     ...naive,
     ...Object.fromEntries(Object.entries(naive).map(([k, v]) => ['N' + k, v])),
     RichContent: true,
-    DueEditor: true,
+    DuePicker: true,
     draggable: {
       template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>',
       props: ['list'],
@@ -264,7 +264,7 @@ describe('card title rename — Esc (#2932)', () => {
     const w = await mountCard()
     const inp = await openRename(w)
     await inp.setValue('Другое имя')
-    await inp.trigger('keyup.esc')
+    await inp.trigger('keydown', { key: 'Escape' })
     expect(tasksUpdate).not.toHaveBeenCalled()
     expect(w.find('.title-edit input').exists()).toBe(false)
     expect(w.find('.title').text()).toBe(TASK.title)
@@ -276,7 +276,7 @@ describe('card title rename — Esc (#2932)', () => {
     const w = await mountCard()
     const inp = await openRename(w)
     await inp.setValue('Другое имя')
-    await inp.trigger('keyup.esc')
+    await inp.trigger('keydown', { key: 'Escape' })
     await inp.trigger('blur')
     expect(tasksUpdate).not.toHaveBeenCalled()
     w.unmount()
@@ -286,7 +286,7 @@ describe('card title rename — Esc (#2932)', () => {
     const w = await mountCard()
     const inp = await openRename(w)
     await inp.setValue('Другое имя')
-    await inp.trigger('keyup.enter')
+    await inp.trigger('keydown', { key: 'Enter' })
     await inp.trigger('blur')
     expect(tasksUpdate).toHaveBeenCalledTimes(1)
     expect(tasksUpdate.mock.calls[0][1]).toMatchObject({ title: 'Другое имя' })
@@ -309,7 +309,7 @@ describe('card title rename — Esc (#2932)', () => {
     const w = await mountCard()
     const inp = await openRename(w)
     await inp.setValue('Другое имя')
-    await inp.trigger('keyup.esc')
+    await inp.trigger('keydown', { key: 'Escape' })
     const again = await openRename(w)
     expect(again.element.value).toBe(TASK.title)
     w.unmount()

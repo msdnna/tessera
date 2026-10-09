@@ -520,6 +520,17 @@ export function useBoardFacets({
     // scope — drop it so the full board loads and the client filter applies.
     if (facet.kind === 'milestone' && milestoneScope.value) clearMilestoneScope()
   }
+  // Whether a menu key is already in force — the facet menu ticks it (#3112).
+  function facetIsOn(key) {
+    const g = decodeGroup(key)
+    if (g) return groupMode.value === g.mode && (tagPrefix.value || '') === (g.prefix || '')
+    const sortField = decodeSort(key)
+    if (sortField) return sortLevels.value.some((l) => l.field === sortField)
+    const facet = decodeFacet(key)
+    if (!facet) return false
+    const v = filters[facet.field]
+    return facet.multi ? Array.isArray(v) && v.includes(facet.value) : v === facet.value
+  }
   function removeChip(c) {
     if (c.kind === 'sort') sortLevels.value.splice(c.i, 1)
     else removeFilterFacet(filters, c.kind, c.value)
@@ -565,6 +576,7 @@ export function useBoardFacets({
     groupChip,
     addOptions,
     onAddFacet,
+    facetIsOn,
     removeChip,
     onChipClick,
     toggleSortDir,

@@ -165,3 +165,129 @@ func TestAcknowledgementsRequireAuth(t *testing.T) {
 		t.Fatalf("anonymous ack: %d\n%s", r.Status, r.Body)
 	}
 }
+
+// ── clearing flags (#3100, #3101) ──
+
+// ackSeed writes every key for the caller and fails the test on a refusal.
+func ackSeed(t *testing.T, c *client, keys ...string) {
+	t.Helper()
+	for _, k := range keys {
+		c.expect(t, c.post("/users/me/acknowledgements", map[string]any{"key": k}), http.StatusOK)
+	}
+}
+
+// «Показать снова» on one hint clears exactly that key and nothing next to it —
+// not even a longer key that starts with it.
+func TestForgetOneAcknowledgement(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	ackSeed(t, c, "spotlight:inbox", "spotlight:inbox-capture", "whatsnew:web:0.190.0")
+
+	got := c.expect(t, c.del("/users/me/acknowledgements?key=spotlight:inbox"), http.StatusOK)
+	if got["deleted"] != float64(1) {
+		t.Fatalf("deleted: %v", got)
+	}
+	list := ackList(t, c)
+	if _, ok := list["spotlight:inbox"]; ok {
+		t.Fatalf("the key is still there: %v", list)
+	}
+	if _, ok := list["spotlight:inbox-capture"]; !ok {
+		t.Fatalf("a longer key went with it: %v", list)
+	}
+	if len(list) != 2 {
+		t.Fatalf("want 2 flags left, got %v", list)
+	}
+
+	// Again: nothing to clear is not an error — a switch turned on twice.
+	again := c.expect(t, c.del("/users/me/acknowledgements?key=spotlight:inbox"), http.StatusOK)
+	if again["deleted"] != float64(0) {
+		t.Fatalf("second delete: %v", again)
+	}
+}
+
+// «Показать подсказки заново» clears the whole spotlight: namespace and leaves
+// the rest — the read releases, the tour, and the switches of hint kinds
+// (hints:off:*, #3101), which the user set on purpose and a reset of the hints
+// themselves must not flip back.
+func TestForgetAcknowledgementsByPrefix(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	ackSeed(t, c,
+		"spotlight:inbox", "spotlight:stage-strip", "spotlight:palette",
+		"hints:off:ctx", "getstarted:done", "whatsnew:web:0.190.0",
+	)
+
+	got := c.expect(t, c.del("/users/me/acknowledgements?prefix=spotlight:"), http.StatusOK)
+	if got["deleted"] != float64(3) {
+		t.Fatalf("deleted: %v", got)
+	}
+	list := ackList(t, c)
+	for _, k := range []string{"hints:off:ctx", "getstarted:done", "whatsnew:web:0.190.0"} {
+		if _, ok := list[k]; !ok {
+			t.Fatalf("%s went with the spotlight reset: %v", k, list)
+		}
+	}
+	if len(list) != 3 {
+		t.Fatalf("want 3 flags left, got %v", list)
+	}
+}
+
+// The prefix is matched literally: a key with LIKE metacharacters in it can't
+// widen a reset into other namespaces.
+func TestForgetByPrefixIsLiteral(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	ackSeed(t, c, "getstarted:item:basics.task", "getstarted_x:keep", "getstartedXitem:keep")
+
+	c.expect(t, c.del("/users/me/acknowledgements?prefix=getstarted_%25:"), http.StatusOK)
+	if list := ackList(t, c); len(list) != 3 {
+		t.Fatalf("a pattern prefix matched something: %v", list)
+	}
+	got := c.expect(t, c.del("/users/me/acknowledgements?prefix=getstarted:"), http.StatusOK)
+	if got["deleted"] != float64(1) {
+		t.Fatalf("deleted: %v", got)
+	}
+}
+
+// One of key/prefix, never both or neither, and a prefix must name a namespace:
+// a blank or colon-less prefix would wipe every flag the account has.
+func TestForgetAcknowledgementsValidates(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	ackSeed(t, c, "spotlight:inbox", "whatsnew:web:0.190.0")
+
+	for _, q := range []string{
+		"",
+		"?key=spotlight:inbox&prefix=spotlight:",
+		"?prefix=",
+		"?prefix=%20",
+		"?prefix=s",
+		"?prefix=spotlight",
+		"?prefix=:",
+		"?key=" + strings.Repeat("k", 201),
+	} {
+		if r := c.del("/users/me/acknowledgements" + q); r.Status != http.StatusBadRequest {
+			t.Fatalf("%q: %d\n%s", q, r.Status, r.Body)
+		}
+	}
+	if list := ackList(t, c); len(list) != 2 {
+		t.Fatalf("a refused request cleared something: %v", list)
+	}
+}
+
+// Clearing is per caller, like everything else here: B's reset leaves A's
+// flags alone, and an anonymous caller is turned away.
+func TestForgetAcknowledgementsIsScopedToTheCaller(t *testing.T) {
+	t.Parallel()
+	a, b := signup(t), signup(t)
+	ackSeed(t, a, "spotlight:inbox")
+	ackSeed(t, b, "spotlight:inbox")
+
+	b.expect(t, b.del("/users/me/acknowledgements?prefix=spotlight:"), http.StatusOK)
+	if list := ackList(t, a); len(list) != 1 {
+		t.Fatalf("B's reset reached A: %v", list)
+	}
+	if r := doReq(t, "", http.MethodDelete, "/users/me/acknowledgements?key=spotlight:inbox", nil); r.Status != http.StatusUnauthorized {
+		t.Fatalf("anonymous delete: %d\n%s", r.Status, r.Body)
+	}
+}

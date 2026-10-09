@@ -2,18 +2,19 @@
 import { ref, computed, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
-import { NButton, NScrollbar, NText, NIcon, NDropdown, NTooltip, useMessage } from 'naive-ui'
+import { NButton, NScrollbar, NText, NIcon, NDropdown, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   CheckmarkDoneOutline,
   DocumentTextOutline,
   DocumentsOutline,
   VideocamOutline,
-  AlarmOutline,
   RibbonOutline,
   AddOutline,
   FolderOutline,
   ChevronDownOutline,
   ChevronForwardOutline,
+  SearchOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
@@ -21,6 +22,7 @@ import { useRoute } from 'vue-router'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
+import ActionMenu from './kit/ActionMenu.vue'
 import { workspaceName } from '@/utils/defaultNames'
 import ProjectCreatePopover from './sidebar/ProjectCreatePopover.vue'
 import NewGroupRow from './sidebar/NewGroupRow.vue'
@@ -45,6 +47,9 @@ defineProps({
   mobile: { type: Boolean, default: false },
   collapsed: { type: Boolean, default: false },
 })
+// The phone's drawer (#2976): «Найти доску» asks the shell for the palette
+// narrowed to boards and stages — the drawer has to close first.
+const emit = defineEmits(['find'])
 
 const { t } = useI18n()
 const store = useWorkspacesStore()
@@ -128,31 +133,38 @@ useShortcuts({ 'nav.goSidebar': focusTree })
 // The workspace menu under its name (v2): members, integrations, appearance,
 // create, delete — the doors of the former tool row live here now.
 const wsHead = ref(null)
+const wsMenuOpen = ref(false)
 const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
 </script>
 
 <template>
-  <div class="sidebar" data-testid="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
+  <div
+    class="sidebar"
+    data-testid="sidebar"
+    :class="{ collapsed, mobile, 'sb-dragging': sidebarDragging }"
+  >
     <div class="brand">
       <!-- The logo and the workspace tiles live on the rail now (v2, #2955);
            the header names the current workspace and holds its menu. -->
-      <n-dropdown
+      <button
         v-if="!collapsed"
-        trigger="click"
-        placement="bottom-start"
-        :options="wsMenu.options.value"
-        @select="wsMenu.select"
+        ref="wsHead"
+        type="button"
+        class="ws-head"
+        :class="{ open: wsMenuOpen }"
+        data-testid="ws-head"
+        aria-haspopup="menu"
+        :aria-expanded="wsMenuOpen"
+        @click="wsMenuOpen = !wsMenuOpen"
       >
-        <button ref="wsHead" type="button" class="ws-head" data-testid="ws-head">
-          <span class="ws-head-name">{{ workspaceName(store.current) }}</span>
-          <span
-            v-if="conflicts.count"
-            class="ws-head-dot"
-            :title="t('shell.tools.integrationsConflicts', { count: conflicts.count })"
-          />
-          <n-icon :component="ChevronDownOutline" :size="13" class="ws-head-chev" />
-        </button>
-      </n-dropdown>
+        <span class="ws-head-name">{{ workspaceName(store.current) }}</span>
+        <span
+          v-if="conflicts.count"
+          class="ws-head-dot"
+          :title="t('shell.tools.integrationsConflicts', { count: conflicts.count })"
+        />
+        <n-icon :component="ChevronDownOutline" :size="13" class="ws-head-chev" />
+      </button>
       <button
         v-else
         type="button"
@@ -162,11 +174,36 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
       >
         <n-icon :component="ChevronForwardOutline" :size="16" />
       </button>
+      <ActionMenu
+        v-model:show="wsMenuOpen"
+        :anchor="() => wsHead"
+        placement="bottom-start"
+        :offset="{ x: 0, y: 4 }"
+        :width="280"
+        :header="wsMenu.header.value"
+        :items="wsMenu.items.value"
+        testid="ws-menu"
+        @select="wsMenu.select"
+      />
     </div>
     <div v-if="collapsed" class="rail-sep" />
 
+    <button
+      v-if="mobile"
+      type="button"
+      class="sb-find"
+      data-testid="drawer-find-board"
+      @click="emit('find')"
+    >
+      <n-icon :component="SearchOutline" :size="18" />
+      <span>{{ t('shell.mobile.findBoard') }}</span>
+    </button>
+
     <nav class="nav">
-      <n-tooltip :disabled="!collapsed" placement="right">
+      <!-- «Входящие» is the header's button (and G I) alone (#3112); on a phone
+           it and «Мои задачи» are tabs of the bottom navigation (#2976) — the
+           drawer keeps the tree and the places. -->
+      <n-tooltip v-if="!mobile" :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/" class="nav-link" active-class="nav-link-home-noop" data-nav="home">
             <n-icon :component="CheckmarkDoneOutline" :size="16" />
@@ -174,15 +211,6 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
           </router-link>
         </template>
         {{ t('shell.nav.home') }}
-      </n-tooltip>
-      <n-tooltip :disabled="!collapsed" placement="right">
-        <template #trigger>
-          <router-link to="/notes" class="nav-link" data-nav="notes">
-            <n-icon :component="DocumentTextOutline" :size="16" />
-            <span v-if="!collapsed">{{ t('shell.nav.notes') }}</span>
-          </router-link>
-        </template>
-        {{ t('shell.nav.notes') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
@@ -201,15 +229,6 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
           </router-link>
         </template>
         {{ t('shell.nav.conferences') }}
-      </n-tooltip>
-      <n-tooltip :disabled="!collapsed" placement="right">
-        <template #trigger>
-          <router-link to="/reminders" class="nav-link" data-nav="reminders">
-            <n-icon :component="AlarmOutline" :size="16" />
-            <span v-if="!collapsed">{{ t('shell.nav.reminders') }}</span>
-          </router-link>
-        </template>
-        {{ t('shell.nav.reminders') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
@@ -328,7 +347,9 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
       </div>
     </n-scrollbar>
 
-    <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
+    <!-- The profile, settings, help and signing out are the «Ещё» tab on a
+         phone (#2976). -->
+    <SidebarFooter v-if="!mobile" :collapsed="collapsed" />
 
     <ProjectCreatePopover v-model:show="projFormOpen" :anchor="() => addBtn?.$el || null" />
   </div>
@@ -382,7 +403,8 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
   font-weight: 650;
   cursor: pointer;
 }
-.ws-head:hover {
+.ws-head:hover,
+.ws-head.open {
   background: var(--t-hover-side);
 }
 .ws-head-name {
@@ -510,5 +532,43 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
   display: block;
   font-size: 12px;
   padding: 8px;
+}
+
+/* ── the phone's drawer (#2976 — package G «Дровер») ── */
+.sidebar.mobile .brand {
+  padding-top: calc(14px + var(--safe-top));
+}
+.sb-find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  margin: 6px 10px 8px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-sub);
+  color: var(--t-placeholder);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+/* The places go under the tree, the tree takes what is left. */
+.sidebar.mobile .nav {
+  order: 10;
+  padding: 6px 8px calc(10px + var(--safe-bottom));
+}
+.sidebar.mobile .nav-link {
+  height: 46px;
+  gap: 14px;
+  font-size: 15px;
+}
+.sidebar.mobile :deep(.row) {
+  min-height: 44px;
+  font-size: 15px;
+}
+.sidebar.mobile :deep(.group-row) {
+  min-height: 40px;
 }
 </style>

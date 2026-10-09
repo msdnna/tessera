@@ -75,10 +75,23 @@ const routes = [
         path: 'project/:projectSlug/board/:boardSlug',
         component: () => import('@/views/BoardView.vue'),
       },
+      // The stage page (#2993): slugs like the board's — the stage slug is
+      // unique within its project (milestones.slug).
+      {
+        path: 'project/:projectSlug/stage/:stageSlug',
+        component: () => import('@/views/StageView.vue'),
+      },
       // Legacy / deep links by id (UUID or bare slug) — BoardView resolves them
       // and canonicalizes the URL to /project/<slug>/board/<slug>.
       { path: 'board/:id', component: () => import('@/views/BoardView.vue') },
-      { path: 'notes', component: () => import('@/views/NotesView.vue') },
+      // The «Заметки» and «Напоминания» sections became the «Входящие» panel
+      // (#2999): old links land on the start screen with the panel open on
+      // that filter (and on the note a `?note=` named). AppLayout reads the
+      // query and drops it.
+      {
+        path: 'notes',
+        redirect: (to) => ({ path: '/', query: { inbox: 'notes', note: to.query.note } }),
+      },
       // Lazy on purpose: D2 brings ProseMirror in here, and the board must not
       // carry its weight.
       // One record with an optional param, not two sibling records: the sidebar
@@ -90,13 +103,18 @@ const routes = [
       // the same reason (#2727): opening a conference must not take the
       // «Конференции» item in the sidebar dark.
       { path: 'conferences/:id?', component: () => import('@/views/ConferencesView.vue') },
-      { path: 'reminders', component: () => import('@/views/RemindersView.vue') },
+      { path: 'reminders', redirect: () => ({ path: '/', query: { inbox: 'reminders' } }) },
       // No help route (#2792): the help centre is a modal mounted in AppLayout,
       // opened from the sidebar's «Помощь» menu. Cross-links between articles are
       // written as /help/<slug> and intercepted by HelpArticle, so they swap the
       // open article instead of navigating anywhere.
       { path: 'milestones', component: () => import('@/views/MilestonesView.vue') },
       { path: 'settings', component: () => import('@/views/SettingsView.vue') },
+      // The phone's «Ещё» tab and the notification feed as a page (#2976 —
+      // package G). Both send a wider window elsewhere: «Ещё» to the settings,
+      // the feed to the bell's popover.
+      { path: 'more', component: () => import('@/views/MoreView.vue') },
+      { path: 'notifications', component: () => import('@/views/NotificationsView.vue') },
       {
         path: 'admin',
         component: () => import('@/views/AdminView.vue'),

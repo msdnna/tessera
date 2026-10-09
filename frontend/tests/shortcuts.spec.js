@@ -37,6 +37,16 @@ afterEach(() => {
 })
 
 describe('keymap', () => {
+  // Sentry TESSERA-FRONTEND-1C: <ShortcutKeys id="form.project"> crashed on
+  // `undefined.trim()` — palette-only commands carry no keys.
+  it('parses an entry without keys to no chords', () => {
+    expect(parseKeys(undefined)).toEqual([])
+    expect(parseKeys('')).toEqual([])
+    for (const entry of CATALOG.filter((e) => !e.keys && !e.display)) {
+      expect(chordsOf(entry.id)).toEqual([])
+    }
+  })
+
   it('matches letters by physical key, so the Russian layout still works', () => {
     const [g] = parseKeys('g')
     expect(matchChord(g, new KeyboardEvent('keydown', { code: 'KeyG', key: 'п' }))).toEqual({})

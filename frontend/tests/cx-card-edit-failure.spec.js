@@ -74,7 +74,7 @@ const stubs = {
   ...naive,
   ...Object.fromEntries(Object.entries(naive).map(([k, v]) => ['N' + k, v])),
   RichContent: true,
-  DueEditor: true,
+  DuePicker: true,
   draggable: {
     template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>',
     props: ['list'],
@@ -103,7 +103,8 @@ async function mountCard(props = {}, seed = {}) {
 }
 
 // The pickers teleport their body to <body>, so rows are queried off the document.
-const menuRows = () => Array.from(document.body.querySelectorAll('.menu .menu-item'))
+// The pill's picker is the PropPicker of package J (#3118), teleported to <body>.
+const menuRows = () => Array.from(document.body.querySelectorAll('.pp .pp-row'))
 
 beforeEach(() => {
   setActivePinia(createPinia())
@@ -148,7 +149,7 @@ describe('a refused card edit is reported and resynced', () => {
     await w.find('.title-edit input').setValue('Новое имя')
     update.mockImplementationOnce(refuse)
 
-    await w.find('.title-edit input').trigger('keyup.enter')
+    await w.find('.title-edit input').trigger('keydown', { key: 'Enter' })
     await settle()
 
     expect(toast.error).toHaveBeenCalledWith('нет прав на задачу')
@@ -168,7 +169,7 @@ describe('a refused card edit is reported and resynced', () => {
     update.mockImplementationOnce(
       () => new Promise((_, rej) => (refuseIt = () => rej(new Error('нет прав на задачу')))),
     )
-    await w.find('.title-edit input').trigger('keyup.enter')
+    await w.find('.title-edit input').trigger('keydown', { key: 'Enter' })
     await settle()
 
     // …and they reopen the editor and type something else. Their text wins.
@@ -188,7 +189,7 @@ describe('a refused card edit is reported and resynced', () => {
     await settle()
     await w.find('.title-edit input').setValue('Новое имя')
 
-    await w.find('.title-edit input').trigger('keyup.enter')
+    await w.find('.title-edit input').trigger('keydown', { key: 'Enter' })
     await settle()
 
     expect(toast.error).not.toHaveBeenCalled()

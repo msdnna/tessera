@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, toRef, onBeforeUnmount } from 'vue'
+import { ref, computed, toRef, onBeforeUnmount, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { TimerOutline } from '@vicons/ionicons5'
@@ -23,8 +23,9 @@ import ChartAxisHeader from './chart/ChartAxisHeader.vue'
 import ChartLaneHeader from './chart/ChartLaneHeader.vue'
 import ChartMilestoneMarkers from './chart/ChartMilestoneMarkers.vue'
 import ChartTaskRow from './chart/ChartTaskRow.vue'
+import { CHART_DEFAULTS } from '@/utils/boardViews'
 import ChartUnscheduled from './chart/ChartUnscheduled.vue'
-import ChartTaskMenu from './chart/ChartTaskMenu.vue'
+import TaskActionMenu from './task/TaskActionMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
 import UserAvatar from './UserAvatar.vue'
 
@@ -70,8 +71,11 @@ const props = defineProps({
   // Archive view (?archived=1): look, don't touch — no context menu, no
   // drag-to-reschedule. Both write to the live task the archived row stands for.
   readonly: { type: Boolean, default: false },
+  // The board's «Шкала» (#3021): the scale preset and what the chart draws —
+  // weekends, the today line, progress, links (Gantt), the undated strip.
+  chart: { type: Object, default: () => ({ ...CHART_DEFAULTS }) },
 })
-const emit = defineEmits(['open', 'changed', 'restore'])
+const emit = defineEmits(['open', 'changed', 'restore', 'update:scale'])
 
 // Estimation unit/config of the project — drives every estimate the chart renders
 // (lane totals, the ghost bar, the hover card).
@@ -134,6 +138,7 @@ const {
   weekBands,
   weekRangeBands,
   yearBands,
+  quarterBands,
   weekendOffset,
   todayIndex,
   hourTicks,
@@ -236,6 +241,19 @@ const { viewRows, toggleLane, laneSummary, selectedId, select, selectedLabel, ct
   counters,
   onOpen: (id) => emit('open', id),
 })
+
+// The scale is the board's state (#3021): a saved one is applied, and a zoom
+// that crosses into another scale is reported back so the view remembers it.
+watch(
+  () => props.chart?.scale,
+  (sc) => {
+    if (sc && sc !== timeline.scale.value) timeline.setScale(sc)
+  },
+  { immediate: true },
+)
+watch(timeline.scale, (sc) => {
+  if (sc !== props.chart?.scale) emit('update:scale', sc)
+})
 defineExpose({ ctl })
 const msX = (lane) =>
   lane.milestone?.due_date
@@ -313,7 +331,7 @@ const hoverEstimateRange = computed(() =>
     >
       <div
         class="tl-inner"
-        :class="[tier, { animate, collapsed: leftCollapsed }]"
+        :class="[tier, { animate, collapsed: leftCollapsed, 'no-progress': !chart.progress }]"
         :style="{
           width: `${leftW + axisW}px`,
           '--tl-day-w': `${dayW}px`,
@@ -323,7 +341,7 @@ const hoverEstimateRange = computed(() =>
       >
         <div
           class="tl-backdrop"
-          :class="{ weekends: tier === 'days' || tier === 'hours' }"
+          :class="{ weekends: chart.weekends && (tier === 'days' || tier === 'hours') }"
           :style="{
             left: `${leftW}px`,
             backgroundPositionX: `${(weekendOffset - 5) * dayW}px`,
@@ -339,6 +357,7 @@ const hoverEstimateRange = computed(() =>
           :week-bands="weekBands"
           :week-range-bands="weekRangeBands"
           :year-bands="yearBands"
+          :quarter-bands="quarterBands"
           :days="days"
           :hour-ticks="hourTicks"
         />
@@ -347,11 +366,11 @@ const hoverEstimateRange = computed(() =>
              the scroll height; one continuous today-line spans the whole body) -->
         <div ref="bodyEl" class="tl-body">
           <div
-            v-if="tier === 'days' || tier === 'hours'"
+            v-if="chart.today && (tier === 'days' || tier === 'hours')"
             class="tl-todaycol"
             :style="{ left: `${leftW + todayIndex * dayW}px`, width: `${dayW}px` }"
           />
-          <div class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
+          <div v-if="chart.today" class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
           <!-- milestone dates as markers, unless the milestones are the groups
                (then each closes its group with its own diamond row) -->
           <ChartMilestoneMarkers
@@ -409,22 +428,14 @@ const hoverEstimateRange = computed(() =>
       </div>
     </div>
 
-    <ChartUnscheduled :tasks="unscheduled" @open="$emit('open', $event)" @menu="menu.open" />
-
-    <ChartTaskMenu
-      :show="menu.show.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :options="menu.options.value"
-      :delete-show="menu.deleteConfirmShow.value"
-      :archive-show="menu.archiveConfirmShow.value"
-      @select="menu.select"
-      @close="menu.show.value = false"
-      @update:delete-show="menu.deleteConfirmShow.value = $event"
-      @delete-confirm="menu.confirmDelete()"
-      @update:archive-show="menu.archiveConfirmShow.value = $event"
-      @archive-confirm="menu.confirmArchive()"
+    <ChartUnscheduled
+      v-if="chart.undated"
+      :tasks="unscheduled"
+      @open="$emit('open', $event)"
+      @menu="menu.open"
     />
+
+    <TaskActionMenu :menu="menu" />
 
     <!-- hover preview: a compact task-card snapshot -->
     <Teleport to="body">

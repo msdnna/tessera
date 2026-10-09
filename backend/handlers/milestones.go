@@ -106,7 +106,7 @@ func (h *API) CreateMilestone(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "milestone.created", m)
+	h.broadcastAs(c, wsID, "milestone.created", m)
 	c.JSON(http.StatusCreated, m)
 }
 
@@ -160,7 +160,7 @@ func (h *API) UpdateMilestone(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "milestone.updated", m)
+	h.broadcastAs(c, wsID, "milestone.updated", m)
 	c.JSON(http.StatusOK, m)
 }
 

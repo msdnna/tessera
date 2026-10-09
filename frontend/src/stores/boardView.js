@@ -49,6 +49,9 @@ export const useBoardViewStore = defineStore('boardView', () => {
   // Canonical tag prefixes governed by non-"tag" GitLab rules (status/priority/…),
   // hidden from tag pickers.
   const metaTagPrefixes = ref(new Set())
+  // What the property pickers count (#3118), published by KanbanBoard from the
+  // tasks it holds: { boardId, counts: column id → tasks, load: user id → open }.
+  const taskStats = ref({ boardId: null, counts: {}, load: {} })
 
   const tagsList = computed(() => Object.values(tagsMap))
   const membersList = computed(() => Object.values(membersMap))
@@ -101,24 +104,19 @@ export const useBoardViewStore = defineStore('boardView', () => {
   function requestAssigneeFilter(userId) {
     assigneeFilter.value = { userId, n: (assigneeFilter.value?.n || 0) + 1 }
   }
-  // The customize drawer is owned by KanbanBoard, but its only trigger used to be
-  // the gear in the composer's right-hand tools — and those slide away (and turn
-  // `pointer-events: none`) as soon as the chips fill the bar, which on a phone is
-  // two or three facets. The phone's menu lives in the header, outside the board,
-  // so it asks for the drawer through a nonce the way the header actions ask for a
-  // reload above.
+  // The view panel (#2986) is owned by KanbanBoard; the phone's menu lives in the
+  // header, outside the board, so it asks for the panel through a nonce the way
+  // the header actions ask for a reload above.
   const customizeNonce = ref(0)
-  // Saved views (per-board, server-side) belong to KanbanBoard too, and both their
-  // triggers — the folder and the disk — stand in that same strip of tools. Unlike
-  // the customize drawer they have NO other entry anywhere in the app (the
-  // /milestones-style route doesn't exist for them, and the sidebar knows nothing
-  // about views), so a view saved on a desktop simply could not be loaded on a
-  // phone. KanbanBoard publishes the list for the CURRENT layout here — views are
-  // per-visualization, board views and timeline views are separate sets — and
-  // answers the request below.
-  const savedViews = ref([]) // [{ id, name }] for the open layout
-  const currentViewName = ref('') // the loaded view, '' when none
-  // { nonce, op: 'apply' | 'save', id?, name? }. A nonce and not a bare payload:
+  // The docked view panel is open (desktop): the FAB steps left of it.
+  const panelOpen = ref(false)
+  // Saved views (#2970) belong to KanbanBoard; the phone's board menu lists them
+  // too (the sub-toolbar there has no room for the chip's menu). KanbanBoard
+  // publishes the whole list — one list for all view kinds — and the loaded one
+  // here, and answers the request below. Saving happens in the view panel.
+  const savedViews = ref([]) // [{ id, name, layout }]
+  const currentViewId = ref('') // the loaded view, '' when none
+  // { nonce, op: 'apply' | 'clear', id? }. A nonce and not a bare payload:
   // loading the same view twice in a row is a legitimate ask (it re-applies a
   // toolbar the reader has since changed), and an unchanged object wouldn't wake
   // the watcher.
@@ -134,10 +132,8 @@ export const useBoardViewStore = defineStore('boardView', () => {
   function requestApplyView(id) {
     viewRequest.value = { nonce: ++viewNonce, op: 'apply', id }
   }
-  // An empty name means "save over the loaded view" — the same fallback the disk
-  // button's empty input has (KanbanBoard's saveView reads currentViewName then).
-  function requestSaveView(name) {
-    viewRequest.value = { nonce: ++viewNonce, op: 'save', name: name || '' }
+  function requestClearView() {
+    viewRequest.value = { nonce: ++viewNonce, op: 'clear' }
   }
   function setContext(b, w, p) {
     boardId.value = b
@@ -164,6 +160,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     refill(milestonesMap, null)
     refill(prefixNames, null)
     metaTagPrefixes.value = new Set()
+    taskStats.value = { boardId: null, counts: {}, load: {} }
     gitlabCanCreate.value = false
     gitlabFetchTemplates.value = false
     gitlabIntegrationId.value = null
@@ -173,12 +170,13 @@ export const useBoardViewStore = defineStore('boardView', () => {
     showEmpty.value = true
     refill(fieldVis, defaultFieldVis())
     archiveOpen.value = false
+    panelOpen.value = false
     searchQ.value = ''
     shownTasks.value = null
     shownTitle.value = ''
     assigneeFilter.value = null
     savedViews.value = []
-    currentViewName.value = ''
+    currentViewId.value = ''
     viewRequest.value = null
   }
 
@@ -202,6 +200,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     milestonesMap,
     prefixNames,
     metaTagPrefixes,
+    taskStats,
     tagsList,
     membersList,
     milestonesList,
@@ -218,13 +217,14 @@ export const useBoardViewStore = defineStore('boardView', () => {
     archiveOpen,
     reloadNonce,
     customizeNonce,
+    panelOpen,
     savedViews,
-    currentViewName,
+    currentViewId,
     viewRequest,
     bumpReload,
     openCustomize,
     requestApplyView,
-    requestSaveView,
+    requestClearView,
     setContext,
     refill,
     reset,

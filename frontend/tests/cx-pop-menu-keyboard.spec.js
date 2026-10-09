@@ -51,10 +51,11 @@ const MEMBERS = [
   { user_id: 'u3', name: 'Виктор' },
 ]
 
-// The picker lives in a teleported popover, so it is queried off document.body
-// rather than off the wrapper.
-const menuRows = () => Array.from(document.body.querySelectorAll('.menu .menu-item'))
-const highlighted = () => document.body.querySelector('.menu .kb-on')
+// The card's pickers are the PropPicker of package J (#3118) — teleported to
+// <body>, keys taken by the picker itself; queried off document.body.
+const PRIO_ROWS = '[data-testid^="prop-priority-"]'
+const menuRows = (sel = '.menu .menu-item') => Array.from(document.body.querySelectorAll(sel))
+const picker = () => document.body.querySelector('.pp')
 
 function press(key, target = document.body) {
   const e = new KeyboardEvent('keydown', { key, bubbles: true, cancelable: true })
@@ -68,10 +69,15 @@ async function settle() {
 
 let wrapper = null
 
-describe('клавиатура в выпадающих меню свойств задачи', () => {
+describe('клавиатура в пикерах свойств карточки', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     seedBoardStore({ columns: [{ id: 'c1', name: 'К работе', position: 1 }], members: MEMBERS })
+    window.matchMedia = vi.fn().mockReturnValue({
+      matches: false,
+      addEventListener: () => {},
+      removeEventListener: () => {},
+    })
     update.mockClear()
     addAssignee.mockClear()
   })
@@ -87,47 +93,55 @@ describe('клавиатура в выпадающих меню свойств �
     await settle()
   }
 
-  it('стрелка + Enter выбирают приоритет в меню карточки', async () => {
+  it('курсор стоит на текущем приоритете; стрелки + Enter выбирают', async () => {
     await openPills('[data-tour="card-priority"]')
-    expect(menuRows().length).toBe(5) // нет … срочный
+    expect(menuRows(PRIO_ROWS).length).toBe(5) // срочный … без приоритета
+    expect(picker().querySelector('.pp-row.on').dataset.row).toBe('prio:0')
 
-    press('ArrowDown')
-    press('ArrowDown')
-    press('ArrowDown')
+    // С последней строки вниз — по кругу на первую.
+    press('ArrowDown', picker())
+    press('ArrowDown', picker())
+    press('ArrowDown', picker())
     await settle()
-    expect(highlighted()?.textContent.trim()).toBe(menuRows()[2].textContent.trim())
+    expect(picker().querySelector('.pp-row.on').dataset.row).toBe('prio:2')
 
-    press('Enter')
+    press('Enter', picker())
     await settle()
     expect(update).toHaveBeenCalledTimes(1)
     expect(update.mock.calls[0][1]).toMatchObject({ priority: 2 })
   })
 
-  it('стрелка вверх с нетронутого меню берёт последний пункт', async () => {
+  it('цифра выбирает приоритет сразу, как P+цифра', async () => {
     await openPills('[data-tour="card-priority"]')
-    press('ArrowUp')
-    press('Enter')
+    const e = new KeyboardEvent('keydown', {
+      key: '4',
+      code: 'Digit4',
+      bubbles: true,
+      cancelable: true,
+    })
+    picker().dispatchEvent(e)
     await settle()
     expect(update.mock.calls[0][1]).toMatchObject({ priority: 4 })
   })
 
-  it('в поле фильтра исполнителей стрелка водит по списку, а пробел печатается', async () => {
+  it('в поле поиска исполнителей пробел печатается, после стрелок — отмечает', async () => {
     await openPills('.assignee-pill')
-    const input = document.body.querySelector('.assignee-menu input')
+    const input = document.body.querySelector('[data-testid="card-assignee-picker-search"]')
     expect(input).toBeTruthy()
-    expect(menuRows().length).toBe(3)
+    expect(menuRows('[data-testid^="prop-assignee-u"]').length).toBe(3)
 
-    // Пробел в поле ввода — это текст, а не «выбрать»: меню его не трогает.
+    // Пробел в поле ввода — это текст, а не «отметить»: пикер его не трогает.
     const space = press(' ', input)
     expect(space.defaultPrevented).toBe(false)
     expect(addAssignee).not.toHaveBeenCalled()
 
-    // Стрелка в поле ввода — наоборот, ведёт по списку (иначе фильтровать незачем).
+    // Стрелка в поле ввода ведёт по списку, и тогда пробел отмечает строку.
     const down = press('ArrowDown', input)
     expect(down.defaultPrevented).toBe(true)
-    press('Enter', input)
     await settle()
-    expect(addAssignee).toHaveBeenCalledWith('t1', 'u1')
+    press(' ', input)
+    await settle()
+    expect(addAssignee).toHaveBeenCalledWith('t1', 'u2')
   })
 })
 

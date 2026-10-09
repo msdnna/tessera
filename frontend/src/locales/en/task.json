@@ -8,7 +8,11 @@
     "move": "Move to a column",
     "archive": "Archive",
     "delete": "Delete",
-    "addSubtask": "Add a subtask"
+    "addSubtask": "Add a subtask",
+    "archived": "Task «{title}» archived",
+    "archivedUndone": "Task «{title}» restored",
+    "deleteArmed": "Delete the task?",
+    "deleteArmedSub": "For good — along with its files"
   },
   "confirm": {
     "delete": "Delete permanently? This cannot be undone.",
@@ -114,8 +118,19 @@
     "newPlaceholder": "New milestone…"
   },
   "tags": {
-    "newPlaceholder": "New tag, Enter",
-    "alreadyOn": "That tag is already on the task"
+    "alreadyOn": "That tag is already on the task",
+    "manage": "Manage tags…",
+    "manageWhere": "«Project» window",
+    "title": "Tags",
+    "search": "Find or create a tag",
+    "onTask": "On this task",
+    "found": "Found",
+    "all": "All tags",
+    "nothing": "Nothing found",
+    "create": "Create tag “{name}”",
+    "locked": "A GitLab rule tag — the sync manages it",
+    "keyPick": "move",
+    "keyToggle": "toggle"
   },
   "people": {
     "author": "Author: {name}",
@@ -139,27 +154,28 @@
   },
   "desc": {
     "template": "Issue template…",
-    "insertImage": "Insert an image",
-    "insertMermaid": "Insert a Mermaid diagram",
-    "fullscreen": "Open full screen",
-    "preview": "Preview",
     "placeholder": "Add a description…",
-    "emptyMarkdown": "_No description_"
+    "add": "Add a description…",
+    "none": "No description",
+    "editHint": "Click the text to edit it (I)",
+    "edit": "Edit",
+    "discard": "Your changes to the description will be lost, and the draft deleted."
   },
   "comments": {
     "someone": "Someone",
     "placeholder": "Comment…",
-    "composerPlaceholder": "Write a comment… ({'@'} — mention, / — command, Ctrl+Enter — send)",
+    "composerPlaceholder": "Write a comment…",
     "replyPlaceholder": "Reply… (Esc — cancel, Ctrl+Enter — send)",
     "reply": "Reply",
     "collapse": "Collapse replies",
     "replies": "{n} reply | {n} replies",
-    "deleteConfirm": "Delete the comment?",
     "empty": "No comments yet",
     "offlineComment": "Server unreachable — the comment was not sent",
     "offlineReply": "Server unreachable — the reply was not sent",
     "commandsApplied": "Applied: {list}",
-    "retrying": "No connection — retrying ({attempt}/{max})…",
+    "offlineTitle": "No connection",
+    "draftSaved": "Draft saved · {time} · it goes out only when you press {keys}",
+    "retrying": "retrying ({attempt}/{max})…",
     "customCommands": "{list} — will stay as plain text"
   },
   "subtasks": {
@@ -192,7 +208,12 @@
       "blocks": "blocks",
       "blocked_by": "is blocked by",
       "duplicates": "duplicates"
-    }
+    },
+    "removed": "Link to #{number} removed",
+    "restored": "Link to #{number} restored",
+    "formTitle": "Link a task",
+    "kindLabel": "Link type",
+    "taskLabel": "Task"
   },
   "files": {
     "empty": "No files yet",
@@ -316,7 +337,109 @@
       "repeatOnce": "Once",
       "repeat60": "Every hour",
       "repeat180": "Every 3 hours",
-      "repeat1440": "Every day"
+      "repeat1440": "Every day",
+      "door": "Due reminder",
+      "repeatTitle": "Repeat the notification",
+      "offLow": "off",
+      "defaultsOff": "due notifications are off",
+      "defaultsLine": "{lead}, {repeat}",
+      "note": "“Default” comes from Settings → Notifications: {defaults}. Delivery channels are set up there too. Pressing the chosen value again returns it to the default."
+    },
+    "title": "Due date",
+    "placeholder": "When? “tomorrow 6pm”, “fri”, “in 3 days”, “14.10”",
+    "placeholderShort": "When? “fri 18:00”, “in 3 days”",
+    "apply": "apply",
+    "notUnderstood": "Didn’t get “{text}”. Try: “fri 18:00”, “in 3 days”, “14.10”",
+    "clearPreview": "no due date",
+    "gridKeys": "arrows, PgUp / PgDn, T",
+    "rangeHint": "Start — {start} · due — {due} · {days}",
+    "daysCount": "{n} day | {n} days",
+    "wordsHint": "You can type it: “tomorrow 18:00”, “in 3 days”, “14.10”",
+    "preset": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "weekEnd": "End of week",
+      "nextMonday": "Next Monday",
+      "inWeek": "In a week",
+      "none": "No due date"
+    },
+    "presetLong": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "weekEnd": "End of week",
+      "nextMonday": "Next Monday",
+      "inWeek": "In a week"
+    },
+    "time": "Time",
+    "noTimeDash": "—",
+    "noTime": "No time",
+    "clear": "clear",
+    "done": "done",
+    "doneBtn": "Done",
+    "back": "back",
+    "calendar": "Calendar",
+    "quick": "Quick",
+    "pickOnCalendar": "Pick on the calendar",
+    "today": "Today",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
+    "rep": {
+      "title": "Repeat",
+      "next": "next — {date}",
+      "hint": "Repeats: {rule}",
+      "nextSuffix": "· next — {date}",
+      "remove": "remove repeat",
+      "noneShort": "none",
+      "none": "No repeat",
+      "freq": "Frequency",
+      "freqs": {
+        "daily": "Daily",
+        "weekly": "Weekly",
+        "monthly": "Monthly",
+        "yearly": "Yearly",
+        "custom": "On dates"
+      },
+      "less": "Less often",
+      "more": "More often",
+      "unitByDays": "{unit}, on",
+      "datesHint": "Tick the dates in the calendar — the due date moves to the earliest one.",
+      "when": "When to create the next one",
+      "triggers": {
+        "complete": "On completion",
+        "column": "On entering a column",
+        "schedule": "On schedule"
+      },
+      "where": "Where to",
+      "firstColumn": "First column · “{name}”",
+      "columnGoneShort": "the column is gone",
+      "dupSub": "The old task stays in “Done”",
+      "foreverSub": "Even if the last one wasn’t done",
+      "weekendsSub": "Move the due date to Monday",
+      "warnNoDue": "With no due date the repeat never fires: the next date counts from it.",
+      "countsFromDue": "The repeat counts from the due date. Remove the due date and no next task appears.",
+      "pickFreq": "Pick a frequency — the repeat starts at once.",
+      "dates": "On dates: {list}",
+      "datesNone": "On dates — none ticked",
+      "every1": {
+        "daily": "Every day",
+        "weekly": "Every week",
+        "monthly": "Every month",
+        "yearly": "Every year"
+      },
+      "every": {
+        "daily": "Every {n} day | Every {n} days",
+        "weekly": "Every {n} week | Every {n} weeks",
+        "monthly": "Every {n} month | Every {n} months",
+        "yearly": "Every {n} year | Every {n} years"
+      },
+      "onDays": "{every} on {days}",
+      "onDay": "{every} on day {day}",
+      "onDate": "{every} on {date}",
+      "noWeekends": "{every}, skipping weekends",
+      "onColumn": "on entering “{name}”",
+      "onColumnUnset": "no column picked",
+      "onSchedule": "on schedule",
+      "once": "once"
     }
   },
   "parent": {
@@ -408,5 +531,9 @@
     "all": "All",
     "comments": "Comments",
     "files": "Files"
+  },
+  "arm": {
+    "delete": "Delete?",
+    "unlink": "Remove?"
   }
 }

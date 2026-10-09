@@ -1,17 +1,19 @@
 <script setup>
 // The start screen, «Мои задачи» (v2, #2960): the aurora over the top, a
 // greeting with today's counts, the quick entry, my open tasks by due date, and
-// a side column of reminders, the week and the inbox. The header above goes
+// a side column with «Входящие» (today's reminders, latest notes) and the week. The header above goes
 // translucent here (AppLayout) so the aurora runs under it.
 import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { NSpin, NButton, useMessage } from 'naive-ui'
+import { NSpin, NButton } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { CheckmarkDoneOutline, CloudOfflineOutline } from '@vicons/ionicons5'
-import { workspaces as wsApi, reminders as remApi, tasks as tasksApi } from '@/api'
+import { workspaces as wsApi, tasks as tasksApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { usePaletteStore } from '@/stores/palette'
+import { useInboxStore } from '@/stores/inbox'
 import { useFormat } from '@/composables/useFormat'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { capitalizeFirst } from '@/utils/format'
@@ -30,6 +32,10 @@ import HomeAurora from '@/components/home/HomeAurora.vue'
 import HomeQuickEntry from '@/components/home/HomeQuickEntry.vue'
 import HomeTaskList from '@/components/home/HomeTaskList.vue'
 import HomeSideCards from '@/components/home/HomeSideCards.vue'
+import TourChecklist from '@/components/tour/TourChecklist.vue'
+import { useOnboardingStore } from '@/stores/onboarding'
+import UserAvatar from '@/components/UserAvatar.vue'
+import { useResponsive } from '@/composables/useResponsive'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -37,7 +43,16 @@ const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
 const palette = usePaletteStore()
+// «Входящие» (#2998): the shell keeps the feed; the side block and the header
+// pill read today's reminders from it.
+const inbox = useInboxStore()
+// «Начало работы» (#3000): the first card of the right column, until hidden.
+const onboarding = useOnboardingStore()
 const { formatDate, formatTime, firstDayOfWeek, formatters } = useFormat()
+// A phone (#2976 — package G «Мои задачи»): the screen's own large title with
+// the date and the avatar (to «Ещё») in place of the greeting — there is no
+// header above it.
+const { isMobile } = useResponsive()
 
 const loading = ref(false)
 // Non-empty = the last load was refused (#2932). Kept apart from the toast: the
@@ -46,7 +61,6 @@ const loadError = ref('')
 const tasks = ref([])
 const tags = ref([])
 const members = ref([])
-const reminders = ref([])
 
 const meId = computed(() => auth.user?.id)
 const now = ref(new Date())
@@ -66,7 +80,6 @@ function clearPage() {
   tasks.value = []
   tags.value = []
   members.value = []
-  reminders.value = []
   loadedWs = ''
 }
 
@@ -77,11 +90,10 @@ async function load() {
   loading.value = true
   loadError.value = ''
   try {
-    const [tk, tg, mem, rem] = await Promise.allSettled([
+    const [tk, tg, mem] = await Promise.allSettled([
       wsApi.tasks(wsId, { include_subtasks: 1 }),
       wsApi.tags(wsId),
       wsApi.members(wsId),
-      remApi.list(),
     ])
     // A workspace switch abandoned this request: the space the reader left must
     // not decide the screen by finishing last (#2932).
@@ -99,7 +111,6 @@ async function load() {
     tasks.value = ok(tk)
     tags.value = ok(tg)
     members.value = ok(mem)
-    reminders.value = ok(rem)
     now.value = new Date()
     loadedWs = wsId
   } finally {
@@ -148,7 +159,7 @@ const todayReminders = computed(() => {
     now.value.getMonth(),
     now.value.getDate(),
   ).getTime()
-  return reminders.value
+  return inbox.reminders
     .filter((r) => !r.done && dueDay(r.remind_at) === today)
     .sort((a, b) => a.remind_at.localeCompare(b.remind_at))
 })
@@ -235,8 +246,27 @@ watch(() => wsStore.currentId, load)
     <n-spin :show="loading && !tasks.length" :rotate="false" class="home-spin">
       <template #icon><TesseraSpinner /></template>
       <div class="home-inner">
-        <header class="home-greet">
+        <header v-if="isMobile" class="home-mhead">
           <div class="hg-text">
+            <h1 class="hg-hello" data-testid="home-greeting">{{ t('shell.nav.home') }}</h1>
+            <div class="hg-date">{{ dateLine }}</div>
+          </div>
+          <button
+            type="button"
+            class="hg-me"
+            :aria-label="t('shell.user.more')"
+            data-testid="home-avatar"
+            @click="router.push('/more')"
+          >
+            <UserAvatar
+              :user-id="auth.user?.id || ''"
+              :name="auth.user?.name || auth.user?.email || ''"
+              class="hg-av"
+            />
+          </button>
+        </header>
+        <header class="home-greet">
+          <div v-if="!isMobile" class="hg-text">
             <div class="hg-date">{{ dateLine }}</div>
             <h1 class="hg-hello" data-testid="home-greeting">{{ greeting }}</h1>
           </div>
@@ -281,6 +311,7 @@ watch(() => wsStore.currentId, load)
             />
           </div>
           <aside class="home-side">
+            <TourChecklist v-if="!onboarding.hidden && !isMobile" />
             <HomeSideCards :reminders="todayReminders" :week="week" />
           </aside>
         </div>
@@ -365,6 +396,12 @@ watch(() => wsStore.currentId, load)
   gap: 24px;
   align-items: start;
 }
+.home-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
 @media (max-width: 1100px) {
   .home-grid {
     grid-template-columns: minmax(0, 1fr);
@@ -376,6 +413,69 @@ watch(() => wsStore.currentId, load)
   }
   .hg-hello {
     font-size: 26px;
+  }
+}
+/* ── a phone (#2976) ── */
+.home-mhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+.home-mhead .hg-hello {
+  margin: 0 0 4px;
+  font-size: 28px;
+}
+.hg-me {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.hg-av {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+@media (max-width: 768px) {
+  /* No header above: the aurora starts at the status bar. */
+  .home :deep(.h-aurora) {
+    top: calc(-1 * (var(--page-pad, 12px) + var(--safe-top)));
+  }
+  .home-inner {
+    gap: 14px;
+  }
+  /* The counts in one row that scrolls sideways, 34px chips. */
+  .home-greet:has(.hg-pills:empty) {
+    display: none;
+  }
+  .hg-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -4px;
+    padding: 0 4px;
+    scrollbar-width: none;
+  }
+  .hg-pills::-webkit-scrollbar {
+    display: none;
+  }
+  .hg-pill {
+    flex: none;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 17px;
   }
 }
 </style>

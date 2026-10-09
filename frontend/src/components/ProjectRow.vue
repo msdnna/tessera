@@ -7,7 +7,8 @@
 import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter, useRoute } from 'vue-router'
-import { NIcon, NButton, NText, useMessage } from 'naive-ui'
+import { NIcon, NButton, NText } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   EllipsisHorizontalOutline,
   ChevronForwardOutline,
@@ -16,8 +17,7 @@ import {
   CreateOutline,
   TrashOutline,
   OpenOutline,
-  TimerOutline,
-  RibbonOutline,
+  TrailSignOutline,
   GitBranchOutline,
   SwapHorizontalOutline,
   LinkOutline,
@@ -31,20 +31,18 @@ import { projects as projApi, boards as boardsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { humanizeError } from '@/utils/errors'
 import { stubTask } from '@/utils/featureStubs'
+import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useTourStore } from '@/stores/tour'
 import { useBoardViewStore } from '@/stores/boardView'
 import ProjectIcon from './ProjectIcon.vue'
 import TesseraIcon from './TesseraIcon.vue'
-import EstimationPopover from './EstimationPopover.vue'
-import MilestoneManager from './MilestoneManager.vue'
 import InlineEdit from './kit/InlineEdit.vue'
 import ActionMenu from './kit/ActionMenu.vue'
 import AppearancePopover from './sidebar/AppearancePopover.vue'
 import ProjectSlugPopover from './sidebar/ProjectSlugPopover.vue'
 import ProjectMovePopover from './sidebar/ProjectMovePopover.vue'
-import { DEFAULT_ESTIMATION, resolveEstimation } from '@/utils/estimation'
-import { BACKLOG_SCOPE, matchesScope, milestoneKey } from '@/utils/milestones'
+import { BACKLOG_SCOPE, sortStages, stagePath, stageProgress, stageState } from '@/utils/milestones'
 import { pressMoved } from '@/utils/dnd'
 import { useBoardTrash } from '@/composables/useBoardTrash'
 import { useLongPress } from '@/composables/useLongPress'
@@ -59,6 +57,7 @@ const props = defineProps({
 const store = useWorkspacesStore()
 const tour = useTourStore()
 const boardView = useBoardViewStore()
+const projectWindow = useProjectWindowStore()
 const router = useRouter()
 const route = useRoute()
 const message = useMessage()
@@ -106,38 +105,38 @@ function toggleShowClosed() {
   localStorage.setItem(MS_PREF_KEY, showClosedSprints.value ? '1' : '0')
 }
 
-// Open sprints first, then by due date descending (recent/active on top).
+// Active stages first (nearest due), then planned, then — when shown — closed
+// (utils/milestones sortStages, the order of the «Проект» window too).
 const displayMilestones = computed(() => {
-  let list = milestones.value.slice()
-  if (!showClosedSprints.value) list = list.filter((m) => m.state !== 'closed')
-  list.sort((a, b) => {
-    const ao = a.state === 'closed' ? 1 : 0
-    const bo = b.state === 'closed' ? 1 : 0
-    if (ao !== bo) return ao - bo
-    const ad = a.due_date ? new Date(a.due_date).getTime() : 0
-    const bd = b.due_date ? new Date(b.due_date).getTime() : 0
-    return bd - ad
-  })
-  return list
+  const list = showClosedSprints.value
+    ? milestones.value
+    : milestones.value.filter((m) => m.state !== 'closed')
+  return sortStages(list)
 })
 
-// Milestone navigation targets the project's first board (the overlay board).
+// A stage row opens the stage page (#2993); «Бэклог» is still the project's
+// first board scoped to the tasks without a stage.
 const msBoard = computed(() => boards.value[0] || null)
 function openMilestone(m) {
+  if (m) {
+    router.push(stagePath(props.project.slug, m))
+    return
+  }
   const b = msBoard.value
   if (!b) {
     message.warning(t('project.milestone.noBoard'))
     return
   }
-  router.push({ path: boardPath(b), query: { milestone: m ? milestoneKey(m) : BACKLOG_SCOPE } })
+  router.push({ path: boardPath(b), query: { milestone: BACKLOG_SCOPE } })
 }
 function msActive(m) {
-  const scope = String(route.query.milestone || '')
-  return (
-    route.params.projectSlug === props.project.slug &&
-    (m ? matchesScope(m, scope) : scope === BACKLOG_SCOPE)
-  )
+  if (route.params.projectSlug !== props.project.slug) return false
+  if (!m) return String(route.query.milestone || '') === BACKLOG_SCOPE
+  const s = String(route.params.stageSlug || '')
+  return !!s && (s === m.slug || s === m.id)
 }
+const msPct = (m) => stageProgress(m).pct
+const msPlanned = (m) => stageState(m) === 'planned'
 
 async function ensureBoards() {
   if (!store.boardsByProject[props.project.id]) await store.loadBoards(props.project.id)
@@ -278,17 +277,14 @@ const projMenuItems = computed(() => [
   { key: 'move', label: t('project.menu.move'), icon: SwapHorizontalOutline, keys: 'row.move' },
   { gap: true },
   { key: 'copy-link', label: t('project.menu.copyLink'), icon: CopyOutline, keys: 'row.copyLink' },
+  // The «Проект» window (#2971): general settings, tags, stages, estimation.
   {
     key: 'settings',
     label: t('project.menu.settings'),
     icon: SettingsOutline,
     keys: 'row.settings',
-    stub: stubTask('project.window'),
   },
-  // Until the project window (#2971) takes them, the project's own settings
-  // stay reachable here.
-  { key: 'milestones', label: t('project.menu.milestones'), icon: RibbonOutline },
-  { key: 'estimation', label: t('project.menu.estimation'), icon: TimerOutline },
+  { key: 'stages', label: t('project.menu.milestones'), icon: TrailSignOutline },
   {
     key: 'tree-mode',
     label: `${t('project.menu.treeMode')}: ${t(`project.menu.${TREE_LABEL[treeMode.value]}`).toLowerCase()}`,
@@ -342,8 +338,8 @@ async function onProjectMenu(key, value) {
   else if (key === 'slug') openForm('slug', true)
   else if (key === 'move') openForm('move', true)
   else if (key === 'copy-link') copyLink()
-  else if (key === 'milestones') msShow.value = true
-  else if (key === 'estimation') estShow.value = true
+  else if (key === 'settings') projectWindow.open(props.project.id, 'general')
+  else if (key === 'stages') projectWindow.open(props.project.id, 'stages')
   else if (key === 'tree-mode') {
     const next = TREE_MODES[(TREE_MODES.indexOf(treeMode.value) + 1) % TREE_MODES.length]
     updateField({ tree_mode: next })
@@ -393,13 +389,6 @@ function formBack() {
   openProjectMenu(projMenuAt.value)
 }
 const rowAnchor = () => rowEl.value
-
-// Milestone manager for this project.
-const msShow = ref(false)
-
-// Estimation override editor for this project (inherits the workspace default).
-const estShow = ref(false)
-const estInherited = computed(() => resolveEstimation(null, store.current) || DEFAULT_ESTIMATION)
 
 // ── boards: rename in place, menu, delete with undo ──
 const editingBoardId = ref(null)
@@ -510,7 +499,7 @@ watch(showMilestones, (v) => {
   if (v && expanded.value) loadMilestones()
 })
 // …and when a sprint changed anywhere — somebody else's edit, or the reader's own
-// from the board / MilestoneManager. The layout owns the socket and bumps this
+// from the board / the «Проект» window. The layout owns the socket and bumps this
 // revision (stores/workspaces.js onMilestoneEvent); a collapsed project has no
 // list to refresh, and loadMilestones() no-ops when sprints aren't shown.
 watch(
@@ -523,7 +512,14 @@ watch(
 // ── new board: an empty row at the end of the project's boards ──
 // ↵ creates it and opens it, ⇧↵ creates it and offers another empty row, a
 // click away creates it without opening, Esc (or an empty click-away) drops it.
-// The kind chip (Kanban / List) is a stub until boards carry a kind (#3017).
+// The kind chip — Канбан / Список — is what the board opens in (#3017): Tab or a
+// click switches it, and it is stored on the board (boards.default_layout).
+const NEW_BOARD_KINDS = ['board', 'list']
+const newBoardKind = ref('board')
+function toggleNewBoardKind() {
+  const i = NEW_BOARD_KINDS.indexOf(newBoardKind.value)
+  newBoardKind.value = NEW_BOARD_KINDS[(i + 1) % NEW_BOARD_KINDS.length]
+}
 const addingBoard = ref(false)
 const newBoardName = ref('')
 const newBoardBusy = ref(false)
@@ -533,6 +529,7 @@ function startAddBoard() {
   expanded.value = true
   newBoardName.value = ''
   newBoardError.value = ''
+  newBoardKind.value = 'board'
   addingBoard.value = true
 }
 function cancelAddBoard() {
@@ -540,7 +537,12 @@ function cancelAddBoard() {
   newBoardName.value = ''
 }
 async function commitNewBoard(value, { via, shift }) {
-  if (via === 'tab') return // the kind switch — not built yet (#3017)
+  // Tab switches the kind and keeps the field open.
+  if (via === 'tab') {
+    toggleNewBoardKind()
+    nextTick(() => newBoardEditor.value?.focus())
+    return
+  }
   const n = value.trim()
   if (!n) {
     if (via !== 'enter') cancelAddBoard()
@@ -549,7 +551,10 @@ async function commitNewBoard(value, { via, shift }) {
   newBoardBusy.value = true
   newBoardError.value = ''
   try {
-    const res = await projApi.createBoard(props.project.id, { name: n })
+    const res = await projApi.createBoard(props.project.id, {
+      name: n,
+      default_layout: newBoardKind.value,
+    })
     // Point the Get Started guide's next step at this exact board (#2753 rework).
     tour.noteCreated({ boardId: res.data?.id })
     await store.loadBoards(props.project.id)
@@ -593,6 +598,7 @@ function onProjectKey(e) {
     'row.slug': () => openForm('slug'),
     'row.move': () => openForm('move'),
     'row.copyLink': copyLink,
+    'row.settings': () => projectWindow.open(props.project.id, 'general'),
     'row.delete': () => store.canManage && openProjectMenu(null, 'delete'),
   })
 }
@@ -690,8 +696,11 @@ function onBoardKey(e, b) {
           @keydown.enter.prevent="openMilestone(m)"
         >
           <span class="chev-spacer" />
-          <span class="bicon"><n-icon :component="RibbonOutline" /></span>
+          <span class="bicon"><n-icon :component="TrailSignOutline" /></span>
           <span class="name">{{ m.title }}</span>
+          <span v-if="m.task_count && !msPlanned(m)" class="bcount" data-testid="stage-pct"
+            >{{ msPct(m) }}%</span
+          >
         </div>
         <div
           class="row board-row ms-row"
@@ -790,7 +799,11 @@ function onBoardKey(e, b) {
         </div>
         <div v-if="addingBoard" class="row board-row new-board" data-testid="new-board-row">
           <span class="chev-spacer" />
-          <span class="bicon"><TesseraIcon name="layout-kanban" :size="15" /></span>
+          <span class="bicon"
+            ><TesseraIcon
+              :name="newBoardKind === 'list' ? 'layout-list' : 'layout-kanban'"
+              :size="15"
+          /></span>
           <InlineEdit
             ref="newBoardEditor"
             v-model="newBoardName"
@@ -804,14 +817,21 @@ function onBoardKey(e, b) {
             @cancel="cancelAddBoard"
           >
             <template #trailing>
-              <span
+              <button
+                type="button"
                 class="kind-chip"
-                :title="t('common.stub.soon', { n: stubTask('board.newKind') })"
-                aria-disabled="true"
+                :title="`${t('project.board.kind')}: ${t(`board.layout.${newBoardKind}`)} · Tab`"
+                :data-kind="newBoardKind"
+                data-testid="new-board-kind"
+                @mousedown.prevent
+                @click.stop="toggleNewBoardKind"
               >
-                <TesseraIcon name="layout-kanban" :size="12" />
+                <TesseraIcon
+                  :name="newBoardKind === 'list' ? 'layout-list' : 'layout-kanban'"
+                  :size="12"
+                />
                 <n-icon :component="ChevronDownOutline" :size="10" />
-              </span>
+              </button>
             </template>
           </InlineEdit>
         </div>
@@ -871,22 +891,6 @@ function onBoardKey(e, b) {
       :project="project"
       :escape-back="formFromMenu"
       @escape="formBack"
-    />
-
-    <EstimationPopover
-      v-model:show="estShow"
-      :anchor="rowAnchor"
-      scope="project"
-      :target-id="project.id"
-      :name="project.name"
-      :value="project.estimation || null"
-      :inherited="estInherited"
-    />
-    <MilestoneManager
-      v-model:show="msShow"
-      :project-id="project.id"
-      :project-name="project.name"
-      :ws-id="store.currentId"
     />
   </div>
 </template>
@@ -1051,10 +1055,14 @@ function onBoardKey(e, b) {
   gap: 2px;
   height: 20px;
   padding: 0 4px;
+  border: 0;
   border-radius: 5px;
   background: var(--t-pill);
   color: var(--t-text2);
-  cursor: not-allowed;
-  opacity: 0.8;
+  font: inherit;
+  cursor: pointer;
+}
+.kind-chip:hover {
+  color: var(--t-text1);
 }
 </style>

@@ -6,6 +6,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useHelpStore } from '@/stores/help'
 import { usePaletteStore } from '@/stores/palette'
+import { useInboxStore } from '@/stores/inbox'
 import { workspaceName } from '@/utils/defaultNames'
 import { CATALOG } from '@/shortcuts/catalog'
 import { isLive, runShortcut } from '@/shortcuts/dispatcher'
@@ -40,6 +41,7 @@ export function usePaletteResults() {
   const board = useBoardViewStore()
   const help = useHelpStore()
   const palette = usePaletteStore()
+  const inbox = useInboxStore()
   const route = useRoute()
 
   // Where a palette form would create its thing — said under the command, as
@@ -250,7 +252,8 @@ export function usePaletteResults() {
         title: n.title || t('shell.search.untitled'),
         hl: term,
         sub: t('shell.search.notes'),
-        run: (ctx) => go(`/notes?note=${n.slug || n.id}`, ctx),
+        // Notes live in the «Входящие» panel (#2999): it opens on this one.
+        run: () => inbox.reveal('note', n.id),
       })),
       ...found.value.documents.map((d) => ({
         key: `doc:${d.id}`,

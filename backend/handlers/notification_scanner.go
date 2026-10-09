@@ -59,6 +59,7 @@ func defaultPrefs(uid uuid.UUID) db.NotificationPref {
 	return db.NotificationPref{
 		UserID: uid, DueEnabled: true, DueLeadMinutes: 60, DueRepeatMinutes: 0, ReminderEnabled: true,
 		QuietEnabled: false, QuietStartMinutes: 1320, QuietEndMinutes: 480,
+		ToastsEnabled: true, Toasts: []byte(`{}`),
 	}
 }
 
@@ -284,8 +285,11 @@ func (h *API) scanReminders(ctx context.Context) {
 		}
 		if p.ReminderEnabled {
 			ws, taskID := h.reminderScope(ctx, r)
-			h.deliverNotification(ctx, r.UserID, ws, taskID, nil,
-				kindReminder, msgReminder(r.Message))
+			msg := msgReminder(r.Message)
+			// The in-app toast offers «Отложить» / «Готово» (#3117), which act
+			// on the reminder itself — so its id rides along.
+			msg.payload["reminder_id"] = r.ID.String()
+			h.deliverNotification(ctx, r.UserID, ws, taskID, nil, kindReminder, msg)
 		}
 		soft(ctx, "MarkReminderNotified", h.q.MarkReminderNotified(ctx, r.ID))
 	}

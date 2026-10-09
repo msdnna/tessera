@@ -12,6 +12,78 @@ import (
 	"github.com/google/uuid"
 )
 
+const inboxTaskChips = `-- name: InboxTaskChips :many
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title,
+       t.completed_at, t.due_date, t.column_id, b.name AS board_name,
+       bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color
+FROM tasks t
+JOIN boards b ON b.id = t.board_id
+JOIN projects p ON p.id = b.project_id
+JOIN board_columns bc ON bc.id = t.column_id
+WHERE t.id = ANY($1::uuid[])
+  AND p.workspace_id = $2
+  AND b.deleted_at IS NULL
+`
+
+type InboxTaskChipsParams struct {
+	Ids         []uuid.UUID `json:"ids"`
+	WorkspaceID uuid.UUID   `json:"workspace_id"`
+}
+
+type InboxTaskChipsRow struct {
+	ID            uuid.UUID  `json:"id"`
+	BoardID       uuid.UUID  `json:"board_id"`
+	BoardSlug     string     `json:"board_slug"`
+	ProjectSlug   string     `json:"project_slug"`
+	Number        *int64     `json:"number"`
+	Title         string     `json:"title"`
+	CompletedAt   *time.Time `json:"completed_at"`
+	DueDate       *time.Time `json:"due_date"`
+	ColumnID      uuid.UUID  `json:"column_id"`
+	BoardName     string     `json:"board_name"`
+	ColumnName    string     `json:"column_name"`
+	ColumnNameKey *string    `json:"column_name_key"`
+	ColumnColor   string     `json:"column_color"`
+}
+
+// InboxTaskChips reads what a «Входящие» record shows of its task (#2972): the
+// same line the palette prints. Only tasks still in the record's workspace and
+// on a live board come back — a record keeps its task_id after the task moves
+// away, and the chip must not carry the stranger's title with it.
+func (q *Queries) InboxTaskChips(ctx context.Context, arg InboxTaskChipsParams) ([]InboxTaskChipsRow, error) {
+	rows, err := q.db.Query(ctx, inboxTaskChips, arg.Ids, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InboxTaskChipsRow
+	for rows.Next() {
+		var i InboxTaskChipsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.BoardSlug,
+			&i.ProjectSlug,
+			&i.Number,
+			&i.Title,
+			&i.CompletedAt,
+			&i.DueDate,
+			&i.ColumnID,
+			&i.BoardName,
+			&i.ColumnName,
+			&i.ColumnNameKey,
+			&i.ColumnColor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchBoards = `-- name: SearchBoards :many
 SELECT b.id, b.name, b.slug, b.icon, b.color, b.icon_mode, p.slug AS project_slug, p.name AS project_name
 FROM boards b
@@ -116,6 +188,7 @@ const searchNotes = `-- name: SearchNotes :many
 SELECT id, title, slug
 FROM notes
 WHERE workspace_id = $1
+  AND (visibility = 'workspace' OR author_id = $3::uuid)
   AND (title ILIKE '%' || $2 || '%' OR body ILIKE '%' || $2 || '%')
 ORDER BY updated_at DESC
 LIMIT 26
@@ -124,6 +197,7 @@ LIMIT 26
 type SearchNotesParams struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
 	Column2     *string   `json:"column_2"`
+	Viewer      uuid.UUID `json:"viewer"`
 }
 
 type SearchNotesRow struct {
@@ -132,8 +206,9 @@ type SearchNotesRow struct {
 	Slug  string    `json:"slug"`
 }
 
+// A private note (0081) is found only by its author.
 func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]SearchNotesRow, error) {
-	rows, err := q.db.Query(ctx, searchNotes, arg.WorkspaceID, arg.Column2)
+	rows, err := q.db.Query(ctx, searchNotes, arg.WorkspaceID, arg.Column2, arg.Viewer)
 	if err != nil {
 		return nil, err
 	}

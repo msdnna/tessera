@@ -71,7 +71,7 @@ describe('MembersModal: своя строка', () => {
     const w = await open()
     const mine = rowOf(w, 'Я сам')
     expect(mine).toBeTruthy()
-    expect(mine.findComponent(naive.NSelect).exists()).toBe(false)
+    expect(mine.find('[data-testid="member-role"]').exists()).toBe(false)
   })
 
   it('не даёт удалить себя', async () => {
@@ -83,13 +83,17 @@ describe('MembersModal: своя строка', () => {
     // Пропавший без объяснения элемент читается как поломка интерфейса; строка
     // должна сказать, что это правило, а не сбой.
     const w = await open()
-    expect(rowOf(w, 'Я сам').text()).toContain('Это вы')
+    // v2 (#2975): the row keeps its role, marks «вы» and says why on hover.
+    expect(rowOf(w, 'Я сам').text()).toContain('вы')
+    expect(
+      rowOf(w, 'Я сам').find('[data-testid="member-role-locked"]').attributes('title'),
+    ).toContain('Себя')
   })
 
   it('оставляет управление чужими строками нетронутым', async () => {
     const w = await open()
     const other = rowOf(w, 'Коллега')
-    expect(other.findComponent(naive.NSelect).exists()).toBe(true)
+    expect(other.find('[data-testid="member-role"]').exists()).toBe(true)
     expect(other.findAll('button').length).toBeGreaterThan(0)
   })
 
@@ -99,7 +103,11 @@ describe('MembersModal: своя строка', () => {
     const w = await open([OWNER, SELF, OTHER], OWNER)
     const ownerRow = rowOf(w, 'Владелец')
     expect(ownerRow.text()).toContain('Владелец')
-    expect(ownerRow.text()).not.toContain('Это вы')
+    // v2 (#2975): «вы» rides by the name, the pill keeps the role and the
+    // reason is the owner rule, not the self one.
+    const pill = ownerRow.find('[data-testid="member-role-locked"]')
+    expect(pill.text()).toContain('Владелец')
+    expect(pill.attributes('title')).toContain('Владельца')
   })
 })
 
@@ -114,7 +122,7 @@ describe('MembersModal: свой адрес в поле приглашения',
 
   const typeAndInvite = async (w, mail) => {
     await w.find('.invite input').setValue(mail)
-    await w.findAll('.invite button')[0].trigger('click')
+    await w.find('[data-testid="members-invite-submit"]').trigger('click')
     await new Promise((r) => setTimeout(r, 0))
     await w.vm.$nextTick()
   }

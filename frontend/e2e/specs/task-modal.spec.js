@@ -394,7 +394,8 @@ test('Esc закрывает сначала меню поля, потом мод
 
   await page.keyboard.press('p')
   // «P» alone opens the priority picker once the «P, then 0–4» wait runs out.
-  const menu = page.locator('.n-popover .menu-item').first()
+  // The picker is the PropPicker of package J (#3118).
+  const menu = page.getByTestId('task-priority-picker-card')
   await expect(menu).toBeVisible({ timeout: 3000 })
   await page.keyboard.press('Escape')
   await expect(menu).toBeHidden()

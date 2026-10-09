@@ -4,6 +4,7 @@ import App from './App.vue'
 import router from './router'
 import { useAuthStore } from './stores/auth'
 import { initSentry } from './utils/sentry'
+import { installStaleChunkRecovery } from './utils/staleChunk'
 import { i18n } from './i18n'
 import { ensureRegistry, isTauri } from './utils/servers'
 import './styles/main.css'
@@ -64,6 +65,8 @@ async function boot() {
   // every reload. bootstrap() never rejects and its request is time-bounded, so a
   // dead backend delays the first paint rather than blocking it forever.
   await useAuthStore().bootstrap()
+  // A tab left open across a deploy reloads instead of stalling on a vanished chunk.
+  installStaleChunkRecovery(router)
   app.use(router)
   app.mount('#app')
 }

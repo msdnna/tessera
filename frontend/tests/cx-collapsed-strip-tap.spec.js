@@ -45,7 +45,7 @@ describe('collapsed column strip (#2932)', () => {
     // If it ever moves onto a child, that child is the tap target and the rule
     // guarded here stops meaning anything.
     const strip = board.slice(board.indexOf('class="col-strip"'))
-    expect(strip.slice(0, 200)).toContain('@click="toggleCollapse(dcol)"')
+    expect(strip.slice(0, 300)).toContain('@click="toggleCollapse(dcol)"')
   })
 
   it('stretches the strip to the collapsed tile so the whole tile is tappable', () => {

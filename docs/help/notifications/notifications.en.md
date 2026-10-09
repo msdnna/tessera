@@ -2,33 +2,64 @@
 title: Notifications
 category: Notifications
 order: 70
-keywords: notifications, channels, email, telegram, webhook, shoutrrr, routing, rules, quiet hours, digest, deadline, reminders, template
-updated: 2026-08-25
+keywords: notifications, pop-ups, toasts, do not disturb, channels, email, telegram, webhook, shoutrrr, routing, rules, quiet hours, digest, deadline, reminders, template
+updated: 2026-10-09
 ---
 
 Notifications in Tessera come in two kinds, and only the second is configurable.
 
-**Internal** — the bell in the bottom bar: you were assigned a task, someone replied to your comment, you were mentioned. They always come, they can't be turned off, and the counter on the bell shows the unread ones.
+**Internal** — the bell in the app's header: you were assigned a task, someone replied to your comment, you were mentioned, invited to a conference, a GitLab sync reported back. They always come, they can't be turned off, and the counter on the bell shows the unread ones. How the feed itself works is under "The bell" below.
 
 **External** — the same event delivered outward: by email, to Telegram, by a webhook to your own service. By default nothing goes out: first you set up a **channel** (where to deliver), then a **rule** (what exactly to send to it).
 
-All of this lives in **Settings** (the gear in the bottom bar) under **Notifications**.
+All of this lives in **Settings** (the gear in the sidebar footer, or `G` then `,`) — the **Notifications** section in the column on the left. Everything here is saved as you change it; there is no Save button.
 
 ![The Notifications section: the list of delivery channels](../assets/notifications-channels-light.png)
 
+## The bell
+
+The bell opens the feed over the current screen (or keys <kbd>G</kbd> then <kbd>N</kbd>). At the top are the filters **All · Mentions · Assigned · GitLab**, each with its unread count. The feed is split into **New** — unread, on a soft accent with a dot — and **Earlier**. A row says who did it (in bold), what happened, which task it is about (under the line) or a quote of the comment, and when.
+
+Clicking a row marks it read and opens the task or the conference — even in another workspace. While the feed is open these keys work: <kbd>↑</kbd> <kbd>↓</kbd> — pick a row, <kbd>↵</kbd> — open it, <kbd>E</kbd> — mark it read, <kbd>⇧</kbd> <kbd>E</kbd> — mark all read. The gear in the feed's head leads to the notification settings.
+
+The feed shows the latest 50 notifications. A separate page with the whole history and answering a meeting invitation with "Accept / Decline" right from the feed are in the works — those buttons are visible but inactive and labelled "Soon".
+
+## Pop-ups
+
+While the Tessera tab is open, a new notification briefly pops up over the screen — top right, under the bell. It is the same record as the row in the feed, in the same words: who did what, to which task. Responses to your own actions — errors, warnings, "Task created", undoing a deletion — appear separately, at the bottom centre, and other people's events never push them out.
+
+- **How long they stay.** A notification about you stays 8 seconds, board activity 5, responses to your actions 4–8. An error with **Retry**, a reminder and "An update is available" wait until you close them. While the pointer is over the pop-ups, the focus is in them, the tab is hidden or you are dragging a card, the clock stands still.
+- **The deck.** At most three are shown: the next ones lie as a deck, and hovering opens it as a list. If more arrive, a **"N more · Show in the feed"** plate appears below. A pop-up that was closed or timed out leaves the feed alone: the row stays unread, only **Open** marks it read.
+- **Activity on the open board** — one line: who moved, created, completed or deleted a task; the card on the board flashes for a moment. Several actions by one person within 10 seconds fold into one "moved 5 tasks" pop-up with **Show**. If the event already reached you as a notification, there is no activity pop-up.
+- **While you were away.** While the tab is hidden pop-ups do not pile up — one digest greets you when you are back.
+- **Update.** "Later" on the "An update is available" pop-up folds it into an **Update** button in the header until the next page load.
+- **Errors.** A failed request has **Details** — what exactly failed and the request id — and **Copy**, to send it to the administrator.
+
+Keys: <kbd>F6</kbd> moves the focus into the nearest pop-up lane, <kbd>F6</kbd> again — into the other one, then back. In a lane: <kbd>↑</kbd> <kbd>↓</kbd> walk the pop-ups, <kbd>↵</kbd> runs the main action (Open, Retry, Reload), <kbd>R</kbd> replies to a comment (the task opens with the cursor in the reply field), <kbd>Z</kbd> and <kbd>E</kbd> snooze a reminder and mark it done, <kbd>Esc</kbd> closes a pop-up, <kbd>⇧</kbd> <kbd>Esc</kbd> closes them all. <kbd>⌘</kbd> <kbd>Z</kbd> still undoes only the last deletion.
+
+On a phone pop-ups come one at a time over the bottom navigation, the rest wait their turn ("1 of 3"). A tap runs the main action, a swipe down or aside dismisses.
+
+### Do not disturb
+
+The moon in the feed's header switches the quiet on **for 1 hour** or **until tomorrow, 9:00** (keys <kbd>1</kbd> and <kbd>2</kbd> in its menu). While it is on, pop-ups about you, board activity and system pop-ups are not shown — only the bell's count grows, and the bell wears a moon. Mentions, reminders and calls still get through. Turn it off with **Turn off** in the feed's banner.
+
+### Pop-up settings
+
+In Settings → Notifications the first card is **In-app pop-ups**: the main Show switch, which notifications about you pop up, whether to show activity on the open board (off, others' actions only, or including yours) and which of its events, folding bursts and from how many events, pop-ups on the phone. In Quiet hours the **And the in-app pop-ups** option silences pop-ups during the quiet window the same way Do not disturb does.
+
 ## Delivery channels
 
-A channel is a single recipient address. There can be as many as you like, and each is switched on and off with its own toggle; a switched-off one stays in the list but receives nothing.
+A channel is a single recipient address; on screen it's a card with the type's icon. There can be as many as you like, and each is switched on and off with the toggle on its card; a switched-off one stays in the list but receives nothing. The rest of a channel's actions — **Test**, **Edit**, **Delete** — are in the card's **“⋯”** menu.
 
-**Add channel** opens a form. The type is chosen once, at creation — you can't change it afterwards; a channel of the type you need is set up anew.
+**Add channel** (the last card in the grid) opens a form next to the button. The type is chosen once, at creation — you can't change it afterwards; a channel of the type you need is set up anew.
 
-| Type                         | What you fill in                                                            |
-| ---------------------------- | --------------------------------------------------------------------------- |
-| **Email**                    | the address (the account address is filled in by default)                   |
-| **Telegram**                 | the Chat ID and the bot token                                               |
-| **Webhook**                  | the URL, the method (`POST` by default) and, if needed, an `Authorization` header |
-| **Shoutrrr (any service)**   | one Service URL string — `slack://…`, `discord://…`, `ntfy://…` and a dozen more |
-| **System notifications**     | nothing: the channel is set up by the client itself                          |
+| Type                       | What you fill in                                                                  |
+| -------------------------- | --------------------------------------------------------------------------------- |
+| **Email**                  | the address (the account address is filled in by default)                         |
+| **Telegram**               | the Chat ID and the bot token                                                     |
+| **Webhook**                | the URL, the method (`POST` by default) and, if needed, an `Authorization` header |
+| **Shoutrrr (any service)** | one Service URL string — `slack://…`, `discord://…`, `ntfy://…` and a dozen more  |
+| **System notifications**   | nothing: the channel is set up by the client itself                               |
 
 **Telegram.** The bot is created through `@BotFather`, which also hands out the token. The Chat ID is your own identifier in Telegram (or `@channel_name` if the bot is an admin there); you need to message the bot once yourself, otherwise it isn't allowed to write first.
 
@@ -36,32 +67,32 @@ A channel is a single recipient address. There can be as many as you like, and e
 
 **Shoutrrr** is the same idea, but without your own handler: a single URL describes both the service and the credentials, and Slack, Discord, ntfy, Gotify, Matrix, Pushover, Teams and others are supported. The URL format for each service is in shoutrrr's own documentation.
 
-**System notifications** are the device or browser you signed in from. Such a channel appears in the list on its own and is marked **this device** if it's opened from that very device; you can't add it by hand, but you can rename, disable and delete it. In a browser it shows the operating system's pop-up notification while the tab with Tessera is open, and it requires permission — if it hasn't been granted yet, an **Allow** button appears under the channel name. The mobile app with this channel gets notifications even when closed.
+**System notifications** are the device or browser you signed in from. Such a channel appears in the list on its own and is marked **this device** if it's opened from that very device; you can't add it by hand, but you can rename, disable and delete it. In a browser it shows the operating system's pop-up notification while the tab with Tessera is open, and it requires permission — if it hasn't been granted yet, the card says so and the channel's “⋯” menu gets an **Allow** item. The mobile app with this channel gets notifications even when closed.
 
 ### Secrets, testing and deletion
 
 The bot token, the Service URL and the `Authorization` header are stored encrypted and aren't shown back. When you edit a channel, the secret field is empty: leave it empty and the previous value is kept, enter a new one and it's replaced. You can wipe the secret entirely with the eraser next to the field.
 
-**Test** sends a probe message to the channel right now, bypassing the queue. Success marks the channel with a **verified** label, and it's the best way to make sure the token is right — an error comes back as text from the service itself. For email you may get the reply “SMTP isn't configured on the server”: the letter is then only written to the server log, and that's a question for the instance administrator, not for the channel's settings.
+**Test** (in the channel's “⋯” menu) sends a probe message to the channel right now, bypassing the queue. Success marks the channel with a **verified** label, and it's the best way to make sure the token is right — an error comes back as text from the service itself. For email you may get the reply “SMTP isn't configured on the server”: the letter is then only written to the server log, and that's a question for the instance administrator, not for the channel's settings.
 
-When you delete a channel, Tessera warns you if it's used in rules: the rules themselves stay, but they stop delivering anywhere.
+Deleting is the last item of the “⋯” menu, and it takes two presses: the first arms it and states the cost — how many rules use the channel (the rules stay, but stop delivering there) — the second deletes. Deletion can't be undone.
 
 ## Message template
 
 Every channel (except the system one) has its own text template. An empty template means the default text: the gist of the notification plus a link to the app.
 
-The **Edit** button opens the editor: on the left is the template field with a live preview on sample data, on the right is the list of fields, each inserted with a click at the cursor position.
+The **Edit** button next to the message template field in the channel form opens the editor window: on the left is the template field with a live preview on sample data, on the right is the list of fields, each inserted with a click at the cursor position.
 
-| Field            | What it substitutes                    |
-| ---------------- | -------------------------------------- |
-| `{{.Text}}`      | the ready notification text            |
-| `{{.Title}}`     | the title by event type                |
-| `{{.Kind}}`      | the event type (`assigned`, `comment`, …) |
-| `{{.TaskNumber}}` | the task number                       |
-| `{{.TaskTitle}}` | the task title                         |
-| `{{.Actor}}`     | who triggered it                       |
-| `{{.Workspace}}` | the workspace name                     |
-| `{{.Link}}`      | the link to the app                    |
+| Field             | What it substitutes                       |
+| ----------------- | ----------------------------------------- |
+| `{{.Text}}`       | the ready notification text               |
+| `{{.Title}}`      | the title by event type                   |
+| `{{.Kind}}`       | the event type (`assigned`, `comment`, …) |
+| `{{.TaskNumber}}` | the task number                           |
+| `{{.TaskTitle}}`  | the task title                            |
+| `{{.Actor}}`      | who triggered it                          |
+| `{{.Workspace}}`  | the workspace name                        |
+| `{{.Link}}`       | the link to the app                       |
 
 The syntax is Go templates, and conditions are available too: `{{if .TaskNumber}}#{{.TaskNumber}} {{end}}{{.Text}}`. A broken template won't be saved: the error appears in the preview right away, and on an attempt to save — under the channel form.
 
@@ -70,6 +101,8 @@ The syntax is Go templates, and conditions are available too: `{{if .TaskNumber}
 Rules decide which event goes to which channels. They are checked **top to bottom, and the first match fires** — the rest are no longer considered. As long as there are no rules, external channels stay silent, no matter how many are set up.
 
 ![Routing rules: the list of rules and the form for a new rule](../assets/notifications-routes-light.png)
+
+**Add rule** opens a form next to the button; each row of the list has a toggle and a **“⋯”** menu (Edit and a two-press Delete), and the number on the left is the rule's place in the checking order.
 
 A rule has three settings:
 
@@ -91,13 +124,13 @@ The bottom block of the section is about the notifications Tessera sends itself,
 
 The same three settings exist on each task separately — by clicking the date on the card, in the “Notifications” block. The value “Default” means “as in the settings”, and any other value overrides the general rule for that task. If the due date is moved, the notification is re-armed.
 
-**Deliver reminders to external channels** is about the “Reminders” section: when a reminder fires, whether to send it to the channels. The switch acts only on future ones: turning it on won't bring you old reminders.
+**Deliver reminders to external channels** is about the reminders from the Inbox: when a reminder fires, whether to send it to the channels. The switch acts only on future ones: turning it on won't bring you old reminders.
 
 **Group into a digest** — a window of 5, 15, 30 or 60 minutes. The notifications gathered over the window arrive as a single message per channel (“Digest — N notifications”) instead of a stream of separate ones. This doesn't affect system notifications: a push that arrives half an hour late is useless.
 
 **Quiet hours** — a “do not disturb” window that can cross midnight (for example, 22:00–08:00). External notifications in that window are **held** and arrive all at once after it ends; system notifications to the device simply aren't shown during quiet hours — a pop-up can't be postponed. Internal notifications on the bell come as usual. The time is counted in your time zone — it's taken from the localization settings.
 
-Changes in this block are applied with the **Save** button — unlike channels and rules, which are saved immediately.
+Changes in this block are saved on their own, half a second after you make them — just like channels and rules.
 
 ## How delivery really works
 
@@ -110,13 +143,13 @@ If delivery fails, Tessera retries it up to five times with a growing pause (rou
 1. **Is there a rule.** Channels without rules receive nothing — that's the most common cause.
 2. **A rule higher in the list.** The first matching rule takes the event for itself; check that a silencer rule isn't intercepting it.
 3. **The channel and the rule are enabled.** A disabled channel is dim in the list; a disabled rule is too.
-4. **The channel is verified.** Press **Test**: it will show the real service error.
+4. **The channel is verified.** Choose **Test** in the channel's menu: it will show the real service error.
 5. **Quiet hours.** If it's a quiet window right now, external notifications will come after it ends, and system ones won't come at all.
 6. **Digest.** With the digest on, a message waits for the end of the window and arrives together with the rest.
-7. **Browser permission** — for system notifications; the **Allow** button under the channel appears if there's none.
+7. **Browser permission** — for system notifications; if there's none, the channel's “⋯” menu gets an **Allow** item.
 8. **Email doesn't go out at all** — SMTP may not be configured on the server: the channel test will tell you.
 
 ## What's next
 
-- How due dates and reminders are built on their own — [Reminders](/help/reminders).
+- How due dates and reminders are built on their own — [Inbox](/help/inbox).
 - What happens to the delivery queue on the server side — [Background jobs](/help/admin-jobs) (for the instance administrator).

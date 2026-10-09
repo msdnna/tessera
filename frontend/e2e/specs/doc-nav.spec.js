@@ -65,25 +65,35 @@ test('документ: браузерное «назад» тоже возвр�
   await expect(page.locator('.ProseMirror')).toHaveCount(0)
 })
 
-test('документ: управление живёт в шапке приложения, а не в рабочей области', async ({
+// v2 (#3106): the app header names the section («Документы · пространство») and
+// the open document keeps its controls in its own head row above the text —
+// back to the list through the crumbs, the panels' toggles, and the «⋯» menu
+// that holds nested document, templates, export and deletion. Deletion is the
+// menu's two-step item: the first press arms it, it is not a dialog.
+test('документ: управление — в шапке документа, удаление двухшаговым пунктом «⋯»', async ({
   page,
   seed,
 }) => {
   await openSavedDocument(page, seed)
 
-  // «К списку» and the document's controls were asked to move into the header
-  // (they teleport there on a wide screen). Asserting the ancestor rather than
-  // mere visibility: rendered twice, or left behind in the page, both read as
-  // "visible" while being exactly what the move was meant to end.
-  const back = page.getByTestId('doc-back')
-  await expect(back).toHaveCount(1)
-  await expect(page.locator('.topbar').getByTestId('doc-back')).toBeVisible()
-  await expect(page.locator('.topbar').getByTestId('doc-export')).toBeVisible()
+  const head = page.getByTestId('doc-head')
+  await expect(page.getByTestId('doc-back')).toHaveCount(1)
+  await expect(head.getByTestId('doc-back')).toBeVisible()
+  await expect(head.getByTestId('doc-history-toggle')).toBeVisible()
+  await expect(page.getByTestId('page-crumbs')).toBeVisible()
 
-  // Delete and «Вложенный документ» left the bottom of the page for this menu:
-  // they exist only as entries of it, never as buttons in the working area.
   await expect(page.getByTestId('doc-action-remove')).toHaveCount(0)
-  await page.locator('.topbar').getByTestId('doc-actions').click()
+  await head.getByTestId('doc-actions').click()
   await expect(page.getByTestId('doc-action-nested')).toBeVisible()
-  await expect(page.getByTestId('doc-action-remove')).toBeVisible()
+  await expect(page.getByTestId('doc-action-export-html')).toBeVisible()
+  await page.getByTestId('doc-action-remove').click()
+  // Armed, not gone: the document is still open until the second press.
+  await expect(page.getByTestId('doc-action-remove-armed')).toBeVisible()
+  await expect(page.locator('.ProseMirror')).toBeVisible()
+  const deleted = page.waitForResponse(
+    (r) => /\/documents\/[^/]+$/.test(r.url()) && r.request().method() === 'DELETE',
+  )
+  await page.getByTestId('doc-action-remove-armed').click()
+  expect((await deleted).status()).toBeLessThan(300)
+  await expect(page).toHaveURL(/\/documents$/)
 })

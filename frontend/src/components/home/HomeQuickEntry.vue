@@ -5,7 +5,9 @@
 // in the target board's «К работе»; Tab moves to the board picker.
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopover, useMessage } from 'naive-ui'
+import { useTaskCreatedToast } from '@/composables/useTaskCreatedToast'
+import { NIcon, NPopover } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
   AddCircleOutline,
   CalendarClearOutline,
@@ -38,6 +40,7 @@ const emit = defineEmits(['created'])
 
 const { t } = useI18n()
 const message = useMessage()
+const taskCreated = useTaskCreatedToast()
 const ws = useWorkspacesStore()
 const { formatDue } = useFormat()
 
@@ -132,7 +135,8 @@ async function submit() {
       await tasksApi.addTag(task.id, id)
     }
     for (const person of p.people) await tasksApi.addAssignee(task.id, person.user_id)
-    message.success(t('shell.home.quick.created', { n: task.number }))
+    // The board is not on screen: the toast says where the task went (#3117).
+    taskCreated(task, { project: target.value.project, board: target.value, column: todoCol })
     text.value = ''
     emit('created', task)
   } catch (e) {
@@ -167,11 +171,11 @@ defineExpose({ focus: () => inputEl.value?.focus() })
         @keydown.tab="onTab"
         @keydown.esc="text = ''"
       />
-      <span v-if="typing" class="hq-hint">
+      <span v-if="typing" class="hq-hint kbd-hint">
         <ShortcutKeys id="card.open" /> {{ t('shell.home.quick.hintTyping') }} ·
         <ShortcutKeys id="palette.actions" /> {{ t('shell.home.quick.hintBoard') }}
       </span>
-      <span v-else class="hq-hint">
+      <span v-else class="hq-hint kbd-hint">
         {{ t('shell.home.quick.hintIdle') }} <ShortcutKeys id="create.task" />
       </span>
     </div>
@@ -398,5 +402,27 @@ defineExpose({ focus: () => inputEl.value?.focus() })
 }
 .hq-bproj {
   color: var(--t-text3);
+}
+
+/* A phone (#2976 — package G): a 44px field on the card level, no key hints. */
+@media (max-width: 768px) {
+  .hq-box {
+    height: 48px;
+    padding: 0 14px;
+    gap: 10px;
+    border-radius: 12px;
+    background: var(--t-card);
+    backdrop-filter: none;
+    box-shadow: none;
+  }
+  .hq-box:focus-within {
+    box-shadow: 0 0 0 2px var(--t-primary);
+  }
+  .hq-hint {
+    display: none;
+  }
+  .hq-input {
+    font-size: 16px;
+  }
 }
 </style>

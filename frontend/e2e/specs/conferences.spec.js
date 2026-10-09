@@ -47,7 +47,9 @@ async function schedule(page, title) {
   await page.getByTestId('conference-submit').click()
 
   await page.waitForURL(/\/conferences\/[0-9a-f-]{36}$/)
-  await expect(page.getByTestId('conference-room')).toBeVisible()
+  // The lobby (v2, #3107): the meeting's card with «Подключиться»; the room
+  // itself appears once you are in it.
+  await expect(page.getByTestId('conference-join')).toBeVisible()
   return new URL(page.url()).pathname.split('/').pop()
 }
 
@@ -62,7 +64,7 @@ test('конференция: планирование, вход, ростер �
   const row = page.getByTestId('conference-row').filter({ hasText: title })
   await expect(row).toHaveCount(1)
   await row.click()
-  await expect(page.getByTestId('conference-room')).toBeVisible()
+  await expect(page.getByTestId('conference-lobby')).toBeVisible()
 
   // Before joining the room is a stated non-participation, not a broken call.
   await expect(page.getByTestId('conference-participants')).toHaveCount(0)
@@ -245,6 +247,26 @@ test('конференция: медиа через фейковые устро�
   // labelled entries once a capture permission has actually been granted — so a
   // non-empty menu is itself proof the fake devices were opened.
   await expect(page.getByTestId('conference-devices')).toBeEnabled()
+
+  await page.getByTestId('conference-leave').click()
+  await expect(page.getByTestId('conference-join')).toBeVisible()
+})
+
+// «Мгновенная» (v2, #3107): one press creates an untimed call and takes you
+// straight into it — the seat on the server is the proof.
+test('конференция: мгновенная встреча создаётся и сразу заводит в звонок', async ({
+  page,
+  backend,
+  seed,
+}) => {
+  await openConferences(page, seed.workspaceId)
+  await page.getByTestId('conference-instant').click()
+  await page.waitForURL(/\/conferences\/[0-9a-f-]{36}$/)
+  await expect(page.getByTestId('conference-leave')).toBeVisible()
+
+  const id = new URL(page.url()).pathname.split('/').pop()
+  const participants = await backend.get(`/conferences/${id}/participants`)
+  expect((participants || []).filter((p) => p.joined_at && !p.left_at)).toHaveLength(1)
 
   await page.getByTestId('conference-leave').click()
   await expect(page.getByTestId('conference-join')).toBeVisible()

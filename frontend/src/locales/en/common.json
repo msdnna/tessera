@@ -56,38 +56,49 @@
       "gitlabWaiting": "Waiting for confirmation in the browser…",
       "forgot": "Forgot your password?",
       "noAccount": "No account?",
-      "register": "Sign up"
+      "register": "Sign up",
+      "subtitle": "Your team’s tasks, documents and meetings"
     },
     "register": {
-      "title": "Sign up",
+      "title": "Create an account",
       "name": "Name",
       "namePlaceholder": "Your name",
       "passwordPlaceholder": "at least 8 characters",
       "submit": "Create account",
       "gitlab": "Continue with GitLab",
       "haveAccount": "Already have an account?",
-      "login": "Sign in"
+      "login": "Sign in",
+      "subtitle": "A personal workspace comes with the account"
     },
     "forgot": {
-      "title": "Password recovery",
+      "title": "Recover access",
       "submit": "Send the link",
       "sent": "If an account with this address exists, we have sent it a password reset link.",
-      "back": "Back to sign-in"
+      "back": "Back to sign in",
+      "subtitle": "We will email you a link to reset the password",
+      "sentTitle": "Check your inbox"
     },
     "reset": {
       "title": "New password",
       "noToken": "This link is invalid — the token is missing.",
       "done": "Password changed. Redirecting to sign-in…",
-      "password": "New password (≥ 8)",
-      "confirm": "Repeat the password",
+      "password": "Password",
+      "confirm": "Once more",
       "submit": "Save password",
-      "toLogin": "To sign-in"
+      "toLogin": "To sign-in",
+      "subtitle": "Choose a new password, then sign in with it",
+      "mismatch": "The passwords do not match",
+      "badTitle": "The link does not work",
+      "doneTitle": "Password changed"
     },
     "verify": {
-      "title": "Confirmation",
+      "title": "Email confirmation",
       "pending": "Confirming…",
       "ok": "Email confirmed. Thank you!",
-      "fail": "This link is invalid or has expired."
+      "fail": "This link is invalid or has expired.",
+      "pendingTitle": "Confirming your email",
+      "okTitle": "Email confirmed",
+      "failTitle": "The link did not work"
     },
     "invite": {
       "title": "Invitation",
@@ -96,11 +107,16 @@
       "fail": "This invitation is no longer valid — it has expired or was already used.",
       "wrongAccount": "This invitation was sent to a different address. Sign in with the account it was mailed to.",
       "error": "The invitation could not be applied. Open the link again or ask for a new invitation.",
-      "switchAccount": "Sign in with another account"
+      "switchAccount": "Sign in with another account",
+      "okTitle": "You are in",
+      "failTitle": "The invitation is no longer valid",
+      "wrongAccountTitle": "The invitation is for another address",
+      "errorTitle": "Something went wrong"
     },
     "oauth": {
       "title": "Sign in with GitLab",
-      "finishing": "Finishing the sign-in…"
+      "finishing": "Finishing the sign-in…",
+      "subtitle": "One more second — checking with GitLab"
     },
     "toHome": "Go to Home",
     "validation": {
@@ -122,6 +138,13 @@
       "handoff_failed": "Could not complete the sign-in: the link has expired or was already used. Please try again.",
       "browserOpen": "Could not open the browser to sign in with GitLab.",
       "noReturn": "Could not return to the app. Check that tessera:// links open in Tessera."
+    },
+    "strength": {
+      "caption": "{level} · {n} character | {level} · {n} characters",
+      "level1": "Weak",
+      "level2": "Fair",
+      "level3": "Good",
+      "level4": "Strong"
     }
   },
   "secret": {
@@ -189,6 +212,11 @@
   },
   "menu": {
     "deleting": "Deleting…",
-    "retry": "retry"
+    "retry": "retry",
+    "failed": "Couldn't delete",
+    "back": "Back"
+  },
+  "window": {
+    "sections": "sections"
   }
 }

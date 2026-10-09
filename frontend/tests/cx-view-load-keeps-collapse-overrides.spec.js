@@ -98,20 +98,18 @@ describe('bulk view load keeps manual collapse overrides (#2932)', () => {
     )
   })
 
-  it('is the same flag persistence and autosave stand down on', () => {
+  it('is the same flag persistence stands down on', () => {
     // A second, privately-owned flag would drift out of step with the mutex that
-    // actually brackets the bulk writes.
+    // actually brackets the bulk writes. (Autosave, its other reader, is gone —
+    // #2970 replaced it with «изменено» + «Обновить».)
     expect(board).toMatch(/isGuarded:\s*viewLoadInFlight/)
-    expect(board).toMatch(/guarded:\s*viewLoadInFlight/)
   })
 
   it('routes applying a saved view through that mutex', () => {
-    // applyView is the path the bug was reported on; if it ever stops being guarded
-    // the watcher's new early return never triggers there.
-    const body = fnBody(board, 'applyView')
-    expect(body).toBeTruthy()
-    expect(body).toMatch(/withViewLoad\(\(\) =>/)
-    expect(body).toContain('applyViewConfig(v.config)')
+    // Applying a view is the path the bug was reported on; if it ever stops being
+    // guarded the watcher's new early return never triggers there. The views live
+    // in useBoardViews now, and the board hands it the guarded loader.
+    expect(board).toContain('applyConfig: (c) => withViewLoad(() => applyViewConfig(c))')
   })
 
   it('writes the toggle and the overrides through one bulk loader', () => {

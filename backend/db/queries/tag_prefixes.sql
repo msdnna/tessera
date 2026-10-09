@@ -35,3 +35,8 @@ DELETE FROM tag_prefixes WHERE project_id = $1;
 -- prefixes, used when the project is transferred between workspaces.
 -- name: ReassignProjectTagPrefixesWorkspace :exec
 UPDATE tag_prefixes SET workspace_id = $2 WHERE project_id = $1;
+
+-- DeleteTagPrefix drops one prefix's display name (the point edit of #2990: the
+-- group header of the tag table renames one prefix, not the whole set).
+-- name: DeleteTagPrefix :exec
+DELETE FROM tag_prefixes WHERE project_id = $1 AND prefix = $2;

@@ -155,7 +155,10 @@ describe('a late board answer does not take the screen (#2932)', () => {
     const at = board.indexOf('() => props.boardId,')
     expect(at).toBeGreaterThan(-1)
     const body = board.slice(at, board.indexOf('watch(', at + 10))
-    expect(body).toMatch(/await load\(id\)/)
+    // The watcher hands the id to openBoard (#3017), which awaits load(id) first.
+    expect(body).toMatch(/await openBoard\(id\)/)
     expect(body).not.toMatch(/allTasks\.value =|columns\.value =|board\.value =/)
+    const open = board.slice(board.indexOf('async function openBoard('))
+    expect(open.slice(0, open.indexOf('\n}'))).toMatch(/await load\(id\)/)
   })
 })

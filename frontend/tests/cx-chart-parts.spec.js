@@ -285,7 +285,7 @@ describe('ChartControls.vue', () => {
     const ctl = ctlOf()
     const w = mount(ChartControls, { props: { ctl }, global: { stubs } })
     const segs = w.findAll('.cc-seg-btn')
-    expect(segs.map((b) => b.classes().includes('on'))).toEqual([true, false, false])
+    expect(segs.map((b) => b.classes().includes('on'))).toEqual([true, false, false, false])
     await segs[2].trigger('click')
     expect(ctl.setScale).toHaveBeenCalledWith('months')
   })
@@ -313,22 +313,9 @@ describe('ChartControls.vue', () => {
     ).toBe(false)
   })
 
-  it('keeps the counters, the hint and the task-column switch in the settings', async () => {
-    const ctl = ctlOf({
-      counters: [
-        { key: 'overdue', text: '3 просрочено', overdue: true },
-        { key: 'unsched', text: '2 без дат' },
-      ],
-      hint: 'Тяните',
-    })
-    const w = mount(ChartControls, { props: { ctl }, global: { stubs } })
-    const chips = w.findAll('.cc-counter')
-    expect(chips.map((c) => c.text())).toEqual(['3 просрочено', '2 без дат'])
-    expect(chips[0].classes()).toContain('overdue')
-    expect(w.find('.cc-dot').exists()).toBe(true)
-    expect(w.find('.cc-note').text()).toBe('Тяните')
-    await w.find('.n-switch-stub').trigger('click')
-    expect(ctl.toggleLeft).toHaveBeenCalledOnce()
+  it('has no settings of its own — they live in the board view panel (#2986)', () => {
+    const w = mount(ChartControls, { props: { ctl: ctlOf() }, global: { stubs } })
+    expect(w.find('[data-testid="chart-settings"]').exists()).toBe(false)
   })
 
   it('renders nothing until a chart view is open', () => {

@@ -12,18 +12,19 @@ import (
 )
 
 type Board struct {
-	ID           uuid.UUID  `json:"id"`
-	ProjectID    uuid.UUID  `json:"project_id"`
-	Name         string     `json:"name"`
-	Position     float64    `json:"position"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	DoneColumnID *uuid.UUID `json:"done_column_id"`
-	Slug         string     `json:"slug"`
-	Icon         string     `json:"icon"`
-	Color        string     `json:"color"`
-	IconMode     string     `json:"icon_mode"`
-	DeletedAt    *time.Time `json:"deleted_at"`
+	ID            uuid.UUID  `json:"id"`
+	ProjectID     uuid.UUID  `json:"project_id"`
+	Name          string     `json:"name"`
+	Position      float64    `json:"position"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DoneColumnID  *uuid.UUID `json:"done_column_id"`
+	Slug          string     `json:"slug"`
+	Icon          string     `json:"icon"`
+	Color         string     `json:"color"`
+	IconMode      string     `json:"icon_mode"`
+	DeletedAt     *time.Time `json:"deleted_at"`
+	DefaultLayout string     `json:"default_layout"`
 }
 
 type BoardColumn struct {
@@ -40,13 +41,17 @@ type BoardColumn struct {
 }
 
 type BoardView struct {
-	ID        uuid.UUID `json:"id"`
-	BoardID   uuid.UUID `json:"board_id"`
-	UserID    uuid.UUID `json:"user_id"`
-	Name      string    `json:"name"`
-	Config    []byte    `json:"config"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID  `json:"id"`
+	BoardID   uuid.UUID  `json:"board_id"`
+	UserID    *uuid.UUID `json:"user_id"`
+	Name      string     `json:"name"`
+	Config    []byte     `json:"config"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	Scope     string     `json:"scope"`
+	IsDefault bool       `json:"is_default"`
+	Position  float64    `json:"position"`
+	CreatedBy *uuid.UUID `json:"created_by"`
 }
 
 type ColumnDeletionMove struct {
@@ -398,6 +403,7 @@ type Milestone struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	Slug        string     `json:"slug"`
+	ClosedAt    *time.Time `json:"closed_at"`
 }
 
 type Note struct {
@@ -410,6 +416,8 @@ type Note struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	Slug        string     `json:"slug"`
+	TaskID      *uuid.UUID `json:"task_id"`
+	Visibility  string     `json:"visibility"`
 }
 
 type Notification struct {
@@ -453,17 +461,21 @@ type NotificationDelivery struct {
 }
 
 type NotificationPref struct {
-	UserID            uuid.UUID `json:"user_id"`
-	DueEnabled        bool      `json:"due_enabled"`
-	DueLeadMinutes    int32     `json:"due_lead_minutes"`
-	DueRepeatMinutes  int32     `json:"due_repeat_minutes"`
-	ReminderEnabled   bool      `json:"reminder_enabled"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	QuietEnabled      bool      `json:"quiet_enabled"`
-	QuietStartMinutes int32     `json:"quiet_start_minutes"`
-	QuietEndMinutes   int32     `json:"quiet_end_minutes"`
-	QuietTz           string    `json:"quiet_tz"`
-	DigestMinutes     int32     `json:"digest_minutes"`
+	UserID            uuid.UUID  `json:"user_id"`
+	DueEnabled        bool       `json:"due_enabled"`
+	DueLeadMinutes    int32      `json:"due_lead_minutes"`
+	DueRepeatMinutes  int32      `json:"due_repeat_minutes"`
+	ReminderEnabled   bool       `json:"reminder_enabled"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	QuietEnabled      bool       `json:"quiet_enabled"`
+	QuietStartMinutes int32      `json:"quiet_start_minutes"`
+	QuietEndMinutes   int32      `json:"quiet_end_minutes"`
+	QuietTz           string     `json:"quiet_tz"`
+	DigestMinutes     int32      `json:"digest_minutes"`
+	ToastsEnabled     bool       `json:"toasts_enabled"`
+	Toasts            []byte     `json:"toasts"`
+	QuietToasts       bool       `json:"quiet_toasts"`
+	DndUntil          *time.Time `json:"dnd_until"`
 }
 
 type NotificationRoute struct {
@@ -554,14 +566,18 @@ type RefreshToken struct {
 }
 
 type Reminder struct {
-	ID         uuid.UUID  `json:"id"`
-	UserID     uuid.UUID  `json:"user_id"`
-	TaskID     *uuid.UUID `json:"task_id"`
-	RemindAt   time.Time  `json:"remind_at"`
-	Message    string     `json:"message"`
-	Done       bool       `json:"done"`
-	CreatedAt  time.Time  `json:"created_at"`
-	NotifiedAt *time.Time `json:"notified_at"`
+	ID          uuid.UUID  `json:"id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	TaskID      *uuid.UUID `json:"task_id"`
+	RemindAt    time.Time  `json:"remind_at"`
+	Message     string     `json:"message"`
+	Done        bool       `json:"done"`
+	CreatedAt   time.Time  `json:"created_at"`
+	NotifiedAt  *time.Time `json:"notified_at"`
+	Body        string     `json:"body"`
+	DoneAt      *time.Time `json:"done_at"`
+	SnoozedFrom *time.Time `json:"snoozed_from"`
+	WorkspaceID *uuid.UUID `json:"workspace_id"`
 }
 
 type Tag struct {
@@ -571,6 +587,7 @@ type Tag struct {
 	Color       string    `json:"color"`
 	CreatedAt   time.Time `json:"created_at"`
 	ProjectID   uuid.UUID `json:"project_id"`
+	Source      string    `json:"source"`
 }
 
 type TagPrefix struct {

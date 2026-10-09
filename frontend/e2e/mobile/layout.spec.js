@@ -89,9 +89,7 @@ test('контроль: подсаженный перебор ширины ло�
 // not hide the state of the eight behind it — the whole point of an inventory.
 const ROUTES = [
   { label: 'home', path: '/' },
-  { label: 'notes', path: '/notes' },
   { label: 'documents', path: '/documents' },
-  { label: 'reminders', path: '/reminders' },
   { label: 'milestones', path: '/milestones' },
   { label: 'settings', path: '/settings' },
   { label: 'conferences', path: '/conferences' },
@@ -105,19 +103,18 @@ for (const route of ROUTES) {
   })
 }
 
-// The failure mode the width gates structurally cannot see: a flex row that
-// *shrinks* rather than overflows. Squeezing costs the page no width, so every
-// gate above stays green while the control becomes unusable — on «Напоминания»
-// the date picker was down to 43px of client width, showing «Выбра…» and an
-// icon. Asserted on the picker's own box, not on a screenshot, and with a floor
-// (150px) well under the 200px the fix sets, so ordinary restyling of the row
-// does not make this red.
-test('мобильная вёрстка: строка добавления напоминания не сплющена', async ({ page }) => {
-  await visit(page, '/reminders')
-  const picker = page.locator('.add-row .n-date-picker').first()
-  await expect(picker).toBeVisible()
-  const w = await picker.evaluate((el) => el.getBoundingClientRect().width)
-  expect(w, `поле даты сжато до ${Math.round(w)}px — дату в нём не прочитать`).toBeGreaterThan(150)
+// «Входящие» (#2972) on a phone: a full-height sheet from the header button,
+// its rows and filters inside the width.
+test('мобильная вёрстка: «Входящие» — полноэкранный лист', async ({ page }, testInfo) => {
+  await visit(page, '/')
+  await page.getByTestId('mobile-tab-inbox').tap()
+  const sheet = page.getByTestId('inbox-panel')
+  await expect(sheet).toBeVisible()
+  await expect(page.getByTestId('inbox-filters')).toBeVisible()
+  const box = await sheet.boundingBox()
+  const vw = page.viewportSize().width
+  expect(box.width, 'лист шире экрана').toBeLessThanOrEqual(vw + 1)
+  await report(page, testInfo, 'inbox')
 })
 
 test('мобильная вёрстка: доска', async ({ page, seed }, testInfo) => {
@@ -127,9 +124,36 @@ test('мобильная вёрстка: доска', async ({ page, seed }, tes
   await expectFitsWidth(page, 'доска')
 })
 
-test('мобильная вёрстка: модалка задачи', async ({ page, seed, backend }, testInfo) => {
+// The list and the calendar on a phone (#2973): 56px rows without the field
+// columns, the month as dots — neither may push the page sideways. The layout is
+// picked in the header's board menu (a sheet on the touch, #2976), as a reader
+// would.
+for (const [key, label] of [
+  ['list', 'Список'],
+  ['calendar', 'Календарь'],
+]) {
+  test(`мобильная вёрстка: ${label.toLowerCase()}`, async ({ page, seed }, testInfo) => {
+    await openBoard(page, seed.boardId)
+    await settle(page)
+    await page.getByTestId('board-mobile-menu').tap()
+    await page.getByTestId(`board-mobile-menu-list-layout:${key}`).tap()
+    await expect(page.getByTestId(key === 'list' ? 'list-view' : 'calendar-view')).toBeVisible()
+    await page.waitForTimeout(300)
+    await report(page, testInfo, `board-${key}`)
+    await expectFitsWidth(page, label)
+  })
+}
+
+// A board of its own (#2962): on the shared seeded board the desktop tier has
+// already left a column of cards by the time this runs, the new card lands
+// below the column's visible window, and the board's windowing draws it as a
+// placeholder without a TaskCard — so the locator below never found it.
+test('мобильная вёрстка: модалка задачи', async ({ page, backend }, testInfo) => {
+  const { board, columns } = await backend.freshBoard('mob-modal')
   const title = `Моб ${Date.now().toString(36)}`
-  await backend.createTask(seed.columns[0].id, title, {
+  await backend.post(`/boards/${board.id}/tasks`, {
+    column_id: columns[0].id,
+    title,
     description: [
       'Длинная строка без пробелов, чтобы поймать перенос: ',
       'ААААААААААААААААААААААААААААААААААААААААААААААААААААААААААА',
@@ -138,10 +162,10 @@ test('мобильная вёрстка: модалка задачи', async ({ 
       '\n| значение | значение | значение | значение |',
     ].join(''),
   })
-  await openBoard(page, seed.boardId)
+  await openBoard(page, board.id)
   await settle(page)
 
-  await cardsIn(page, seed.columns[0].name).filter({ hasText: title }).first().click()
+  await cardsIn(page, columns[0].name).filter({ hasText: title }).first().click()
   const modal = page.getByTestId('task-modal')
   await expect(modal).toBeVisible({ timeout: 10000 })
   await page.waitForTimeout(500)
@@ -154,10 +178,12 @@ test('мобильная вёрстка: модалка задачи', async ({ 
   await expectPaneFitsWidth(modal, 'модалка задачи')
 })
 
-test('мобильная вёрстка: сайдбар в дровере', async ({ page }, testInfo) => {
-  await visit(page, '/')
-  // Topbar.vue renders the hamburger only in its `mobile` branch, as `.menu-btn`.
-  await page.locator('.menu-btn').first().click()
+test('мобильная вёрстка: сайдбар в дровере', async ({ page, seed }, testInfo) => {
+  // No hamburger on a phone (#2976): the tree opens from the board's name in
+  // the header.
+  await openBoard(page, seed.boardId)
+  await settle(page)
+  await page.getByTestId('mobile-board-switch').tap()
   const drawer = page.locator('.n-drawer')
   await expect(drawer).toBeVisible({ timeout: 10000 })
   await page.waitForTimeout(400)

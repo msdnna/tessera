@@ -2,14 +2,20 @@
 // «Мои задачи» on the start screen (v2, #2960): the sections by due date, each
 // a tray of 42px rows — done toggle, priority stripe, title, project, status,
 // due. The selected row (↑↓) carries the key hint above it.
+import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import {
   ChevronDownOutline,
   EllipseOutline,
   CheckmarkCircleOutline,
+  CheckmarkOutline,
+  AlarmOutline,
   TimeOutline,
 } from '@vicons/ionicons5'
+import SwipeRow from '../kit/SwipeRow.vue'
+import { useResponsive } from '@/composables/useResponsive'
+import { stubTask } from '@/utils/featureStubs'
 import { useFormat } from '@/composables/useFormat'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, hueGradVert } from '@/utils/gradient'
@@ -29,6 +35,25 @@ const emit = defineEmits(['open', 'complete', 'select', 'toggle'])
 
 const { t } = useI18n()
 const { formatDate, formatTime } = useFormat()
+
+// A phone (#2976 — package G «Мои задачи»): each row is a 64px card, a tap
+// opens the task, the status circle is a 44px target, and a swipe to the left
+// offers «Готово» (and «Отложить», which a task does not have yet — #3108).
+const { isMobile } = useResponsive()
+const swipeActions = computed(() => [
+  { key: 'done', label: t('shell.mobile.swipeDone'), icon: CheckmarkOutline, tone: '#18a058' },
+  {
+    key: 'snooze',
+    label: t('shell.mobile.swipeSnooze'),
+    icon: AlarmOutline,
+    tone: '#f0a020',
+    stub: stubTask('home.snoozeTask'),
+  },
+])
+function onRow(task) {
+  if (isMobile.value) emit('open', task)
+  else emit('select', task.id)
+}
 
 const statusIcon = (task) =>
   columnStatusName({
@@ -77,62 +102,69 @@ function duePill(task) {
         <span class="hl-count">{{ sec.tasks.length }}</span>
       </button>
       <div v-if="!folded.has(sec.key)" class="hl-tray">
-        <div
+        <component
+          :is="isMobile ? SwipeRow : 'div'"
           v-for="task in sec.tasks"
           :key="task.id"
-          class="hl-row"
-          :class="{ sel: task.id === selectedId }"
-          :data-task-id="task.id"
-          @click="emit('select', task.id)"
-          @dblclick="emit('open', task)"
+          class="hl-cell"
+          v-bind="isMobile ? { right: swipeActions } : {}"
+          @action="(key) => key === 'done' && emit('complete', task)"
         >
-          <div v-if="task.id === selectedId" class="hl-hint">
-            <ShortcutKeys id="card.open" /> {{ t('shell.home.rowHint.open') }} ·
-            <ShortcutKeys id="card.complete" /> {{ t('shell.home.rowHint.complete') }} ·
-            <ShortcutKeys id="card.due" /> {{ t('shell.home.rowHint.due') }}
-          </div>
-          <button
-            type="button"
-            class="hl-check"
-            :title="t('task.status.complete')"
-            @click.stop="emit('complete', task)"
+          <div
+            class="hl-row"
+            :class="{ sel: task.id === selectedId && !isMobile }"
+            :data-task-id="task.id"
+            @click="onRow(task)"
+            @dblclick="emit('open', task)"
           >
-            <n-icon class="hl-check-off" :component="EllipseOutline" :size="18" />
-            <n-icon class="hl-check-on" :component="CheckmarkCircleOutline" :size="18" />
-          </button>
-          <span
-            class="hl-prio"
-            :style="
-              task.priority ? { background: hueGradVert(PRIORITY_COLORS[task.priority]) } : {}
-            "
-          />
-          <span class="hl-title" @click.stop="emit('open', task)">{{ task.title }}</span>
-          <span class="hl-proj">
-            <span
-              class="hl-picon"
-              :style="{ background: hueGrad(task.project_color || '#7c5cff') }"
-              >{{ initials(task.project_name) }}</span
+            <div v-if="task.id === selectedId" class="hl-hint">
+              <ShortcutKeys id="card.open" /> {{ t('shell.home.rowHint.open') }} ·
+              <ShortcutKeys id="card.complete" /> {{ t('shell.home.rowHint.complete') }} ·
+              <ShortcutKeys id="card.due" /> {{ t('shell.home.rowHint.due') }}
+            </div>
+            <button
+              type="button"
+              class="hl-check"
+              :title="t('task.status.complete')"
+              @click.stop="emit('complete', task)"
             >
-            <span class="hl-pname">{{ task.project_name }}</span>
-          </span>
-          <span class="hl-status">
-            <TesseraIcon
-              :name="statusIcon(task)"
-              :size="13"
-              :style="{ color: task.column_color || 'var(--t-text3)' }"
+              <n-icon class="hl-check-off" :component="EllipseOutline" :size="18" />
+              <n-icon class="hl-check-on" :component="CheckmarkCircleOutline" :size="18" />
+            </button>
+            <span
+              class="hl-prio"
+              :style="
+                task.priority ? { background: hueGradVert(PRIORITY_COLORS[task.priority]) } : {}
+              "
             />
-            <span>{{ taskColumnName(task) }}</span>
-          </span>
-          <span class="hl-due">
-            <span v-if="duePill(task)" class="hl-pill" :class="{ over: sec.key === 'overdue' }">
-              <template v-if="duePill(task).time">
-                <n-icon :component="TimeOutline" :size="12" />
-                {{ duePill(task).time }}
-              </template>
-              <template v-else>{{ duePill(task).text }}</template>
+            <span class="hl-title" @click.stop="emit('open', task)">{{ task.title }}</span>
+            <span class="hl-proj">
+              <span
+                class="hl-picon"
+                :style="{ background: hueGrad(task.project_color || '#7c5cff') }"
+                >{{ initials(task.project_name) }}</span
+              >
+              <span class="hl-pname">{{ task.project_name }}</span>
             </span>
-          </span>
-        </div>
+            <span class="hl-status">
+              <TesseraIcon
+                :name="statusIcon(task)"
+                :size="13"
+                :style="{ color: task.column_color || 'var(--t-text3)' }"
+              />
+              <span>{{ taskColumnName(task) }}</span>
+            </span>
+            <span class="hl-due">
+              <span v-if="duePill(task)" class="hl-pill" :class="{ over: sec.key === 'overdue' }">
+                <template v-if="duePill(task).time">
+                  <n-icon :component="TimeOutline" :size="12" />
+                  {{ duePill(task).time }}
+                </template>
+                <template v-else>{{ duePill(task).text }}</template>
+              </span>
+            </span>
+          </div>
+        </component>
       </div>
     </section>
   </div>
@@ -328,12 +360,74 @@ function duePill(task) {
   font-weight: 600;
 }
 @media (max-width: 760px) {
-  .hl-proj,
   .hl-status {
     display: none;
   }
   .hl-hint {
     display: none;
+  }
+}
+
+/* ── a phone: rows as 64px cards (#2976 — package G «Мои задачи») ── */
+@media (max-width: 768px) {
+  .hl-tray {
+    gap: 8px;
+    padding: 0;
+    background: transparent;
+  }
+  .hl-row {
+    display: grid;
+    grid-template-columns: 44px minmax(0, 1fr) auto;
+    grid-template-areas:
+      'check title title'
+      'check proj due';
+    align-items: center;
+    column-gap: 6px;
+    row-gap: 4px;
+    height: auto;
+    min-height: 64px;
+    padding: 10px 12px 10px 4px;
+    box-sizing: border-box;
+    border-radius: 14px;
+    background: var(--t-card);
+  }
+  .hl-row:hover {
+    background: var(--t-card);
+  }
+  .hl-check {
+    grid-area: check;
+    justify-self: center;
+    width: 44px;
+    height: 44px;
+    align-items: center;
+    justify-content: center;
+  }
+  .hl-check-on {
+    inset: 13px;
+  }
+  .hl-prio {
+    display: none;
+  }
+  .hl-title {
+    grid-area: title;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    white-space: normal;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 1.3;
+  }
+  .hl-proj {
+    grid-area: proj;
+    display: inline-flex;
+    max-width: none;
+    min-width: 0;
+    font-size: 12.5px;
+  }
+  .hl-due {
+    grid-area: due;
+    flex: none;
   }
 }
 </style>

@@ -80,25 +80,27 @@ function onClick(e) {
 </template>
 
 <style scoped>
+/* v2 (#3107 — HelpWin): text 15/1.65, no lines — callouts, code and tables are
+   surfaces; key names written as <kbd> read as key caps. */
 .h-article {
   color: var(--t-text1);
   line-height: 1.65;
-  font-size: 14px;
+  font-size: 15px;
   max-width: 74ch;
 }
 /* :deep — the content is v-html, so it carries no scope attribute of its own. */
 .h-article :deep(h2) {
   font-size: 19px;
-  font-weight: 650;
-  margin: 32px 0 12px;
+  font-weight: 700;
+  margin: 30px 0 10px;
   /* The header is sticky above the article, so an anchor jump would otherwise
      park the heading underneath it. */
   scroll-margin-top: 72px;
 }
 .h-article :deep(h3) {
-  font-size: 15px;
-  font-weight: 650;
-  margin: 24px 0 8px;
+  font-size: 15.5px;
+  font-weight: 700;
+  margin: 22px 0 8px;
   scroll-margin-top: 72px;
 }
 .h-article :deep(h2:first-child),
@@ -124,15 +126,32 @@ function onClick(e) {
   text-decoration: underline;
 }
 .h-article :deep(code) {
-  background: var(--t-surface-alt);
-  border-radius: 4px;
+  background: var(--t-ctl);
+  border-radius: 5px;
   padding: 1px 5px;
-  font-size: 0.9em;
+  font-size: 0.88em;
+}
+.h-article :deep(kbd) {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  box-sizing: border-box;
+  border-radius: var(--t-r-kbd, 5px);
+  background: var(--t-kbd);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  line-height: 1;
+  vertical-align: 1px;
+  box-shadow: 0 1px 1px rgba(0, 0, 0, 0.22);
 }
 .h-article :deep(pre) {
-  background: var(--t-surface-alt);
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
+  background: var(--t-sub);
+  border-radius: 12px;
   padding: 12px 14px;
   overflow-x: auto;
   margin: 0 0 16px;
@@ -141,36 +160,49 @@ function onClick(e) {
   background: none;
   padding: 0;
 }
+/* A quote is the callout: the soft accent, the card radius. */
 .h-article :deep(blockquote) {
   margin: 0 0 16px;
-  padding: 2px 14px;
-  border-left: 3px solid var(--t-border);
-  color: var(--t-text2);
+  padding: 12px 16px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--t-primary) 13%, transparent);
+  color: var(--t-text1);
+}
+.h-article :deep(blockquote p:last-child) {
+  margin-bottom: 0;
 }
 .h-article :deep(img) {
   max-width: 100%;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
+  border-radius: 12px;
+  box-shadow: var(--t-sh-card);
   display: block;
-  margin: 4px 0 18px;
+  margin: 6px 0 18px;
 }
+/* Tables: a header on the control level and banded rows — no rules. */
 .h-article :deep(table) {
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
   margin: 0 0 16px;
-  font-size: 13px;
+  font-size: 13.5px;
+  border-radius: 12px;
+  overflow: hidden;
 }
 .h-article :deep(th),
 .h-article :deep(td) {
-  border: 1px solid var(--t-border);
-  padding: 6px 10px;
+  padding: 7px 12px;
   text-align: left;
+  vertical-align: top;
 }
 .h-article :deep(th) {
-  background: var(--t-surface-alt);
+  background: var(--t-ctl);
+  font-weight: 650;
+}
+.h-article :deep(tr:nth-child(even) td) {
+  background: var(--t-sub);
 }
 .h-article :deep(hr) {
   border: none;
-  border-top: 1px solid var(--t-border);
-  margin: 24px 0;
+  height: 0;
+  margin: 26px 0;
 }
 </style>

@@ -1,29 +1,57 @@
 <script setup>
-// Branded auth screen (login / register / recover): a themed light/dark
-// background with a header (brand monogram + screen title) above a centred card
-// holding the slotted form. Behind the card sits a soft, blurred brand-purple
-// glow that drifts toward the pointer as it moves anywhere on the page — only
-// the transform animates (the blurred bitmap is rasterised once), so it's cheap.
-// Theme and language toggles sit in the top-right corner.
-// Input / button / link styling for the slotted form lives in main.css under
-// `.auth` (scoped styles can't reach slotted nodes).
-import { ref, computed, onMounted, onBeforeUnmount } from 'vue'
+// The account screens' frame (v2, #3107 — PackageE «Вход и аккаунт»): the
+// «Моих задач» aurora over the top of the page, held still (a form is being
+// filled in under it), and one glass card in the middle — the logo, a title
+// with a line under it, then the slotted form. Login, registration, recovery,
+// the new password, the e-mail check, the invitation, the OAuth hand-off and
+// the 404 all share it.
+//
+// The page's own tools sit in a bar along the bottom: language, theme and —
+// on the web — the app download on the left, the build and the host on the
+// right. The desktop client puts its server address into the card's head as a
+// pill (the address is part of signing in there, not a page preference).
+//
+// Field / button styling for the slotted form lives in main.css under `.auth`
+// (scoped styles can't reach slotted nodes); Naive's sizes come from the nested
+// config provider below.
+import { ref, computed, onMounted, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopover, NInput, NButton } from 'naive-ui'
-import { SunnyOutline, MoonOutline, ServerOutline } from '@vicons/ionicons5'
+import { NIcon, NPopover, NInput, NButton, NConfigProvider } from 'naive-ui'
+import {
+  SunnyOutline,
+  MoonOutline,
+  ServerOutline,
+  LanguageOutline,
+  ChevronDownOutline,
+} from '@vicons/ionicons5'
 import { useThemeStore } from '@/stores/theme'
 import { SUPPORTED_LOCALES, normalizeLocale } from '@/i18n'
 import { isTauri, serverBase, setServerBase } from '@/utils/serverBase'
 import { serverUrlMessage } from '@/utils/servers'
 import DownloadAppButton from '@/components/DownloadAppButton.vue'
 import BrandLogo from '@/components/BrandLogo.vue'
+import HomeAurora from '@/components/home/HomeAurora.vue'
 
-defineProps({
+const props = defineProps({
   title: { type: String, default: '' },
+  // The line under the title («Задачи, документы и встречи команды»).
+  subtitle: { type: String, default: '' },
+  // A badge over the title for the screens that are a state rather than a form
+  // (recovery, the e-mail check, the invitation): an ionicons5 component…
+  icon: { type: [Object, Function], default: null },
+  // …in its own tone — a key in amber, a letter in blue. Defaults to the accent.
+  tone: { type: String, default: '' },
 })
 
 const { t } = useI18n()
 const theme = useThemeStore()
+
+// The badge tone: a soft wash of the hue (see-through, it sits on the glass)
+// with the glyph in the hue itself.
+const badgeStyle = computed(() => {
+  const hue = props.tone || 'var(--t-primary)'
+  return { background: `color-mix(in srgb, ${hue} 18%, transparent)`, color: hue }
+})
 
 // Desktop only: let the user point the app at a self-hosted server before
 // logging in (mirrors the Android server-URL setting). Empty = built-in default.
@@ -40,12 +68,21 @@ function saveServer() {
   // Reload so axios (baseURL) and the WS reconnect against the new origin.
   location.reload()
 }
+// The pill names the server the client talks to now: its host, or the page's
+// own when no address was set.
+const serverHost = computed(() => {
+  try {
+    return new URL(serverBase() || location.origin).host
+  } catch {
+    return location.host
+  }
+})
 
 // Language toggle. With two locales a cycle button beats a picker, and the label
-// is the current language's own tag ("RU"/"EN") rather than a globe icon — on
-// two locales that says both what you're on and what you'd get. setLocale
-// persists to localStorage and only PUTs prefs when signed in, so pressing it
-// here (no token) is a purely local switch.
+// is the current language's own tag ("RU"/"EN") — on two locales that says both
+// what you're on and what you'd get. setLocale persists to localStorage and only
+// PUTs prefs when signed in, so pressing it here (no token) is a purely local
+// switch.
 const activeLocale = computed(() => normalizeLocale(theme.language))
 const nextLocale = computed(() => {
   const i = SUPPORTED_LOCALES.indexOf(activeLocale.value)
@@ -55,132 +92,132 @@ function cycleLocale() {
   theme.setLocale({ language: nextLocale.value })
 }
 
-const card = ref(null)
-const glowX = ref(0) // current (eased) glow offset from card centre, px
-const glowY = ref(0)
-let targetX = 0
-let targetY = 0
-let raf = 0
+// The bottom-right line: which build is this, and which server is it.
+const version = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : ''
+const host = typeof location !== 'undefined' ? location.host : ''
 
-const REST_X = 72 // resting offset (before any pointer move) — top-right peek
-const REST_Y = -58
-const MAX = 120 // furthest the glow centre may lean from the card centre
-const REACH = 3 // pointer distance ÷ REACH drives the lean (smaller = stronger)
-
-function onMove(e) {
-  const el = card.value
-  if (!el) return
-  // Lean the glow toward the pointer from wherever it is on the page, clamped so
-  // it never strays further than MAX from the card centre — the glow appears to
-  // track the cursor from behind the form.
-  const r = el.getBoundingClientRect()
-  const cx = r.left + r.width / 2
-  const cy = r.top + r.height / 2
-  const ox = e.clientX - cx
-  const oy = e.clientY - cy
-  const len = Math.hypot(ox, oy) || 1
-  const mag = Math.min(len / REACH, MAX)
-  targetX = (ox / len) * mag
-  targetY = (oy / len) * mag
-}
-
-function tick() {
-  glowX.value += (targetX - glowX.value) * 0.1
-  glowY.value += (targetY - glowY.value) * 0.1
-  raf = requestAnimationFrame(tick)
-}
-
-onMounted(() => {
-  targetX = REST_X
-  targetY = REST_Y
-  glowX.value = REST_X
-  glowY.value = REST_Y
-  // Respect reduced-motion: leave the glow parked at its resting spot.
-  if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
-  window.addEventListener('pointermove', onMove, { passive: true })
-  raf = requestAnimationFrame(tick)
+// The focus goes to the first empty field (PackageE: «Фокус — в первое пустое
+// поле»), so the remembered e-mail lands the reader in the password. Not on a
+// touch screen: a keyboard sliding over the card the moment it appears hides the
+// very form it opened.
+const body = ref(null)
+onMounted(async () => {
+  if (window.matchMedia?.('(pointer: coarse)')?.matches) return
+  await nextTick()
+  const fields = [...(body.value?.querySelectorAll('input:not([type="hidden"])') || [])]
+  fields.find((el) => !el.value && !el.disabled)?.focus()
 })
-onBeforeUnmount(() => {
-  window.removeEventListener('pointermove', onMove)
-  cancelAnimationFrame(raf)
-})
+
+// Naive's own sizes for the slotted form: 40px fields with the 10px control
+// radius, a 42px submit (size="large"), labels in the small caption weight. The
+// colours stay the app's — this provider only merges these keys over them.
+const overrides = {
+  Input: { heightMedium: '40px', borderRadius: '10px', fontSizeMedium: '14px' },
+  Button: { heightLarge: '42px', borderRadiusLarge: '10px', fontSizeLarge: '14px' },
+  Form: { labelFontSizeTopMedium: '12px', labelPaddingVertical: '0 0 6px 2px' },
+}
 </script>
 
 <template>
   <div class="auth">
-    <div class="auth-tools">
-      <!-- Web only: app-download dropdown (hidden inside the desktop app itself,
-           which self-updates). Leftmost of the tool cluster. -->
-      <DownloadAppButton v-if="!desktop" />
+    <!-- The element is the root, the provider inside it: the app's route
+         <Transition mode="out-in"> needs one element to animate, and an abstract
+         provider at the root left it a fragment — the leave never finished and
+         the next screen never mounted. No comment above the root either: in a
+         dev build it is a node of its own. -->
+    <n-config-provider :theme-overrides="overrides" abstract>
+      <HomeAurora frozen class="auth-aurora" />
 
-      <!-- Desktop only: server-address popover, sitting left of the theme toggle. -->
-      <n-popover v-if="desktop" v-model:show="showServer" trigger="click" placement="bottom-end">
-        <template #trigger>
+      <main class="auth-stage">
+        <div class="auth-card">
+          <header class="auth-card-head">
+            <BrandLogo class="auth-logo" :height="22" :mark="false" />
+            <!-- Desktop only: the server this client signs in to. -->
+            <n-popover
+              v-if="desktop"
+              v-model:show="showServer"
+              trigger="click"
+              placement="bottom-end"
+            >
+              <template #trigger>
+                <button
+                  class="auth-server"
+                  type="button"
+                  :title="t('shell.auth.server')"
+                  :aria-label="t('shell.auth.server')"
+                  data-testid="auth-server"
+                >
+                  <n-icon :component="ServerOutline" :size="13" />
+                  <span class="auth-server-host">{{ serverHost }}</span>
+                  <n-icon :component="ChevronDownOutline" :size="12" />
+                </button>
+              </template>
+              <div class="auth-server-pop">
+                <div class="auth-server-label">{{ t('shell.auth.server') }}</div>
+                <n-input
+                  v-model:value="serverInput"
+                  :placeholder="t('shell.auth.serverPlaceholder')"
+                  size="small"
+                  @keyup.enter="saveServer"
+                />
+                <div v-if="serverError" class="auth-server-error">{{ serverError }}</div>
+                <n-button
+                  size="small"
+                  type="primary"
+                  block
+                  :disabled="!!serverError"
+                  @click="saveServer"
+                >
+                  {{ t('common.action.save') }}
+                </n-button>
+              </div>
+            </n-popover>
+          </header>
+
+          <span v-if="icon" class="auth-badge" :style="badgeStyle" data-testid="auth-badge">
+            <n-icon :component="icon" :size="22" />
+          </span>
+          <h1 v-if="title" class="auth-title">{{ title }}</h1>
+          <p v-if="subtitle" class="auth-sub">{{ subtitle }}</p>
+
+          <div ref="body" class="auth-body">
+            <slot />
+          </div>
+        </div>
+      </main>
+
+      <footer class="auth-bar">
+        <div class="auth-tools">
           <button
-            class="auth-tool-btn"
+            class="auth-tool"
             type="button"
-            :title="t('shell.auth.server')"
-            :aria-label="t('shell.auth.server')"
+            data-testid="auth-lang-toggle"
+            :title="t('shell.auth.languageSwitchTo', { lang: t(`common.language.${nextLocale}`) })"
+            :aria-label="
+              t('shell.auth.languageSwitchTo', { lang: t(`common.language.${nextLocale}`) })
+            "
+            @click="cycleLocale"
           >
-            <n-icon :component="ServerOutline" :size="20" />
+            <n-icon :component="LanguageOutline" :size="14" class="auth-tool-ic" />{{
+              activeLocale.toUpperCase()
+            }}
           </button>
-        </template>
-        <div class="auth-server-pop">
-          <div class="auth-server-label">{{ t('shell.auth.server') }}</div>
-          <n-input
-            v-model:value="serverInput"
-            placeholder="https://tessera.msdnna.website"
-            size="small"
-            @keyup.enter="saveServer"
-          />
-          <div v-if="serverError" class="auth-server-error">{{ serverError }}</div>
-          <n-button size="small" type="primary" block :disabled="!!serverError" @click="saveServer">
-            {{ t('common.action.save') }}
-          </n-button>
+          <button
+            class="auth-tool"
+            type="button"
+            data-testid="auth-theme-toggle"
+            :aria-label="theme.isDark ? t('shell.auth.themeLight') : t('shell.auth.themeDark')"
+            @click="theme.toggle()"
+          >
+            <n-icon :component="theme.isDark ? SunnyOutline : MoonOutline" :size="14" />
+            <span>{{ t('shell.auth.theme') }}</span>
+          </button>
+          <!-- Web only: the app download (the desktop client updates itself). -->
+          <DownloadAppButton v-if="!desktop" class="auth-dl" />
         </div>
-      </n-popover>
-
-      <button
-        class="auth-tool-btn auth-lang-btn"
-        type="button"
-        data-testid="auth-lang-toggle"
-        :title="t('shell.auth.languageSwitchTo', { lang: t(`common.language.${nextLocale}`) })"
-        :aria-label="t('shell.auth.languageSwitchTo', { lang: t(`common.language.${nextLocale}`) })"
-        @click="cycleLocale"
-      >
-        {{ activeLocale.toUpperCase() }}
-      </button>
-
-      <button
-        class="auth-tool-btn"
-        type="button"
-        :title="theme.isDark ? t('shell.auth.themeLight') : t('shell.auth.themeDark')"
-        :aria-label="theme.isDark ? t('shell.auth.themeLight') : t('shell.auth.themeDark')"
-        @click="theme.toggle()"
-      >
-        <n-icon :component="theme.isDark ? SunnyOutline : MoonOutline" :size="20" />
-      </button>
-    </div>
-
-    <div class="auth-stage">
-      <div class="auth-header">
-        <BrandLogo class="auth-logo" :height="22" :mark="false" />
-        <span v-if="title" class="auth-title">{{ title }}</span>
-      </div>
-
-      <div class="auth-card-wrap">
-        <!-- Glow lives on the light theme only — on dark its soft gradient showed
-             unavoidable colour banding, so it's hidden there (see styles). -->
-        <div
-          class="auth-glow"
-          aria-hidden="true"
-          :style="{ transform: `translate3d(calc(-50% + ${glowX}px), calc(-50% + ${glowY}px), 0)` }"
-        />
-        <div ref="card" class="auth-card">
-          <slot />
-        </div>
-      </div>
-    </div>
+        <span class="auth-build">{{ t('shell.auth.build', { version, host }) }}</span>
+      </footer>
+    </n-config-provider>
   </div>
 </template>
 
@@ -191,74 +228,23 @@ onBeforeUnmount(() => {
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+  flex-direction: column;
   box-sizing: border-box;
   background: var(--t-bg);
 }
-
-/* Tool buttons (server address + language + theme toggle), top-right corner. */
-.auth-tools {
-  position: absolute;
-  top: 18px;
-  right: 18px;
-  z-index: 2;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-.auth-tool-btn {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 50%;
-  border: 1px solid var(--t-border);
-  background: var(--t-surface);
-  color: var(--t-text2);
-  cursor: pointer;
-  transition:
-    background 0.15s ease,
-    color 0.15s ease,
-    border-color 0.15s ease;
-}
-.auth-tool-btn:hover {
-  color: var(--t-primary);
-  border-color: var(--t-primary);
-}
-/* The language button carries a text label where its siblings carry a 20px icon;
-   the bolder, smaller type keeps it optically the same weight as those glyphs. */
-.auth-lang-btn {
-  font-family: inherit;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-
-/* Server-address popover body. */
-.auth-server-pop {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  width: 260px;
-}
-.auth-server-label {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--t-text1);
-}
-/* Same error red as the rail's edit modal (.se-error) — one refusal, one look. */
-.auth-server-error {
-  font-size: 12px;
-  color: #d03050;
+/* The aurora band reaches the page's edges. */
+.auth-aurora {
+  z-index: 0;
 }
 
 .auth-stage {
   position: relative;
-  width: 100%;
-  max-width: 400px;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 72px 24px 24px;
   animation: auth-rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @media (prefers-reduced-motion: reduce) {
@@ -277,82 +263,169 @@ onBeforeUnmount(() => {
   }
 }
 
-/* Header above the card: the full brand lockup (mark + wordmark) on the left, the
-   screen title beside it — mirrors the reference. The lockup carries the accent
-   gradient on both themes (see BrandLogo). */
-.auth-header {
+/* The glass card: the popover level at 92% over a blur, so the aurora reads
+   under its top edge (PackageE «Отступления»). No outline — a surface and a
+   shadow. */
+.auth-card {
+  width: 100%;
+  max-width: 420px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  padding: 28px;
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--t-pop) 92%, transparent);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow: var(--t-sh-pop);
+}
+.auth-card-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin: 0 4px 18px;
+  min-height: 28px;
+  margin-bottom: 22px;
 }
 .auth-logo {
   flex: none;
 }
+.auth-server {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 60%;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--t-ctl);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.auth-server:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.auth-server-host {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.auth-server-pop {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 260px;
+}
+.auth-server-label {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text1);
+}
+.auth-server-error {
+  font-size: 12px;
+  color: #e0533d;
+}
+
+/* A state screen's badge: 44px, the control radius doubled, the hue's soft fill. */
+.auth-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  margin-bottom: 18px;
+  border-radius: 12px;
+}
 .auth-title {
+  margin: 0;
   font-size: 22px;
   font-weight: 700;
-  line-height: 1;
+  line-height: 1.2;
   letter-spacing: -0.01em;
   color: var(--t-text1);
 }
-/* On light theme the title shares the logo's brand purple. */
-[data-theme='light'] .auth-title {
-  color: #6d5fe0;
+.auth-sub {
+  margin: 8px 0 0;
+  font-size: 13.5px;
+  line-height: 1.5;
+  color: var(--t-text2);
+}
+.auth-body {
+  margin-top: 20px;
+}
+.auth-title:last-child,
+.auth-sub:last-child {
+  margin-bottom: 0;
 }
 
-.auth-card-wrap {
-  position: relative;
-}
-
-/* Soft brand-purple glow behind the card. Sized larger than the card so its
-   blurred edge bleeds out all around; offsetting it concentrates the bleed on
-   one side. Only `transform` changes per frame (compositor-only) — the blur is
-   rasterised once, so this is cheap. */
-.auth-glow {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 142%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  z-index: 0;
-  pointer-events: none;
-  filter: blur(62px);
-  background: radial-gradient(
-    circle at 50% 50%,
-    rgba(124, 108, 255, 0.38) 0%,
-    rgba(109, 95, 224, 0.2) 38%,
-    rgba(145, 131, 255, 0) 70%
-  );
-  will-change: transform;
-}
-/* On dark the soft purple glow banded visibly (8-bit steps the eye catches on
-   dark backgrounds); rather than fight it with dithering, drop it entirely —
-   the card carries the brand on its own there. */
-[data-theme='dark'] .auth-glow {
-  display: none;
-}
-
-.auth-card {
+/* The page's bar along the bottom: language, theme, download | build · host. */
+.auth-bar {
   position: relative;
   z-index: 1;
   display: flex;
-  flex-direction: column;
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
-  border-radius: 18px;
-  padding: 30px;
-  box-shadow: 0 18px 50px -14px rgba(24, 11, 70, 0.3);
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 0 28px 20px;
 }
-/* The default --t-border is barely visible on the white card over a light
-   background — give the light-theme card a slightly firmer edge, tinted toward
-   the brand purple so the rim quietly echoes the glow behind it. */
-[data-theme='light'] .auth-card {
-  border-color: color-mix(in srgb, #6d5fe0 28%, #d5d5d5);
+.auth-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
-[data-theme='dark'] .auth-card {
-  box-shadow: 0 18px 54px -14px rgba(0, 0, 0, 0.6);
+.auth-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--t-ctl);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 500;
+  cursor: pointer;
+}
+.auth-tool:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.auth-tool:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
+}
+.auth-tool-ic {
+  margin-right: 0;
+}
+.auth-build {
+  font-size: 12px;
+  color: var(--t-text3);
+}
+
+/* Phone: the card takes the width, the bar wraps under it. */
+@media (max-width: 600px) {
+  .auth-stage {
+    align-items: flex-start;
+    padding: 56px 14px 18px;
+  }
+  .auth-card {
+    padding: 22px 20px;
+  }
+  .auth-bar {
+    justify-content: center;
+    padding: 0 14px 18px;
+  }
+  .auth-build {
+    width: 100%;
+    text-align: center;
+  }
 }
 </style>

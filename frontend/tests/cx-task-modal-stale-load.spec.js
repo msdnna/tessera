@@ -149,7 +149,7 @@ const stubs = {
   ...Object.fromEntries(Object.entries(naive).map(([k, v]) => ['N' + k, v])),
   MarkdownEditor: true,
   RichContent: true,
-  DueEditor: true,
+  DuePicker: true,
   // Captures what the thread was handed, which is what the reader would read.
   TaskCommentsTab: {
     props: ['comments'],

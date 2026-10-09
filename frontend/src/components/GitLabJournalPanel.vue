@@ -1,26 +1,46 @@
 <script setup>
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NButton, useMessage } from 'naive-ui'
-import { ChevronBackOutline, OpenOutline, RefreshOutline } from '@vicons/ionicons5'
+import { NIcon } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
+import {
+  ChevronBackOutline,
+  OpenOutline,
+  RefreshOutline,
+  ArrowDownOutline,
+  ArrowUpOutline,
+  AlertCircleOutline,
+  GitMergeOutline,
+  TimerOutline,
+} from '@vicons/ionicons5'
 import { gitlab as glApi } from '@/api'
 import { useFormat } from '@/composables/useFormat'
 import { useResponsive } from '@/composables/useResponsive'
 import { useRealtime } from '@/composables/useRealtime'
 import { runDuration, elapsedSince } from '@/utils/duration'
 import { priorityLabel } from '@/utils/priority'
+import { useConflictsStore } from '@/stores/conflicts'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
+import ShortcutKeys from '@/components/ShortcutKeys.vue'
 
-// Embeddable body of the GitLab sync journal — rendered inside the GitLab
-// integration modal's right pane (no modal/card wrapper of its own).
+// The GitLab sync journal — the «Журнал» section of the GitLab window (v2,
+// #2975, mockup GitlabWin fGlLog): three summary tiles, a filter, the runs
+// (each opens into its actions) and the picked action's diff. A failed push
+// offers «Повторить» (R) and, when its task sits in a write-back conflict,
+// «Разрешить конфликт» (C) — the conflicts window opens over this one.
 const props = defineProps({
   wsId: { type: String, default: null },
+  // The workspace's bindings, to name a run by its GitLab project.
+  integrations: { type: Array, default: () => [] },
+  // The schedule caption of the third tile («вебхук · каждые 5 минут»).
+  schedule: { type: String, default: '' },
 })
+const conflicts = useConflictsStore()
 
 const message = useMessage()
 const { t } = useI18n()
-const { formatDue, formatDateTime } = useFormat()
+const { formatDue, formatDateTime, formatTime, formatDate } = useFormat()
 // Phone layout (#2893): master/detail as two screens rather than two stacked
 // panes. Stacking put a scroller inside a scroller inside the modal, and the
 // seam between "runs" and "the diff of the run you picked" read as more of the
@@ -300,6 +320,51 @@ function pushPayloadText() {
   }
 }
 
+// ── v2: the filter, the tiles, a run's project ──
+const filter = ref('all') // all | pull | push | errors
+const failed = (run) => ['error', 'fail', 'partial'].includes(run.status)
+const errorCount = computed(() => runs.value.filter(failed).length)
+const shownRuns = computed(() =>
+  runs.value.filter((run) => {
+    if (filter.value === 'pull') return run.kind === 'pull'
+    if (filter.value === 'push') return run.kind === 'push'
+    if (filter.value === 'errors') return failed(run)
+    return true
+  }),
+)
+const pathOf = (run) => {
+  const b = props.integrations.find((i) => i.id === run.integration_id)
+  return b ? b.project_path || b.name || '' : ''
+}
+const lastPull = computed(() => runs.value.find((r) => r.kind === 'pull' && !isRunning(r)))
+const lastPush = computed(() => runs.value.find((r) => r.kind === 'push' && !isRunning(r)))
+function agoText(iso) {
+  if (!iso) return ''
+  const sec = Math.max(0, Math.round((now.value - new Date(iso).getTime()) / 1000))
+  if (sec < 60) return t('gitlab.window.agoNow')
+  if (sec < 3600) return t('gitlab.window.agoMin', { n: Math.floor(sec / 60) })
+  if (sec < 86400) return t('gitlab.window.agoHour', { n: Math.floor(sec / 3600) })
+  return fmtTime(iso)
+}
+// The run's clock: the time today, the date before.
+function runTime(run) {
+  if (!run.started_at) return ''
+  const today = new Date(now.value).toDateString() === new Date(run.started_at).toDateString()
+  return today
+    ? formatTime(run.started_at)
+    : formatDate(run.started_at, { day: '2-digit', month: 'short' })
+}
+// «Разрешить конфликт»: only for an action whose task has an open conflict.
+const canResolve = computed(
+  () => !!selectedAction.value?.task_id && conflicts.has(selectedAction.value.task_id),
+)
+function resolve() {
+  if (canResolve.value) conflicts.openResolver(selectedAction.value.task_id)
+}
+function retryKey() {
+  if (canRetry.value && !retrying.value) retry()
+}
+
 onMounted(loadRuns)
 watch(
   () => props.wsId,
@@ -307,39 +372,117 @@ watch(
 )
 watch(runs, syncTicker, { immediate: true })
 
-defineExpose({ reload: () => loadRuns() })
+defineExpose({ reload: () => loadRuns(), retry: retryKey, resolve })
 </script>
 
 <template>
   <div class="jp-wrap">
+    <!-- Three tiles: the last pull, the last push, the schedule. -->
+    <div v-if="!isMobile" class="j-tiles">
+      <div class="j-tile">
+        <span class="j-tile-ic pull"><n-icon :component="ArrowDownOutline" :size="16" /></span>
+        <span class="j-tile-main">
+          <span class="j-tile-l">{{ $t('gitlab.window.journal.lastPull') }}</span>
+          <span class="j-tile-v">{{
+            lastPull ? agoText(lastPull.started_at) : $t('gitlab.window.journal.none')
+          }}</span>
+          <span v-if="lastPull" class="j-tile-s"
+            >{{ runCounts(lastPull)
+            }}<template v-if="pathOf(lastPull)"> · {{ pathOf(lastPull) }}</template></span
+          >
+        </span>
+      </div>
+      <div class="j-tile">
+        <span class="j-tile-ic push"><n-icon :component="ArrowUpOutline" :size="16" /></span>
+        <span class="j-tile-main">
+          <span class="j-tile-l">{{ $t('gitlab.window.journal.lastPush') }}</span>
+          <span class="j-tile-v">
+            {{ lastPush ? agoText(lastPush.started_at) : $t('gitlab.window.journal.none') }}
+            <span v-if="lastPush && failed(lastPush)" class="j-pill err">{{
+              statusLabel(lastPush.status)
+            }}</span>
+          </span>
+          <span v-if="lastPush" class="j-tile-s">{{ runCounts(lastPush) }}</span>
+        </span>
+      </div>
+      <div class="j-tile">
+        <span class="j-tile-ic sched"><n-icon :component="TimerOutline" :size="16" /></span>
+        <span class="j-tile-main">
+          <span class="j-tile-l">{{ $t('gitlab.window.journal.schedule') }}</span>
+          <span class="j-tile-v">{{ schedule || '—' }}</span>
+          <span class="j-tile-s">{{ $t('gitlab.window.journal.runs', runs.length) }}</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="j-tools">
+      <span class="glw-seg">
+        <button
+          v-for="k in ['all', 'pull', 'push', 'errors']"
+          :key="k"
+          type="button"
+          :class="{ on: filter === k }"
+          :data-testid="`journal-filter-${k}`"
+          @click="filter = k"
+        >
+          {{ $t(`gitlab.window.journal.filter.${k}`) }}
+          <span v-if="k === 'errors' && errorCount" class="j-err-n">{{ errorCount }}</span>
+        </button>
+      </span>
+      <span class="j-grow" />
+      <span v-if="!isMobile" class="j-keys">
+        <ShortcutKeys id="journal.retry" /> {{ $t('gitlab.window.journal.keyRetry') }}
+        <ShortcutKeys id="journal.resolve" /> {{ $t('gitlab.window.journal.keyResolve') }}
+      </span>
+    </div>
+
     <div class="j-body" :class="{ 'j-stacked': isMobile }">
       <!-- LEFT: runs + their actions. On a phone the two panes are one screen each
            (see mobileDetail) — v-show, not v-if, so going back restores the run
            list exactly where it was scrolled. -->
-      <div v-show="!mobileDetail" class="j-left" data-testid="journal-runs">
+      <div v-show="!mobileDetail" class="j-left t-hoverscroll" data-testid="journal-runs">
         <empty-state
-          v-if="!loading && !runs.length"
+          v-if="!loading && !shownRuns.length"
           size="small"
           :text="$t('gitlab.journal.empty')"
         />
         <div
-          v-for="run in runs"
+          v-for="run in shownRuns"
           :key="run.id"
           class="j-run"
           :class="{ open: expandedRunId === run.id }"
         >
           <button class="j-run-head" @click="toggleRun(run)">
-            <span class="j-kind" :class="run.kind">{{
-              run.kind === 'pull' ? 'Pull' : 'Push'
-            }}</span>
+            <span
+              class="j-kind"
+              :class="[run.kind, { bad: failed(run) && !isRunning(run) }]"
+              :title="statusLabel(isRunning(run) ? 'running' : run.status)"
+            >
+              <n-icon
+                :component="
+                  failed(run) && !isRunning(run)
+                    ? AlertCircleOutline
+                    : run.kind === 'pull'
+                      ? ArrowDownOutline
+                      : ArrowUpOutline
+                "
+                :size="15"
+              />
+            </span>
             <span class="j-run-main">
-              <span class="j-run-time">{{ fmtTime(run.started_at) }}</span>
+              <span class="j-run-time">
+                {{ run.kind === 'pull' ? 'Pull' : 'Push'
+                }}<template v-if="pathOf(run)">
+                  · <span class="j-path">{{ pathOf(run) }}</span></template
+                >
+              </span>
               <span class="j-run-meta">
                 {{ triggerLabel(run.trigger) }} ·
                 <template v-if="!isRunning(run)">{{ runCounts(run) }} · </template>
                 {{ runDurationText(run) }}
               </span>
             </span>
+            <span class="j-run-at">{{ runTime(run) }}</span>
             <span
               class="j-dot"
               :class="isRunning(run) ? 'running' : run.status"
@@ -382,7 +525,11 @@ defineExpose({ reload: () => loadRuns() })
       <!-- RIGHT: selected action detail / diff. Hidden outright on a phone until a
            row is picked — the "выберите действие" placeholder is a second-pane
            prompt, and there is no second pane there to fill. -->
-      <div v-show="!isMobile || mobileDetail" class="j-right" data-testid="journal-detail">
+      <div
+        v-show="!isMobile || mobileDetail"
+        class="j-right t-hoverscroll"
+        data-testid="journal-detail"
+      >
         <empty-state
           v-if="!selectedAction"
           size="small"
@@ -395,6 +542,10 @@ defineExpose({ reload: () => loadRuns() })
           </button>
           <div class="j-d-head">
             <span class="j-d-dir" :class="selectedAction.direction">
+              <n-icon
+                :component="selectedAction.direction === 'pull' ? ArrowDownOutline : ArrowUpOutline"
+                :size="13"
+              />
               {{
                 selectedAction.direction === 'pull'
                   ? $t('gitlab.journal.direction.pull')
@@ -404,8 +555,42 @@ defineExpose({ reload: () => loadRuns() })
             <span class="j-d-sum">{{ selectedAction.summary }}</span>
           </div>
 
+          <!-- push failed: the error up top, with its two ways out -->
+          <div v-if="isPush && selectedAction.status === 'fail'" class="j-error">
+            <div class="j-error-t">
+              <n-icon :component="AlertCircleOutline" :size="16" />
+              {{ selectedAction.error || detail.error || $t('gitlab.journal.deliveryFailed') }}
+            </div>
+            <div class="j-error-acts">
+              <button
+                v-if="canResolve"
+                type="button"
+                class="kit-btn primary small"
+                data-testid="journal-resolve"
+                @click="resolve"
+              >
+                <n-icon :component="GitMergeOutline" :size="14" />
+                {{ $t('gitlab.window.journal.resolve') }}
+                <ShortcutKeys v-if="!isMobile" id="journal.resolve" />
+              </button>
+              <button
+                v-if="canRetry"
+                type="button"
+                class="kit-btn small"
+                :disabled="retrying"
+                data-testid="journal-retry"
+                @click="retry"
+              >
+                <n-icon :component="RefreshOutline" :size="14" />
+                {{ $t('gitlab.journal.retry') }}
+                <ShortcutKeys v-if="!isMobile" id="journal.retry" />
+              </button>
+            </div>
+          </div>
+
           <!-- pull: changed fields (update) -->
           <div v-if="fields" class="j-sec">
+            <div class="j-sec-h">{{ $t('gitlab.window.journal.changes') }}</div>
             <div v-for="[key, f] in orderedEntries(fields)" :key="key" class="j-field">
               <span class="j-fl">{{ fieldLabel(key) }}</span>
               <div class="j-diff">
@@ -469,16 +654,15 @@ defineExpose({ reload: () => loadRuns() })
             </div>
           </div>
 
-          <!-- push: payload + result/error -->
+          <!-- push: payload + result -->
           <div v-if="isPush" class="j-sec">
             <div class="j-field">
               <span class="j-fl">{{ $t('gitlab.journal.action') }}</span>
               <span class="j-after">{{ pushPayloadText() }}</span>
             </div>
-            <div v-if="selectedAction.status === 'fail'" class="j-error">
-              {{ selectedAction.error || detail.error || $t('gitlab.journal.deliveryFailed') }}
+            <div v-if="selectedAction.status !== 'fail' && detail.result" class="j-ok">
+              {{ detail.result }}
             </div>
-            <div v-else-if="detail.result" class="j-ok">{{ detail.result }}</div>
           </div>
 
           <div class="j-d-foot">
@@ -491,16 +675,6 @@ defineExpose({ reload: () => loadRuns() })
             >
               <n-icon :component="OpenOutline" /> {{ $t('gitlab.journal.openInGitLab') }}
             </a>
-            <n-button
-              v-if="canRetry"
-              size="small"
-              type="primary"
-              :loading="retrying"
-              @click="retry"
-            >
-              <template #icon><n-icon :component="RefreshOutline" /></template>
-              {{ $t('gitlab.journal.retry') }}
-            </n-button>
           </div>
         </template>
       </div>
@@ -514,50 +688,138 @@ defineExpose({ reload: () => loadRuns() })
   position: relative;
   display: flex;
   flex-direction: column;
-  min-height: 340px;
-  /* Fill the pane height when embedded (parent passes .gl-pane-fill); harmless
-     as a standalone block otherwise. */
+  gap: 12px;
+  min-height: 0;
   height: 100%;
+}
+.j-tiles {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+.j-tile {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--t-sub);
+  min-width: 0;
+}
+.j-tile-ic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 9px;
+}
+.j-tile-ic.pull {
+  background: color-mix(in srgb, #3b82f6 18%, transparent);
+  color: #3b82f6;
+}
+.j-tile-ic.push {
+  background: color-mix(in srgb, var(--t-primary) 18%, transparent);
+  color: var(--t-primary);
+}
+.j-tile-ic.sched {
+  background: color-mix(in srgb, #14b8a6 18%, transparent);
+  color: #14b8a6;
+}
+.j-tile-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.j-tile-l {
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.j-tile-v {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 14.5px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+.j-tile-s {
+  font-size: 12px;
+  color: var(--t-text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.j-pill {
+  padding: 1px 7px;
+  border-radius: 7px;
+  font-size: 11.5px;
+  font-weight: 650;
+}
+.j-pill.err {
+  background: color-mix(in srgb, var(--t-error) 16%, transparent);
+  color: var(--t-error);
+}
+.j-tools {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.j-grow {
+  flex: 1;
+}
+.j-err-n {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 4px;
+  border-radius: 9px;
+  background: var(--t-error-grad, var(--t-error));
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 700;
+}
+.j-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text3);
 }
 .j-body {
   display: grid;
-  grid-template-columns: minmax(0, 300px) minmax(0, 1fr);
-  gap: 0;
+  grid-template-columns: minmax(0, 340px) minmax(0, 1fr);
+  gap: 14px;
   flex: 1 1 auto;
   min-height: 0;
 }
 .j-left {
   overflow-y: auto;
-  border-right: 1px solid var(--t-border);
-  padding-right: 10px;
+  padding: 2px;
 }
 .j-right {
   overflow-y: auto;
-  padding-left: 16px;
+  padding: 14px 16px;
+  border-radius: 14px;
+  background: var(--t-sub);
 }
-/* Phone (#2893): 300px + 1fr on a 393px screen leaves the detail pane ~30px of
-   client width, and it does not overflow — it wraps one letter per line, which is
-   why no width gate ever saw it.
-   Stacking the two panes fixed the letter-wrap but produced its own problem: a
-   capped run list scrolling above an equally long diff, both inside the modal's
-   own scroller, with only a hairline to say where one ended and the other began.
-   So the phone gets one pane at a time instead — the visibility switch lives in
-   the template (mobileDetail), and the grid collapses to the single row that is
+/* Phone (#2893): one pane at a time — the visibility switch lives in the
+   template (mobileDetail), and the grid collapses to the single row that is
    actually mounted. */
 @media (max-width: 768px) {
   .j-body {
     grid-template-columns: minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr);
   }
-  .j-left {
-    border-right: none;
-    padding-right: 0;
-  }
-  .j-right {
-    padding-left: 0;
-  }
-  /* Both panes live in row 1 — whichever is visible owns the full height. Without
-     this the hidden one still reserves its implicit row and halves the other. */
   .j-stacked > .j-left,
   .j-stacked > .j-right {
     grid-area: 1 / 1;
@@ -569,16 +831,15 @@ defineExpose({ reload: () => loadRuns() })
   align-items: center;
   gap: 4px;
   margin-bottom: 10px;
-  padding: 6px 10px 6px 6px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  height: 32px;
+  padding: 0 10px 0 6px;
+  border: 0;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
   color: var(--t-text2);
+  font: inherit;
   font-size: 13px;
   cursor: pointer;
-}
-.j-back:hover {
-  background: var(--t-hover);
 }
 
 /* runs */
@@ -589,64 +850,96 @@ defineExpose({ reload: () => loadRuns() })
   width: 100%;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 8px;
+  gap: 10px;
+  min-height: 50px;
+  padding: 6px 10px;
   background: none;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   text-align: left;
   color: var(--t-text1);
+  font: inherit;
 }
 .j-run-head:hover {
   background: var(--t-hover);
 }
+.j-run.open > .j-run-head {
+  background: var(--t-active);
+}
+.j-run-head:focus-visible {
+  outline: 0;
+  box-shadow: inset 0 0 0 2px var(--t-primary);
+}
 .j-kind {
   flex: none;
-  font-size: 11px;
-  font-weight: 700;
-  padding: 2px 7px;
-  border-radius: 6px;
-  letter-spacing: 0.02em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
 }
 .j-kind.pull {
-  color: #2b6cb0;
-  background: rgba(43, 108, 176, 0.14);
+  color: #3b82f6;
+  background: color-mix(in srgb, #3b82f6 16%, transparent);
 }
 .j-kind.push {
-  color: #805ad5;
-  background: rgba(128, 90, 213, 0.14);
+  color: var(--t-primary);
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
+}
+.j-kind.bad {
+  color: var(--t-error);
+  background: color-mix(in srgb, var(--t-error) 16%, transparent);
 }
 .j-run-main {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
+  gap: 2px;
   line-height: 1.25;
 }
 .j-run-time {
   font-size: 13px;
+  font-weight: 650;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.j-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12.5px;
 }
 .j-run-meta {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--t-text3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.j-run-at {
+  flex: none;
+  font-size: 12px;
+  color: var(--t-text3);
+  font-variant-numeric: tabular-nums;
 }
 .j-dot {
   flex: none;
-  width: 8px;
-  height: 8px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
-  background: #18a058;
+  background: #2fa86b;
 }
 .j-dot.partial {
   background: #f0a020;
 }
-.j-dot.error {
-  background: #d03050;
+.j-dot.error,
+.j-dot.fail {
+  background: var(--t-error);
 }
-/* In-flight run: the accent gradient (design language — non-neutral elements
-   carry the soft diagonal), softly pulsing. This is the only progress affordance
-   a detached sync gets, so it has to read as alive. */
+/* In-flight run: the accent gradient, softly pulsing — the only progress
+   affordance a detached sync gets, so it has to read as alive. */
 .j-dot.running {
   background-image: var(--t-accent-grad);
   animation: j-dot-pulse 1.4s ease-in-out infinite;
@@ -668,7 +961,7 @@ defineExpose({ reload: () => loadRuns() })
   }
 }
 .j-actions {
-  padding: 2px 0 6px 8px;
+  padding: 4px 0 8px 40px;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -676,27 +969,26 @@ defineExpose({ reload: () => loadRuns() })
 .j-action {
   display: flex;
   align-items: baseline;
-  gap: 7px;
-  padding: 5px 8px;
+  gap: 8px;
+  padding: 6px 8px;
   background: none;
   border: none;
-  border-radius: 6px;
+  border-radius: 8px;
   cursor: pointer;
   text-align: left;
   color: var(--t-text2);
+  font: inherit;
   font-size: 12.5px;
 }
 .j-action:hover {
   background: var(--t-hover);
 }
 .j-action.sel {
-  /* Soft same-hue tint (not the saturated accent gradient) so the coloured op
-     label and the dark/light summary text keep contrast on both themes. */
-  background: color-mix(in srgb, var(--t-primary) 14%, var(--t-surface));
+  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
   color: var(--t-text1);
 }
 .j-action.fail .j-action-sum {
-  color: #d03050;
+  color: var(--t-error);
 }
 .j-op {
   flex: none;
@@ -707,16 +999,15 @@ defineExpose({ reload: () => loadRuns() })
   width: 46px;
 }
 .j-op.create {
-  color: #18a058;
+  color: #2fa86b;
 }
 .j-op.update {
-  color: #2080f0;
+  color: #3b82f6;
 }
 .j-op.delete {
-  color: #d03050;
+  color: var(--t-error);
 }
-/* skip — the sync deliberately left something alone (e.g. a parent's children could
-   not be listed, so its subtasks were kept as they were). */
+/* skip — the sync deliberately left something alone. */
 .j-op.skip {
   color: #f0a020;
 }
@@ -732,32 +1023,45 @@ defineExpose({ reload: () => loadRuns() })
 .j-d-head {
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  margin-bottom: 14px;
+  gap: 6px;
+  margin-bottom: 12px;
 }
 .j-d-dir {
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11.5px;
   font-weight: 700;
   align-self: flex-start;
   padding: 2px 8px;
-  border-radius: 6px;
+  border-radius: 7px;
 }
 .j-d-dir.pull {
-  color: #2b6cb0;
-  background: rgba(43, 108, 176, 0.14);
+  color: #3b82f6;
+  background: color-mix(in srgb, #3b82f6 16%, transparent);
 }
 .j-d-dir.push {
-  color: #805ad5;
-  background: rgba(128, 90, 213, 0.14);
+  color: var(--t-primary);
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
 }
 .j-d-sum {
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 15px;
+  font-weight: 650;
   color: var(--t-text1);
 }
 .j-sec {
-  padding: 10px 0;
-  border-top: 1px solid var(--t-border);
+  padding: 10px 12px;
+  margin-top: 8px;
+  border-radius: 12px;
+  background: var(--t-pop);
+}
+.j-sec-h {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .j-field {
   display: flex;
@@ -778,15 +1082,21 @@ defineExpose({ reload: () => loadRuns() })
   flex-wrap: wrap;
   min-width: 0;
 }
+/* The old value struck through in text3, the new one as a pill (mockup). */
 .j-before {
-  color: #d03050;
+  color: var(--t-text3);
   text-decoration: line-through;
-  opacity: 0.85;
   word-break: break-word;
 }
 .j-after {
   color: var(--t-text1);
   word-break: break-word;
+}
+.j-diff .j-after {
+  padding: 1px 8px;
+  border-radius: 7px;
+  background: var(--t-pill);
+  font-weight: 600;
 }
 .j-arrow {
   color: var(--t-text3);
@@ -800,22 +1110,22 @@ defineExpose({ reload: () => loadRuns() })
 .j-chip {
   font-size: 12px;
   padding: 2px 8px;
-  border-radius: 10px;
-  background: var(--t-surface-alt);
+  border-radius: 8px;
+  background: var(--t-pill);
   color: var(--t-text2);
 }
 .j-chip.add {
-  color: #18a058;
-  background: rgba(24, 160, 88, 0.13);
+  color: #2fa86b;
+  background: color-mix(in srgb, #2fa86b 14%, transparent);
 }
 .j-chip.rem {
-  color: #d03050;
-  background: rgba(208, 48, 80, 0.13);
+  color: var(--t-error);
+  background: color-mix(in srgb, var(--t-error) 14%, transparent);
 }
 .j-comment {
   font-size: 12.5px;
   color: var(--t-text2);
-  background: var(--t-surface-alt);
+  background: var(--t-pill);
   border-radius: 8px;
   padding: 7px 9px;
   margin-top: 5px;
@@ -823,25 +1133,42 @@ defineExpose({ reload: () => loadRuns() })
   word-break: break-word;
 }
 .j-error {
-  margin-top: 6px;
-  font-size: 12.5px;
-  color: #d03050;
-  background: rgba(208, 48, 80, 0.1);
-  border-radius: 8px;
-  padding: 7px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--t-error) 11%, transparent);
+}
+.j-error-t {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text1);
   word-break: break-word;
+}
+.j-error-t .n-icon {
+  flex: none;
+  color: var(--t-error);
+  margin-top: 1px;
+}
+.j-error-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 .j-ok {
   margin-top: 6px;
   font-size: 12.5px;
-  color: #18a058;
+  color: #2fa86b;
 }
 .j-d-foot {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 10px;
-  margin-top: 16px;
+  margin-top: 14px;
 }
 .j-link {
   display: inline-flex;
@@ -862,12 +1189,14 @@ defineExpose({ reload: () => loadRuns() })
 .j-more {
   align-self: flex-start;
   margin: 4px 0 2px 8px;
-  padding: 4px 10px;
+  height: 28px;
+  padding: 0 10px;
+  font: inherit;
   font-size: 12px;
-  color: var(--t-primary);
-  background: none;
-  border: 1px solid var(--t-border);
-  border-radius: 6px;
+  color: var(--t-text2);
+  background: var(--t-ctl);
+  border: 0;
+  border-radius: 8px;
   cursor: pointer;
 }
 .j-more:hover {

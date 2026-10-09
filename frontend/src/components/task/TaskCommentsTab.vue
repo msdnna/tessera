@@ -13,8 +13,16 @@
 // history.
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NSpace, NPopconfirm, useMessage } from 'naive-ui'
-import { ChatbubbleEllipsesOutline, FlagOutline } from '@vicons/ionicons5'
+import { NIcon } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
+import {
+  ChatbubbleEllipsesOutline,
+  FlagOutline,
+  PencilOutline,
+  CheckmarkOutline,
+  WarningOutline,
+  CloudDoneOutline,
+} from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardViewStore } from '@/stores/boardView'
@@ -38,6 +46,10 @@ import RichContent from '../RichContent.vue'
 import UserAvatar from '../UserAvatar.vue'
 import TesseraSpinner from '../TesseraSpinner.vue'
 import EmptyState from '../EmptyState.vue'
+import ArmButton from '../kit/ArmButton.vue'
+import EdReadBubble from '../editor/EdReadBubble.vue'
+import { quoteRequest } from '@/utils/quoteBus'
+import { CAPS } from '@/utils/keyCaps'
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -52,11 +64,16 @@ const props = defineProps({
   // scrolling column; null keeps it here, sticky at the bottom of the pane.
   composerTo: { type: null, default: null },
   composerRows: { type: Number, default: 3 },
+  // The task's own people ([{ id, role }]) — first in @ (#3118); whoever wrote
+  // in the thread joins them here.
+  people: { type: Array, default: () => [] },
+  // { number, icon, color } — the fullscreen window's header.
+  editorTask: { type: Object, default: null },
 })
 const emit = defineEmits(['update:comments', 'changed', 'reload-detail'])
 
 const message = useMessage()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { formatters } = useFormat()
 const auth = useAuthStore()
 const bv = useBoardViewStore()
@@ -78,12 +95,10 @@ const editingCommentOriginal = ref('')
 // offline send, else null.
 const posting = ref(false)
 const retryInfo = ref(null)
-// Docked under the modal (v2), an empty composer at rest is a one-line bar; its
-// toolbar shows while it has focus or text.
-const composerFocus = ref(false)
-function onComposerBlur(e) {
-  if (!e.currentTarget?.contains(e.relatedTarget)) composerFocus.value = false
-}
+// The composer's lead avatar (v2 mockup): the reader's own face.
+const meAvatar = computed(() =>
+  auth.user ? { id: auth.user.id, name: auth.user.name || auth.user.email || '' } : null,
+)
 
 // The flat list from the API, assembled into "root + its replies" threads.
 const threads = computed(() => groupThreads(props.comments))
@@ -252,6 +267,30 @@ function replyCount(thread) {
 const mentionItems = computed(() =>
   buildMentionItems(bv.membersList, Object.values(bv.gitlabMembersMap), bv.gitlabMembersMap),
 )
+// «В задаче» of the @ list: the task's people, then whoever wrote in the thread.
+const composerPeople = computed(() => {
+  const out = [...props.people]
+  const seen = new Set(out.map((p) => p.id))
+  for (const c of props.comments || []) {
+    if (c.author_id && !seen.has(c.author_id)) {
+      seen.add(c.author_id)
+      out.push({ id: c.author_id, role: 'commenter' })
+    }
+  }
+  return out
+})
+
+// «Цитировать в ответ» (#3118): the bubble over read text (the description, a
+// comment) hands its selection over; it lands at the end of the draft as a
+// Markdown quote, and the composer takes the focus.
+watch(quoteRequest, async (req) => {
+  if (!req || props.readonly || (req.taskId && req.taskId !== props.taskId)) return
+  const draft = newComment.value.replace(/\s+$/, '')
+  newComment.value = draft ? `${draft}\n\n${req.text}` : req.text
+  quoteRequest.value = null
+  await nextTick()
+  commentEditor.value?.focus?.()
+})
 
 // ── quick actions ──
 // The command registry is workspace-wide (loaded once by the store); the popup
@@ -260,6 +299,12 @@ const mentionItems = computed(() =>
 const commandItems = computed(() => store.commands || [])
 const cmdPreview = ref([]) // [{ key, summary, error }] from the dry-run
 const cmdCustom = ref([]) // custom keys seen in the draft — kept as plain text
+// A chip of the dry run (PackageJ «проверка под полем»): «/assign @илья → Илья
+// Петров», or «/estimate три часа — не понимаю …».
+function cmdLine(c) {
+  const head = [`/${c.key}`, c.arg].filter(Boolean).join(' ')
+  return c.error ? `${head} — ${c.error}` : `${head} → ${c.summary}`
+}
 let cmdTimer = null
 // «/due сегодня» is resolved on the server, so the request has to say which
 // calendar «сегодня» belongs to — the blank the profile may hold reads as UTC
@@ -351,7 +396,72 @@ function resetComposers() {
 }
 watch(
   () => props.taskId,
-  () => resetComposers(),
+  (id, prev) => {
+    resetComposers()
+    switchDraft(prev, id)
+  },
+)
+
+// ── the draft of each task (#3118, PackageJ «Черновик в другой задаче») ──
+// The composer keeps one draft per task on this device: leaving a task with a
+// half-written comment and coming back finds it where it was, and another
+// task's composer doesn't inherit it. It is sent only by ⌘↵ / «Отправить».
+const DRAFT_PREFIX = 'tessera_comment_draft:'
+const draftAt = ref(null)
+// The «saved» line is for a composer at rest, not under the hands typing.
+const composerFocused = ref(false)
+let draftTimer = 0
+function readDraft(id) {
+  try {
+    return id ? JSON.parse(localStorage.getItem(DRAFT_PREFIX + id) || 'null') : null
+  } catch {
+    return null
+  }
+}
+function writeDraft(id, body) {
+  if (!id) return
+  try {
+    if (body.trim()) {
+      const at = Date.now()
+      localStorage.setItem(DRAFT_PREFIX + id, JSON.stringify({ body, at }))
+      if (isCurrent(id)) draftAt.value = at
+    } else {
+      localStorage.removeItem(DRAFT_PREFIX + id)
+      if (isCurrent(id)) draftAt.value = null
+    }
+  } catch {
+    /* storage full or off — the draft just lives as long as the tab */
+  }
+}
+function dropDraft(id) {
+  clearTimeout(draftTimer)
+  writeDraft(id, '')
+}
+function switchDraft(prev, id) {
+  clearTimeout(draftTimer)
+  if (prev) writeDraft(prev, newComment.value)
+  const d = readDraft(id)
+  newComment.value = d?.body || ''
+  draftAt.value = d?.at || null
+}
+switchDraft(null, props.taskId)
+watch(newComment, (body) => {
+  clearTimeout(draftTimer)
+  const id = props.taskId
+  draftTimer = setTimeout(() => {
+    if (isCurrent(id)) writeDraft(id, body)
+  }, 500)
+})
+onBeforeUnmount(() => {
+  clearTimeout(draftTimer)
+  if (props.taskId) writeDraft(props.taskId, newComment.value)
+})
+const draftTime = computed(() =>
+  draftAt.value
+    ? new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit' }).format(
+        draftAt.value,
+      )
+    : '',
 )
 defineExpose({ scrollToBottom, autoGrow, resetComposers })
 
@@ -399,11 +509,15 @@ async function postComment() {
       try {
         const res = await tasksApi.addComment(tid, body, mentions, null, commandTz())
         retryInfo.value = null
-        // The text went out, so the composer is cleared even if another task is on
-        // screen by now — leaving the draft would invite sending it a second time,
-        // into that other task.
-        newComment.value = ''
-        commentEditor.value?.clear?.()
+        // The text went out: its draft is gone. The composer is cleared when it
+        // still holds that task's text — once the reader has moved on it holds the
+        // other task's own draft (drafts are per task, #3118), which is not ours to
+        // throw away.
+        dropDraft(tid)
+        if (isCurrent(tid)) {
+          newComment.value = ''
+          commentEditor.value?.clear?.()
+        }
         cmdPreview.value = []
         const c = await tasksApi.comments(tid)
         // What happened is reported either way — the toast names the task's own
@@ -497,10 +611,16 @@ function reportCommands(summary) {
 function ownLive(c) {
   return !props.readonly && !!c.author_id && c.author_id === meId.value
 }
-function startEditComment(c) {
+// The edit form's editor — one at a time, like the reply's (function ref: a
+// string ref inside v-for collects into an array).
+const editEditor = ref(null)
+async function startEditComment(c) {
   editingCommentId.value = c.id
   editingCommentBody.value = c.body
   editingCommentOriginal.value = c.body
+  // Into the field at once: its Esc and ⌘↵ only work from there.
+  await nextTick()
+  editEditor.value?.focus?.()
 }
 // Who this edit newly mentions: the people the saved text chips, minus the ones
 // the text already chipped before it was opened for editing. Computed here
@@ -646,56 +766,54 @@ async function onCommentCheck(c, i) {
                     · GitLab
                   </span>
                   <span class="c-when">{{ fmtWhen(it.th.root.created_at, formatters) }}</span>
-                  <span v-if="ownLive(it.th.root)" class="c-acts">
+                  <span
+                    v-if="ownLive(it.th.root) && editingCommentId !== it.th.root.id"
+                    class="c-acts"
+                  >
                     <button
-                      class="c-act"
+                      type="button"
+                      class="c-ibtn"
                       :title="t('common.action.edit')"
+                      :aria-label="t('common.action.edit')"
+                      data-testid="comment-edit"
                       @click="startEditComment(it.th.root)"
                     >
-                      ✎
+                      <n-icon :component="PencilOutline" :size="15" />
                     </button>
-                    <n-popconfirm
-                      :positive-button-props="{ type: 'error' }"
-                      :positive-text="t('common.action.delete')"
-                      @positive-click="deleteComment(it.th.root.id)"
-                    >
-                      <template #trigger>
-                        <button class="c-act" :title="t('common.action.delete')">✕</button>
-                      </template>
-                      {{ t('task.comments.deleteConfirm') }}
-                    </n-popconfirm>
+                    <ArmButton
+                      :title="t('common.action.delete')"
+                      :confirm="t('task.arm.delete')"
+                      testid="comment-delete"
+                      @confirm="deleteComment(it.th.root.id)"
+                    />
                   </span>
                 </div>
-                <template v-if="editingCommentId === it.th.root.id">
-                  <MarkdownEditor
-                    v-model="editingCommentBody"
-                    variant="boxed"
-                    :mention-items="mentionItems"
-                    :attach-task-id="taskId"
-                    :min-rows="2"
-                    :placeholder="t('task.comments.placeholder')"
-                    @attachments-changed="emit('changed')"
-                    @submit="saveComment"
-                  />
-                  <n-space :size="6" style="margin-top: 6px">
-                    <n-button size="tiny" type="primary" @click="saveComment">{{
-                      t('common.action.save')
-                    }}</n-button>
-                    <n-button size="tiny" @click="editingCommentId = null">{{
-                      t('common.action.cancel')
-                    }}</n-button>
-                  </n-space>
-                </template>
-                <RichContent
-                  v-else
-                  class="c-text"
-                  :source="it.th.root.body"
-                  :members="mentionItems"
-                  mention-cards
-                  task-refs
-                  :interactive="ownLive(it.th.root)"
-                  @toggle="onCommentCheck(it.th.root, $event)"
+                <MarkdownEditor
+                  v-if="editingCommentId === it.th.root.id"
+                  :ref="(el) => (editEditor = el)"
+                  v-model="editingCommentBody"
+                  variant="v2"
+                  :mention-items="mentionItems"
+                  :task-people="composerPeople"
+                  :attach-task-id="taskId"
+                  :min-rows="2"
+                  :placeholder="t('task.comments.placeholder')"
+                  @attachments-changed="emit('changed')"
+                  @submit="saveComment"
+                  @cancel="editingCommentId = null"
                 />
+                <!-- A wrapper, not a class on RichContent: it renders a fragment. -->
+                <div v-else class="c-bubble">
+                  <RichContent
+                    class="c-text"
+                    :source="it.th.root.body"
+                    :members="mentionItems"
+                    mention-cards
+                    task-refs
+                    :interactive="ownLive(it.th.root)"
+                    @toggle="onCommentCheck(it.th.root, $event)"
+                  />
+                </div>
                 <div class="c-thread-acts">
                   <button
                     v-if="!readonly"
@@ -744,56 +862,50 @@ async function onCommentCheck(c, i) {
                         }}</span>
                         <span v-if="!r.author_name && r.gl_author_name" class="c-gl">· GitLab</span>
                         <span class="c-when">{{ fmtWhen(r.created_at, formatters) }}</span>
-                        <span v-if="ownLive(r)" class="c-acts">
+                        <span v-if="ownLive(r) && editingCommentId !== r.id" class="c-acts">
                           <button
-                            class="c-act"
+                            type="button"
+                            class="c-ibtn"
                             :title="t('common.action.edit')"
+                            :aria-label="t('common.action.edit')"
+                            data-testid="comment-edit"
                             @click="startEditComment(r)"
                           >
-                            ✎
+                            <n-icon :component="PencilOutline" :size="15" />
                           </button>
-                          <n-popconfirm
-                            :positive-button-props="{ type: 'error' }"
-                            :positive-text="t('common.action.delete')"
-                            @positive-click="deleteComment(r.id)"
-                          >
-                            <template #trigger>
-                              <button class="c-act" :title="t('common.action.delete')">✕</button>
-                            </template>
-                            {{ t('task.comments.deleteConfirm') }}
-                          </n-popconfirm>
+                          <ArmButton
+                            :title="t('common.action.delete')"
+                            :confirm="t('task.arm.delete')"
+                            testid="comment-delete"
+                            @confirm="deleteComment(r.id)"
+                          />
                         </span>
                       </div>
-                      <template v-if="editingCommentId === r.id">
-                        <MarkdownEditor
-                          v-model="editingCommentBody"
-                          variant="boxed"
-                          :mention-items="mentionItems"
-                          :attach-task-id="taskId"
-                          :min-rows="2"
-                          :placeholder="t('task.comments.placeholder')"
-                          @attachments-changed="emit('changed')"
-                          @submit="saveComment"
-                        />
-                        <n-space :size="6" style="margin-top: 6px">
-                          <n-button size="tiny" type="primary" @click="saveComment">{{
-                            t('common.action.save')
-                          }}</n-button>
-                          <n-button size="tiny" @click="editingCommentId = null">{{
-                            t('common.action.cancel')
-                          }}</n-button>
-                        </n-space>
-                      </template>
-                      <RichContent
-                        v-else
-                        class="c-text"
-                        :source="r.body"
-                        :members="mentionItems"
-                        mention-cards
-                        task-refs
-                        :interactive="ownLive(r)"
-                        @toggle="onCommentCheck(r, $event)"
+                      <MarkdownEditor
+                        v-if="editingCommentId === r.id"
+                        :ref="(el) => (editEditor = el)"
+                        v-model="editingCommentBody"
+                        variant="v2"
+                        :mention-items="mentionItems"
+                        :task-people="composerPeople"
+                        :attach-task-id="taskId"
+                        :min-rows="2"
+                        :placeholder="t('task.comments.placeholder')"
+                        @attachments-changed="emit('changed')"
+                        @submit="saveComment"
+                        @cancel="editingCommentId = null"
                       />
+                      <div v-else class="c-bubble">
+                        <RichContent
+                          class="c-text"
+                          :source="r.body"
+                          :members="mentionItems"
+                          mention-cards
+                          task-refs
+                          :interactive="ownLive(r)"
+                          @toggle="onCommentCheck(r, $event)"
+                        />
+                      </div>
                       <div v-if="!readonly" class="c-thread-acts">
                         <!-- Replying to a reply targets the same root: threads are two
                        levels deep, and the backend collapses it anyway. The reply's
@@ -815,10 +927,11 @@ async function onCommentCheck(c, i) {
               <MarkdownEditor
                 :ref="(el) => (replyEditor = el)"
                 v-model="replyBody"
-                variant="boxed"
-                send
+                variant="v2"
+                :save-label="t('task.comments.reply')"
                 :sending="replyingPost"
                 :mention-items="mentionItems"
+                :task-people="composerPeople"
                 :command-items="commandItems"
                 :attach-task-id="taskId"
                 :min-rows="2"
@@ -839,26 +952,31 @@ async function onCommentCheck(c, i) {
         :text="t('task.comments.empty')"
       />
     </div>
+    <!-- Selecting a comment's text: «Цитировать в ответ Q · Ссылка на фрагмент». -->
+    <EdReadBubble :target="() => commentsListEl" :task-id="taskId" :can-quote="!readonly" />
     <!-- The composer: pinned under the modal's scrolling column when it gives a
          target (v2), else sticky at the bottom of this pane. -->
     <Teleport v-if="!readonly" :to="composerTo" :disabled="!composerTo">
       <div
         class="comment-add"
-        :class="{
-          docked: !!composerTo,
-          idle: !!composerTo && !composerFocus && !newComment.trim(),
-        }"
-        @focusin="composerFocus = true"
-        @focusout="onComposerBlur"
+        :class="{ docked: !!composerTo }"
+        data-testid="comment-composer"
+        @focusin="composerFocused = true"
+        @focusout="composerFocused = $event.currentTarget.contains($event.relatedTarget)"
       >
         <MarkdownEditor
           ref="commentEditor"
           v-model="newComment"
-          variant="boxed"
+          variant="composer"
+          :avatar="meAvatar"
           send
           :sending="posting"
           :mention-items="mentionItems"
+          :task-people="composerPeople"
           :command-items="commandItems"
+          :command-hints="cmdPreview"
+          :full-title="t('documents.editor.fullscreen.comment')"
+          :full-task="editorTask"
           :attach-task-id="taskId"
           :min-rows="composerRows"
           :placeholder="t('task.comments.composerPlaceholder')"
@@ -868,22 +986,39 @@ async function onCommentCheck(c, i) {
         <!-- Offline-retry banner: shown while waiting to resend after a
            network failure; the draft stays put, Cancel aborts. -->
         <Transition name="retry-pop">
-          <div v-if="retryInfo" class="retry-bar">
+          <div v-if="retryInfo" class="retry-bar" data-testid="comment-retry">
             <TesseraSpinner :size="14" />
-            <span>{{
-              t('task.comments.retrying', { attempt: retryInfo.attempt, max: retryInfo.max })
-            }}</span>
+            <span class="retry-t"
+              ><b>{{ t('task.comments.offlineTitle') }}</b> —
+              {{
+                t('task.comments.retrying', { attempt: retryInfo.attempt, max: retryInfo.max })
+              }}</span
+            >
             <button class="retry-cancel" @click="cancelRetry">
               {{ t('common.action.cancel') }}
             </button>
           </div>
         </Transition>
+        <div
+          v-if="draftTime && newComment.trim() && !posting && !composerFocused"
+          class="draft-line"
+          data-testid="comment-draft"
+        >
+          <n-icon :component="CloudDoneOutline" :size="13" />
+          {{ t('task.comments.draftSaved', { time: draftTime, keys: CAPS.modEnter }) }}
+        </div>
         <!-- Dry-run hint: what the built-in commands in the draft will
            do. Custom keys are listed apart — they stay in the text. -->
         <div v-if="cmdPreview.length || cmdCustom.length" class="cmd-preview">
-          <span v-for="(c, i) in cmdPreview" :key="`${c.key}-${i}`" class="cmd-chip">
-            <code>/{{ c.key }}</code>
-            <span :class="{ err: c.error }">{{ c.error || c.summary }}</span>
+          <span
+            v-for="(c, i) in cmdPreview"
+            :key="`${c.key}-${i}`"
+            class="cmd-chip"
+            :class="{ err: c.error }"
+            data-testid="cmd-chip"
+          >
+            <n-icon :component="c.error ? WarningOutline : CheckmarkOutline" :size="13" />
+            <span>{{ cmdLine(c) }}</span>
           </span>
           <span v-if="cmdCustom.length" class="cmd-note">
             {{
@@ -1004,12 +1139,15 @@ async function onCommentCheck(c, i) {
 .c-body {
   flex: 1;
   min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 .c-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  margin-bottom: 2px;
+  min-height: 26px;
 }
 .c-author {
   font-weight: 600;
@@ -1021,16 +1159,75 @@ async function onCommentCheck(c, i) {
   color: var(--t-text3);
 }
 .c-when {
-  font-size: 11px;
+  font-size: 13px;
   color: var(--t-text3);
 }
+/* Edit / delete: icon buttons that surface on the row's hover (v2, #3113). */
 .c-acts {
   margin-left: auto;
   display: inline-flex;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.comment:hover > .c-body > .c-head > .c-acts,
+.c-acts:focus-within {
+  opacity: 1;
+}
+@media (hover: none) {
+  .c-acts {
+    opacity: 1;
+  }
+}
+.c-ibtn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text3);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.c-ibtn:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.c-ibtn:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+/* The comment itself (TaskModal mockup L75): a bubble with its corner at the
+   author, one level up from the card. */
+.c-bubble {
+  align-self: flex-start;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 10px 14px;
+  border-radius: 4px 14px 14px 14px;
+  background: color-mix(in srgb, var(--t-sub) 65%, var(--t-pop));
+  color: var(--t-text1);
 }
 .c-text {
-  font-size: 13px;
+  font-size: 14px;
+  line-height: 1.55;
+}
+/* RichContent's root carries no scope of ours, so the paragraph margins of the
+   rendered text are trimmed from the bubble — a one-line comment otherwise
+   floats in a box twice its height. */
+.c-bubble :deep(.md > :first-child) {
+  margin-top: 0;
+}
+.c-bubble :deep(.md > :last-child) {
+  margin-bottom: 0;
 }
 /* Rendered markdown wraps text in <p>, whose default 1em top/bottom margin opens
    a wide gap under the header and above the actions — a one-line comment looked
@@ -1127,9 +1324,6 @@ async function onCommentCheck(c, i) {
 .comment-add.docked::before {
   display: none;
 }
-.comment-add.docked.idle :deep(.md2-toolbar) {
-  display: none;
-}
 /* ── «Всё»: journal rows between the threads (v2, #2958) ── */
 .c-event {
   display: flex;
@@ -1219,49 +1413,105 @@ async function onCommentCheck(c, i) {
     transform: none;
   }
 }
+/* «Нет связи — повтор попытки (2/5)…» under the composer (PackageJ «Повтор
+   отправки»): a sunken 36px strip with the spinner and «Отмена». */
 .retry-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   width: 100%;
-  font-size: 12px;
-  color: var(--t-text3);
+  height: 36px;
+  padding: 0 6px 0 10px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--t-sub);
+  font-size: 12.5px;
+  color: var(--t-text1);
+}
+.retry-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.retry-t b {
+  font-weight: 600;
 }
 .retry-cancel {
-  margin-left: auto;
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
   border: none;
-  background: none;
-  color: var(--t-primary);
+  border-radius: 7px;
+  background: var(--t-ctl);
+  color: var(--t-text1);
   cursor: pointer;
-  font-size: 12px;
-  padding: 2px 4px;
+  font: inherit;
+  font-size: 12.5px;
 }
 .retry-cancel:hover {
-  text-decoration: underline;
+  background: var(--t-hover);
 }
-/* Command dry-run hint under the composer — flat and neutral: it states a fact,
-   it is not an action. */
+/* The dry run of the draft's commands (PackageJ «проверка под полем»): a green
+   chip for what will happen, an amber one for what won't. */
 .cmd-preview {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: 6px;
   width: 100%;
-  font-size: 12px;
-  color: var(--t-text3);
 }
 .cmd-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #18a058 12%, var(--t-pop)),
+    color-mix(in srgb, #18a058 22%, var(--t-pop))
+  );
+  color: var(--t-text1);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.cmd-chip code {
-  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
-  color: var(--t-text2);
+.cmd-chip > .n-icon {
+  flex: none;
+  color: #18a058;
 }
-.cmd-chip .err {
-  color: var(--t-error);
+.cmd-chip.err {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #f0a020 12%, var(--t-pop)),
+    color-mix(in srgb, #f0a020 22%, var(--t-pop))
+  );
+}
+.cmd-chip.err > .n-icon {
+  color: #f0a020;
+}
+.draft-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text3);
 }
 .cmd-note {
+  font-size: 12px;
   font-style: italic;
+  color: var(--t-text3);
+}
+/* A phone: the composer rides the keyboard (PackageJ «Композер, клавиатура и
+   Aa») — a pop bar with a shadow, lifted by the keyboard's height. */
+@media (max-width: 768px) {
+  .comment-add.docked {
+    padding-bottom: var(--kb-h, 0px);
+  }
 }
 </style>

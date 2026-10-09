@@ -125,10 +125,10 @@ describe('MarkdownEditor keyboard', () => {
     expect(w.props('modelValue')).toBe('  onex')
   })
 
-  // The fullscreen modal is mounted (v-if) separately from its visibility (:show)
-  // so its open/close transition plays: unmounting on close would skip the leave
-  // animation. Closing waits for the modal's after-leave before unmounting.
-  it('keeps the fullscreen modal mounted until its leave animation ends', async () => {
+  // The fullscreen window (#3118) is a large window (kit/LargeWindow) whose card
+  // leaves at once, so it is simply mounted while open: «Свернуть» (close) drops
+  // it, «Готово» (done) drops it and is the field's own submit.
+  it('mounts the fullscreen window while it is open', async () => {
     w = mount(MarkdownEditor, {
       props: { modelValue: 'x' },
       global: {
@@ -136,35 +136,36 @@ describe('MarkdownEditor keyboard', () => {
           RichContent: true,
           TesseraSpinner: true,
           UserAvatar: true,
-          // Stub the async fullscreen modal so it resolves synchronously and we can
-          // drive its update:show / after-leave events.
-          MarkdownFullscreenModal: {
-            name: 'MarkdownFullscreenModal',
-            props: ['show'],
-            emits: ['update:show', 'after-leave'],
+          // Stub the async window so it resolves synchronously and we can drive
+          // its close / done events.
+          FullscreenEditor: {
+            name: 'FullscreenEditor',
+            props: ['modelValue'],
+            emits: ['close', 'done'],
             template: '<div class="mdfs-stub" />',
           },
         },
       },
     })
-    const modal = () => w.findComponent({ name: 'MarkdownFullscreenModal' })
-    expect(modal().exists()).toBe(false)
+    const win = () => w.findComponent({ name: 'FullscreenEditor' })
+    expect(win().exists()).toBe(false)
 
     w.vm.openFullscreen()
     await w.vm.$nextTick()
-    expect(modal().exists()).toBe(true)
-    expect(modal().props('show')).toBe(true)
+    expect(win().exists()).toBe(true)
+    expect(win().props('modelValue')).toBe('x')
 
-    // Request close: the modal hides (show → false) but stays mounted for the anim.
-    modal().vm.$emit('update:show', false)
+    win().vm.$emit('close')
     await w.vm.$nextTick()
-    expect(modal().exists()).toBe(true)
-    expect(modal().props('show')).toBe(false)
+    expect(win().exists()).toBe(false)
+    expect(w.emitted('submit')).toBeUndefined()
 
-    // after-leave (fired when the transition finishes) unmounts it.
-    modal().vm.$emit('after-leave')
+    w.vm.openFullscreen()
     await w.vm.$nextTick()
-    expect(modal().exists()).toBe(false)
+    win().vm.$emit('done')
+    await w.vm.$nextTick()
+    expect(win().exists()).toBe(false)
+    expect(w.emitted('submit')).toHaveLength(1)
   })
 })
 

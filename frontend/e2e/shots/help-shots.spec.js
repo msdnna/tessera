@@ -43,34 +43,12 @@ const SUFFIX = LANG === 'ru' ? '' : `.${LANG}`
 // `data-column-name` carries the stored name, not the localized caption.
 const CAPTIONS = {
   ru: {
-    integrations: 'Интеграции',
-    jobs: 'Фоновые задания',
-    adminUsers: 'Пользователи экземпляра',
-    // Substring of the bindings heading («Привязки GitLab → доска»).
-    bindingsHead: 'Привязки',
-    configureWriteback: /Настроить действия/,
-    configureRules: 'Настроить правила',
-    notifications: 'Уведомления',
     thisDevice: 'это устройство',
-    routesTitle: 'Правила маршрутизации',
-    addRule: 'Добавить правило',
-    newRule: 'Новое правило',
     events: 'События',
     mention: 'Упоминания',
   },
   en: {
-    integrations: 'Integrations',
-    jobs: 'Background jobs',
-    adminUsers: 'Users on this instance',
-    // Substring of «GitLab → board bindings» — lower-case, the match is exact.
-    bindingsHead: 'bindings',
-    configureWriteback: /Configure actions/,
-    configureRules: 'Configure rules',
-    notifications: 'Notifications',
     thisDevice: 'this device',
-    routesTitle: 'Routing rules',
-    addRule: 'Add rule',
-    newRule: 'New rule',
     events: 'Events',
     mention: 'Mentions',
   },
@@ -161,8 +139,80 @@ async function openBoard(page) {
   await expect(page.getByTestId('task-card').first()).toBeVisible()
 }
 
+// The tour and the hints (#3000) read the account's acks; the shots serve them
+// from a fixed list so every frame starts from the state it shows, whatever the
+// demo account has acked by now (register() switches the hints off for e2e).
+async function withAcks(page, keys) {
+  await page.route('**/api/users/me/acknowledgements**', (r) =>
+    r.request().method() === 'GET'
+      ? r.fulfill({ json: keys.map((key) => ({ key, ack_at: '2026-10-06T10:00:00Z' })) })
+      : r.fulfill({ json: { key: 'x', ack_at: '2026-10-06T10:00:00Z' } }),
+  )
+}
+const SEEN = ['getstarted:skipped', 'whatsnew:web:999.0.0', 'whatschanged:v2']
+
 for (const scheme of ['light', 'dark']) {
   test.describe(`${scheme}`, () => {
+    test('тур: шаг «Назовите проект»', async ({ page }) => {
+      await withAcks(page, SEEN)
+      await page.goto('/?tour=basics')
+      await expect(page.getByTestId('tour-pop')).toBeVisible({ timeout: 15000 })
+      await page.getByTestId('tour-next').click()
+      await page.locator('[data-tour="proj-add"]').click()
+      await page.locator('[data-tour="menu-project"]').click()
+      const field = page.locator(
+        '[data-tour="project-name"] input, input[data-tour="project-name"]',
+      )
+      await field.first().fill(LANG === 'ru' ? 'Сайт компании' : 'Company website')
+      await expect(page.getByTestId('tour-pop')).toHaveAttribute('data-kind', 'action')
+      await page.waitForTimeout(600)
+      await shoot(page, scheme, 'tour-step')
+    })
+
+    test('чек-лист «Начало работы»', async ({ page }) => {
+      await withAcks(page, [
+        'whatsnew:web:999.0.0',
+        'whatschanged:v2',
+        'hints:off:new',
+        'hints:off:ctx',
+        'getstarted:item:basics.project',
+        'getstarted:item:basics.board',
+        'getstarted:item:basics.task',
+        'getstarted:item:basics.fields:self',
+        'getstarted:item:inbox.open:self',
+      ])
+      await page.goto('/')
+      const list = page.getByTestId('tour-checklist')
+      await expect(list).toBeVisible({ timeout: 15000 })
+      // The «+» floats over the column's corner — out of an element shot.
+      await page.addStyleTag({ content: '[data-testid="quick-fab"] { display: none !important }' })
+      await shoot(page, scheme, 'tour-checklist', list)
+    })
+
+    test('подсказка у элемента', async ({ page }) => {
+      await withAcks(page, [...SEEN, 'whatschanged:later', 'hints:off:ctx'])
+      await openBoard(page)
+      await expect(page.getByTestId('spotlight-card')).toBeVisible({ timeout: 15000 })
+      await page.waitForTimeout(700)
+      await shoot(page, scheme, 'tour-spotlight')
+    })
+
+    test('настройки: подсказки', async ({ page }) => {
+      await withAcks(page, [
+        ...SEEN,
+        'whatschanged:later',
+        'getstarted:done',
+        'getstarted:ch:inbox',
+        'spotlight:inbox',
+        'spotlight:capture',
+        'spotlight:palette',
+        'spotlight:rail',
+      ])
+      await page.goto('/settings?s=hints')
+      await expect(page.getByTestId('settings-hints')).toBeVisible({ timeout: 15000 })
+      await shoot(page, scheme, 'settings-hints')
+    })
+
     test('доска', async ({ page }) => {
       await openBoard(page)
       await shoot(page, scheme, 'board')
@@ -187,10 +237,10 @@ for (const scheme of ['light', 'dark']) {
 
     test('панель доски: меню добавления', async ({ page }) => {
       await openBoard(page)
-      // The add menu renders in a detached dropdown layer, so the frame is the
-      // whole page — cropping to the bar would cut the menu the shot is about.
+      // The add menu renders in a detached layer, so the frame is the whole
+      // page — cropping to the bar would cut the menu the shot is about.
       await page.locator('.facet-add').click()
-      await expect(page.locator('.n-dropdown-option').first()).toBeVisible()
+      await expect(page.getByTestId('facet-group')).toBeVisible()
       await shoot(page, scheme, 'board-composer')
     })
 
@@ -201,24 +251,33 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'board-columns')
     })
 
+    // «Вид доски» (#2986): the panel docked next to the board, «Карточки» open.
     test('настройка вида', async ({ page }) => {
       await openBoard(page)
       await page.locator('[data-tour="board-customize"]').click()
-      await expect(page.locator('.n-drawer')).toBeVisible()
+      await expect(page.getByTestId('board-customize')).toBeVisible()
+      await page.getByTestId('customize-sec-cards').click()
       await shoot(page, scheme, 'board-customize')
     })
 
+    // Saved views (#2987): an empty list would picture the empty state, not the
+    // feature — so the shot saves a view first (the field in the panel's list),
+    // then opens the chip's menu with it.
     test('сохранённые представления', async ({ page }) => {
       await openBoard(page)
-      // An empty list would picture the empty state, not the feature — so the
-      // shot saves a view first, then opens the list that now has it. The two
-      // buttons are the last pair of `.bar-tools` (folder, then disk).
-      const tools = page.locator('.bar-tools .bar-btn')
-      await tools.nth(2).click()
-      await page.locator('.views-pop input').fill('Мой спринт')
-      await page.locator('.views-pop input').press('Enter')
-      await tools.nth(1).click()
-      await expect(page.locator('.views-pop .view-name')).toBeVisible()
+      await page.locator('[data-tour="board-customize"]').click()
+      await expect(page.getByTestId('board-customize')).toBeVisible()
+      // The light run saves it; the dark one (a fresh browser) applies it.
+      const saved = page.getByTestId('view-row-1')
+      if (await saved.count()) await saved.click()
+      else {
+        await page.getByTestId('views-save-as').click()
+        const field = page.getByTestId('views-save-input').locator('input')
+        await field.fill('Мой спринт')
+        await field.press('Enter')
+      }
+      await page.getByTestId('view-chip').click()
+      await expect(page.getByTestId('view-chip-menu')).toBeVisible()
       await shoot(page, scheme, 'board-views')
     })
 
@@ -231,19 +290,19 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'board-archive')
     })
 
-    // The switcher lists the visualizations in a fixed order (board, list,
-    // calendar, timeline, gantt, matrix), so an index beats a caption here.
+    // Every segment of the switcher names its view (`data-layout`) — steadier
+    // than an index or a caption.
     const LAYOUTS = [
-      { idx: 1, name: 'board-list', ready: '.list-view' },
-      { idx: 2, name: 'board-calendar', ready: '.cal-cell' },
-      { idx: 3, name: 'board-timeline', ready: '[data-testid="chart-controls"]' },
-      { idx: 4, name: 'board-gantt', ready: '[data-testid="chart-controls"]' },
-      { idx: 5, name: 'board-matrix', ready: '.m-colhead' },
+      { key: 'list', name: 'board-list', ready: '.list-view' },
+      { key: 'calendar', name: 'board-calendar', ready: '.cal-cell' },
+      { key: 'timeline', name: 'board-timeline', ready: '[data-testid="chart-controls"]' },
+      { key: 'gantt', name: 'board-gantt', ready: '[data-testid="chart-controls"]' },
+      { key: 'matrix', name: 'board-matrix', ready: '.m-colhead' },
     ]
     for (const layout of LAYOUTS) {
       test(`визуализация: ${layout.name}`, async ({ page }) => {
         await openBoard(page)
-        await page.locator('[data-tour="board-layout"] button').nth(layout.idx).click()
+        await page.locator(`[data-tour="board-layout"] [data-layout="${layout.key}"]`).click()
         await expect(page.locator(layout.ready).first()).toBeVisible()
         await shoot(page, scheme, layout.name)
       })
@@ -314,24 +373,50 @@ for (const scheme of ['light', 'dark']) {
 
     test('документы', async ({ page }) => {
       await page.goto('/documents')
-      await expect(page.getByText('Регламент релиза')).toBeVisible()
+      await expect(page.getByTestId('doc-tree')).toBeVisible()
+      await expect(page.locator('.tile', { hasText: 'Регламент релиза' })).toBeVisible()
       await shoot(page, scheme, 'documents')
     })
 
-    test('заметки', async ({ page }) => {
-      await page.goto('/notes')
-      // Open one: the list alone leaves two thirds of the screen saying
-      // «Выберите заметку», which is a picture of nothing.
-      await page.locator('.note-item', { hasText: 'Итоги планирования' }).click()
-      // The body opens in a textarea, so it is a value, not page text.
-      await expect(page.locator('.editor textarea')).toHaveValue(/Импорт CSV/)
-      await shoot(page, scheme, 'notes')
+    // The open document with the tree beside it (v2, #3106): the head row with
+    // the crumbs and tools, the title, the sheet and the discussion card.
+    test('документ открыт', async ({ page }) => {
+      // Wide enough for the tree to stay beside an open document (it folds away
+      // under ~1400px, see DocumentsView TREE_BESIDE_DOC).
+      await page.setViewportSize({ width: 1440, height: 900 })
+      await page.goto('/documents')
+      await page.locator('.tile', { hasText: 'Регламент релиза' }).click()
+      await expect(page.locator('.ProseMirror')).toBeVisible()
+      await expect(page.getByTestId('doc-save-state')).toHaveAttribute('data-state', 'saved')
+      await page.waitForTimeout(400)
+      await shoot(page, scheme, 'documents-doc')
     })
 
-    test('напоминания', async ({ page }) => {
-      await page.goto('/reminders')
-      await expect(page.getByText('Созвон по релизу 2.4 в 11:00')).toBeVisible()
-      await shoot(page, scheme, 'reminders')
+    test('шаблоны документов', async ({ page }) => {
+      await page.goto('/documents')
+      await page.getByTestId('doc-templates').click()
+      await expect(page.getByTestId('tpl-tile').first()).toBeVisible()
+      await page.waitForTimeout(300)
+      await shoot(page, scheme, 'documents-templates')
+    })
+
+    // «Входящие» (#2972) — the panel next to the board, and the capture field
+    // with a line read into a reminder tied to a task.
+    test('входящие', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('inbox-button').click()
+      await expect(page.getByTestId('inbox-panel')).toContainText('Созвон по релизу 2.4')
+      await shoot(page, scheme, 'inbox')
+    })
+
+    test('запись во входящие', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('quick-fab-button').click()
+      await page.locator('.fab-item[data-item="note"]').click()
+      // «/пустых» finds «Ревизия пустых состояний» by a word of its title.
+      await page.getByTestId('capture-input').fill('завтра 10:00 созвон по текстам /пустых')
+      await expect(page.getByTestId('capture-task')).toBeVisible()
+      await shoot(page, scheme, 'inbox-capture')
     })
 
     test('этапы', async ({ page }) => {
@@ -359,31 +444,57 @@ for (const scheme of ['light', 'dark']) {
       await shoot(page, scheme, 'conference-room')
     })
 
-    // ── tags and milestone management (#2823, wave 3) ──
+    // ── the «Проект» window, the stage page and strip (#2971) ──
+
+    test('окно проекта', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('board-more').click()
+      await page.getByTestId('board-more-menu-tags').click()
+      await expect(page.getByTestId('project-window')).toBeVisible()
+      await page.getByTestId('project-tab-general').click()
+      await expect(page.getByTestId('project-general')).toBeVisible()
+      await shoot(page, scheme, 'project-window')
+    })
 
     test('управление тегами', async ({ page }) => {
       await openBoard(page)
-      // The tag popover hangs off the first button of `.board-actions`; the
-      // caption is translated, so the anchor is the position in that row.
-      await page.locator('.board-actions button').first().click()
-      await expect(page.locator('.tagmgr')).toBeVisible()
-      // Double-click is what opens the rename field and the colour swatches under
-      // it — the gesture the article exists to document, so the shot has to show
-      // its result rather than the resting list.
-      await page.locator('.tagmgr .chip').first().dblclick()
-      await expect(page.locator('.tagmgr .swatches')).toBeVisible()
-      await shoot(page, scheme, 'tags-manager')
+      await page.getByTestId('board-more').click()
+      await page.getByTestId('board-more-menu-tags').click()
+      const tab = page.getByTestId('project-tags')
+      await expect(tab.getByTestId('tag-row').first()).toBeVisible()
+      // Two rows picked: the selection bar is what the article walks through.
+      await tab.getByTestId('tag-check').nth(0).click()
+      await tab.getByTestId('tag-check').nth(1).click()
+      await expect(page.getByTestId('tag-selection-bar')).toBeVisible()
+      await shoot(page, scheme, 'project-tags')
     })
 
     test('управление этапами', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('board-more').click()
+      await page.getByTestId('board-more-menu-stages').click()
+      await expect(page.getByTestId('stage-row').first()).toBeVisible()
+      await shoot(page, scheme, 'project-stages')
+    })
+
+    test('страница этапа', async ({ page }) => {
       await page.goto('/milestones')
-      await page.locator('.ms-manage').first().click()
-      const card = page.locator('.m-card')
-      await expect(card).toBeVisible()
-      // The rows arrive in their own request; waiting for one keeps the shutter
-      // off the empty state, which is a picture of nothing.
-      await expect(card.locator('.m-row').first()).toBeVisible()
-      await shoot(page, scheme, 'milestones-manage')
+      await page.locator('.ms-row', { hasText: 'Релиз 2.4' }).first().click()
+      await expect(page.getByTestId('stage-progress')).toBeVisible()
+      await shoot(page, scheme, 'stage-page')
+    })
+
+    test('полоса этапа', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('stage-select').click()
+      await page.getByTestId('stage-option').first().click()
+      const strip = page.getByTestId('stage-strip')
+      await expect(strip).toBeVisible()
+      if ((await strip.getAttribute('data-open')) !== '1') {
+        await page.getByTestId('stage-strip-toggle').click()
+      }
+      await expect(strip).toHaveAttribute('data-open', '1')
+      await shoot(page, scheme, 'stage-strip')
     })
 
     // Admin screens (#2810). They exist only for a global admin, and the backend
@@ -393,123 +504,108 @@ for (const scheme of ['light', 'dark']) {
     test('администрирование', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
       await page.goto('/admin')
-      await expect(page.getByText(L.adminUsers)).toBeVisible()
-      // The user rows arrive in a second request; without this the shutter can
-      // catch the OAuth card above an empty list.
-      await expect(page.locator('.urow').first()).toBeVisible()
-      // The OAuth card alone is taller than the viewport, so the accounts — what
-      // this shot is of — start below the fold. Scrolled to the search field:
-      // the list keeps its own heading in frame instead of floating loose.
-      await page.locator('.admin .search').scrollIntoViewIfNeeded()
+      // The user rows arrive in their own request; without this the shutter can
+      // catch the section head over an empty table.
+      await expect(page.getByTestId('admin-user').first()).toBeVisible()
+      await page.waitForTimeout(300)
       await shoot(page, scheme, 'admin-users')
     })
 
     test('вход через GitLab (OAuth)', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      // The card is half again as tall as the standard viewport, and an element
-      // screenshot that has to scroll to stitch comes back half-painted (the app
-      // footer lands in the middle of it). Growing the window instead keeps the
-      // whole card on one rendered page; the shot is cropped to the card anyway,
-      // so the wider window changes nothing else in the picture.
+      // The card is taller than the standard viewport, and an element screenshot
+      // that has to scroll to stitch comes back half-painted. Growing the window
+      // keeps the whole card on one rendered page; the shot is cropped to it.
       await page.setViewportSize({ width: 1440, height: 1600 })
-      await page.goto('/admin')
-      const card = page.locator('.oauth-card')
+      await page.goto('/admin?s=integrations')
+      const card = page.getByTestId('admin-oauth')
       await expect(card).toBeVisible()
       // The values come from the seed (demo.js), so the form is documented
       // filled in, not as a column of empty boxes.
-      await expect(card.locator('.oauth-mono textarea')).toHaveValue(/demo-group/)
+      await expect(card.locator('.av-mono textarea')).toHaveValue(/demo-group/)
       await shoot(page, scheme, 'admin-oauth', card)
     })
 
-    // The GitLab modal is two shots of one screen: the account block on top and
-    // the binding fields below it, which do not fit the card together (the pane
-    // scrolls at 76vh). The article shows each next to the text that explains it.
+    // The GitLab window (v2 #2975, kit/LargeWindow): one shot per section the
+    // articles explain — «Подключения» from the top (the account and the
+    // binding cards), the same section scrolled to the picked binding's fields,
+    // «Обратная запись» and «Правила лейблов». Opened through its store, as
+    // every door of the workspace menu does; the shot is the window.
     async function openGitlab(page) {
       await openBoard(page)
-      await page.getByRole('button', { name: L.integrations }).click()
-      // Naive UI's dropdown options are plain divs, not menu items with a role,
-      // and the GitLab one renders its label through a render function (it can
-      // carry a conflict badge) — so it is matched by text, not by role.
-      await page.locator('.n-dropdown-option', { hasText: 'GitLab' }).click()
-      const card = page.locator('.gl-card')
-      await expect(card).toBeVisible()
-      // The bindings arrive in their own request and the first one is selected
-      // on load; waiting for its project path keeps the shutter off a blank form.
-      await expect(card.getByPlaceholder('group/project')).toHaveValue('demo-group/demo-project')
-      return card
+      await page.evaluate(() => {
+        const pinia = document.querySelector('#app').__vue_app__.config.globalProperties.$pinia
+        pinia._s.get('wsDialogs').open('gitlab')
+      })
+      const win = page.getByTestId('gitlab-window')
+      await expect(win).toBeVisible()
+      // The bindings arrive in their own request and the first one is picked on
+      // load; waiting for its card keeps the shutter off an empty section.
+      await expect(page.getByTestId('gitlab-binding-card').first()).toBeVisible()
+      await page.waitForTimeout(300)
+      return win
     }
 
     test('GitLab: аккаунт', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openGitlab(page)
-      await shoot(page, scheme, 'gitlab-account', card)
+      const win = await openGitlab(page)
+      await shoot(page, scheme, 'gitlab-account', win)
     })
 
     test('GitLab: привязка проекта к доске', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openGitlab(page)
-      // Scroll the left pane, not the page: the card itself stays put, only its
-      // content moves. Playwright's own scrollIntoViewIfNeeded is no good here —
-      // it walks up to the nearest scrollable ancestor and finds the *page*,
-      // which does not scroll behind a modal, so the pane never moved and this
-      // shot came back a byte-for-byte twin of the account one. Scrolling the
-      // pane by hand, anchored on the bindings heading, puts the whole set of
-      // fields in frame instead.
-      await card.locator('.gl-left').evaluate((pane, head0) => {
-        const head = [...pane.querySelectorAll('.gl-h')].find((h) => h.textContent.includes(head0))
-        pane.scrollTop += head.getBoundingClientRect().top - pane.getBoundingClientRect().top
-      }, L.bindingsHead)
-      await shoot(page, scheme, 'gitlab-bindings', card)
-    })
-
-    // The two right-pane editors (#2810, wave 3). Both live below the fold of the
-    // left pane, so the pane is scrolled to the button row before clicking; the
-    // shot is of the whole card, because the point of these pictures is that the
-    // modal *expands* into a second pane next to the settings it belongs to.
-    async function openRightPane(page, buttonName) {
-      const card = await openGitlab(page)
-      await card.locator('.gl-left').evaluate((pane) => {
-        pane.scrollTop = pane.scrollHeight
+      const win = await openGitlab(page)
+      // The section scrolls inside the window, not the page: bring the picked
+      // binding's heading to the top of the pane by hand.
+      await page.getByTestId('gitlab-connections').evaluate((tab) => {
+        const pane = tab.querySelector('.glw-scroll')
+        const form = tab.querySelector('[data-testid="gitlab-binding-form"]')
+        pane.scrollTop += form.getBoundingClientRect().top - pane.getBoundingClientRect().top - 44
       })
-      await card.getByRole('button', { name: buttonName }).click()
-      await expect(card.locator('.gl-right')).toBeVisible()
-      return card
-    }
+      await page.waitForTimeout(200)
+      await shoot(page, scheme, 'gitlab-bindings', win)
+    })
 
     test('GitLab: действия обратной записи', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openRightPane(page, L.configureWriteback)
-      // The bindings come from the seed; waiting for the first row's summary keeps
-      // the shutter off the pane's own loading frame.
-      await expect(card.locator('.gl-rcard').first()).toBeVisible()
-      await shoot(page, scheme, 'gitlab-writeback', card)
+      const win = await openGitlab(page)
+      await page.getByTestId('gitlab-tab-writeback').click()
+      // The pairs come from the seed; the first row keeps the shutter off the
+      // section's empty frame.
+      await expect(page.getByTestId('gitlab-wb-row').first()).toBeVisible()
+      await shoot(page, scheme, 'gitlab-writeback', win)
     })
 
     test('GitLab: правила разбора меток', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
-      const card = await openRightPane(page, L.configureRules)
-      // The rules are the backend's defaults (S:/P:/M:), so the value maps are
-      // filled — waiting for the first one avoids shooting three empty cards.
-      await expect(card.locator('.gl-rmap .gl-rule').first()).toBeVisible()
-      await shoot(page, scheme, 'gitlab-tags', card)
+      const win = await openGitlab(page)
+      await page.getByTestId('gitlab-tab-rules').click()
+      // The rules are the backend's defaults (S:/P:/M:) — the first one opened
+      // shows its value table.
+      const row = page.getByTestId('gitlab-rule-row').first()
+      await expect(row).toBeVisible()
+      await row.locator('.gr-sum').click()
+      await expect(page.getByTestId('gitlab-rule-edit')).toBeVisible()
+      await shoot(page, scheme, 'gitlab-tags', win)
     })
 
     test('фоновые задания', async ({ page }) => {
       test.skip(!seed.isAdmin, 'демо-пользователь не админ — нужна чистая база (E2E_DB_URL)')
       await openBoard(page)
-      await page.getByRole('button', { name: L.jobs }).click()
-      const modal = page.locator('.bj-modal')
-      await expect(modal).toBeVisible()
-      // The panel selects its first job on load; waiting for the detail pane
-      // keeps the shot from showing «Выберите задание».
-      await expect(modal.locator('.bj-detail-name')).toBeVisible()
-      await shoot(page, scheme, 'background-jobs', modal)
+      // G J — the window's own key (#2975).
+      await page.keyboard.press('g')
+      await page.keyboard.press('j')
+      const win = page.getByTestId('jobs-window')
+      await expect(win).toBeVisible()
+      // The window picks its first job on load; waiting for the detail keeps
+      // the shot from showing «Выберите задание».
+      await expect(win.locator('.bj-detail-name')).toBeVisible()
+      await page.waitForTimeout(300)
+      await shoot(page, scheme, 'background-jobs', win)
     })
 
-    // Notification settings (#2810, wave 4). They live in a long settings page,
-    // so both shots are of the viewport scrolled to the block in question rather
-    // than of the section element — the section is taller than any sane window,
-    // and an element screenshot that has to stitch comes back half-painted.
+    // Notification settings (#2810, wave 4; v2 #3106 — their own section of
+    // the settings screen, `?s=notifications`).
     async function openNotificationSettings(page) {
       // Without the permission the device row carries a red «Уведомления
       // запрещены в браузере» line — a picture of a headless browser's default,
@@ -518,72 +614,94 @@ for (const scheme of ['light', 'dark']) {
       // The client registers this browser as a device channel on boot, but only
       // after the tour/what's-new chain ahead of it — later than the settings
       // screen fetches the channel list, so the row is missing on a cold load.
-      // Waiting for that POST and then reloading makes the row deterministic:
-      // without it the light shot (the first test to run) had no device row and
-      // its dark twin, running after the channel already existed, had one.
+      // Waiting for that POST and then reloading makes the row deterministic.
       const registered = page
         .waitForResponse((r) => r.url().includes('/notification-devices'), { timeout: 15000 })
         .catch(() => null)
-      await page.goto('/settings')
+      await page.goto('/settings?s=notifications')
       await registered
       await page.reload()
-      const section = page
-        .locator('section.card')
-        .filter({ has: page.getByRole('heading', { name: L.notifications }) })
+      const section = page.getByTestId('notification-settings')
       await expect(section).toBeVisible()
       await expect(section.getByText(L.thisDevice)).toBeVisible()
-      // Channels arrive in their own request; the seeded one keeps the shutter
-      // off the spinner and off the «Каналов пока нет» empty state.
-      // Exact: the channel's own row, not the two rule rows that list it as a
+      // Exact: the channel's own card, not the rule rows that list it as a
       // delivery target («→ Рабочая почта, Мой телеграм · …»).
       await expect(section.getByText('Мой телеграм', { exact: true })).toBeVisible()
       return section
     }
 
-    // scrollIntoViewIfNeeded only scrolls until the element is *somewhere* in the
-    // viewport, which leaves the settings screen showing the tail of the security
-    // card above the block being documented. `block: 'start'` pins it to the top.
-    async function scrollToTop(locator) {
-      await locator.evaluate((el) => el.scrollIntoView({ block: 'start', behavior: 'instant' }))
-    }
-
     test('уведомления: каналы доставки', async ({ page }) => {
-      const section = await openNotificationSettings(page)
-      await scrollToTop(section)
+      await openNotificationSettings(page)
+      await page.waitForTimeout(300)
       await shoot(page, scheme, 'notifications-channels')
     })
 
     test('уведомления: правила маршрутизации', async ({ page }) => {
       const section = await openNotificationSettings(page)
-      // The rule editor over the rule list: the picture has to show both the
-      // order of the rules (first match wins) and what a rule is made of, so the
-      // list is scrolled up first and the form opened on top of it.
-      const block = section.locator('.block', { hasText: L.routesTitle }).first()
-      await scrollToTop(block)
-      await section.getByRole('button', { name: L.addRule }).click()
-      const modal = page.locator('.n-card', { hasText: L.newRule })
-      await expect(modal).toBeVisible()
-      // Pick the events so the form is documented in use, not empty. The label is
-      // a <span> above the select, so the click has to land on the selection box
-      // itself; the options then render in a detached dropdown layer, outside the
-      // modal — hence the page-level locator for them.
-      await modal.locator('.field', { hasText: L.events }).locator('.n-base-selection').click()
+      // The rule editor next to the rule list: the picture has to show both the
+      // order of the rules (first match wins) and what a rule is made of.
+      const block = section.getByTestId('notif-routes')
+      await block.evaluate((el) => el.scrollIntoView({ block: 'start', behavior: 'instant' }))
+      await section.getByTestId('notif-route-add').click()
+      const form = page.getByTestId('notif-route-form')
+      await expect(form).toBeVisible()
+      // Pick the events so the form is documented in use, not empty. The
+      // options render in a detached dropdown layer, outside the form.
+      await form.locator('.kf', { hasText: L.events }).locator('.n-base-selection').click()
       await page.locator('.n-base-select-option', { hasText: L.mention }).first().click()
-      await page.keyboard.press('Escape') // close the dropdown, keep the modal
-      // The pick lands as a tag inside the select — that is what has to be in frame.
-      await expect(modal.locator('.n-tag', { hasText: L.mention })).toBeVisible()
+      // Close the dropdown with a click on the form's title — Esc would close
+      // the form itself.
+      await form.locator('.pf-title').click()
+      await expect(form.locator('.n-tag', { hasText: L.mention })).toBeVisible()
       await shoot(page, scheme, 'notifications-routes')
     })
 
     test('справочный центр', async ({ page }) => {
       // The centre is a modal over the current screen (#2792), so the shot is
-      // taken the way a reader gets there: from the board, through the footer's
+      // taken the way a reader gets there: from the board, through the rail's
       // «Помощь» menu — the board stays behind it, which is the whole point.
       await page.goto(`/board/${seed.boardId}`)
-      await page.locator('[data-tour="footer-help"]').click()
-      await page.locator('[data-help-menu="center"]').click()
+      await page.locator('[data-tour="rail-help"]').click()
+      await page.getByTestId('help-menu-center').click()
       await expect(page.locator('.h-article')).toBeVisible()
       await shoot(page, scheme, 'help')
+    })
+  })
+}
+
+// ── the phone (#2976 — package G) ──
+// The mobile web at 390×844 with touch: the bottom navigation, the board, the
+// tree in its drawer and «Ещё». Scale 1, like the rest of the set — the article
+// shows them at their own size.
+for (const scheme of ['light', 'dark']) {
+  test.describe(`телефон · ${scheme}`, () => {
+    test.use({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true })
+
+    test('телефон: доска', async ({ page }) => {
+      await openBoard(page)
+      await expect(page.getByTestId('mobile-tabbar')).toBeVisible()
+      await shoot(page, scheme, 'mobile-board')
+    })
+
+    test('телефон: дерево в дровере', async ({ page }) => {
+      await openBoard(page)
+      await page.getByTestId('mobile-board-switch').tap()
+      await expect(page.locator('.n-drawer').getByTestId('sidebar')).toBeVisible()
+      await page.waitForTimeout(400)
+      await shoot(page, scheme, 'mobile-drawer')
+    })
+
+    test('телефон: мои задачи', async ({ page }) => {
+      await page.goto('/')
+      await expect(page.getByTestId('home')).toBeVisible()
+      await page.waitForLoadState('networkidle').catch(() => {})
+      await shoot(page, scheme, 'mobile-home')
+    })
+
+    test('телефон: ещё', async ({ page }) => {
+      await page.goto('/more')
+      await expect(page.getByTestId('more-page')).toBeVisible()
+      await shoot(page, scheme, 'mobile-more')
     })
   })
 }
