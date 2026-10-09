@@ -1,4 +1,13 @@
 {
+  "appV2": {
+    "title": "A new look for the whole app",
+    "item1": "«Inbox» replaces the «Notes» and «Reminders» sections: one feed on the right (G I), capture in one line from anywhere (N M — note, N R — reminder), linking to a task and private notes.",
+    "item2": "The «Project» window (⌘,) with General · Tags · Milestones · Estimation tabs, a milestone page with a burn-up and a milestone strip above the board. Board settings and views live in the «Board view» panel (⇧V); views can be personal or shared.",
+    "item3": "New board views — List, Calendar and Matrix. GitLab, members, commands, background jobs and conflicts open in large windows with sections.",
+    "item4": "Task properties — one kind of popover with search and keys (S A P D L, O — estimate, M — milestone, U — parent, ⇧L — relation). A due date can be typed in words («fri 18:00», «tomorrow») or picked in a keyboard-driven calendar.",
+    "item5": "Editor: an «Aa» formatting row, {'@'} # / at the caret, «Quote in reply» from a selection, a full-screen mode «Write · Side by side · Preview». The description opens with I.",
+    "item6": "Pop-up notifications: at the bottom — answers to your actions and «Undo», top right — what colleagues did with your tasks. A «Do not disturb» mode and a setting in «Notifications». On a phone — bottom navigation and bottom sheets."
+  },
   "interactionV2": {
     "title": "Fewer windows, more editing in place",
     "item1": "Columns, groups, projects and boards are renamed in place — double-click or F2. New projects, groups, boards and workspaces are created from a short form at the «+» button or as a row right in the tree, without separate windows.",
