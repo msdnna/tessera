@@ -31,17 +31,17 @@ The choice is remembered **on this device**, not in your profile: a 27" monitor 
 
 ## The fields on the left
 
-| Field         | What it does                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------ |
-| **Priority**  | Five levels; the coloured priority dot is visible on the card too.                         |
-| **Due**       | Opens the calendar: start date, due date, time, plus **recurrence** and **notifications**. |
-| **Estimate**  | How much work the task is, in the project's units.                                         |
-| **Milestone** | The milestone the task belongs to; a new one can be created here as well.                  |
-| **Author**    | Who created the task. Read-only.                                                           |
-| **Assignees** | Any number of people, including members from GitLab.                                       |
-| **Tags**      | The same tags the board can lay itself out by.                                             |
-| **Status**    | The board column. Next to it: a “Move →” button for the next column and a “Done” tick.     |
-| **Parent**    | Make the task a subtask of another one, or detach it from its parent.                      |
+| Field | What it does |
+|---|---|
+| **Priority** | Five levels; the coloured priority dot is visible on the card too. |
+| **Due** | Opens the calendar: start date, due date, time, plus **recurrence** and **notifications**. |
+| **Estimate** | How much work the task is, in the project's units. |
+| **Milestone** | The milestone the task belongs to; a new one can be created here as well. |
+| **Author** | Who created the task. Read-only. |
+| **Assignees** | Any number of people, including members from GitLab. |
+| **Tags** | The same tags the board can lay itself out by. |
+| **Status** | The board column. Next to it: a “Move →” button for the next column and a “Done” tick. |
+| **Parent** | Make the task a subtask of another one, or detach it from its parent. |
 
 ### The estimate: what a card can't edit
 
