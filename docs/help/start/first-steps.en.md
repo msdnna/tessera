@@ -3,7 +3,7 @@ title: First steps
 category: Getting started
 order: 10
 keywords: start, sign up, workspace, project, board, onboarding, guide
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 Tessera is a task tracker: boards with tasks, documents, notes and reminders. This article walks the path from an empty account to your first task on a board.
@@ -17,6 +17,10 @@ To invite a colleague: the workspace menu (its name at the top of the sidebar) �
 ## Projects and groups
 
 On the left is the project tree. Projects can be filed into **groups**, and groups nest inside one another: handy when you have many directions of work. The “+” button in the “Projects” heading creates a project or a group at the root; every node in the tree has the same button. Drag a project into a group with the mouse.
+
+A project has an **address** — the `…/project/<address>` part of a link. It comes from the name, and the workspace owner and admins can pick their own when creating the project or later (“Change the address…” in the project menu, <kbd>U</kbd>). Addresses are unique across the whole server: when one is taken, the form says which project holds it and offers a free variant — a click on it or <kbd>Alt+Enter</kbd> (<kbd>⌥↵</kbd> on a Mac) puts it into the field. After a change, old links keep leading to the project for **30 days** and switch to the new address by themselves — unless another project takes the old address in the meantime.
+
+Deleting a project or a workspace can’t be undone, so the confirmation names what goes with it: “3 boards and 148 tasks” for a project, “4 projects, 23 boards and 612 tasks” for a workspace (which you also delete by typing its name).
 
 ## Board
 

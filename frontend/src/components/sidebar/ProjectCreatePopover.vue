@@ -145,7 +145,7 @@ function abort() {
     :busy-label="t('shell.projectForm.creating')"
     :busy="busy"
     :disabled="disabled"
-    :hint="slugSuggestion ? 'suggest' : 'tab'"
+    hint="tab"
     testid="project-create"
     submit-tour="project-submit"
     @update:show="emit('update:show', $event)"

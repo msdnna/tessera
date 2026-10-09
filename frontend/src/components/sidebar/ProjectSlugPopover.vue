@@ -101,7 +101,6 @@ async function submit() {
     :busy-label="t('common.form.saving')"
     :busy="busy"
     :disabled="!preview || !!error"
-    :hint="suggestion ? 'suggest' : ''"
     :escape-back="escapeBack"
     testid="project-slug"
     @update:show="emit('update:show', $event)"

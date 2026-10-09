@@ -63,8 +63,6 @@ test('занятый адрес: «Адрес занят: его использ�
   const form = page.getByTestId('project-slug')
   await expect(form).toContainText(t('project.slug.takenBy', { name: 'Сайт' }))
   await expect(page.getByTestId('slug-suggest-chip')).toHaveText(`${taken}-2`)
-  // The footer names the key.
-  await expect(form).toContainText(t('common.form.suggest'))
 
   // ⌥↵ puts the free variant in; ↵ saves it.
   await input.press('Alt+Enter')
@@ -73,6 +71,36 @@ test('занятый адрес: «Адрес занят: его использ�
   await input.press('Enter')
   await expect(form).toHaveCount(0)
   await expect(page).toHaveURL(new RegExp(`/project/${taken}-2/board/`))
+})
+
+test('новый проект на занятом адресе: «так уже называется проект в группе», ⌥↵ и создать', async ({
+  page,
+  backend,
+}) => {
+  const { board, ws, group } = await backend.freshBoard('addr-create')
+  const taken = uniq('tessera-web')
+  await backend.post(`/workspaces/${ws.id}/projects`, {
+    name: 'Tessera Web',
+    slug: taken,
+    group_id: group.id,
+  })
+
+  await openBoard(page, board.id)
+  await page.getByTestId('group-add-project').first().click()
+  const form = page.getByTestId('project-create')
+  await expect(form).toBeVisible()
+  await page.getByTestId('project-create-name').fill('Ещё один')
+  const slug = page.getByTestId('project-create-slug')
+  await slug.fill(taken)
+  await slug.press('Enter')
+  await expect(form).toContainText(t('project.slug.takenInGroup', { group: group.name }))
+  await slug.press('Alt+Enter')
+  await expect(slug).toHaveValue(`${taken}-2`)
+  await slug.press('Enter')
+  await expect(form).toHaveCount(0)
+  await expect
+    .poll(async () => (await backend.get(`/workspaces/${ws.id}/projects`)).map((p) => p.slug))
+    .toContain(`${taken}-2`)
 })
 
 test('окно «Проект» → «Общее»: занятый адрес с подсказкой, счётчики у удаления', async ({
