@@ -120,6 +120,32 @@ watch(
   },
   { immediate: true },
 )
+// The address in the URL names no project of the open workspace's tree: a
+// former address, still leading to its project for 30 days (#3012), or a
+// project of another workspace. Ask the server once per address, follow the
+// project's workspace and swap the address for the current one.
+let resolvedFor = ''
+watch(
+  () => [route.params.projectSlug, !!project.value],
+  async ([slug, known]) => {
+    if (!slug || known || resolvedFor === slug) return
+    resolvedFor = slug
+    try {
+      const { data } = await projApi.bySlug(slug)
+      if (route.params.projectSlug !== slug) return
+      await ws.ensureWorkspace(data.workspace_id)
+      if (route.params.projectSlug !== slug) return
+      if (data.slug && data.slug !== slug) {
+        router.replace({ ...route, params: { ...route.params, projectSlug: data.slug } })
+      }
+    } catch {
+      if (route.params.projectSlug !== slug) return
+      loading.value = false
+      notFound.value = true
+    }
+  },
+  { immediate: true },
+)
 watch(
   () => project.value && ws.milestoneRevFor(project.value.id),
   () => {

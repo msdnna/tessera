@@ -3,8 +3,9 @@
 // mockup PopForm kind=slug) — it replaced the address modal. Manager-only on
 // the server; the menu hides it for everyone else.
 //
-// The mockup promises old links keep working for 30 days — that needs address
-// aliases (#3012); until then the form says what really happens: they stop.
+// The old address keeps leading here for 30 days (#3012). A taken address
+// names its holder and offers the first free variant: the chip or ⌥↵ puts it
+// into the field (#3013).
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
@@ -13,6 +14,7 @@ import FormField from '@/components/kit/FormField.vue'
 import { projects as projApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { makeSlug } from '@/utils/slug'
+import { slugTaken } from '@/utils/slugTaken'
 import { humanizeError } from '@/utils/errors'
 
 const props = defineProps({
@@ -29,16 +31,32 @@ const store = useWorkspacesStore()
 
 const value = ref('')
 const error = ref('')
+const suggestion = ref('')
 const busy = ref(false)
+const input = ref(null)
 const preview = computed(() => makeSlug(value.value))
 watch(
   () => props.show,
   (on) => {
     if (!on) return
     value.value = props.project.slug || ''
-    error.value = ''
+    clearError()
   },
 )
+
+function clearError() {
+  error.value = ''
+  suggestion.value = ''
+}
+
+// The chip or ⌥↵: the free variant goes into the field, the error clears and
+// the form waits for ↵ — the user still sees what they are saving.
+function useSuggestion() {
+  if (!suggestion.value) return
+  value.value = suggestion.value
+  clearError()
+  input.value?.focus()
+}
 
 async function submit() {
   const next = preview.value
@@ -48,7 +66,7 @@ async function submit() {
     return
   }
   busy.value = true
-  error.value = ''
+  clearError()
   try {
     const res = await projApi.setSlug(props.project.id, next)
     emit('update:show', false)
@@ -58,7 +76,13 @@ async function submit() {
     }
     await store.refresh()
   } catch (e) {
-    error.value = e.status === 409 ? t('project.slug.taken') : humanizeError(e)
+    const taken = slugTaken(e, t)
+    if (taken) {
+      error.value = taken.error
+      suggestion.value = taken.suggestion
+    } else {
+      error.value = humanizeError(e)
+    }
   } finally {
     busy.value = false
   }
@@ -76,19 +100,24 @@ async function submit() {
     :busy-label="t('common.form.saving')"
     :busy="busy"
     :disabled="!preview || !!error"
+    :hint="suggestion ? 'suggest' : ''"
     :escape-back="escapeBack"
     testid="project-slug"
     @update:show="emit('update:show', $event)"
     @submit="submit"
+    @suggest="useSuggestion"
     @escape="emit('escape')"
   >
     <FormField
       :label="t('shell.projectForm.slug')"
       :preview="preview"
       :error="error"
+      :suggestion="suggestion"
       :message="t('project.slug.oldLinks', { old: project.slug })"
+      @suggest="useSuggestion"
     >
       <input
+        ref="input"
         v-model="value"
         class="kf-input"
         :class="{ error: !!error }"
@@ -96,7 +125,7 @@ async function submit() {
         :disabled="busy"
         spellcheck="false"
         data-testid="project-slug-input"
-        @input="error = ''"
+        @input="clearError"
       />
     </FormField>
   </PopoverForm>

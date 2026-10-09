@@ -29,7 +29,7 @@
     "due_scan": "checking due dates and reminders",
     "recurrence": "advancing recurring tasks",
     "recording_sweep": "checking conference recordings and sweeping expired ones",
-    "trash_purge": "purging boards and columns past their undo window",
+    "trash_purge": "purging boards and columns past their undo window and expired old project addresses",
     "sync_full": "full sync",
     "sync_incremental": "incremental sync",
     "webhook_scan": "checking GitLab webhook events"

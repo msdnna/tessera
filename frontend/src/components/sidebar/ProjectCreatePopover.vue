@@ -18,6 +18,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useTourStore } from '@/stores/tour'
 import { makeSlug } from '@/utils/slug'
 import { humanizeError } from '@/utils/errors'
+import { slugTaken } from '@/utils/slugTaken'
 import { PICKER_COLORS } from '@/utils/pickerColors'
 
 const props = defineProps({
@@ -43,6 +44,9 @@ const icon = ref('code')
 const busy = ref(false)
 const error = ref('')
 const slugError = ref('')
+// The first free variant of a taken address (#3013) — the chip or ⌥↵.
+const slugSuggestion = ref('')
+const slugInput = ref(null)
 
 const canPickSlug = computed(() => store.canManage)
 const preview = computed(() => makeSlug(slugTouched.value ? slug.value : name.value))
@@ -58,6 +62,7 @@ watch(
     icon.value = 'code'
     error.value = ''
     slugError.value = ''
+    slugSuggestion.value = ''
   },
 )
 watch(name, (v) => {
@@ -67,6 +72,16 @@ function onSlugInput(e) {
   slugTouched.value = true
   slug.value = e.target.value
   slugError.value = ''
+  slugSuggestion.value = ''
+}
+// The free variant goes into the field; ↵ then creates with it.
+function useSuggestion() {
+  if (!slugSuggestion.value) return
+  slugTouched.value = true
+  slug.value = slugSuggestion.value
+  slugError.value = ''
+  slugSuggestion.value = ''
+  slugInput.value?.focus()
 }
 
 const disabled = computed(
@@ -101,8 +116,11 @@ async function submit({ open }) {
       if (boards[0]) router.push(`/project/${res.data.slug}/board/${boards[0].slug}`)
     }
   } catch (e) {
-    if (e.status === 409) slugError.value = t('project.slug.taken')
-    else error.value = humanizeError(e)
+    const taken = slugTaken(e, t, { inGroup: true })
+    if (taken) {
+      slugError.value = taken.error
+      slugSuggestion.value = taken.suggestion
+    } else error.value = humanizeError(e)
   } finally {
     busy.value = false
   }
@@ -127,11 +145,12 @@ function abort() {
     :busy-label="t('shell.projectForm.creating')"
     :busy="busy"
     :disabled="disabled"
-    hint="tab"
+    :hint="slugSuggestion ? 'suggest' : 'tab'"
     testid="project-create"
     submit-tour="project-submit"
     @update:show="emit('update:show', $event)"
     @submit="submit"
+    @suggest="useSuggestion"
     @abort="abort"
   >
     <FormField :label="t('shell.projectForm.name')" :error="error">
@@ -149,9 +168,12 @@ function abort() {
       :aside="canPickSlug && !slugTouched ? t('shell.projectForm.fromName') : ''"
       :preview="preview"
       :error="slugError"
+      :suggestion="slugSuggestion"
+      @suggest="useSuggestion"
     >
       <input
         v-if="canPickSlug"
+        ref="slugInput"
         :value="slug"
         class="kf-input"
         :class="{ error: !!slugError }"

@@ -12,12 +12,6 @@
 export const FEATURE_STUBS = {
   // Project archive: menu item «Архивировать» (E) — #3005.
   'project.archive': 3005,
-  // Free-variant suggestion and «address taken by X» — #3013.
-  'project.slugSuggest': 3013,
-  // Old project addresses keep redirecting for 30 days — #3012.
-  'project.slugAliases': 3012,
-  // Counts in the delete confirmations («3 доски и 148 задач») — #3014.
-  'delete.counts': 3014,
   // Editing, closing and reopening a GitLab-sourced stage with the change
   // written back to GitLab (#3010) — until then such a stage is read-only here.
   'stage.gitlabWrite': 3010,

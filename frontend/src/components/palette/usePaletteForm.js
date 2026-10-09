@@ -24,6 +24,7 @@ import { useTourStore } from '@/stores/tour'
 import { workspaces as wsApi, projects as projApi } from '@/api'
 import { makeSlug } from '@/utils/slug'
 import { humanizeError } from '@/utils/errors'
+import { slugTaken } from '@/utils/slugTaken'
 import { rank } from '@/utils/fuzzy'
 import { PICKER_COLORS } from '@/utils/pickerColors'
 import { useToast } from '@/composables/useToast'
@@ -337,7 +338,9 @@ export function usePaletteForm() {
       toast?.success(t(`shell.paletteForm.created.${kind.value}`, { name }))
       return 'close'
     } catch (e) {
-      error.value = e.status === 409 ? t('project.slug.taken') : humanizeError(e)
+      // A taken address names its holder (#3013).
+      const taken = kind.value === 'project' ? slugTaken(e, t, { inGroup: true }) : null
+      error.value = taken ? taken.error : humanizeError(e)
       return 'stay'
     } finally {
       busy.value = false

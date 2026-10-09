@@ -676,7 +676,8 @@
     "deleteSub": "Every project, board and task of the space will be deleted. This can’t be undone.",
     "deleteForever": "Delete for good",
     "deleteHint": "The button unlocks once the name matches.",
-    "typeName": "Type the name of the space"
+    "typeName": "Type the name of the space",
+    "deleteSubCounts": "{what} will be deleted. This can’t be undone."
   },
   "paletteForm": {
     "root": "At the top of the space",

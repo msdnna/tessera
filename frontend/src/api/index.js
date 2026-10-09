@@ -237,6 +237,10 @@ api.interceptors.response.use(
     // day that sentinel joins the catalogue (#2932). Mirrors the phone's
     // `rawErrorText` (android util/Errors.kt).
     wrapped.raw = raw
+    // The refusal body as the server sent it, for the few answers that carry
+    // more than a sentence — a taken project address names its holder and a
+    // free variant (#3013).
+    wrapped.data = err.response?.data
     // Distinguish "server unreachable" (network/DNS/timeout — no response at all)
     // from an HTTP error the server answered with. Callers that retry (e.g. the
     // comment composer) only retry when offline; a 4xx/5xx is not a connectivity
@@ -402,6 +406,8 @@ export const workspaces = {
   update: (id, data) => api.patch(`/workspaces/${id}`, data), // { name }
   // Dangerous: delete a workspace with everything in it (owner only, 403 otherwise).
   remove: (id) => api.delete(`/workspaces/${id}`),
+  // What that delete takes with it: { projects, boards, tasks } (#3014).
+  counts: (id) => api.get(`/workspaces/${id}/counts`),
   members: (id) => sharedGet(`/workspaces/${id}/members`),
   gitlabMembers: (id) => sharedGet(`/workspaces/${id}/gitlab/members`),
   addMember: (id, data) => api.post(`/workspaces/${id}/members`, data),
@@ -446,13 +452,19 @@ export const workspaces = {
 export const projects = {
   get: (id) => api.get(`/projects/${id}`),
   update: (id, data) => api.patch(`/projects/${id}`, data),
-  // Change the project's URL address (owner/admin only). Links already handed
-  // out with the old address stop resolving — warn before calling.
+  // Change the project's URL address (owner/admin only). The old address keeps
+  // leading here for 30 days (#3012). A taken one answers 409 with
+  // { suggestion, taken_by? } — see utils/slugTaken.
   setSlug: (id, slug) => api.patch(`/projects/${id}/slug`, { slug }),
+  // A project by its address — a former one included; the answer carries the
+  // current `slug` (#3012).
+  bySlug: (slug) => api.get('/project-by-slug', { params: { slug } }),
   move: (id, data) => api.patch(`/projects/${id}/move`, data),
   // Dangerous: move a project (with all boards/tasks) to another workspace.
   transfer: (id, data) => api.post(`/projects/${id}/transfer`, data),
   remove: (id) => api.delete(`/projects/${id}`),
+  // What that delete takes with it: { boards, tasks } (#3014).
+  counts: (id) => api.get(`/projects/${id}/counts`),
   boards: (id) => api.get(`/projects/${id}/boards`),
   createBoard: (id, data) => api.post(`/projects/${id}/boards`, data),
   tags: (id) => sharedGet(`/projects/${id}/tags`),

@@ -51,7 +51,11 @@ async function resolve() {
     await wsStore.ensureWorkspace(board.workspace_id)
     if (mine !== resolveSeq) return
     boardId.value = board.id
-    const pslug = projectSlug || (await projectsApi.get(board.project_id)).data.slug
+    // The resolver names the project's current address: the one in the URL may
+    // be a former one, still leading here for 30 days (#3012) — the replace
+    // below swaps it for the current one.
+    const pslug =
+      board.project_slug || projectSlug || (await projectsApi.get(board.project_id)).data.slug
     if (mine !== resolveSeq) return
     const target = `/project/${pslug}/board/${board.slug}`
     if (route.path !== target) router.replace({ path: target, query: route.query })
