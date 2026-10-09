@@ -99,10 +99,10 @@ import { humanizeError } from '@/utils/errors'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { usePaletteStore } from '@/stores/palette'
 import { useUndoStore } from '@/stores/undo'
+import { useToastsStore } from '@/stores/toasts'
 import { storeToRefs } from 'pinia'
 import TaskCard from './TaskCard.vue'
 import TaskModal from './TaskModal.vue'
-import BoardActivityToasts from './BoardActivityToasts.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardCustomizePanel from './BoardCustomizePanel.vue'
@@ -135,8 +135,9 @@ const { formatters } = useFormat()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
 const boardViewStore = useBoardViewStore()
-// Live board-activity toasts (separate from the bell): fed from realtime events.
-const activityToasts = ref(null)
+// The open board's activity (#3117): toasts of the top lane, folded into one
+// per burst; the card a toast is about pulses once.
+const toasts = useToastsStore()
 // `layout` lives in the store so the header switcher and the board stay in sync.
 const { layout } = storeToRefs(boardViewStore)
 // Timeline + Gantt share the same time-axis substrate (swimlanes, status sort/
@@ -2384,8 +2385,10 @@ useRealtime((ev) => {
   // Only pairs with an end on this board can move an arrow here, and only the
   // Gantt draws them, so this costs nothing on the other layouts.
   if (relationTouchesBoard(ev, props.boardId)) depsToken.value++
-  // Board-activity toast for create/move on THIS board (any actor).
-  if (ev.type === 'task.created' || ev.type === 'task.moved') pushActivity(ev)
+  // Board-activity toast for create/move/delete on THIS board (the store
+  // decides whose actions show and folds bursts, #3117).
+  if (ev.type === 'task.created' || ev.type === 'task.moved' || ev.type === 'task.deleted')
+    pushActivity(ev)
   // A drag holds the board still (SortableJS needs a stable DOM), so the event
   // cannot be acted on now — but it must not be forgotten either: remember what it
   // would have cost and fetch that once the card lands (#2932).
@@ -2427,22 +2430,62 @@ useRealtime((ev) => {
 function pushActivity(ev) {
   const task = ev.data
   if (!task || typeof task !== 'object' || task.board_id !== props.boardId) return
-  let verb = ev.type === 'task.created' ? 'created' : 'moved'
+  // A deleted task is gone from the payload's columns; its title is on the card
+  // we still hold, or in the event itself (#3114).
+  const prev = allTasks.value.find((x) => x.id === task.id)
+  let verb =
+    ev.type === 'task.created' ? 'created' : ev.type === 'task.deleted' ? 'deleted' : 'moved'
   if (ev.type === 'task.moved') {
-    const prev = allTasks.value.find((x) => x.id === task.id)
     const wasDone = !!prev?.completed_at
     const isDone = !!task.completed_at
     if (isDone && !wasDone) verb = 'completed'
     else if (!isDone && wasDone) verb = 'reopened'
   }
-  activityToasts.value?.push({
-    id: task.id,
-    number: task.number ?? null,
-    title: task.title || t('task.fallbackTitle'),
+  const col = columns.value.find((c) => c.id === task.column_id)
+  toasts.activity({
+    taskId: task.id,
+    number: task.number ?? prev?.number ?? null,
+    title: task.title || prev?.title || t('task.fallbackTitle'),
     verb,
+    column: col ? columnName(col) : '',
     ...toastActor(ev, { selfId: auth.user?.id ?? null, members: membersMap }),
   })
 }
+
+// A toast about a card pulses it once — only a card in sight: the column is
+// not scrolled to bring one in (PackageI «Подсветка карточки»).
+watch(
+  () => toasts.pulse.seq,
+  () => {
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches
+    for (const id of toasts.pulse.ids) {
+      const el = document.querySelector(`.card[data-task-id="${id}"]`)
+      if (!el || !inSight(el)) continue
+      el.classList.remove('t-pulse')
+      void el.offsetWidth
+      el.classList.add('t-pulse')
+      setTimeout(() => el.classList.remove('t-pulse'), reduced ? 1500 : 900)
+    }
+  },
+)
+function inSight(el) {
+  const r = el.getBoundingClientRect()
+  if (r.bottom <= 0 || r.top >= window.innerHeight || r.width === 0) return false
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    const oy = getComputedStyle(p).overflowY
+    if (oy !== 'auto' && oy !== 'scroll') continue
+    const b = p.getBoundingClientRect()
+    if (r.bottom <= b.top || r.top >= b.bottom) return false
+  }
+  return true
+}
+
+// While a card is dragged new toasts wait for it to land (PackageI «Автотишина»).
+watch(
+  () => !!(dragging.value || layoutDragging.value),
+  (on) => toasts.setHold('drag', on),
+)
+onBeforeUnmount(() => toasts.setHold('drag', false))
 
 // Relation-change counter handed to the Gantt view. The chart owns its edge list
 // (a fetch of its own), and a relation change touches no task row, so a plain
@@ -3395,8 +3438,6 @@ async function restoreFromArchive(taskId) {
     @open="openTask"
     @restore="restoreFromArchive"
   />
-
-  <BoardActivityToasts ref="activityToasts" @open="openTask" />
 </template>
 
 <style scoped>

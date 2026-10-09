@@ -13,13 +13,6 @@
       "apk": "APK"
     }
   },
-  "update": {
-    "title": "An update is available",
-    "text": "A new version of Tessera has been downloaded",
-    "reload": "Update",
-    "reloading": "Updating…",
-    "postpone": "Later"
-  },
   "version": {
     "web": "Client",
     "api": "Server",

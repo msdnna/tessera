@@ -4,6 +4,7 @@ import { auth, setAccessToken, restoreSession } from '@/api'
 import { sGet, sSet, sRemove } from '@/utils/serverStorage'
 import { useThemeStore } from './theme'
 import { useNotificationsStore } from './notifications'
+import { useToastsStore } from './toasts'
 import { useWorkspacesStore } from './workspaces'
 import { useGitlabStore } from './gitlab'
 import { useConflictsStore } from './conflicts'
@@ -70,6 +71,8 @@ export const useAuthStore = defineStore('auth', () => {
     // The bell holds the departing reader's own rows, and nothing else clears
     // them: sign-out is a route change, not a reload (#2932).
     useNotificationsStore().reset()
+    // …and its toasts, with the reader's toast settings and «Не беспокоить».
+    useToastsStore().resetSession()
     // Same rule for the two other caches that describe a person rather than a
     // server: the sidebar tree (with `my_role` on it) and the GitLab connection.
     useWorkspacesStore().reset()

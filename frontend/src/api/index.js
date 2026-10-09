@@ -3,6 +3,7 @@ import { humanizeError } from '@/utils/errors'
 import { reqStart, reqEnd, setOffline } from '@/composables/useConnection'
 import { apiBaseURL, isTauri } from '@/utils/serverBase'
 import { sGet, sSet, sRemove } from '@/utils/serverStorage'
+import { noteFailure } from '@/utils/lastFailure'
 
 // Web: apiBaseURL() === '/api' (same-origin). Desktop (Tauri): '<server>/api',
 // where <server> is the login-configured origin. See utils/serverBase.js.
@@ -245,6 +246,16 @@ api.interceptors.response.use(
     // because the refresh couldn't get through — a connectivity failure, and
     // callers that retry on `offline` should retry this.
     wrapped.offline = !reached || refreshOffline
+    // For the error toast's «Подробнее» (#3117): the request, the answer and the
+    // server's request id, whichever caller ends up reporting the failure.
+    noteFailure({
+      method: String(original?.method || 'get').toUpperCase(),
+      url: original?.url || '',
+      status: err.response?.status || 0,
+      raw,
+      offline: wrapped.offline,
+      requestId: err.response?.headers?.['x-request-id'] || '',
+    })
     return Promise.reject(wrapped)
   },
 )
@@ -820,6 +831,8 @@ export const notificationRoutes = {
 export const notificationPrefs = {
   get: () => api.get('/notification-prefs'),
   update: (data) => api.put('/notification-prefs', data),
+  // «Не беспокоить» (#3117): an ISO moment, or null to switch it off.
+  dnd: (until) => api.put('/notification-prefs/dnd', { until }),
 }
 
 export const gitlab = {

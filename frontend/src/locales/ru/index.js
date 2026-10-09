@@ -23,6 +23,7 @@ import jobs from './jobs.json'
 import commands from './commands.json'
 import errors from './errors.json'
 import whatsNew from './whatsNew.json'
+import toasts from './toasts.json'
 
 export default {
   common,
@@ -46,4 +47,5 @@ export default {
   commands,
   errors,
   whatsNew,
+  toasts,
 }

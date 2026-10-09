@@ -41,6 +41,7 @@ export const GROUPS = [
   'stage',
   'inbox',
   'notifications',
+  'toasts',
   'meet',
   'settings',
   'admin',
@@ -69,7 +70,18 @@ export const CATALOG = [
   // `modal`: a toast raised inside a large window (the «Проект» window's tag
   // table, #2990) is undone without leaving it.
   { id: 'undo.last', keys: 'mod+z', group: 'nav', modal: true },
-  { id: 'toast.focus', keys: 'f6', group: 'nav' },
+
+  // ── toasts (#3117, PackageI «Клавиши и доступность») ──
+  // F6 goes into the nearest lane, again — the other one, again — back to the
+  // app. The rest work on the focused toast and are handled by the lanes
+  // themselves (components/toast/ToastLanes.vue) — display rows here.
+  { id: 'toast.focus', keys: 'f6', group: 'toasts' },
+  { id: 'toast.move', group: 'toasts', display: [['arrowup', 'arrowdown']] },
+  { id: 'toast.primary', group: 'toasts', display: [['enter']] },
+  { id: 'toast.reply', group: 'toasts', display: [['R']] },
+  { id: 'toast.snooze', group: 'toasts', display: [['Z'], ['E']] },
+  { id: 'toast.close', group: 'toasts', display: [['escape']] },
+  { id: 'toast.closeAll', group: 'toasts', display: [['shift', 'escape']] },
 
   // Pages: palette commands. Documents and settings got a key of their own in
   // v2 (#3106, PackageE): G D, G «,».

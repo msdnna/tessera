@@ -17,7 +17,7 @@ import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
 import ShortcutKeys from './ShortcutKeys.vue'
 import ShortcutPending from './ShortcutPending.vue'
 import CommandPalette from './palette/CommandPalette.vue'
-import UndoToastHost from '@/components/kit/UndoToastHost.vue'
+import ToastLanes from '@/components/toast/ToastLanes.vue'
 import QuickActionsFab from './QuickActionsFab.vue'
 import QuickCreateModal from './QuickCreateModal.vue'
 import InboxPanel from './inbox/InboxPanel.vue'
@@ -44,6 +44,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useInboxStore } from '@/stores/inbox'
+import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useTourStore } from '@/stores/tour'
@@ -75,6 +76,7 @@ const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const inbox = useInboxStore()
+const toasts = useToastsStore()
 const conflicts = useConflictsStore()
 const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
@@ -163,6 +165,8 @@ useShortcuts({
 useRealtime(
   (ev) => {
     notes.onEvent(ev, authStore.user?.id)
+    // …and the same record as a toast «про меня» (#3117).
+    toasts.onSocket(ev, authStore.user?.id)
     inbox.onEvent(ev)
     // The «Начало работы» checklist counts what the user did themselves (#3102).
     onboarding.onSocket(ev, authStore.user?.id)
@@ -557,8 +561,9 @@ watch(
       </n-drawer>
     </n-layout>
 
-    <!-- Undo toasts of the v2 interaction model (#2969), over the work area. -->
-    <UndoToastHost />
+    <!-- The toast lanes (#3117): the answers to my actions and the undo toasts
+         (#2969) at the bottom, what came from outside under the bell. -->
+    <ToastLanes />
 
     <!-- App-level conflict resolver: opened from any surface via the conflicts store
        (e.g. the «Конфликт» pill on a task card). -->

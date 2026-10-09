@@ -1,10 +1,12 @@
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { setActivePinia, createPinia } from 'pinia'
 import { setI18nLocale } from '@/i18n'
 import { humanizeError } from '@/utils/errors'
 import { formatElapsed } from '@/utils/duration'
 import { eventText } from '@/utils/taskFeed'
-import BoardActivityToasts from '@/components/BoardActivityToasts.vue'
+import Toast from '@/components/toast/Toast.vue'
+import { useToastsStore } from '@/stores/toasts'
 
 // Wave 6 of #2799 — the GitLab journal / conflict resolver / background jobs and
 // the three pure helpers behind them (errors, duration, task journal).
@@ -81,47 +83,54 @@ describe('formatElapsed follows a language switch', () => {
 })
 
 // The sharpest form of the frozen-label trap in this wave: a toast used to be
-// stamped with its wording at push() time. A toast only lives 6.5 s, but the
-// stack is mounted for as long as the board is — so a label captured on push
-// outlives a language switch that happens while it is on screen.
+// stamped with its wording at push() time. The activity toast (#3117) keeps
+// functions instead of strings, so one already on screen speaks the new language.
 describe('board activity toasts follow a language switch', () => {
-  const activity = { id: 't1', number: 7, title: 'Задача', verb: 'created', actorName: 'Ада' }
+  beforeEach(() => setActivePinia(createPinia()))
+
+  function spec(over = {}) {
+    const store = useToastsStore()
+    return store.make({
+      lane: 'top',
+      kind: 'activity',
+      look: 'act',
+      lead: { avatar: { userId: '', name: 'Ада' } },
+      bold: () => 'Ада',
+      rest: () => 'x',
+      ...over,
+    })
+  }
 
   it('re-renders a toast that is already on screen', async () => {
-    const w = mount(BoardActivityToasts)
-    w.vm.push(activity)
-    await w.vm.$nextTick()
-    expect(w.text()).toContain('создал(а) задачу')
-    expect(w.text()).toContain('Открыть')
-
+    const { i18n } = await import('@/i18n')
+    const t = i18n.global.t
+    const x = spec({
+      rest: () => t('toasts.activity.created', { ref: 7, title: 'Задача', column: '' }),
+    })
+    const w = mount(Toast, { props: { toast: x } })
+    expect(w.text()).toContain('создал(а) #7')
     await setI18nLocale('en')
-    expect(w.text()).toContain('created a task')
-    expect(w.text()).toContain('Open')
+    await w.vm.$nextTick()
+    expect(w.text()).toContain('created #7')
     // The task's own title is user content and is never translated.
     expect(w.text()).toContain('Задача')
     w.unmount()
   })
 
-  it('falls back to the generic verb for an event kind it does not know', async () => {
-    const w = mount(BoardActivityToasts)
-    w.vm.push({ ...activity, verb: 'teleported' })
-    await w.vm.$nextTick()
-    expect(w.text()).toContain('изменил(а) задачу')
-    w.unmount()
-  })
-
   it('names an anonymous actor and the current user', async () => {
-    const w = mount(BoardActivityToasts)
-    w.vm.push({ ...activity, actorName: null })
-    w.vm.push({ ...activity, self: true })
-    await w.vm.$nextTick()
-    expect(w.text()).toContain('Кто-то')
-    expect(w.text()).toContain('Вы')
-
+    const { i18n } = await import('@/i18n')
+    const t = i18n.global.t
+    const anon = mount(Toast, { props: { toast: spec({ bold: () => t('toasts.act.someone') }) } })
+    const self = mount(Toast, { props: { toast: spec({ bold: () => t('toasts.act.you') }) } })
+    expect(anon.text()).toContain('Кто-то')
+    expect(self.text()).toContain('Вы')
     await setI18nLocale('en')
-    expect(w.text()).toContain('Someone')
-    expect(w.text()).toContain('You')
-    w.unmount()
+    await anon.vm.$nextTick()
+    await self.vm.$nextTick()
+    expect(anon.text()).toContain('Someone')
+    expect(self.text()).toContain('You')
+    anon.unmount()
+    self.unmount()
   })
 })
 

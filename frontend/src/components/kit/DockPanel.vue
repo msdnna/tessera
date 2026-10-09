@@ -153,6 +153,7 @@ defineExpose({ measure, el })
       :class="variant"
       :style="style"
       :data-testid="testid"
+      data-dock-panel
       @keydown="onKeydown"
     >
       <header class="dock-head">

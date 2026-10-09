@@ -14,15 +14,15 @@
 // Checked here: the actor rule itself (utils/boardEvents toastActor), that
 // KanbanBoard no longer reaches for `created_by`, and that an actor-less toast
 // actually renders as «Кто-то» with no avatar — the fallback the fix relies on.
-import { describe, it, expect, afterEach } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
 import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import process from 'node:process'
-import { mount } from '@vue/test-utils'
-import { createI18n } from 'vue-i18n'
+import { setActivePinia, createPinia } from 'pinia'
 import ru from '@/locales/ru'
 import { toastActor } from '@/utils/boardEvents'
-import BoardActivityToasts from '@/components/BoardActivityToasts.vue'
+import { useToastsStore } from '@/stores/toasts'
+import { ACTIVITY_DELAY } from '@/utils/toastModel'
 
 const root = process.cwd()
 const ME = '11111111-1111-1111-1111-111111111111'
@@ -93,39 +93,41 @@ describe('KanbanBoard.pushActivity', () => {
   })
 })
 
-describe('BoardActivityToasts', () => {
-  let wrapper = null
-  // A mount left open in this suite keeps its scheduler around and the next
-  // test's re-render never lands (see memory: leaked mounts).
-  afterEach(() => {
-    wrapper?.unmount()
-    wrapper = null
+// The activity toast (#3117) is built by the toasts store: a toast with no
+// actor says «Кто-то» and draws no face to pin the deed on.
+describe('activity toast', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.useFakeTimers()
   })
+  afterEach(() => vi.useRealTimers())
 
-  function mountStack() {
-    const i18n = createI18n({ legacy: false, locale: 'ru', messages: { ru } })
-    wrapper = mount(BoardActivityToasts, { global: { plugins: [i18n] } })
-    return wrapper
+  function push(a) {
+    const store = useToastsStore()
+    store.activity({ taskId: 'a', number: 7, title: 'Полить цветы', verb: 'moved', ...a })
+    vi.advanceTimersByTime(ACTIVITY_DELAY + 1)
+    return store.top[0]
   }
 
-  it('says «Кто-то» and draws no avatar when there is no actor', async () => {
-    const w = mountStack()
-    w.vm.push({ id: 'a', number: 7, title: 'Полить цветы', verb: 'moved', ...toastActor({}) })
-    await w.vm.$nextTick()
-    expect(w.find('.t-who').text()).toBe(ru.board.activity.someone)
-    expect(w.find('.ava').exists()).toBe(false)
+  it('says «Кто-то» and draws no avatar when there is no actor', () => {
+    const x = push(toastActor({}))
+    expect(x.bold()).toBe(ru.toasts.act.someone)
+    expect(x.lead.avatar.userId).toBe('')
   })
 
-  it('names the person when the event carries one', async () => {
-    const w = mountStack()
-    w.vm.push({
-      id: 'a',
-      number: 7,
-      title: 'Полить цветы',
-      verb: 'moved',
-      ...toastActor({ actor: COLLEAGUE }, { selfId: ME, members: MEMBERS }),
-    })
-    await w.vm.$nextTick()
-    expect(w.find('.t-who').text()).toBe('Коллега')
+  it('names the person when the event carries one', () => {
+    const x = push(toastActor({ actor: COLLEAGUE }, { selfId: ME, members: MEMBERS }))
+    expect(x.bold()).toBe('Коллега')
+    expect(x.lead.avatar.userId).toBe(COLLEAGUE)
+  })
+
+  it('does not show my own actions unless asked to', () => {
+    const store = useToastsStore()
+    const x = push(toastActor({ actor: ME }, { selfId: ME, members: MEMBERS }))
+    expect(x).toBeUndefined()
+    store.prefs.activity = 'all'
+    expect(push(toastActor({ actor: ME }, { selfId: ME, members: MEMBERS })).bold()).toBe(
+      ru.toasts.act.you,
+    )
   })
 })

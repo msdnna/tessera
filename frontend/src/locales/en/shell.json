@@ -289,7 +289,8 @@
       "notifications": "Notifications",
       "meet": "Conferences",
       "window": "Large windows",
-      "editor": "Editor"
+      "editor": "Editor",
+      "toasts": "Pop-ups"
     },
     "nav": {
       "palette": "Search and commands",
@@ -392,7 +393,13 @@
       "last": "Undo the last action"
     },
     "toast": {
-      "focus": "Jump to the undo toast"
+      "focus": "Go to the pop-ups · F6 again — the other lane",
+      "move": "Walk the pop-ups",
+      "primary": "The pop-up's main action",
+      "reply": "Reply to a comment or mention",
+      "snooze": "Snooze a reminder · done",
+      "close": "Close the pop-up",
+      "closeAll": "Close all in the lane"
     },
     "row": {
       "rename": "Rename",

@@ -137,21 +137,6 @@
     "restored": "Task restored from the archive",
     "boardGone": "The board was deleted — opened “Home”"
   },
-  "activity": {
-    "you": "You",
-    "someone": "Someone",
-    "open": "Open",
-    "link": "Link",
-    "copied": "Copied",
-    "hide": "Hide",
-    "verb": {
-      "created": "created a task",
-      "completed": "completed a task",
-      "reopened": "reopened a task",
-      "moved": "moved a task",
-      "updated": "changed a task"
-    }
-  },
   "layout": {
     "board": "Kanban",
     "list": "List",

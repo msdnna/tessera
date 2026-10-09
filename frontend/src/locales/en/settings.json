@@ -323,7 +323,8 @@
       "quietTo": "To",
       "quietHint": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone.",
       "quietHintTz": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone ({tz}).",
-      "quietExceptions": "Only urgent and mentions"
+      "quietExceptions": "Only urgent and mentions",
+      "quietToasts": "And the in-app pop-ups"
     },
     "confirm": {
       "deleteChannel": "Delete the channel “{name}”?",
@@ -384,6 +385,47 @@
       "workspacePlaceholder": "All workspaces",
       "mute": "Mute (deliver nowhere)",
       "channels": "Delivery channels"
+    },
+    "toasts": {
+      "title": "In-app pop-ups",
+      "hint": "Short notifications over the screen while the tab is open. The bell's feed does not depend on them.",
+      "show": "Show",
+      "me": {
+        "title": "About me",
+        "assign": "Assigned and unassigned",
+        "mentions": "Mentions and replies",
+        "comments": "Comments on my tasks",
+        "changes": "Changes to my tasks",
+        "removal": "Deleted and archived",
+        "due": "Due dates and reminders",
+        "calls": "Call invitations"
+      },
+      "activity": {
+        "title": "Activity on the open board",
+        "off": "Off",
+        "others": "Others' actions",
+        "all": "Including mine",
+        "kinds": "Which events to show",
+        "created": "Created",
+        "moved": "Moved",
+        "completed": "Completed",
+        "deleted": "Deleted",
+        "note": "If the event already reached you as a notification, there is no activity pop-up."
+      },
+      "behavior": {
+        "title": "Behaviour",
+        "batch": "Fold bursts",
+        "batchHint": "Several events within 10 s — one pop-up",
+        "from": "from",
+        "events": "events",
+        "less": "Fewer",
+        "moreN": "More",
+        "phone": "On the phone",
+        "phoneHint": "One at a time over the bottom navigation",
+        "sound": "Sound",
+        "soundHint": "No sound anywhere yet",
+        "soon": "Soon"
+      }
     }
   },
   "hints": {

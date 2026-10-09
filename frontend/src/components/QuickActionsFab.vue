@@ -216,10 +216,12 @@ onBeforeUnmount(() => document.removeEventListener('mousedown', onDocDown, true)
 .fab-wrap.inboxed.docked {
   right: calc(376px + var(--inbox-w, 400px));
 }
-/* A phone: 16px off the edge and off the bottom navigation (#2976). */
+/* A phone: 16px off the edge and off the bottom navigation (#2976); a toast
+   over the navigation lifts it by its own height (#3117). */
 .fab-wrap.mobile {
   right: 16px;
-  bottom: calc(16px + var(--mnav-h, 0px));
+  bottom: calc(16px + var(--mnav-h, 0px) + var(--toast-lift, 0px));
+  transition: bottom 0.2s ease;
 }
 .fab-row {
   display: flex;

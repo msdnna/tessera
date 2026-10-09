@@ -1,6 +1,11 @@
 <script setup>
 import { NIcon, NTooltip } from 'naive-ui'
-import { ChevronForwardOutline, FileTrayOutline, StarOutline } from '@vicons/ionicons5'
+import {
+  ChevronForwardOutline,
+  CloudDownloadOutline,
+  FileTrayOutline,
+  StarOutline,
+} from '@vicons/ionicons5'
 import SearchBar from './SearchBar.vue'
 import NotificationsBell from './NotificationsBell.vue'
 import { computed, ref } from 'vue'
@@ -9,6 +14,7 @@ import { useBoardViewStore } from '@/stores/boardView'
 import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useQuickStore } from '@/stores/quick'
 import { useInboxStore } from '@/stores/inbox'
+import { useToastsStore } from '@/stores/toasts'
 import ShortcutKeys from './ShortcutKeys.vue'
 import ActionMenu from './kit/ActionMenu.vue'
 import { useI18n } from 'vue-i18n'
@@ -24,6 +30,7 @@ const board = useBoardViewStore()
 const ws = useWorkspacesStore()
 const quick = useQuickStore()
 const inbox = useInboxStore()
+const toasts = useToastsStore()
 const route = useRoute()
 const router = useRouter()
 const projectWindow = useProjectWindowStore()
@@ -174,6 +181,22 @@ const pageCrumb = computed(() => {
 
     <div class="tb-right">
       <div id="tb-slot-right" class="tb-slot" />
+      <!-- «Позже» on the update toast leaves this chip until the next load
+           (#3117); left of «Входящие» — help lives in the rail in v2. -->
+      <n-tooltip v-if="toasts.updateChip" :delay="200">
+        <template #trigger>
+          <button
+            type="button"
+            class="tb-update"
+            data-testid="update-chip"
+            @click="toasts.reload()"
+          >
+            <n-icon :component="CloudDownloadOutline" :size="15" />
+            {{ t('toasts.update.chip') }}
+          </button>
+        </template>
+        {{ t('toasts.update.chipTip') }}
+      </n-tooltip>
       <!-- The board's tags, stages and archive moved into its «⋯» (#3112); help
            is the rail's «?» and F1, on the article about the screen. -->
       <!-- The bell is the shell's, not the workspace's (v2): the feed spans
@@ -216,6 +239,42 @@ const pageCrumb = computed(() => {
 </template>
 
 <style scoped>
+/* The update chip (#3117): the accent, softly — over the canvas, not a card. */
+.tb-update {
+  flex: none;
+  height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 14%, var(--t-bg)),
+    color-mix(in srgb, var(--t-primary) 26%, var(--t-bg))
+  );
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.tb-update .n-icon {
+  color: var(--t-primary);
+}
+.tb-update:hover {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 22%, var(--t-bg)),
+    color-mix(in srgb, var(--t-primary) 34%, var(--t-bg))
+  );
+}
+.tb-update:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
 /* «Входящие» (#2997): a quiet button; the count is the fired reminders —
    attention, so the orange of a fired reminder, not the accent. */
 .tb-inbox {

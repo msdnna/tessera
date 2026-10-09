@@ -44,10 +44,12 @@ export const useUndoStore = defineStore('undo', () => {
   }
 
   // tick advances every running timer by dt ms. Driven by the host's interval;
-  // a store-side clock keeps the countdown testable without timers.
-  function tick(dt) {
+  // a store-side clock keeps the countdown testable without timers. `only` —
+  // the phone shows one toast at a time (#3117), and only that one runs.
+  function tick(dt, only = null) {
     for (const t of toasts.value) {
       if (t.paused > 0) continue
+      if (only != null && t.id !== only) continue
       t.left -= dt
     }
     toasts.value = toasts.value.filter((t) => t.left > 0 || t.status === 'busy')

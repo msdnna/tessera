@@ -1,0 +1,89 @@
+{
+  "region": {
+    "top": "Notifications",
+    "bottom": "Responses to your actions"
+  },
+  "close": "Close",
+  "closeEsc": "Close · Esc",
+  "now": "now",
+  "seconds": "{n} s",
+  "more": "{n} more",
+  "moreLink": "Show in the feed",
+  "queue": "{i} of {n}",
+  "swipe": "Dismiss",
+  "act": {
+    "open": "Open",
+    "reply": "Reply",
+    "trash": "To the trash",
+    "join": "Join",
+    "notNow": "Not now",
+    "snooze": "Snooze",
+    "done": "Done",
+    "journal": "Journal",
+    "show": "Show",
+    "you": "You",
+    "someone": "Someone"
+  },
+  "me": {
+    "changedTask": "changed your task",
+    "changes": "{n} change | {n} changes",
+    "inYourTask": "in your task"
+  },
+  "reminder": {
+    "line": "Reminder"
+  },
+  "activity": {
+    "created": "created #{ref} “{title}”",
+    "moved": "moved #{ref} “{title}” → “{column}”",
+    "completed": "completed #{ref} “{title}”",
+    "reopened": "reopened #{ref} “{title}”",
+    "deleted": "deleted #{ref} “{title}”"
+  },
+  "batch": {
+    "created": "created",
+    "moved": "moved",
+    "completed": "completed",
+    "reopened": "reopened",
+    "deleted": "deleted",
+    "tail": {
+      "moved": "task to “{column}” | tasks to “{column}”",
+      "other": "task | tasks"
+    }
+  },
+  "away": {
+    "title": "While you were away",
+    "open": "Open the feed",
+    "assign": "{n} assignment | {n} assignments",
+    "comments": "{n} comment | {n} comments",
+    "mentions": "{n} mention | {n} mentions",
+    "changes": "{n} change | {n} changes",
+    "reminders": "{n} reminder | {n} reminders",
+    "calls": "{n} call | {n} calls"
+  },
+  "update": {
+    "title": "An update is available",
+    "text": "Reload the page to switch to the new version",
+    "reload": "Reload",
+    "later": "Later",
+    "chip": "Update",
+    "chipTip": "A new version is out · click to reload the page"
+  },
+  "err": {
+    "retry": "Retry",
+    "details": "Details",
+    "copy": "Copy",
+    "server": "Server error · {status}",
+    "refused": "Refused by the server · {status}"
+  },
+  "dnd": {
+    "title": "Do not disturb",
+    "hour": "For 1 hour",
+    "tomorrow": "Until tomorrow, 9:00",
+    "until": "until {time}",
+    "note": "Mentions, reminders and calls still get through — change it in Settings → Notifications.",
+    "banner": "Do not disturb until {time}",
+    "bannerSub": "Pop-ups are hidden · mentions and calls get through",
+    "off": "Turn off",
+    "bell": "Do not disturb until {time}"
+  }
+}
