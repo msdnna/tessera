@@ -13,6 +13,7 @@ import { projects as projApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { humanizeError } from '@/utils/errors'
 import { makeSlug } from '@/utils/slug'
+import { withProjectSlug } from '@/utils/projectRoute'
 import { slugTaken } from '@/utils/slugTaken'
 import { countsPhrase } from '@/utils/deleteCounts'
 import { stubTask } from '@/utils/featureStubs'
@@ -127,7 +128,7 @@ async function commitSlug() {
     const res = await projApi.setSlug(props.project.id, next)
     // An open board of this project stays reachable under the new address.
     if (route.params.projectSlug === props.project.slug) {
-      router.replace({ ...route, params: { ...route.params, projectSlug: res.data.slug } })
+      router.replace(withProjectSlug(route, res.data.slug))
     }
     await store.refresh()
     emit('changed')

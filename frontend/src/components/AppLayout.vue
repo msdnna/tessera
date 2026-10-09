@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { withProjectSlug } from '@/utils/projectRoute'
 import {
   NLayout,
   NLayoutSider,
@@ -217,7 +218,7 @@ function onProjectSlugChanged(ev) {
   if (!known || !ev.data?.slug || known.slug === ev.data.slug) return
   const viewing = route.params.projectSlug === known.slug
   if (viewing) {
-    router.replace({ ...route, params: { ...route.params, projectSlug: ev.data.slug } })
+    router.replace(withProjectSlug(route, ev.data.slug))
   }
 }
 

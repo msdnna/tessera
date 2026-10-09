@@ -40,6 +40,7 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useFormat } from '@/composables/useFormat'
 import { humanizeError } from '@/utils/errors'
 import { stubTask } from '@/utils/featureStubs'
+import { withProjectSlug } from '@/utils/projectRoute'
 import { formatHours } from '@/utils/estimation'
 import { buildMentionItems } from '@/utils/mentions'
 import {
@@ -136,7 +137,7 @@ watch(
       await ws.ensureWorkspace(data.workspace_id)
       if (route.params.projectSlug !== slug) return
       if (data.slug && data.slug !== slug) {
-        router.replace({ ...route, params: { ...route.params, projectSlug: data.slug } })
+        router.replace(withProjectSlug(route, data.slug))
       }
     } catch {
       if (route.params.projectSlug !== slug) return

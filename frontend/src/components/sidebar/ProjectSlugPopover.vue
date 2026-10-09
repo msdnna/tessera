@@ -14,6 +14,7 @@ import FormField from '@/components/kit/FormField.vue'
 import { projects as projApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { makeSlug } from '@/utils/slug'
+import { withProjectSlug } from '@/utils/projectRoute'
 import { slugTaken } from '@/utils/slugTaken'
 import { humanizeError } from '@/utils/errors'
 
@@ -72,7 +73,7 @@ async function submit() {
     emit('update:show', false)
     // Keep an open board of this project reachable: same board, new address.
     if (route.params.projectSlug === props.project.slug) {
-      router.replace({ ...route, params: { ...route.params, projectSlug: res.data.slug } })
+      router.replace(withProjectSlug(route, res.data.slug))
     }
     await store.refresh()
   } catch (e) {

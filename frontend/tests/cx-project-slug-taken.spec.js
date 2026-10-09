@@ -4,6 +4,7 @@ import { describe, expect, it, afterEach } from 'vitest'
 import { i18n, setI18nLocale } from '@/i18n'
 import { slugTaken } from '@/utils/slugTaken'
 import { countsPhrase } from '@/utils/deleteCounts'
+import { withProjectSlug } from '@/utils/projectRoute'
 
 const t = (...a) => i18n.global.t(...a)
 const conflict = (data) => Object.assign(new Error('x'), { status: 409, data })
@@ -80,5 +81,25 @@ describe('countsPhrase', () => {
     expect(countsPhrase(t, { projects: 1, boards: 2, tasks: 1 })).toBe(
       '1 project, 2 boards and 1 task',
     )
+  })
+})
+
+// #3012: the open screen under the project's current address. A `path` next to
+// `params` makes vue-router drop the params — the old spelling went nowhere.
+describe('withProjectSlug', () => {
+  it('swaps the project segment and keeps the rest', () => {
+    const route = {
+      path: '/project/old/board/doska',
+      params: { projectSlug: 'old', boardSlug: 'doska' },
+      query: { task: '7' },
+      hash: '#c',
+    }
+    expect(withProjectSlug(route, 'new')).toEqual({
+      path: '/project/new/board/doska',
+      query: { task: '7' },
+      hash: '#c',
+    })
+    const stage = { path: '/project/a/stage/s1', query: {}, hash: '' }
+    expect(withProjectSlug(stage, 'b').path).toBe('/project/b/stage/s1')
   })
 })
