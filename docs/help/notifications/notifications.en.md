@@ -2,8 +2,8 @@
 title: Notifications
 category: Notifications
 order: 70
-keywords: notifications, channels, email, telegram, webhook, shoutrrr, routing, rules, quiet hours, digest, deadline, reminders, template
-updated: 2026-10-08
+keywords: notifications, pop-ups, toasts, do not disturb, channels, email, telegram, webhook, shoutrrr, routing, rules, quiet hours, digest, deadline, reminders, template
+updated: 2026-10-09
 ---
 
 Notifications in Tessera come in two kinds, and only the second is configurable.
@@ -23,6 +23,29 @@ The bell opens the feed over the current screen (or keys <kbd>G</kbd> then <kbd>
 Clicking a row marks it read and opens the task or the conference — even in another workspace. While the feed is open these keys work: <kbd>↑</kbd> <kbd>↓</kbd> — pick a row, <kbd>↵</kbd> — open it, <kbd>E</kbd> — mark it read, <kbd>⇧</kbd> <kbd>E</kbd> — mark all read. The gear in the feed's head leads to the notification settings.
 
 The feed shows the latest 50 notifications. A separate page with the whole history and answering a meeting invitation with "Accept / Decline" right from the feed are in the works — those buttons are visible but inactive and labelled "Soon".
+
+## Pop-ups
+
+While the Tessera tab is open, a new notification briefly pops up over the screen — top right, under the bell. It is the same record as the row in the feed, in the same words: who did what, to which task. Responses to your own actions — errors, warnings, "Task created", undoing a deletion — appear separately, at the bottom centre, and other people's events never push them out.
+
+- **How long they stay.** A notification about you stays 8 seconds, board activity 5, responses to your actions 4–8. An error with **Retry**, a reminder and "An update is available" wait until you close them. While the pointer is over the pop-ups, the focus is in them, the tab is hidden or you are dragging a card, the clock stands still.
+- **The deck.** At most three are shown: the next ones lie as a deck, and hovering opens it as a list. If more arrive, a **"N more · Show in the feed"** plate appears below. A pop-up that was closed or timed out leaves the feed alone: the row stays unread, only **Open** marks it read.
+- **Activity on the open board** — one line: who moved, created, completed or deleted a task; the card on the board flashes for a moment. Several actions by one person within 10 seconds fold into one "moved 5 tasks" pop-up with **Show**. If the event already reached you as a notification, there is no activity pop-up.
+- **While you were away.** While the tab is hidden pop-ups do not pile up — one digest greets you when you are back.
+- **Update.** "Later" on the "An update is available" pop-up folds it into an **Update** button in the header until the next page load.
+- **Errors.** A failed request has **Details** — what exactly failed and the request id — and **Copy**, to send it to the administrator.
+
+Keys: <kbd>F6</kbd> moves the focus into the nearest pop-up lane, <kbd>F6</kbd> again — into the other one, then back. In a lane: <kbd>↑</kbd> <kbd>↓</kbd> walk the pop-ups, <kbd>↵</kbd> runs the main action (Open, Retry, Reload), <kbd>R</kbd> replies to a comment (the task opens with the cursor in the reply field), <kbd>Z</kbd> and <kbd>E</kbd> snooze a reminder and mark it done, <kbd>Esc</kbd> closes a pop-up, <kbd>⇧</kbd> <kbd>Esc</kbd> closes them all. <kbd>⌘</kbd> <kbd>Z</kbd> still undoes only the last deletion.
+
+On a phone pop-ups come one at a time over the bottom navigation, the rest wait their turn ("1 of 3"). A tap runs the main action, a swipe down or aside dismisses.
+
+### Do not disturb
+
+The moon in the feed's header switches the quiet on **for 1 hour** or **until tomorrow, 9:00** (keys <kbd>1</kbd> and <kbd>2</kbd> in its menu). While it is on, pop-ups about you, board activity and system pop-ups are not shown — only the bell's count grows, and the bell wears a moon. Mentions, reminders and calls still get through. Turn it off with **Turn off** in the feed's banner.
+
+### Pop-up settings
+
+In Settings → Notifications the first card is **In-app pop-ups**: the main Show switch, which notifications about you pop up, whether to show activity on the open board (off, others' actions only, or including yours) and which of its events, folding bursts and from how many events, pop-ups on the phone. In Quiet hours the **And the in-app pop-ups** option silences pop-ups during the quiet window the same way Do not disturb does.
 
 ## Delivery channels
 

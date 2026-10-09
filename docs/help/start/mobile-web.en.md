@@ -4,7 +4,7 @@ category: Getting started
 order: 20
 platforms: web
 keywords: phone, mobile, smartphone, bottom navigation, tabs, more, drawer, swipe, gestures, project tree, browser
-updated: 2026-10-08
+updated: 2026-10-09
 ---
 
 Tessera opens in a phone's browser as a full app: the same boards, tasks, Inbox and documents as on a computer, with the controls gathered in the bottom third of the screen — under your thumb.
@@ -45,7 +45,7 @@ In the Inbox a reminder swipes too: **right** to complete, **left** to snooze (t
 
 ## Sheets instead of pop-ups
 
-On a phone forms and menus open as a **bottom sheet**. A sheet opens halfway; pull it up by the handle and it takes the whole screen, pull it down and it folds back or closes. A sheet with a text field rises above the keyboard. Undoing a deletion shows up above the bottom navigation.
+On a phone forms and menus open as a **bottom sheet**. A sheet opens halfway; pull it up by the handle and it takes the whole screen, pull it down and it folds back or closes. A sheet with a text field rises above the keyboard. Pop-ups and undoing a deletion show up above the bottom navigation one at a time: the rest wait their turn ("1 of 3"), a tap opens, a swipe down or aside dismisses, and the "+" button rises above them.
 
 ## More
 
