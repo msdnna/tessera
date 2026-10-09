@@ -157,12 +157,14 @@
     "placeholder": "Add a description…",
     "add": "Add a description…",
     "none": "No description",
-    "editHint": "Click the text to edit it (⇧E)"
+    "editHint": "Click the text to edit it (I)",
+    "edit": "Edit",
+    "discard": "Your changes to the description will be lost, and the draft deleted."
   },
   "comments": {
     "someone": "Someone",
     "placeholder": "Comment…",
-    "composerPlaceholder": "Comment… {'@'} to mention, / for commands",
+    "composerPlaceholder": "Write a comment…",
     "replyPlaceholder": "Reply… (Esc — cancel, Ctrl+Enter — send)",
     "reply": "Reply",
     "collapse": "Collapse replies",
@@ -171,7 +173,8 @@
     "offlineComment": "Server unreachable — the comment was not sent",
     "offlineReply": "Server unreachable — the reply was not sent",
     "commandsApplied": "Applied: {list}",
-    "retrying": "No connection — retrying ({attempt}/{max})…",
+    "offlineTitle": "No connection",
+    "retrying": "retrying ({attempt}/{max})…",
     "customCommands": "{list} — will stay as plain text"
   },
   "subtasks": {

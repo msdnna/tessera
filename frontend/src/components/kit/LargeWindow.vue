@@ -60,6 +60,11 @@ const props = defineProps({
   noNav: { type: Boolean, default: false },
   // The word after «1 – N» at the foot of the column.
   footHint: { type: String, default: '' },
+  // The fullscreen editor's frame (#3118, PackageJ «Полноэкранный»): 1240×788,
+  // and its ✕ is «Свернуть» (the window folds back into the field it came from).
+  wide: { type: Boolean, default: false },
+  closeIcon: { type: [Object, Function], default: null },
+  closeLabel: { type: String, default: '' },
 })
 const emit = defineEmits(['update:show', 'update:section', 'opened'])
 
@@ -163,7 +168,7 @@ defineExpose({ topmost, close })
     <div
       v-if="show"
       class="lw-card"
-      :class="{ 'lw-mobile': isMobile, 'lw-nonav': noNav }"
+      :class="{ 'lw-mobile': isMobile, 'lw-nonav': noNav, 'lw-wide': wide }"
       role="dialog"
       aria-modal="true"
       :aria-label="title"
@@ -191,16 +196,21 @@ defineExpose({ topmost, close })
           <span v-if="sub && !isMobile" class="lw-sub">{{ sub }}</span>
         </nav>
         <span class="lw-grow" />
+        <!-- The header's middle (the fullscreen editor's mode segment). -->
+        <template v-if="$slots.center">
+          <slot name="center" />
+          <span class="lw-grow" />
+        </template>
         <slot name="aside" />
         <button
           type="button"
           class="lw-close"
-          :title="t('common.action.close')"
-          :aria-label="t('common.action.close')"
+          :title="closeLabel || t('common.action.close')"
+          :aria-label="closeLabel || t('common.action.close')"
           :data-testid="closeTestid || `${testid}-close`"
           @click="close"
         >
-          <n-icon :component="CloseOutline" :size="18" />
+          <n-icon :component="closeIcon || CloseOutline" :size="closeIcon ? 15 : 18" />
         </button>
         <Kbd v-if="!isMobile">{{ CAPS.escape }}</Kbd>
       </header>
@@ -265,6 +275,11 @@ defineExpose({ topmost, close })
           <slot />
         </section>
       </div>
+      <!-- A footer across the whole window (the fullscreen editor's «Сохранено ·
+           Esc свернуть · Готово ⌘↵»). -->
+      <footer v-if="$slots.foot" class="lw-foot">
+        <slot name="foot" />
+      </footer>
     </div>
   </n-modal>
 </template>
@@ -281,6 +296,10 @@ defineExpose({ topmost, close })
   box-shadow: var(--t-sh-drag);
   color: var(--t-text1);
   --t-surface: var(--t-pop);
+}
+.lw-card.lw-wide {
+  width: min(1240px, 96vw);
+  height: min(788px, 92vh);
 }
 .lw-card.lw-mobile {
   width: 100vw;
@@ -527,6 +546,22 @@ defineExpose({ topmost, close })
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+.lw-foot {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 56px;
+  box-sizing: border-box;
+  padding: 0 16px 0 20px;
+  font-size: 12.5px;
+  color: var(--t-text3);
+}
+.lw-mobile .lw-foot {
+  height: auto;
+  min-height: 52px;
+  padding: 6px 14px calc(6px + var(--safe-bottom, 0px));
 }
 .lw-pane {
   min-height: 0;

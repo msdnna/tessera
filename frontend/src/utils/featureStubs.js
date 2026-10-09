@@ -76,6 +76,10 @@ export const FEATURE_STUBS = {
   // «Кто сейчас смотрит» in the board's people — presence on a board (#3116).
   'board.favorite': 3115,
   'board.presence': 3116,
+  // The editor (#3118): «Ссылка на фрагмент» in the bubble over read text — a
+  // link to a stretch of a description or a comment needs anchors the app
+  // doesn't keep yet. The task number is to be assigned.
+  'editor.fragmentLink': 'TODO',
 }
 
 export function stubTask(key) {

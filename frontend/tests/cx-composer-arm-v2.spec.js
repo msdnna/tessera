@@ -51,17 +51,23 @@ describe('composer (MarkdownEditor variant="composer")', () => {
       global: { stubs: { RichContent: true, TesseraSpinner: true, teleport: true } },
     })
 
-  it('is one row: avatar, field, Aa, attach, send — no bar until Aa', async () => {
+  // #3118 (PackageJ «Композер»): «Aa» opens the formatting strip, and the
+  // choice is remembered for the next composer.
+  it('is one row: avatar, field, Aa, attach, send — no strip until Aa', async () => {
+    localStorage.removeItem('tessera_composer_fmt')
     const w = mk()
     expect(w.find('.md2-cava').exists()).toBe(true)
     expect(w.find('textarea').exists()).toBe(true)
     expect(w.find('[data-testid="composer-attach"]').exists()).toBe(true)
     expect(w.find('[data-testid="composer-send"]').exists()).toBe(true)
-    expect(w.find('[data-testid="md2-bar"]').exists()).toBe(false)
+    expect(w.find('[data-testid="md2-strip"]').exists()).toBe(false)
     await w.find('[data-testid="composer-format"]').trigger('click')
-    expect(w.find('[data-testid="md2-bar"]').exists()).toBe(true)
+    expect(w.find('[data-testid="md2-strip"]').exists()).toBe(true)
+    expect(localStorage.getItem('tessera_composer_fmt')).toBe('1')
+    expect(mk().find('[data-testid="md2-strip"]').exists()).toBe(true)
     await w.find('[data-testid="composer-format"]').trigger('click')
-    expect(w.find('[data-testid="md2-bar"]').exists()).toBe(false)
+    expect(w.find('[data-testid="md2-strip"]').exists()).toBe(false)
+    expect(localStorage.getItem('tessera_composer_fmt')).toBe('0')
   })
 
   it('sends on ⌘↵ and on the button; not while a send is in flight', async () => {

@@ -750,6 +750,25 @@ function setCompleted(v) {
 // backend does the completed/reopened bookkeeping and the journal entry for us.
 const sortedCols = computed(() => sortedColumns(columns.value))
 const currentColumn = computed(() => columnById(columns.value, task.value?.column_id))
+// The editor's view of the task (#3118): its people come first in @, and the
+// fullscreen window names the task in its header.
+const editorPeople = computed(() => {
+  const tk = task.value
+  if (!tk) return []
+  const out = (tk.assignees || []).map((a) => ({ id: a.id, role: 'assignee' }))
+  if (tk.created_by && !out.some((p) => p.id === tk.created_by))
+    out.push({ id: tk.created_by, role: 'author' })
+  return out
+})
+const editorTask = computed(() =>
+  task.value
+    ? {
+        number: task.value.number,
+        icon: statusIcon(currentColumn.value),
+        color: currentColumn.value?.color || '',
+      }
+    : null,
+)
 const nextCol = computed(() => nextColumn(columns.value, task.value?.column_id))
 const doneCol = computed(() => doneTarget(columns.value, doneColumnId.value))
 const moving = ref(false)
@@ -1238,6 +1257,7 @@ useShortcuts(
     'task.tags': () => openField('tags'),
     'task.subtask': () => canEdit() && subtasksTab.value?.startAdd(),
     'task.editDesc': () => canEdit() && descTab.value?.startEdit(),
+    'task.editDescAlt': () => canEdit() && descTab.value?.startEdit(),
     // «Напоминания и заметки» (#2998): reminders and notes are the reader's own,
     // so a read-only task still takes them — only an archived one doesn't.
     'task.remind': () => !ro.value && inboxSection.value?.startRemind(),
@@ -1997,6 +2017,8 @@ useShortcuts(
                 :readonly="ro"
                 :members="mentionItems"
                 :task-id="taskId"
+                :people="editorPeople"
+                :editor-task="editorTask"
                 :templates="task && !task.gitlab && gitlabFetchTemplates ? glTemplates : []"
                 @apply-template="applyGlTemplate"
                 @attachments-changed="reloadAttachments"
@@ -2068,6 +2090,8 @@ useShortcuts(
                   :events="events"
                   :composer-to="composerEl"
                   :composer-rows="1"
+                  :people="editorPeople"
+                  :editor-task="editorTask"
                   @changed="emit('changed')"
                   @reload-detail="loadDetail"
                 />

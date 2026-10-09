@@ -30,6 +30,7 @@ export const GROUPS = [
   'calendar',
   'matrix',
   'task',
+  'editor',
   'chart',
   'create',
   'palette',
@@ -214,13 +215,33 @@ export const CATALOG = [
   { id: 'task.due', keys: 'd', modal: true },
   { id: 'task.tags', keys: 'l', modal: true },
   { id: 'task.subtask', keys: 'shift+n', modal: true },
-  // The description's editor (#3113). E is «Выполнить» here, as on the card, so
-  // the stage page's E for «Изменить» moves up a shift.
-  { id: 'task.editDesc', keys: 'shift+e', group: 'task', modal: true },
+  // The description's editor: I (#3118, PackageJ «Описание»). ⇧E — its key of
+  // #3113 — stays as a hidden alias, so the hand that learnt it still works.
+  { id: 'task.editDesc', keys: 'i', group: 'task', modal: true },
+  { id: 'task.editDescAlt', keys: 'shift+e', modal: true },
   // «Напоминания и заметки» of the open task (#2998): ⇧R offers the quick
   // moments (then 1–3 or D), ⇧M opens the capture with the task filled in.
   { id: 'task.remind', keys: 'shift+r', group: 'task', modal: true },
   { id: 'task.note', keys: 'shift+m', group: 'task', modal: true },
+
+  // ── the Markdown editor (#3118, PackageJ «Композер», «Пузырь», «Полноэкранный»).
+  // The formatting keys are caught by the field itself — utils/edKeys reads them
+  // from here, so the bubble's tooltips and the cheat sheet name the key that
+  // works. ⌘K belongs to the palette, hence ⌘⇧K for a link. Q quotes a selection
+  // of read-only text into the comment composer while its bubble is up; ⌘1–3
+  // switch the fullscreen editor's modes.
+  { id: 'editor.bold', keys: 'mod+b', group: 'editor' },
+  { id: 'editor.italic', keys: 'mod+i', group: 'editor' },
+  { id: 'editor.strike', keys: 'mod+shift+x', group: 'editor' },
+  { id: 'editor.code', keys: 'mod+e', group: 'editor' },
+  { id: 'editor.link', keys: 'mod+shift+k', group: 'editor' },
+  { id: 'editor.orderedList', keys: 'mod+shift+7', group: 'editor' },
+  { id: 'editor.bulletList', keys: 'mod+shift+8', group: 'editor' },
+  { id: 'editor.send', keys: 'mod+enter', group: 'editor' },
+  { id: 'editor.quote', keys: 'q', group: 'editor', modal: true },
+  { id: 'editor.write', keys: 'mod+1', group: 'editor' },
+  { id: 'editor.split', keys: 'mod+2', group: 'editor' },
+  { id: 'editor.preview', keys: 'mod+3', group: 'editor' },
 
   // ── the Gantt / timeline views (#2959): the selected bar and the time axis ──
   { id: 'chart.today', keys: 't', group: 'chart' },

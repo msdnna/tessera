@@ -14,7 +14,13 @@
 import { ref, computed, watch, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, useMessage } from 'naive-ui'
-import { ChatbubbleEllipsesOutline, FlagOutline, PencilOutline } from '@vicons/ionicons5'
+import {
+  ChatbubbleEllipsesOutline,
+  FlagOutline,
+  PencilOutline,
+  CheckmarkOutline,
+  WarningOutline,
+} from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useBoardViewStore } from '@/stores/boardView'
@@ -39,6 +45,8 @@ import UserAvatar from '../UserAvatar.vue'
 import TesseraSpinner from '../TesseraSpinner.vue'
 import EmptyState from '../EmptyState.vue'
 import ArmButton from '../kit/ArmButton.vue'
+import EdReadBubble from '../editor/EdReadBubble.vue'
+import { quoteRequest } from '@/utils/quoteBus'
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -53,6 +61,11 @@ const props = defineProps({
   // scrolling column; null keeps it here, sticky at the bottom of the pane.
   composerTo: { type: null, default: null },
   composerRows: { type: Number, default: 3 },
+  // The task's own people ([{ id, role }]) — first in @ (#3118); whoever wrote
+  // in the thread joins them here.
+  people: { type: Array, default: () => [] },
+  // { number, icon, color } — the fullscreen window's header.
+  editorTask: { type: Object, default: null },
 })
 const emit = defineEmits(['update:comments', 'changed', 'reload-detail'])
 
@@ -251,6 +264,30 @@ function replyCount(thread) {
 const mentionItems = computed(() =>
   buildMentionItems(bv.membersList, Object.values(bv.gitlabMembersMap), bv.gitlabMembersMap),
 )
+// «В задаче» of the @ list: the task's people, then whoever wrote in the thread.
+const composerPeople = computed(() => {
+  const out = [...props.people]
+  const seen = new Set(out.map((p) => p.id))
+  for (const c of props.comments || []) {
+    if (c.author_id && !seen.has(c.author_id)) {
+      seen.add(c.author_id)
+      out.push({ id: c.author_id, role: 'commenter' })
+    }
+  }
+  return out
+})
+
+// «Цитировать в ответ» (#3118): the bubble over read text (the description, a
+// comment) hands its selection over; it lands at the end of the draft as a
+// Markdown quote, and the composer takes the focus.
+watch(quoteRequest, async (req) => {
+  if (!req || props.readonly || (req.taskId && req.taskId !== props.taskId)) return
+  const draft = newComment.value.replace(/\s+$/, '')
+  newComment.value = draft ? `${draft}\n\n${req.text}` : req.text
+  quoteRequest.value = null
+  await nextTick()
+  commentEditor.value?.focus?.()
+})
 
 // ── quick actions ──
 // The command registry is workspace-wide (loaded once by the store); the popup
@@ -679,6 +716,7 @@ async function onCommentCheck(c, i) {
                   v-model="editingCommentBody"
                   variant="v2"
                   :mention-items="mentionItems"
+                  :task-people="composerPeople"
                   :attach-task-id="taskId"
                   :min-rows="2"
                   :placeholder="t('task.comments.placeholder')"
@@ -771,6 +809,7 @@ async function onCommentCheck(c, i) {
                         v-model="editingCommentBody"
                         variant="v2"
                         :mention-items="mentionItems"
+                        :task-people="composerPeople"
                         :attach-task-id="taskId"
                         :min-rows="2"
                         :placeholder="t('task.comments.placeholder')"
@@ -814,6 +853,7 @@ async function onCommentCheck(c, i) {
                 :save-label="t('task.comments.reply')"
                 :sending="replyingPost"
                 :mention-items="mentionItems"
+                :task-people="composerPeople"
                 :command-items="commandItems"
                 :attach-task-id="taskId"
                 :min-rows="2"
@@ -834,6 +874,8 @@ async function onCommentCheck(c, i) {
         :text="t('task.comments.empty')"
       />
     </div>
+    <!-- Selecting a comment's text: «Цитировать в ответ Q · Ссылка на фрагмент». -->
+    <EdReadBubble :target="() => commentsListEl" :task-id="taskId" :can-quote="!readonly" />
     <!-- The composer: pinned under the modal's scrolling column when it gives a
          target (v2), else sticky at the bottom of this pane. -->
     <Teleport v-if="!readonly" :to="composerTo" :disabled="!composerTo">
@@ -846,7 +888,11 @@ async function onCommentCheck(c, i) {
           send
           :sending="posting"
           :mention-items="mentionItems"
+          :task-people="composerPeople"
           :command-items="commandItems"
+          :command-hints="cmdPreview"
+          :full-title="t('documents.editor.fullscreen.comment')"
+          :full-task="editorTask"
           :attach-task-id="taskId"
           :min-rows="composerRows"
           :placeholder="t('task.comments.composerPlaceholder')"
@@ -856,11 +902,14 @@ async function onCommentCheck(c, i) {
         <!-- Offline-retry banner: shown while waiting to resend after a
            network failure; the draft stays put, Cancel aborts. -->
         <Transition name="retry-pop">
-          <div v-if="retryInfo" class="retry-bar">
+          <div v-if="retryInfo" class="retry-bar" data-testid="comment-retry">
             <TesseraSpinner :size="14" />
-            <span>{{
-              t('task.comments.retrying', { attempt: retryInfo.attempt, max: retryInfo.max })
-            }}</span>
+            <span class="retry-t"
+              ><b>{{ t('task.comments.offlineTitle') }}</b> —
+              {{
+                t('task.comments.retrying', { attempt: retryInfo.attempt, max: retryInfo.max })
+              }}</span
+            >
             <button class="retry-cancel" @click="cancelRetry">
               {{ t('common.action.cancel') }}
             </button>
@@ -869,9 +918,18 @@ async function onCommentCheck(c, i) {
         <!-- Dry-run hint: what the built-in commands in the draft will
            do. Custom keys are listed apart — they stay in the text. -->
         <div v-if="cmdPreview.length || cmdCustom.length" class="cmd-preview">
-          <span v-for="(c, i) in cmdPreview" :key="`${c.key}-${i}`" class="cmd-chip">
-            <code>/{{ c.key }}</code>
-            <span :class="{ err: c.error }">{{ c.error || c.summary }}</span>
+          <span
+            v-for="(c, i) in cmdPreview"
+            :key="`${c.key}-${i}`"
+            class="cmd-chip"
+            :class="{ err: c.error }"
+            data-testid="cmd-chip"
+          >
+            <n-icon :component="c.error ? WarningOutline : CheckmarkOutline" :size="13" />
+            <span
+              >/{{ c.key }}<template v-if="c.arg"> {{ c.arg }}</template> {{ c.error ? '—' : '→' }}
+              {{ c.error || c.summary }}</span
+            >
           </span>
           <span v-if="cmdCustom.length" class="cmd-note">
             {{
@@ -1266,49 +1324,98 @@ async function onCommentCheck(c, i) {
     transform: none;
   }
 }
+/* «Нет связи — повтор попытки (2/5)…» under the composer (PackageJ «Повтор
+   отправки»): a sunken 36px strip with the spinner and «Отмена». */
 .retry-bar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 9px;
   width: 100%;
-  font-size: 12px;
-  color: var(--t-text3);
+  height: 36px;
+  padding: 0 6px 0 10px;
+  box-sizing: border-box;
+  border-radius: 10px;
+  background: var(--t-sub);
+  font-size: 12.5px;
+  color: var(--t-text1);
+}
+.retry-t {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.retry-t b {
+  font-weight: 600;
 }
 .retry-cancel {
-  margin-left: auto;
+  flex: none;
+  height: 26px;
+  padding: 0 10px;
   border: none;
-  background: none;
-  color: var(--t-primary);
+  border-radius: 7px;
+  background: var(--t-ctl);
+  color: var(--t-text1);
   cursor: pointer;
-  font-size: 12px;
-  padding: 2px 4px;
+  font: inherit;
+  font-size: 12.5px;
 }
 .retry-cancel:hover {
-  text-decoration: underline;
+  background: var(--t-hover);
 }
-/* Command dry-run hint under the composer — flat and neutral: it states a fact,
-   it is not an action. */
+/* The dry run of the draft's commands (PackageJ «проверка под полем»): a green
+   chip for what will happen, an amber one for what won't. */
 .cmd-preview {
   display: flex;
   flex-wrap: wrap;
-  gap: 4px 10px;
+  gap: 6px;
   width: 100%;
-  font-size: 12px;
-  color: var(--t-text3);
 }
 .cmd-chip {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px 0 8px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #18a058 12%, var(--t-pop)),
+    color-mix(in srgb, #18a058 22%, var(--t-pop))
+  );
+  color: var(--t-text1);
+  font-size: 12.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.cmd-chip code {
-  font-family: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
-  color: var(--t-text2);
+.cmd-chip > .n-icon {
+  flex: none;
+  color: #18a058;
 }
-.cmd-chip .err {
-  color: var(--t-error);
+.cmd-chip.err {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #f0a020 12%, var(--t-pop)),
+    color-mix(in srgb, #f0a020 22%, var(--t-pop))
+  );
+}
+.cmd-chip.err > .n-icon {
+  color: #f0a020;
 }
 .cmd-note {
+  font-size: 12px;
   font-style: italic;
+  color: var(--t-text3);
+}
+/* A phone: the composer rides the keyboard (PackageJ «Композер, клавиатура и
+   Aa») — a pop bar with a shadow, lifted by the keyboard's height. */
+@media (max-width: 768px) {
+  .comment-add.docked {
+    padding-bottom: var(--kb-h, 0px);
+  }
 }
 </style>

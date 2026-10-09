@@ -1,21 +1,33 @@
 <script setup>
-// The task's description (v2, #3113 — TaskModal / StagePage mockups). Read as
-// prose; a click on the text (not on a link, a checkbox, a mention, a picture or
-// a diagram) or ⇧E opens the v2 editor in place: the Написать / Просмотр bar with
-// the tools, the ringed field and the «Отмена Esc · Сохранить ⌘↵» footer. An
-// empty description is a single «Добавить описание…» line, not an open editor.
+// The task's description (v2 — #3113, and the editor of #3118, PackageJ
+// «Описание»). Read as prose; a click on the text (not on a link, a checkbox, a
+// mention, a picture or a diagram), «Изменить I» on hover, or I (⇧E — its key of
+// #3113 — still works) opens the v2 editor in place: the Написать / Просмотр
+// segment with the tools, the field, and «Отмена Esc · Сохранить ⌘↵». Esc with
+// changes asks «Отменить правки?» (↵ throws them away, Esc goes on). An empty
+// description is a single «Добавить описание…» line, not an open editor.
+//
+// Selecting read text raises the bubble «Цитировать в ответ Q · Ссылка на
+// фрагмент» (EdReadBubble).
 //
 // The parent owns persistence (`persist` — the description saves on blur as it
 // always did, so nothing typed is lost to a click elsewhere), attachment reloads
 // and the GitLab templates; this component owns the read/edit state and the copy
-// it reverts to when the edit is cancelled.
+// it reverts to when the edit is cancelled. A write-back conflict on the
+// description that surfaces while it is being edited, or right after a save
+// (someone changed it in GitLab meanwhile), opens the conflicts window (package
+// F) on this task.
 import { ref, computed, nextTick, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { NIcon } from 'naive-ui'
+import { CreateOutline } from '@vicons/ionicons5'
 import RichContent from '../RichContent.vue'
 import MarkdownEditor from '../MarkdownEditor.vue'
 import ShortcutKeys from '../ShortcutKeys.vue'
+import EdReadBubble from '../editor/EdReadBubble.vue'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { isEditClick } from '@/utils/descEdit'
+import { useConflictsStore } from '@/stores/conflicts'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -24,6 +36,10 @@ const props = defineProps({
   // the hover cards of the read text. No /-commands: those run in comments only
   // (the server never reads a description for them).
   members: { type: Array, default: () => [] },
+  // The task's own people — first in @ ([{ id, role }]).
+  people: { type: Array, default: () => [] },
+  // { number, icon, color } — the fullscreen window's header.
+  editorTask: { type: Object, default: null },
   taskId: { type: String, default: null },
   // GitLab issue templates ([{ name }]) offered from the editor's bar.
   templates: { type: Array, default: () => [] },
@@ -38,6 +54,7 @@ const emit = defineEmits([
 ])
 
 const { t } = useI18n()
+const conflicts = useConflictsStore()
 
 const description = computed({
   get: () => props.modelValue,
@@ -46,6 +63,7 @@ const description = computed({
 
 const editing = ref(false)
 const editor = ref(null)
+const proseEl = ref(null)
 // The text as it was when editing began — what «Отмена» goes back to. The
 // editor asks before discarding; by then a blur may already have saved the
 // typing, so the revert is persisted too.
@@ -58,8 +76,12 @@ async function startEdit() {
   await nextTick()
   editor.value?.focus()
 }
+// A save that GitLab may answer with a conflict: watched for a minute after it.
+const CONFLICT_WATCH_MS = 60000
+let watchUntil = 0
 function finish() {
   editing.value = false
+  watchUntil = Date.now() + CONFLICT_WATCH_MS
   emit('persist')
 }
 function cancel() {
@@ -75,6 +97,23 @@ watch(
   () => props.taskId,
   () => {
     editing.value = false
+    watchUntil = 0
+  },
+)
+
+// A parallel edit from GitLab: the write-back of this description met a newer
+// one there. The conflicts window takes it from here (package F, «Конфликты»).
+const descConflict = computed(
+  () =>
+    (conflicts.list || []).find(
+      (c) => c.task_id === props.taskId && (c.fields || []).includes('description'),
+    ) || null,
+)
+watch(
+  () => descConflict.value?.id,
+  (id, prev) => {
+    if (!id || id === prev) return
+    if (editing.value || Date.now() < watchUntil) conflicts.openResolver(props.taskId)
   },
 )
 
@@ -102,9 +141,12 @@ defineExpose({ startEdit, editing })
         :placeholder="t('task.desc.placeholder')"
         :min-rows="4"
         :mention-items="members"
+        :task-people="people"
         :attach-task-id="taskId"
         :templates="templates"
         :template-label="t('task.desc.template')"
+        :discard-text="t('task.desc.discard')"
+        :full-task="editorTask"
         @template="emit('apply-template', $event)"
         @attachments-changed="emit('attachments-changed')"
         @blur="emit('blur')"
@@ -114,16 +156,28 @@ defineExpose({ startEdit, editing })
       />
     </template>
     <template v-else-if="modelValue && modelValue.trim()">
-      <!-- A wrapper, not a class on RichContent: it renders a fragment. -->
-      <!-- The text itself is the door to the editor: it tints on hover and says
-           so on the tooltip (the mockup draws no button over the prose). -->
+      <!-- A wrapper, not a class on RichContent: it renders a fragment. The text
+           is the door to the editor: it tints on hover, and «Изменить I» shows
+           in its corner (PackageJ «Описание · чтение, ховер»). -->
       <div
+        ref="proseEl"
         class="desc-prose"
         :class="{ editable: !readonly }"
         :title="readonly ? undefined : t('task.desc.editHint')"
         data-testid="desc-prose"
         @click="onProseClick"
       >
+        <button
+          v-if="!readonly"
+          type="button"
+          class="desc-edit"
+          data-testid="desc-edit"
+          @click.stop="startEdit"
+        >
+          <n-icon :component="CreateOutline" :size="13" class="desc-edit-ic" />
+          {{ t('task.desc.edit') }}
+          <ShortcutKeys id="task.editDesc" />
+        </button>
         <RichContent
           :source="modelValue"
           :members="members"
@@ -133,6 +187,7 @@ defineExpose({ startEdit, editing })
           @toggle="onToggle"
         />
       </div>
+      <EdReadBubble :target="() => proseEl" :task-id="taskId" :can-quote="!readonly" />
     </template>
     <button
       v-else-if="!readonly"
@@ -170,6 +225,43 @@ defineExpose({ startEdit, editing })
 }
 .desc-prose.editable:hover {
   background: color-mix(in srgb, var(--t-hover) 60%, transparent);
+}
+.desc-prose {
+  position: relative;
+}
+/* «Изменить I» in the corner of the hovered text (PackageJ «Описание · чтение,
+   ховер»). */
+.desc-edit {
+  position: absolute;
+  right: 8px;
+  top: 6px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 5px 0 9px;
+  border: 0;
+  border-radius: 8px;
+  background: var(--t-ctl);
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.desc-prose:hover .desc-edit,
+.desc-edit:focus-visible {
+  opacity: 1;
+}
+.desc-edit-ic {
+  color: var(--t-text2);
+}
+@media (hover: none) {
+  .desc-edit {
+    display: none;
+  }
 }
 .desc-prose :deep(.md) {
   font-size: inherit;

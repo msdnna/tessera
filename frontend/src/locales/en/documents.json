@@ -6,7 +6,16 @@
     "customCommand": "custom",
     "fullscreen": {
       "title": "Description",
-      "close": "Close (Esc)"
+      "comment": "Comment",
+      "close": "Close (Esc)",
+      "write": "Write",
+      "split": "Side by side",
+      "preview": "Preview",
+      "fold": "Fold",
+      "foldHint": "fold",
+      "done": "Done",
+      "saved": "Saved · {time}",
+      "syncScroll": "Scrolling in sync"
     },
     "tool": {
       "bold": "Bold",
@@ -66,6 +75,53 @@
     "discardAsk": "Discard your changes?",
     "hintTask": "task",
     "hintPerson": "person",
+    "hintCommand": "command",
+    "discardText": "Your changes will be lost.",
+    "discardKeep": "Keep editing",
+    "discardYes": "Discard changes",
+    "composerHint": {
+      "mention": "{'@'} mention",
+      "command": "/ command",
+      "task": "# task"
+    },
+    "suggest": {
+      "inTask": "In this task",
+      "members": "Members",
+      "insert": "insert",
+      "noPeople": "Nobody — «{q}» stays as text",
+      "noTask": "No such task",
+      "taskHint": "Task number or title",
+      "searching": "Searching…",
+      "noCommand": "No such command — the line stays as text",
+      "role": {
+        "assignee": "assignee",
+        "author": "author",
+        "commenter": "in the thread"
+      },
+      "group": {
+        "fields": "Fields",
+        "status": "Status",
+        "links": "Links",
+        "subtasks": "Subtasks",
+        "custom": "Custom"
+      },
+      "arg": {
+        "user": "{'@'}name",
+        "date": "tomorrow 18:00",
+        "estimate": "3h",
+        "priority": "0–4",
+        "column": "column",
+        "task_ref": "#123",
+        "text": "text",
+        "tag": "tag",
+        "milestone": "stage"
+      }
+    },
+    "bubble": {
+      "label": "Selected text",
+      "quote": "Quote in reply",
+      "fragment": "Link to the fragment"
+    },
     "attach": {
       "image": "Image…",
       "file": "File from your computer…",

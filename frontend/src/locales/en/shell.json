@@ -288,7 +288,8 @@
       "admin": "Administration",
       "notifications": "Notifications",
       "meet": "Conferences",
-      "window": "Large windows"
+      "window": "Large windows",
+      "editor": "Editor"
     },
     "nav": {
       "palette": "Search and commands",
@@ -360,6 +361,20 @@
       "remind": "Remind about the task (1–3, D — date)",
       "note": "A note on the task",
       "editDesc": "Edit the description"
+    },
+    "editor": {
+      "bold": "Bold",
+      "italic": "Italic",
+      "strike": "Strikethrough",
+      "code": "Code",
+      "link": "Link",
+      "orderedList": "Numbered list",
+      "bulletList": "Bulleted list",
+      "send": "Send or save",
+      "quote": "Quote the selection in a reply",
+      "write": "Fullscreen editor: Write",
+      "split": "Fullscreen editor: Side by side",
+      "preview": "Fullscreen editor: Preview"
     },
     "chart": {
       "today": "Jump to today",
