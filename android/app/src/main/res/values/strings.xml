@@ -230,6 +230,20 @@
     <!-- Пометка «сгруппированная задача» на issue с меткой группировки (#2592) -->
     <string name="task_prop_grouping">Группировка</string>
     <string name="task_gitlab_grouped">Сгруппированная</string>
+    <string name="task_dev_title">Разработка</string>
+    <string name="task_dev_state_open">открыт</string>
+    <string name="task_dev_state_merged">смержен</string>
+    <string name="task_dev_state_closed">закрыт</string>
+    <string name="task_dev_state_draft">черновик</string>
+    <string name="task_dev_ci_success">пайплайн пройден</string>
+    <string name="task_dev_ci_running">пайплайн идёт</string>
+    <string name="task_dev_ci_failed">пайплайн упал</string>
+    <string name="task_dev_ci_canceled">пайплайн отменён</string>
+    <string name="task_dev_ci_manual">пайплайн ждёт запуска</string>
+    <string name="task_event_code_opened_on">открыт %1$s в %2$s</string>
+    <string name="task_event_code_opened">открыт %1$s</string>
+    <string name="task_event_code_merged">смержен %1$s</string>
+    <string name="task_event_code_closed">закрыт %1$s</string>
     <string name="task_archive_confirm">Архивировать задачу?</string>
     <string name="task_archive_action">В архив</string>
     <string name="task_delete_confirm">Удалить задачу? Это действие необратимо.</string>

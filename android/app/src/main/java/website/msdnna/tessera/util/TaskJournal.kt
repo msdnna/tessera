@@ -84,6 +84,7 @@ fun journalText(res: Resources, e: TaskEvent?): String {
         "untagged" -> named(res, d.tag, R.string.task_event_untagged_with, R.string.task_event_untagged)
         "commands" -> commands(res, d)
         "synced" -> res.getString(R.string.task_event_synced, sourceMeta(d.source).label)
+        "code_change" -> codeChangeText(res, d)
         "attachment" -> named(res, file, R.string.task_event_attachment_named, R.string.task_event_attachment)
         "attachment_removed" -> named(res, file, R.string.task_event_attachment_removed_named, R.string.task_event_attachment_removed)
         "milestone" -> named(res, stage, R.string.task_event_milestone_named, R.string.task_event_milestone)

@@ -182,6 +182,9 @@ object TestTags {
      *  the per-subtask GitLab hierarchy marker / «родитель не сгруппирован» hint in the
      *  subtasks tab. All three only exist on a binding with `push_children`. */
     const val TASK_GITLAB_GROUPED = "task-gitlab-grouped"
+
+    /** A merge request card in «Разработка» (#2964). */
+    const val TASK_MR = "task-mr"
     const val TASK_SUBTASK_GL_CHIP = "task-subtask-gl-chip"
     const val TASK_SUBTASK_GL_HINT = "task-subtask-gl-hint"
 
