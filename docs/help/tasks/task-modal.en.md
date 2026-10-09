@@ -31,17 +31,17 @@ The choice is remembered **on this device**, not in your profile: a 27" monitor 
 
 ## The fields on the left
 
-| Field | What it does |
-|---|---|
-| **Priority** | Five levels; the coloured priority dot is visible on the card too. |
-| **Due** | Opens the calendar: start date, due date, time, plus **recurrence** and **notifications**. |
-| **Estimate** | How much work the task is, in the project's units. |
-| **Milestone** | The milestone the task belongs to; a new one can be created here as well. |
-| **Author** | Who created the task. Read-only. |
-| **Assignees** | Any number of people, including members from GitLab. |
-| **Tags** | The same tags the board can lay itself out by. |
-| **Status** | The board column. Next to it: a “Move →” button for the next column and a “Done” tick. |
-| **Parent** | Make the task a subtask of another one, or detach it from its parent. |
+| Field         | What it does                                                                               |
+| ------------- | ------------------------------------------------------------------------------------------ |
+| **Priority**  | Five levels; the coloured priority dot is visible on the card too.                         |
+| **Due**       | Opens the calendar: start date, due date, time, plus **recurrence** and **notifications**. |
+| **Estimate**  | How much work the task is, in the project's units.                                         |
+| **Milestone** | The milestone the task belongs to; a new one can be created here as well.                  |
+| **Author**    | Who created the task. Read-only.                                                           |
+| **Assignees** | Any number of people, including members from GitLab.                                       |
+| **Tags**      | The same tags the board can lay itself out by.                                             |
+| **Status**    | The board column. Next to it: a “Move →” button for the next column and a “Done” tick.     |
+| **Parent**    | Make the task a subtask of another one, or detach it from its parent.                      |
 
 ### The estimate: what a card can't edit
 
@@ -53,11 +53,16 @@ On a board card the estimate and the milestone are shown as **read-only chips** 
 
 ### Due date, recurrence and notifications
 
-The calendar has three parts:
+The **Due** row (key **D**) opens the due popover to the left of the properties panel:
 
-1. **Start and due** — two dates, each with a time. The start date is what [the timeline and the Gantt chart](/help/board-layouts) need: without it a task is drawn as a point rather than a bar.
-2. **Recurrence** — daily, weekly, monthly, yearly, or **on selected dates you tick in the calendar**. A repeat fires on an event: when the task is completed, when it enters a chosen column, or simply on schedule. You can ask it to **create a duplicate** (so the history stays with the original), to **skip weekends** and to **repeat forever**.
-3. **Notifications** — how early to remind (at the due time, 15 minutes, an hour, 3 hours, a day before) and whether to repeat the reminder. “Default” takes the setting from [Notifications](/help/notifications).
+1. **The “When?” field** reads words: “fri 18:00”, “tomorrow”, “in 3 days”, “14.10”, “next monday 9:00”, “end of week”, “no date”. Under the field you see how it was read (→ Fri 9 Oct, 18:00 · in 6 days); words it doesn’t understand are named and nothing changes. **↵** applies.
+2. **Start and due** — two dates; **Tab** switches which one you are setting. The start date is what [the timeline and the Gantt chart](/help/board-layouts) need: without it a task is drawn as a point rather than a bar. The calendar shades the range between the two.
+3. **Presets** — Today, Tomorrow, End of week, Next Monday, In a week, No due date. **↓** from the field moves into the list, where the digits **1–5** and **0** work; **→** moves into the calendar.
+4. **The calendar** — arrows move by day, **PgUp / PgDn** by month, **T** is today, **↵** picks. Below it is the time: a field, the 09:00, 12:00, 18:00 chips and “No time”. A day without a time is stored as a date and reads the same in every time zone; a time is in your profile’s time zone.
+5. **“Repeat”** — a door with the rule in plain words (“Every week on Mon and Thu · next — Mon 12 Oct”). Inside: the frequency (daily, weekly, monthly, yearly, or **on dates you tick in the calendar**), “every N”, the weekdays, when to create the next one (on completion, on entering a column, on schedule), where it goes, and three switches — **create a duplicate**, **repeat forever**, **skip weekends**. **Esc** goes back, **⇧⌫** removes the repeat. The repeat counts from the due date: with no due date no next task appears. The rule is also shown in the tooltip of the due pill on a card.
+6. **“Due reminder”** — default, on or off; how early to remind (at the due time, 15 minutes, an hour, 3 hours, a day before) and whether to repeat. “Default” takes the setting from [Notifications](/help/notifications); pressing the chosen value again returns it to the default.
+
+Everything is saved at once, so **↵ “done”** only closes the popover, **⌫** on an empty field clears the date, **Esc** closes. The same popover opens from the due pill on a board card. In the ⌘K palette the Due field takes words and presets, and **Tab** opens the calendar right under the field. On a phone the due date is a full-height sheet; the calendar, the repeat and the reminder are its next pages.
 
 ## The tabs on the right
 
