@@ -13,7 +13,7 @@
   `DirectionA/B/C`, `TokensA/B/C` — отклонённые направления, для справки.
 - `shots/` — скриншоты макетов (тёмная тема) для сверки.
 
-## Пакеты A–H — v2 на всё приложение (эпик #2966), экспорт 2026-10-07
+## Пакеты A–J — v2 на всё приложение (эпик #2966), экспорт 2026-10-07 (I и J — 2026-10-09)
 
 Брифы: `frontend/.design-sync/brief-v2-app.md` (A–G), `brief-v2-tour-spotlight.md` (H),
 `brief-v2-toasts.md` (I) и `brief-v2-props.md` (J).
@@ -32,8 +32,8 @@
 | F. Крупные окна | `PackageF`, `CatalogF`, `GitlabWin`, `ConflictWin`, `JobsWin`, `MembersWin`, `CmdsWin` | #2975 |
 | G. Мобильный | `PackageG`, `CatalogG`, `MobileG`, `MG*` (`MGNavB` — нижняя навигация, `MGDrawer` — дровер) | #2976 |
 | H. Тур и spotlight | `PackageH`, `CatalogH`, `TourPop`, `TourLayer`, `TourChecklist`, `SpotCard`, `HintsPane`, `WhatsNewV2` | #3000 |
-| I. Тосты | бриф `brief-v2-toasts.md`, кадры текущего состояния `current-toasts/` — макетов ещё нет | #3117 |
-| J. Поповеры свойств задачи и редакторы | бриф `brief-v2-props.md`, кадры текущего состояния `current-props/` — макетов ещё нет | #3118 |
+| I. Тосты | `PackageI`, `CatalogI`, `Toast`, `ToastLayer`, `ToastSettings` (+ `NotifPop`, `SettingsPage`, `ShellA`, `MGBoard`, `MobileG`); было — `current-toasts/` | #3117 |
+| J. Поповеры свойств задачи и редакторы | `PackageJ`, `CatalogJ`, `PropPicker`, `PropLayer`, `DuePicker`, `EdKit`, `FullEd`; было — `current-props/` | #3118 |
 
 `HANDOFF-BUNDLE.md` — README самого экспорта. Полный архив (с бандлом ДС и рабочими
 кадрами Design) — `design/Tessera-v1-DS-handoff.zip`, в git не кладём.
