@@ -16,6 +16,9 @@ export const DURATION = {
   info: 4000,
   activity: 5000,
   me: 8000,
+  // Mentions and assignments are «про меня» too — only stronger in the deck.
+  mention: 8000,
+  assign: 8000,
   away: 8000,
   error: 8000,
   // An error with «Повторить» waits for the reader: Esc or × drop it unretried.
