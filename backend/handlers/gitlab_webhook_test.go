@@ -28,8 +28,12 @@ func TestWebhookDecision(t *testing.T) {
 		{"no project in payload", `{"object_kind":"issue"}`, hookRelevant},
 
 		{"push is not ours", `{"object_kind":"push","project":{"path_with_namespace":"pamir/scrum"}}`, hookIgnored},
-		{"pipeline is not ours", `{"object_kind":"pipeline","project":{"path_with_namespace":"pamir/scrum"}}`, hookIgnored},
-		{"merge request is not ours", `{"object_kind":"merge_request","project":{"path_with_namespace":"pamir/scrum"}}`, hookIgnored},
+		{"tag push is not ours", `{"object_kind":"tag_push","project":{"path_with_namespace":"pamir/scrum"}}`, hookIgnored},
+
+		// #2964: merge requests and pipelines feed «Разработка».
+		{"merge request", `{"object_kind":"merge_request","project":{"path_with_namespace":"pamir/scrum"}}`, hookMergeRequest},
+		{"pipeline", `{"object_kind":"pipeline","project":{"path_with_namespace":"pamir/scrum"}}`, hookPipeline},
+		{"another project's pipeline", `{"object_kind":"pipeline","project":{"path_with_namespace":"someone/else"}}`, hookForeign},
 
 		{"another project's issue", `{"object_kind":"issue","project":{"path_with_namespace":"someone/else"}}`, hookForeign},
 

@@ -156,6 +156,11 @@ type fakeGitlab struct {
 	// it — the one window in which the remote milestone exists and the link does
 	// not. Like `delay`, a knob for catching the handler mid-flight.
 	onCreateMilestone func()
+
+	// Merge requests the project holds (#2964), and GitLab's answer to «which
+	// issues does MR !n close», keyed by MR iid. See gitlab_mr_flow_test.go.
+	mrs    []glMR
+	closes map[int64][]int64
 }
 
 // fakeUpload is one attachment the fake instance hands back, declared type and
@@ -325,6 +330,8 @@ func (f *fakeGitlab) graphql(w http.ResponseWriter, r *http.Request) {
 		}})
 	case strings.Contains(req.Query, "linkedItems"):
 		f.linkedItemsQuery(w, req.Variables)
+	case strings.Contains(req.Query, "mergeRequests("):
+		f.mergeRequestsQuery(w, req.Variables)
 	case strings.Contains(req.Query, "workItems"):
 		f.childItemsQuery(w, req.Variables)
 	default:
@@ -575,6 +582,8 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 	}
 	rest := strings.TrimPrefix(r.URL.Path, prefix)
 	switch {
+	case strings.HasPrefix(rest, "merge_requests/") && strings.HasSuffix(rest, "/closes_issues"):
+		f.closesIssues(w, rest)
 	case strings.HasPrefix(rest, "issues/") && strings.HasSuffix(rest, "/links"):
 		f.mu.Lock()
 		f.linkCalls++

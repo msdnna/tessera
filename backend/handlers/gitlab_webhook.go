@@ -17,6 +17,7 @@ import (
 	"github.com/google/uuid"
 
 	db "tessera/internal/db"
+	"tessera/internal/gitlab"
 	"tessera/internal/jobs"
 )
 
@@ -33,6 +34,12 @@ import (
 // Polling stays on: an issue hook does not report issue *deletion*, so only the
 // periodic full sweep catches deletes, and a hook GitLab has quietly disabled must
 // not turn into a silently broken sync.
+//
+// Merge request and pipeline hooks (#2964) are the exception to "never map in the
+// hook": they are self-contained (the payload is the whole MR / the whole run),
+// small, and land in task_code_links only, so they are applied on the spot — see
+// gitlab_mr.go. An MR hook also marks the binding dirty, so the follow-up pull asks
+// GitLab which issues the MR closes (the payload doesn't say).
 
 const (
 	// webhookMaxBody caps the delivery body; an issue hook with a long description
@@ -54,10 +61,12 @@ const (
 type hookOutcome int
 
 const (
-	hookRelevant  hookOutcome = iota // → 202 + schedule an incremental pull
-	hookIgnored                      // → 204: a real event we don't sync on (push, pipeline…)
-	hookForeign                      // → 400: an event for a different GitLab project
-	hookMalformed                    // → 400: not a GitLab hook payload at all
+	hookRelevant     hookOutcome = iota // → 202 + schedule an incremental pull
+	hookMergeRequest                    // → 202: apply the MR to its tasks, then pull
+	hookPipeline                        // → 202: apply the pipeline status to its MRs
+	hookIgnored                         // → 204: a real event we don't sync on (push, tag…)
+	hookForeign                         // → 400: an event for a different GitLab project
+	hookMalformed                       // → 400: not a GitLab hook payload at all
 )
 
 // webhookPayload is the minimum we read out of a delivery. Everything else is the
@@ -97,7 +106,14 @@ func webhookDecision(body []byte, projectPath string) (hookOutcome, string) {
 	if kind == "" {
 		return hookMalformed, "no object_kind"
 	}
-	if !relevantHookKinds[kind] {
+	outcome, known := hookRelevant, relevantHookKinds[kind]
+	switch kind {
+	case "merge_request":
+		outcome, known = hookMergeRequest, true
+	case "pipeline":
+		outcome, known = hookPipeline, true
+	}
+	if !known {
 		// 204, not an error: GitLab disables a hook that keeps failing, and an
 		// over-broad event selection in the project settings is the user's to fix.
 		return hookIgnored, "kind " + kind + " does not affect mirrored issues"
@@ -109,7 +125,7 @@ func webhookDecision(body []byte, projectPath string) (hookOutcome, string) {
 	if got := p.Project.PathWithNamespace; got != "" && !strings.EqualFold(got, projectPath) {
 		return hookForeign, "event belongs to " + got
 	}
-	return hookRelevant, "kind " + kind
+	return outcome, "kind " + kind
 }
 
 // ── Debounced dirty set ────────────────────────────────────
@@ -232,7 +248,8 @@ func (h *API) GitlabWebhook(c *gin.Context) {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "body too large"})
 		return
 	}
-	switch outcome, reason := webhookDecision(body, integ.ProjectPath); outcome {
+	outcome, reason := webhookDecision(body, integ.ProjectPath)
+	switch outcome {
 	case hookIgnored:
 		c.Status(http.StatusNoContent)
 		return
@@ -247,11 +264,32 @@ func (h *API) GitlabWebhook(c *gin.Context) {
 		return
 	}
 	// Disabled bindings still stamp last_webhook_at (so the UI can show the hook is
-	// wired up) but must not trigger a pull.
+	// wired up) but must not trigger a pull — nor write MR state.
+	queued := integ.Enabled
 	if integ.Enabled {
-		h.webhooks.mark(integ.ID, time.Now())
+		switch outcome {
+		case hookMergeRequest:
+			// A payload we can't read is not worth a failing delivery (GitLab
+			// disables hooks that keep failing): the pull it schedules reads the MR
+			// the regular way.
+			if mr, perr := gitlab.ParseMergeRequestHook(body); perr == nil {
+				h.announceCodeLinks(c, integ.WorkspaceID, h.applyMergeRequest(c, integ, mrApply{mr: mr}))
+			} else {
+				log.Printf("gitlab webhook integ=%s: merge_request: %v", integ.ID, perr)
+			}
+			h.webhooks.mark(integ.ID, time.Now())
+		case hookPipeline:
+			queued = false
+			if ev, perr := gitlab.ParsePipelineHook(body); perr == nil {
+				h.announceCodeLinks(c, integ.WorkspaceID, h.applyPipelineEvent(c, integ, ev))
+			} else {
+				log.Printf("gitlab webhook integ=%s: pipeline: %v", integ.ID, perr)
+			}
+		default:
+			h.webhooks.mark(integ.ID, time.Now())
+		}
 	}
-	c.JSON(http.StatusAccepted, gin.H{"queued": integ.Enabled})
+	c.JSON(http.StatusAccepted, gin.H{"queued": queued})
 }
 
 // ── Debounce worker ────────────────────────────────────────

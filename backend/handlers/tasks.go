@@ -27,6 +27,8 @@ type taskDetail struct {
 	GitlabAssignees []db.ListTaskGitlabAssigneesRow `json:"gitlab_assignees"`
 	Subtasks        []db.ListSubtasksWithMetaRow    `json:"subtasks"`
 	GitLab          *gitlabLinkView                 `json:"gitlab,omitempty"`
+	// CodeLinks are the merge requests working on the task (#2964), always a list.
+	CodeLinks []codeLinkView `json:"code_links"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -298,6 +300,7 @@ func (h *API) GetTask(c *gin.Context) {
 	c.JSON(http.StatusOK, taskDetail{
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, GitlabAssignees: glAssignees,
 		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id),
+		CodeLinks: h.codeLinksForTask(c, id),
 	})
 }
 
