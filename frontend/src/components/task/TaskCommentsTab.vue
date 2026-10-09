@@ -20,6 +20,7 @@ import {
   PencilOutline,
   CheckmarkOutline,
   WarningOutline,
+  CloudDoneOutline,
 } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -47,6 +48,7 @@ import EmptyState from '../EmptyState.vue'
 import ArmButton from '../kit/ArmButton.vue'
 import EdReadBubble from '../editor/EdReadBubble.vue'
 import { quoteRequest } from '@/utils/quoteBus'
+import { CAPS } from '@/utils/keyCaps'
 
 const props = defineProps({
   taskId: { type: String, default: null },
@@ -70,7 +72,7 @@ const props = defineProps({
 const emit = defineEmits(['update:comments', 'changed', 'reload-detail'])
 
 const message = useMessage()
-const { t } = useI18n()
+const { t, locale } = useI18n()
 const { formatters } = useFormat()
 const auth = useAuthStore()
 const bv = useBoardViewStore()
@@ -393,7 +395,72 @@ function resetComposers() {
 }
 watch(
   () => props.taskId,
-  () => resetComposers(),
+  (id, prev) => {
+    resetComposers()
+    switchDraft(prev, id)
+  },
+)
+
+// ── the draft of each task (#3118, PackageJ «Черновик в другой задаче») ──
+// The composer keeps one draft per task on this device: leaving a task with a
+// half-written comment and coming back finds it where it was, and another
+// task's composer doesn't inherit it. It is sent only by ⌘↵ / «Отправить».
+const DRAFT_PREFIX = 'tessera_comment_draft:'
+const draftAt = ref(null)
+// The «saved» line is for a composer at rest, not under the hands typing.
+const composerFocused = ref(false)
+let draftTimer = 0
+function readDraft(id) {
+  try {
+    return id ? JSON.parse(localStorage.getItem(DRAFT_PREFIX + id) || 'null') : null
+  } catch {
+    return null
+  }
+}
+function writeDraft(id, body) {
+  if (!id) return
+  try {
+    if (body.trim()) {
+      const at = Date.now()
+      localStorage.setItem(DRAFT_PREFIX + id, JSON.stringify({ body, at }))
+      if (isCurrent(id)) draftAt.value = at
+    } else {
+      localStorage.removeItem(DRAFT_PREFIX + id)
+      if (isCurrent(id)) draftAt.value = null
+    }
+  } catch {
+    /* storage full or off — the draft just lives as long as the tab */
+  }
+}
+function dropDraft(id) {
+  clearTimeout(draftTimer)
+  writeDraft(id, '')
+}
+function switchDraft(prev, id) {
+  clearTimeout(draftTimer)
+  if (prev) writeDraft(prev, newComment.value)
+  const d = readDraft(id)
+  newComment.value = d?.body || ''
+  draftAt.value = d?.at || null
+}
+switchDraft(null, props.taskId)
+watch(newComment, (body) => {
+  clearTimeout(draftTimer)
+  const id = props.taskId
+  draftTimer = setTimeout(() => {
+    if (isCurrent(id)) writeDraft(id, body)
+  }, 500)
+})
+onBeforeUnmount(() => {
+  clearTimeout(draftTimer)
+  if (props.taskId) writeDraft(props.taskId, newComment.value)
+})
+const draftTime = computed(() =>
+  draftAt.value
+    ? new Intl.DateTimeFormat(locale.value, { hour: '2-digit', minute: '2-digit' }).format(
+        draftAt.value,
+      )
+    : '',
 )
 defineExpose({ scrollToBottom, autoGrow, resetComposers })
 
@@ -441,11 +508,15 @@ async function postComment() {
       try {
         const res = await tasksApi.addComment(tid, body, mentions, null, commandTz())
         retryInfo.value = null
-        // The text went out, so the composer is cleared even if another task is on
-        // screen by now — leaving the draft would invite sending it a second time,
-        // into that other task.
-        newComment.value = ''
-        commentEditor.value?.clear?.()
+        // The text went out: its draft is gone. The composer is cleared when it
+        // still holds that task's text — once the reader has moved on it holds the
+        // other task's own draft (drafts are per task, #3118), which is not ours to
+        // throw away.
+        dropDraft(tid)
+        if (isCurrent(tid)) {
+          newComment.value = ''
+          commentEditor.value?.clear?.()
+        }
         cmdPreview.value = []
         const c = await tasksApi.comments(tid)
         // What happened is reported either way — the toast names the task's own
@@ -885,7 +956,13 @@ async function onCommentCheck(c, i) {
     <!-- The composer: pinned under the modal's scrolling column when it gives a
          target (v2), else sticky at the bottom of this pane. -->
     <Teleport v-if="!readonly" :to="composerTo" :disabled="!composerTo">
-      <div class="comment-add" :class="{ docked: !!composerTo }" data-testid="comment-composer">
+      <div
+        class="comment-add"
+        :class="{ docked: !!composerTo }"
+        data-testid="comment-composer"
+        @focusin="composerFocused = true"
+        @focusout="composerFocused = $event.currentTarget.contains($event.relatedTarget)"
+      >
         <MarkdownEditor
           ref="commentEditor"
           v-model="newComment"
@@ -921,6 +998,14 @@ async function onCommentCheck(c, i) {
             </button>
           </div>
         </Transition>
+        <div
+          v-if="draftTime && newComment.trim() && !posting && !composerFocused"
+          class="draft-line"
+          data-testid="comment-draft"
+        >
+          <n-icon :component="CloudDoneOutline" :size="13" />
+          {{ t('task.comments.draftSaved', { time: draftTime, keys: CAPS.modEnter }) }}
+        </div>
         <!-- Dry-run hint: what the built-in commands in the draft will
            do. Custom keys are listed apart — they stay in the text. -->
         <div v-if="cmdPreview.length || cmdCustom.length" class="cmd-preview">
@@ -1408,6 +1493,13 @@ async function onCommentCheck(c, i) {
 }
 .cmd-chip.err > .n-icon {
   color: #f0a020;
+}
+.draft-line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text3);
 }
 .cmd-note {
   font-size: 12px;

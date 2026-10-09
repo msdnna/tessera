@@ -2132,7 +2132,6 @@ defineExpose({
           <span class="md2-spacer" />
         </template>
         <span v-else-if="!expanded && !narrowSend" class="md2-chints rest">{{ restHints }}</span>
-        <span v-if="phone" class="md2-spacer" />
         <button
           type="button"
           class="md2-cbtn md2-aa"
