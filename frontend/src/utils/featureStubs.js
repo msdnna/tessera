@@ -48,10 +48,9 @@ export const FEATURE_STUBS = {
   'notifications.rsvp': 3051,
   'notifications.all': 3049,
   // Toasts (#3117): «В корзину» on the toast about a deleted task — tasks have
-  // no trash yet; «Звук» in the toast settings. Task numbers are the
-  // coordinator's to assign.
-  'toasts.taskTrash': 'TODO',
-  'toasts.sound': 'TODO',
+  // no trash yet (#3120); «Звук» in the toast settings (#3121).
+  'toasts.taskTrash': 3120,
+  'toasts.sound': 3121,
   // Conferences (#3107): reactions in a call (#3054), a meeting's repeat and
   // length (#3052), tying it to a stage (#3053).
   'meet.reactions': 3054,
@@ -83,8 +82,8 @@ export const FEATURE_STUBS = {
   'board.presence': 3116,
   // The editor (#3118): «Ссылка на фрагмент» in the bubble over read text — a
   // link to a stretch of a description or a comment needs anchors the app
-  // doesn't keep yet. The task number is to be assigned.
-  'editor.fragmentLink': 'TODO',
+  // doesn't keep yet (#3119).
+  'editor.fragmentLink': 3119,
 }
 
 export function stubTask(key) {
