@@ -152,7 +152,7 @@ const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
 // ── rich detail (#8): comments, relations, files, journal
 // The description reads as prose and opens its editor in place (TaskDescriptionTab,
-// #3113) — on a click on the text or ⇧E.
+// #3113) — on a click on the text or I (⇧E still works, #3118).
 const descTab = ref(null)
 
 // ── wide-screen only: hide the properties panel to give the content the whole
