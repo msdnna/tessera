@@ -296,6 +296,12 @@ watch(quoteRequest, async (req) => {
 const commandItems = computed(() => store.commands || [])
 const cmdPreview = ref([]) // [{ key, summary, error }] from the dry-run
 const cmdCustom = ref([]) // custom keys seen in the draft — kept as plain text
+// A chip of the dry run (PackageJ «проверка под полем»): «/assign @илья → Илья
+// Петров», or «/estimate три часа — не понимаю …».
+function cmdLine(c) {
+  const head = [`/${c.key}`, c.arg].filter(Boolean).join(' ')
+  return c.error ? `${head} — ${c.error}` : `${head} → ${c.summary}`
+}
 let cmdTimer = null
 // «/due сегодня» is resolved on the server, so the request has to say which
 // calendar «сегодня» belongs to — the blank the profile may hold reads as UTC
@@ -926,10 +932,7 @@ async function onCommentCheck(c, i) {
             data-testid="cmd-chip"
           >
             <n-icon :component="c.error ? WarningOutline : CheckmarkOutline" :size="13" />
-            <span
-              >/{{ c.key }}<template v-if="c.arg"> {{ c.arg }}</template> {{ c.error ? '—' : '→' }}
-              {{ c.error || c.summary }}</span
-            >
+            <span>{{ cmdLine(c) }}</span>
           </span>
           <span v-if="cmdCustom.length" class="cmd-note">
             {{

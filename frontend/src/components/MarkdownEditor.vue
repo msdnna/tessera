@@ -1869,7 +1869,9 @@ defineExpose({
               data-testid="md2-cmd-chip"
             >
               <n-icon :component="cmdChip.icon" :size="12" class="md2-cchip-ic" />
-              <span class="md2-cchip-t">→ {{ cmdChip.text }}</span>
+              <span class="md2-cchip-t">{{
+                cmdChip.error ? cmdChip.text : `→ ${cmdChip.text}`
+              }}</span>
               <Kbd>{{ CAPS.enter }}</Kbd>
             </span>
 
@@ -1913,17 +1915,18 @@ defineExpose({
             </Transition>
           </div>
 
-          <RichContent
-            v-else
-            key="preview"
-            class="md2-preview"
-            :source="modelValue"
-            :members="mentionItems"
-            interactive
-            task-refs
-            :empty="$t('documents.editor.previewEmpty')"
-            @toggle="onToggleCheck"
-          />
+          <!-- A wrapper: RichContent renders a fragment, so a class on it lands
+               nowhere. -->
+          <div v-else key="preview" class="md2-preview" data-testid="md2-preview-pane">
+            <RichContent
+              :source="modelValue"
+              :members="mentionItems"
+              interactive
+              task-refs
+              :empty="$t('documents.editor.previewEmpty')"
+              @toggle="onToggleCheck"
+            />
+          </div>
         </Transition>
 
         <!-- Split only: the preview sits beside the text instead of replacing it,
@@ -2970,8 +2973,9 @@ defineExpose({
   right: -8px;
   bottom: calc(100% + 10px);
   z-index: 3;
-  width: 320px;
-  max-width: calc(100vw - 32px);
+  width: max-content;
+  min-width: 320px;
+  max-width: min(400px, calc(100vw - 32px));
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -2995,6 +2999,9 @@ defineExpose({
   font-size: 12.5px;
   line-height: 1.45;
   color: var(--t-text3);
+}
+.md2-ask-sub {
+  max-width: 300px;
 }
 .md2-ask-b {
   display: flex;
@@ -3337,6 +3344,17 @@ defineExpose({
 .md2-full .md2-preview {
   font-size: 14px;
   line-height: 1.55;
+}
+/* The panes read like the description itself: 15/650 headings. */
+.md2-full .md2-preview :deep(.md h1),
+.md2-full .md2-preview :deep(.md h2),
+.md2-full .md2-preview :deep(.md h3),
+.md2-full .md2-preview-side :deep(.md h1),
+.md2-full .md2-preview-side :deep(.md h2),
+.md2-full .md2-preview-side :deep(.md h3) {
+  margin: 12px 0 6px;
+  font-size: 15px;
+  font-weight: 650;
 }
 .md2-full-preview .md2-body > .md2-preview {
   flex: 1;
