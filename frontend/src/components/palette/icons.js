@@ -33,10 +33,16 @@ import {
   OptionsOutline,
   SaveOutline,
   SchoolOutline,
+  CalendarOutline,
+  CalendarNumberOutline,
+  CloseCircleOutline,
 } from '@vicons/ionicons5'
 
 export const ICONS = {
   SchoolOutline,
+  CalendarOutline,
+  CalendarNumberOutline,
+  CloseCircleOutline,
   AddOutline,
   AlarmOutline,
   AppsOutline,

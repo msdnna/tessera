@@ -602,7 +602,12 @@
       "today": "Today",
       "tomorrow": "Tomorrow",
       "nextWeek": "Next week",
-      "none": "Clear due date"
+      "none": "Clear due date",
+      "from": "from “{text}”",
+      "calendar": "Pick on the calendar…",
+      "calHelpTitle": "Calendar in the palette",
+      "calHelpKeys": "Arrows move by day, PgUp / PgDn by month, T is today, ↵ picks. Tab goes back to the field.",
+      "calHelpMore": "Start, repeat and the reminder live in the task window, key D."
     }
   },
   "quick": {

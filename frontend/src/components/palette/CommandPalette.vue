@@ -21,6 +21,7 @@ import { highlight } from '@/utils/fuzzy'
 import { usePaletteResults } from './usePaletteResults'
 import { usePaletteTask } from './usePaletteTask'
 import { usePaletteForm } from './usePaletteForm'
+import PaletteDueCalendar from './PaletteDueCalendar.vue'
 
 const { t } = useI18n()
 const palette = usePaletteStore()
@@ -136,6 +137,56 @@ onBeforeUnmount(() => releaseBlocker?.())
 const openRef = computed(() => palette.open)
 useOverlayBack(openRef, () => palette.hide())
 
+// ── «Срок» (#3118): Tab opens the calendar under the field, a second Tab goes
+// back; the digits 1–5 and 0 pick a preset once the arrows have moved — before
+// that a digit is a date being typed («14.10»).
+const dueCal = ref(false)
+const dueCalRef = ref(null)
+let dueNavigated = false
+watch(field, () => (dueCal.value = false))
+watch(
+  () => palette.open,
+  (open) => !open && (dueCal.value = false),
+)
+watch(
+  () => palette.query,
+  () => (dueNavigated = false),
+)
+function onDueKey(e) {
+  if (dueCal.value) {
+    if (e.key === 'Tab') {
+      dueCal.value = false
+      if (e.shiftKey) return false // ⇧Tab: back to the actions, as anywhere
+      e.preventDefault()
+      return true
+    }
+    if (e.key === 'Escape') return false
+    return !!dueCalRef.value?.onKey(e)
+  }
+  if (e.key === 'Tab' && !e.shiftKey) {
+    e.preventDefault()
+    dueCal.value = true
+    return true
+  }
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') dueNavigated = true
+  if (dueNavigated && /^[0-5]$/.test(e.key) && !hasModKey(e)) {
+    const row = flat.value.find((r) => r.digit === e.key)
+    if (row) {
+      e.preventDefault()
+      runRow(row, e)
+      return true
+    }
+  }
+  return false
+}
+async function onDuePick(ep) {
+  const next = await taskScope.writeDue(ep)
+  dueCal.value = false
+  if (next === 'close') palette.hide()
+  else if (next === 'back') back()
+  inputEl.value?.focus()
+}
+
 // ── navigation ──
 function move(delta) {
   const n = flat.value.length
@@ -149,7 +200,8 @@ function move(delta) {
 async function runRow(row, e) {
   if (!row || row.disabled) return
   const next = (await row.run({ newTab: !!e && hasModKey(e) })) || 'close'
-  if (next === 'close') palette.hide()
+  if (next === 'calendar') dueCal.value = true
+  else if (next === 'close') palette.hide()
   else if (next === 'back') back()
   inputEl.value?.focus()
 }
@@ -235,6 +287,7 @@ function onFormKey(e) {
 function onKeydown(e) {
   if (e.isComposing) return
   if (formMode.value && onFormKey(e)) return
+  if (field.value === 'due' && onDueKey(e)) return
   const mod = hasModKey(e)
   switch (e.key) {
     case 'ArrowDown':
@@ -381,6 +434,9 @@ const enterLabel = (row) => {
                 <n-icon :component="CloseOutline" :size="13" />
               </button>
             </span>
+            <span v-if="field" class="cp-chip cp-chip-fname" data-testid="palette-field-chip">{{
+              t(`shell.palette.task.${field}`)
+            }}</span>
             <input
               ref="inputEl"
               v-model="palette.query"
@@ -427,7 +483,14 @@ const enterLabel = (row) => {
             </button>
           </div>
 
-          <div ref="listEl" class="cp-list">
+          <PaletteDueCalendar
+            v-if="dueCal && field === 'due' && taskScope.task.value"
+            ref="dueCalRef"
+            :current="taskScope.dueNow()"
+            :query="palette.query"
+            @pick="onDuePick"
+          />
+          <div v-else ref="listEl" class="cp-list">
             <div v-if="loading" class="cp-empty"><n-spin size="small" /></div>
             <div v-else-if="!flat.length" class="cp-empty">
               {{
@@ -435,7 +498,8 @@ const enterLabel = (row) => {
               }}
             </div>
             <template v-for="g in groups" v-else :key="g.id">
-              <div class="cp-group">
+              <div v-if="!g.title" class="cp-gap" />
+              <div v-else class="cp-group">
                 <span>{{ g.title }}</span>
                 <span v-if="g.count" class="cp-group-n">{{ g.count }}</span>
               </div>
@@ -689,6 +753,15 @@ const enterLabel = (row) => {
   padding: 28px 0 24px;
   font-size: 13px;
   color: var(--t-text3);
+}
+.cp-gap {
+  height: 6px;
+}
+/* The field the palette is narrowed to («Срок»), next to the task's chip. */
+.cp-chip-fname {
+  flex: none;
+  padding: 0 9px;
+  font-weight: 600;
 }
 .cp-group {
   display: flex;
