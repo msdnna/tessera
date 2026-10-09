@@ -158,6 +158,29 @@
     <string name="sidebar_ws_delete">Удалить пространство</string>
     <string name="sidebar_ws_delete_message">Пространство «%1$s» и все его проекты, доски и задачи будут удалены безвозвратно. Введите название для подтверждения.</string>
     <string name="sidebar_ws_delete_last">Нельзя удалить единственное пространство</string>
+    <!-- Счётчики в подтверждении удаления проекта и пространства (#3014). Список —
+         после двоеточия: глагол согласуется со списком, а «1 доска будут удалены»
+         так не получится. -->
+    <string name="delete_counts_line">Будут удалены: %1$s.</string>
+    <string name="delete_counts_join">%1$s и %2$s</string>
+    <plurals name="delete_counts_projects">
+        <item quantity="one">%d проект</item>
+        <item quantity="few">%d проекта</item>
+        <item quantity="many">%d проектов</item>
+        <item quantity="other">%d проекта</item>
+    </plurals>
+    <plurals name="delete_counts_boards">
+        <item quantity="one">%d доска</item>
+        <item quantity="few">%d доски</item>
+        <item quantity="many">%d досок</item>
+        <item quantity="other">%d доски</item>
+    </plurals>
+    <plurals name="delete_counts_tasks">
+        <item quantity="one">%d задача</item>
+        <item quantity="few">%d задачи</item>
+        <item quantity="many">%d задач</item>
+        <item quantity="other">%d задачи</item>
+    </plurals>
 
     <!-- Боковая панель: дерево проектов -->
     <string name="sidebar_projects_header">ПРОЕКТЫ</string>

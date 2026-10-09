@@ -152,6 +152,21 @@
     <string name="sidebar_ws_delete">Delete workspace</string>
     <string name="sidebar_ws_delete_message">Workspace “%1$s” and all of its projects, boards and tasks will be deleted permanently. Type the name to confirm.</string>
     <string name="sidebar_ws_delete_last">You cannot delete your only workspace</string>
+    <!-- Counts in the project / workspace delete confirmation (#3014). -->
+    <string name="delete_counts_line">Will be deleted: %1$s.</string>
+    <string name="delete_counts_join">%1$s and %2$s</string>
+    <plurals name="delete_counts_projects">
+        <item quantity="one">%d project</item>
+        <item quantity="other">%d projects</item>
+    </plurals>
+    <plurals name="delete_counts_boards">
+        <item quantity="one">%d board</item>
+        <item quantity="other">%d boards</item>
+    </plurals>
+    <plurals name="delete_counts_tasks">
+        <item quantity="one">%d task</item>
+        <item quantity="other">%d tasks</item>
+    </plurals>
 
     <!-- Sidebar: project tree -->
     <string name="sidebar_projects_header">PROJECTS</string>

@@ -5,6 +5,7 @@ import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
+import website.msdnna.tessera.data.model.DeleteCounts
 import website.msdnna.tessera.data.model.NameRequest
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
@@ -22,6 +23,10 @@ class WorkspaceRepository {
         api.createWorkspace(website.msdnna.tessera.data.model.NameRequest(name))
 
     suspend fun deleteWorkspace(id: String) = api.deleteWorkspace(id)
+
+    suspend fun workspaceCounts(id: String): DeleteCounts = api.workspaceCounts(id)
+
+    suspend fun projectCounts(projectId: String): DeleteCounts = api.projectCounts(projectId)
 
     suspend fun groups(workspaceId: String): List<ProjectGroup> = api.groups(workspaceId).orEmpty()
     suspend fun projects(workspaceId: String): List<Project> = api.projects(workspaceId).orEmpty()
