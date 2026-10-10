@@ -108,7 +108,14 @@ watch(
 
 // Same-hue preview tint per card, so the grid reads as a set of different
 // kinds of document; saved templates take the accent.
-const TONES = { meeting: '#f0a020', spec: '#7c5cff', retro: '#3aa675' }
+const TONES = {
+  meeting: '#f0a020',
+  spec: '#7c5cff',
+  retro: '#3aa675',
+  sprintPlan: '#0eb0a9',
+  postmortem: '#e0533d',
+  adr: '#2f80ed',
+}
 function toneOf(tpl) {
   if (tpl.id === '__blank') return ''
   return (tpl.builtin && TONES[tpl.key]) || 'var(--t-primary)'
@@ -848,9 +855,11 @@ function onFile(e) {
   .tpl-meeting {
     order: -1;
     flex: 1 1 100%;
+    max-width: 100%;
   }
   .tpl-meeting-sel {
-    flex: 1;
+    flex: 1 1 0;
+    min-width: 0;
     width: auto;
   }
 }
