@@ -13,15 +13,35 @@ import (
 	"github.com/google/uuid"
 )
 
-const countUnreadNotifications = `-- name: CountUnreadNotifications :one
-SELECT count(*) FROM notifications WHERE user_id = $1 AND read_at IS NULL
+const countUnreadNotificationsByGroup = `-- name: CountUnreadNotificationsByGroup :one
+SELECT
+    count(*)                                                         AS total,
+    count(*) FILTER (WHERE kind = 'mention')                         AS mentions,
+    count(*) FILTER (WHERE kind = 'assigned')                        AS assigned,
+    count(*) FILTER (WHERE kind IN ('integration_sync', 'integration_conflict')) AS gitlab
+FROM notifications
+WHERE user_id = $1 AND read_at IS NULL
 `
 
-func (q *Queries) CountUnreadNotifications(ctx context.Context, userID uuid.UUID) (int64, error) {
-	row := q.db.QueryRow(ctx, countUnreadNotifications, userID)
-	var count int64
-	err := row.Scan(&count)
-	return count, err
+type CountUnreadNotificationsByGroupRow struct {
+	Total    int64 `json:"total"`
+	Mentions int64 `json:"mentions"`
+	Assigned int64 `json:"assigned"`
+	Gitlab   int64 `json:"gitlab"`
+}
+
+// CountUnreadNotificationsByGroup counts the unread rows per filter of the feed,
+// for the counters on its tabs — the whole backlog, not the loaded page.
+func (q *Queries) CountUnreadNotificationsByGroup(ctx context.Context, userID uuid.UUID) (CountUnreadNotificationsByGroupRow, error) {
+	row := q.db.QueryRow(ctx, countUnreadNotificationsByGroup, userID)
+	var i CountUnreadNotificationsByGroupRow
+	err := row.Scan(
+		&i.Total,
+		&i.Mentions,
+		&i.Assigned,
+		&i.Gitlab,
+	)
+	return i, err
 }
 
 const createNotification = `-- name: CreateNotification :one
@@ -70,12 +90,17 @@ const listNotifications = `-- name: ListNotifications :many
 SELECT
     n.id, n.user_id, n.workspace_id, n.task_id, n.actor_id, n.kind, n.text, n.read_at, n.created_at, n.payload,
     t.number   AS task_number,
-    t.board_id AS task_board_id
+    t.board_id AS task_board_id,
+    -- The reader's answer to a conference invitation (#3051) — see
+    -- ListNotificationsPage.
+    cp.rsvp    AS rsvp
 FROM notifications n
 LEFT JOIN boards nb ON nb.id = (SELECT board_id FROM tasks WHERE id = n.task_id) AND nb.deleted_at IS NULL
 LEFT JOIN tasks t ON t.id = n.task_id AND nb.id IS NOT NULL
+LEFT JOIN conference_participants cp ON n.kind = 'conference_invite'
+     AND cp.user_id = n.user_id AND cp.conference_id::text = n.payload->>'conference_id'
 WHERE n.user_id = $1
-ORDER BY n.created_at DESC
+ORDER BY n.created_at DESC, n.id DESC
 LIMIT 50
 `
 
@@ -92,6 +117,7 @@ type ListNotificationsRow struct {
 	Payload     json.RawMessage `json:"payload"`
 	TaskNumber  *int64          `json:"task_number"`
 	TaskBoardID *uuid.UUID      `json:"task_board_id"`
+	Rsvp        *string         `json:"rsvp"`
 }
 
 // A task on a soft-deleted board (0078) keeps its notification text — that was
@@ -118,6 +144,110 @@ func (q *Queries) ListNotifications(ctx context.Context, userID uuid.UUID) ([]Li
 			&i.Payload,
 			&i.TaskNumber,
 			&i.TaskBoardID,
+			&i.Rsvp,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNotificationsPage = `-- name: ListNotificationsPage :many
+SELECT
+    n.id, n.user_id, n.workspace_id, n.task_id, n.actor_id, n.kind, n.text, n.read_at, n.created_at, n.payload,
+    t.number   AS task_number,
+    t.board_id AS task_board_id,
+    cp.rsvp    AS rsvp
+FROM notifications n
+LEFT JOIN boards nb ON nb.id = (SELECT board_id FROM tasks WHERE id = n.task_id) AND nb.deleted_at IS NULL
+LEFT JOIN tasks t ON t.id = n.task_id AND nb.id IS NOT NULL
+LEFT JOIN conference_participants cp ON n.kind = 'conference_invite'
+     AND cp.user_id = n.user_id AND cp.conference_id::text = n.payload->>'conference_id'
+WHERE n.user_id = $1
+  AND ($2::timestamptz IS NULL
+       OR (n.created_at, n.id) < ($2::timestamptz, $3::uuid))
+  AND (CASE $4::text
+         WHEN 'unread'   THEN n.read_at IS NULL
+         WHEN 'mentions' THEN n.kind = 'mention'
+         WHEN 'assigned' THEN n.kind = 'assigned'
+         WHEN 'gitlab'   THEN n.kind IN ('integration_sync', 'integration_conflict')
+         ELSE true
+       END)
+ORDER BY n.created_at DESC, n.id DESC
+LIMIT $5
+`
+
+type ListNotificationsPageParams struct {
+	UserID   uuid.UUID  `json:"user_id"`
+	BeforeAt *time.Time `json:"before_at"`
+	BeforeID *uuid.UUID `json:"before_id"`
+	Filter   string     `json:"filter"`
+	Lim      int32      `json:"lim"`
+}
+
+type ListNotificationsPageRow struct {
+	ID          uuid.UUID       `json:"id"`
+	UserID      uuid.UUID       `json:"user_id"`
+	WorkspaceID *uuid.UUID      `json:"workspace_id"`
+	TaskID      *uuid.UUID      `json:"task_id"`
+	ActorID     *uuid.UUID      `json:"actor_id"`
+	Kind        string          `json:"kind"`
+	Text        string          `json:"text"`
+	ReadAt      *time.Time      `json:"read_at"`
+	CreatedAt   time.Time       `json:"created_at"`
+	Payload     json.RawMessage `json:"payload"`
+	TaskNumber  *int64          `json:"task_number"`
+	TaskBoardID *uuid.UUID      `json:"task_board_id"`
+	Rsvp        *string         `json:"rsvp"`
+}
+
+// ListNotificationsPage is the page «Все уведомления» (#3049): the same rows as
+// ListNotifications, read backwards from a keyset cursor (created_at, id) and
+// narrowed by the feed's filter on the server — the popover's client-side
+// reading of 50 rows cannot say what lies past them.
+//
+// The groups mirror the client's notificationGroup (utils/notificationFeed.js):
+//
+//	unread   — read_at IS NULL;
+//	mentions — kind 'mention' (a task, a document, a meeting chat);
+//	assigned — kind 'assigned';
+//	gitlab   — an integration's sync report or conflict.
+//
+// `rsvp` is the reader's own answer to a conference invitation (#3051), NULL
+// for every other row and for an invitation to a call that is gone.
+func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificationsPageParams) ([]ListNotificationsPageRow, error) {
+	rows, err := q.db.Query(ctx, listNotificationsPage,
+		arg.UserID,
+		arg.BeforeAt,
+		arg.BeforeID,
+		arg.Filter,
+		arg.Lim,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListNotificationsPageRow
+	for rows.Next() {
+		var i ListNotificationsPageRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.WorkspaceID,
+			&i.TaskID,
+			&i.ActorID,
+			&i.Kind,
+			&i.Text,
+			&i.ReadAt,
+			&i.CreatedAt,
+			&i.Payload,
+			&i.TaskNumber,
+			&i.TaskBoardID,
+			&i.Rsvp,
 		); err != nil {
 			return nil, err
 		}

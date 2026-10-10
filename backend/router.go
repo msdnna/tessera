@@ -563,6 +563,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Persistent notifications (#3).
 			protected.GET("/notifications", rh.ListNotifications)
 			protected.GET("/notifications/unread-count", rh.UnreadNotificationCount)
+			protected.GET("/notifications/page", rh.ListNotificationsPage)
 			protected.POST("/notifications/:id/read", rh.MarkNotificationRead)
 			protected.POST("/notifications/read-all", rh.MarkAllNotificationsRead)
 

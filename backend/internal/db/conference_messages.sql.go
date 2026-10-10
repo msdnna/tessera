@@ -13,7 +13,7 @@ import (
 )
 
 const conferenceForMessageAttachment = `-- name: ConferenceForMessageAttachment :one
-SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at
+SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at, c.soon_notified_for
 FROM conference_message_attachments a
 JOIN conference_messages m ON m.id = a.message_id
 JOIN conferences c ON c.id = m.conference_id
@@ -40,6 +40,7 @@ func (q *Queries) ConferenceForMessageAttachment(ctx context.Context, id uuid.UU
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
 	)
 	return i, err
 }

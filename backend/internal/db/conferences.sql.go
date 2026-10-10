@@ -87,7 +87,7 @@ func (q *Queries) CountActiveConferenceParticipants(ctx context.Context, confere
 const createConference = `-- name: CreateConference :one
 INSERT INTO conferences (workspace_id, task_id, created_by, title, description, scheduled_at, recording_ttl_days)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at
+RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for
 `
 
 type CreateConferenceParams struct {
@@ -125,6 +125,7 @@ func (q *Queries) CreateConference(ctx context.Context, arg CreateConferencePara
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
 	)
 	return i, err
 }
@@ -154,7 +155,7 @@ func (q *Queries) EndAllConferenceParticipants(ctx context.Context, conferenceID
 }
 
 const getConference = `-- name: GetConference :one
-SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at FROM conferences WHERE id = $1
+SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for FROM conferences WHERE id = $1
 `
 
 func (q *Queries) GetConference(ctx context.Context, id uuid.UUID) (Conference, error) {
@@ -174,12 +175,13 @@ func (q *Queries) GetConference(ctx context.Context, id uuid.UUID) (Conference, 
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
 	)
 	return i, err
 }
 
 const getConferenceParticipant = `-- name: GetConferenceParticipant :one
-SELECT conference_id, user_id, role, invited_at, joined_at, left_at, force_muted FROM conference_participants WHERE conference_id = $1 AND user_id = $2
+SELECT conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at FROM conference_participants WHERE conference_id = $1 AND user_id = $2
 `
 
 type GetConferenceParticipantParams struct {
@@ -198,6 +200,8 @@ func (q *Queries) GetConferenceParticipant(ctx context.Context, arg GetConferenc
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
@@ -210,7 +214,7 @@ SET invited_at = now(),
     left_at = NULL,
     joined_at = CASE WHEN conference_participants.left_at IS NOT NULL
                      THEN NULL ELSE conference_participants.joined_at END
-RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
 type InviteConferenceParticipantParams struct {
@@ -242,6 +246,8 @@ func (q *Queries) InviteConferenceParticipant(ctx context.Context, arg InviteCon
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
@@ -251,7 +257,7 @@ INSERT INTO conference_participants (conference_id, user_id, role, joined_at)
 VALUES ($1, $2, $3, now())
 ON CONFLICT (conference_id, user_id) DO UPDATE
 SET joined_at = now(), left_at = NULL
-RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
 type JoinConferenceParticipantParams struct {
@@ -275,6 +281,8 @@ func (q *Queries) JoinConferenceParticipant(ctx context.Context, arg JoinConfere
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
@@ -283,7 +291,7 @@ const leaveConferenceParticipant = `-- name: LeaveConferenceParticipant :one
 UPDATE conference_participants
 SET left_at = now()
 WHERE conference_id = $1 AND user_id = $2
-RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
 type LeaveConferenceParticipantParams struct {
@@ -302,12 +310,14 @@ func (q *Queries) LeaveConferenceParticipant(ctx context.Context, arg LeaveConfe
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
 
 const listConferenceParticipants = `-- name: ListConferenceParticipants :many
-SELECT p.conference_id, p.user_id, p.role, p.invited_at, p.joined_at, p.left_at, p.force_muted, u.name AS user_name, u.email AS user_email
+SELECT p.conference_id, p.user_id, p.role, p.invited_at, p.joined_at, p.left_at, p.force_muted, p.rsvp, p.rsvp_at, u.name AS user_name, u.email AS user_email
 FROM conference_participants p
 JOIN users u ON u.id = p.user_id
 WHERE p.conference_id = $1
@@ -322,6 +332,8 @@ type ListConferenceParticipantsRow struct {
 	JoinedAt     *time.Time `json:"joined_at"`
 	LeftAt       *time.Time `json:"left_at"`
 	ForceMuted   bool       `json:"force_muted"`
+	Rsvp         string     `json:"rsvp"`
+	RsvpAt       *time.Time `json:"rsvp_at"`
 	UserName     string     `json:"user_name"`
 	UserEmail    string     `json:"user_email"`
 }
@@ -343,6 +355,8 @@ func (q *Queries) ListConferenceParticipants(ctx context.Context, conferenceID u
 			&i.JoinedAt,
 			&i.LeftAt,
 			&i.ForceMuted,
+			&i.Rsvp,
+			&i.RsvpAt,
 			&i.UserName,
 			&i.UserEmail,
 		); err != nil {
@@ -357,7 +371,7 @@ func (q *Queries) ListConferenceParticipants(ctx context.Context, conferenceID u
 }
 
 const listConferences = `-- name: ListConferences :many
-SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at,
+SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at, c.soon_notified_for,
        u.name AS created_by_name,
        (SELECT count(*) FROM conference_participants p WHERE p.conference_id = c.id) AS participant_count,
        (SELECT count(*) FROM conference_participants p
@@ -390,6 +404,7 @@ type ListConferencesRow struct {
 	RecordingTtlDays int32      `json:"recording_ttl_days"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+	SoonNotifiedFor  *time.Time `json:"soon_notified_for"`
 	CreatedByName    *string    `json:"created_by_name"`
 	ParticipantCount int64      `json:"participant_count"`
 	ActiveCount      int64      `json:"active_count"`
@@ -425,6 +440,7 @@ func (q *Queries) ListConferences(ctx context.Context, arg ListConferencesParams
 			&i.RecordingTtlDays,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SoonNotifiedFor,
 			&i.CreatedByName,
 			&i.ParticipantCount,
 			&i.ActiveCount,
@@ -440,7 +456,7 @@ func (q *Queries) ListConferences(ctx context.Context, arg ListConferencesParams
 }
 
 const listConferencesByTask = `-- name: ListConferencesByTask :many
-SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at FROM conferences WHERE task_id = $1 ORDER BY created_at DESC
+SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for FROM conferences WHERE task_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListConferencesByTask(ctx context.Context, taskID *uuid.UUID) ([]Conference, error) {
@@ -466,6 +482,7 @@ func (q *Queries) ListConferencesByTask(ctx context.Context, taskID *uuid.UUID) 
 			&i.RecordingTtlDays,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SoonNotifiedFor,
 		); err != nil {
 			return nil, err
 		}
@@ -481,7 +498,7 @@ const pauseConference = `-- name: PauseConference :one
 UPDATE conferences
 SET status = 'scheduled', started_at = NULL, ended_at = NULL, updated_at = now()
 WHERE id = $1 AND status = 'live'
-RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at
+RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for
 `
 
 // PauseConference ends the current session without ending the conference
@@ -506,6 +523,7 @@ func (q *Queries) PauseConference(ctx context.Context, id uuid.UUID) (Conference
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
 	)
 	return i, err
 }
@@ -528,7 +546,7 @@ const setConferenceParticipantMuted = `-- name: SetConferenceParticipantMuted :o
 UPDATE conference_participants
 SET force_muted = $3
 WHERE conference_id = $1 AND user_id = $2
-RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
 type SetConferenceParticipantMutedParams struct {
@@ -548,6 +566,8 @@ func (q *Queries) SetConferenceParticipantMuted(ctx context.Context, arg SetConf
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
@@ -556,7 +576,7 @@ const startConference = `-- name: StartConference :one
 UPDATE conferences
 SET status = 'live', started_at = COALESCE(started_at, now()), ended_at = NULL, updated_at = now()
 WHERE id = $1 AND status <> 'live'
-RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at
+RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for
 `
 
 // StartConference (re)activates a room. It is idempotent on purpose: everyone's
@@ -584,6 +604,7 @@ func (q *Queries) StartConference(ctx context.Context, id uuid.UUID) (Conference
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
 	)
 	return i, err
 }
@@ -592,7 +613,7 @@ const updateConference = `-- name: UpdateConference :one
 UPDATE conferences
 SET title = $2, description = $3, scheduled_at = $4, task_id = $5, recording_ttl_days = $6, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at
+RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for
 `
 
 type UpdateConferenceParams struct {
@@ -631,6 +652,7 @@ func (q *Queries) UpdateConference(ctx context.Context, arg UpdateConferencePara
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
 	)
 	return i, err
 }
