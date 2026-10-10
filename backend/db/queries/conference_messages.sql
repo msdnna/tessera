@@ -5,6 +5,14 @@ INSERT INTO conference_messages (conference_id, user_id, body)
 VALUES ($1, $2, $3)
 RETURNING *;
 
+-- CreateConferenceTaskMessage writes the line «создал(а) задачу #N» that a «/»
+-- command in the chat leaves behind (#3055). The body is the task's number and
+-- title, so a client that knows nothing about `kind` still shows a sensible line.
+-- name: CreateConferenceTaskMessage :one
+INSERT INTO conference_messages (conference_id, user_id, body, kind, task_id)
+VALUES ($1, $2, $3, 'task', $4)
+RETURNING *;
+
 -- ListConferenceMessages pages *backwards* from a cursor: a chat is read from
 -- the bottom, so the rows worth fetching first are the newest ones. The handler
 -- reverses the page into reading order — doing it in SQL would need a subquery
@@ -14,10 +22,25 @@ RETURNING *;
 -- in the same millisecond are ordinary in a call where everyone is typing at
 -- once, and a timestamp-only cursor would either skip one of them or serve it
 -- twice forever.
+--
+-- A task line (#3055) carries what its link needs — number, title, the board and
+-- project slugs — joined only while the task is still somewhere the call's
+-- workspace can see: on a live board of a project of that workspace. A task
+-- moved out with its project, or on a deleted board, leaves the line with its
+-- text and no link.
 -- name: ListConferenceMessages :many
-SELECT m.*, u.name AS user_name, u.email AS user_email
+SELECT m.*, u.name AS user_name, u.email AS user_email,
+       t.number AS task_number, t.title AS task_title,
+       tb.slug AS task_board_slug, tp.slug AS task_project_slug
 FROM conference_messages m
 LEFT JOIN users u ON u.id = m.user_id
+LEFT JOIN conferences cf ON cf.id = m.conference_id
+LEFT JOIN tasks t ON t.id = m.task_id
+    AND EXISTS (SELECT 1 FROM boards xb JOIN projects xp ON xp.id = xb.project_id
+                 WHERE xb.id = t.board_id AND xb.deleted_at IS NULL
+                   AND xp.workspace_id = cf.workspace_id)
+LEFT JOIN boards tb ON tb.id = t.board_id
+LEFT JOIN projects tp ON tp.id = tb.project_id
 WHERE m.conference_id = $1
   AND (
     sqlc.narg('before_at')::timestamptz IS NULL

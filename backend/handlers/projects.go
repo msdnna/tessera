@@ -667,6 +667,13 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// …and the same for the stages that travel with the project (#3053): a
+	// meeting left behind would keep naming a stage its team can no longer open.
+	unstagedConfs, err := qtx.ClearConferenceMilestonesAcrossWorkspaces(c, p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	// The seventh is the open approval route on a document that travels, and it is
 	// the one with nothing to sever: both of its ends move together. What breaks is
 	// the rule CreateDocumentApproval enforces at the door — every approver must be
@@ -713,7 +720,8 @@ func (h *API) TransferProject(c *gin.Context) {
 		"unlinked_relations": unlinked, "unpinned_milestones": unpinned,
 		"unlinked_documents": unlinkedDocs, "detached_documents": detachedDocs,
 		"stripped_tags": strippedTags, "unpinned_conferences": unpinnedConfs,
-		"cancelled_approvals": cancelledApprovals,
+		"unstaged_conferences": unstagedConfs,
+		"cancelled_approvals":  cancelledApprovals,
 	})
 }
 
