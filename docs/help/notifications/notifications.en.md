@@ -3,7 +3,7 @@ title: Notifications
 category: Notifications
 order: 70
 keywords: notifications, pop-ups, toasts, do not disturb, channels, email, telegram, webhook, shoutrrr, routing, rules, quiet hours, digest, deadline, reminders, template
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 Notifications in Tessera come in two kinds, and only the second is configurable.
@@ -22,7 +22,11 @@ The bell opens the feed over the current screen (or keys <kbd>G</kbd> then <kbd>
 
 Clicking a row marks it read and opens the task or the conference — even in another workspace. While the feed is open these keys work: <kbd>↑</kbd> <kbd>↓</kbd> — pick a row, <kbd>↵</kbd> — open it, <kbd>E</kbd> — mark it read, <kbd>⇧</kbd> <kbd>E</kbd> — mark all read. The gear in the feed's head leads to the notification settings.
 
-The feed shows the latest 50 notifications. A separate page with the whole history and answering a meeting invitation with "Accept / Decline" right from the feed are in the works — those buttons are visible but inactive and labelled "Soon".
+Some rows are answered right in the feed. A meeting invitation has **Accept** and **Decline**, with the meeting's time beside them; the answer stays on its button, the other button changes it, and the invitation is marked read. A sync conflict has **Resolve conflict**: the conflicts window opens on that task. A closed stage opens its page, a mention in a document opens the document.
+
+### All notifications
+
+The popover holds the latest 50 notifications. The whole history is on the **All notifications** page: the **All notifications →** link at the bottom of the feed (on a phone the feed is this page). It adds an **Unread** filter, groups notifications by day and loads more on its own as you scroll to the end (or with **Show more**). The filters and their unread counts are worked out by the server over the whole history, not just what is loaded.
 
 ## Pop-ups
 
@@ -112,7 +116,7 @@ A rule has three settings:
 
 A separate **Mute** toggle turns a rule into a silencer: a matching notification goes nowhere and doesn't reach the rules below. It's a way to cut out a noisy event type without touching the rest — for example, put “Integration sync → mute” as the first rule and a general “any events → email” below it.
 
-There are nine event types: task assignment, comments, mentions, task update, task move, archiving, deadline approaching, reminders, integration sync.
+Event types: task assignment, comments, mentions (in a task, a document and a meeting chat), task update, move, archiving, deletion, unassignment, completion and reopening, deadline approaching, reminders, integration sync, sync conflict, meeting invitation, meeting in 5 minutes, stage closed.
 
 The order of rules is set by their order in the list — an exception rule must sit **above** the general one, otherwise the general one fires first and the exception never runs.
 
@@ -130,6 +134,8 @@ The same three settings exist on each task separately — by clicking the date o
 
 **Quiet hours** — a “do not disturb” window that can cross midnight (for example, 22:00–08:00). External notifications in that window are **held** and arrive all at once after it ends; system notifications to the device simply aren't shown during quiet hours — a pop-up can't be postponed. Internal notifications on the bell come as usual. The time is counted in your time zone — it's taken from the localization settings.
 
+The **Only urgent and mentions** box makes exceptions to the silence: mentions of you, anything about tasks marked Urgent and a meeting about to start go out to external channels and to the device at once; the rest still waits for the window to end.
+
 Changes in this block are saved on their own, half a second after you make them — just like channels and rules.
 
 ## How delivery really works
@@ -144,7 +150,7 @@ If delivery fails, Tessera retries it up to five times with a growing pause (rou
 2. **A rule higher in the list.** The first matching rule takes the event for itself; check that a silencer rule isn't intercepting it.
 3. **The channel and the rule are enabled.** A disabled channel is dim in the list; a disabled rule is too.
 4. **The channel is verified.** Choose **Test** in the channel's menu: it will show the real service error.
-5. **Quiet hours.** If it's a quiet window right now, external notifications will come after it ends, and system ones won't come at all.
+5. **Quiet hours.** If it's a quiet window right now, external notifications will come after it ends, and system ones won't come at all — except for the Only urgent and mentions exceptions, if that box is on.
 6. **Digest.** With the digest on, a message waits for the end of the window and arrives together with the rest.
 7. **Browser permission** — for system notifications; if there's none, the channel's “⋯” menu gets an **Allow** item.
 8. **Email doesn't go out at all** — SMTP may not be configured on the server: the channel test will tell you.

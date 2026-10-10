@@ -313,6 +313,13 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   `session.transport`/`room` (драйвер `.design-sync/.cache/v2e2.mjs`, `mockCall`). «Статья
   помогла?» — ack `helpful:<slug>:<lang>:yes|no` без своей таблицы, итоги — `GET
   /admin/help-feedback` и раздел «Справка» админки. F1 — справка.
+- **Уведомления v2 (#3033, миграция 0091):** `/notifications` — страница всей ленты и на десктопе
+  (`NotifFeed all` + `composables/useNotificationPages`: `GET /notifications/page` с курсором и
+  фильтром на сервере); голый `GET /notifications` (50 строк массивом) оставлен для Android и
+  поповера. Новый вид — событие в `handlers/notification_v2.go` + ключи в трёх каталогах
+  (`notify/locale.go`, `locales/*/notifications.json`, `NotificationText.kt`; паритет веба и бэкенда
+  — храповик-тест). RSVP — `conference_participants.rsvp`, `PUT /conferences/:id/rsvp`;
+  исключения тихих часов — `quietExempt`/`quietFor`, спрашивать везде, где спрашивается окно.
 - **Тур «Начало работы» и подсказки (#3000, #3070):** тур — главы (`data/getStarted.js`:
   «Основы» 10 шагов, главы по выбору, «Знакомство» для приглашённого, «Основы» телефона нижним
   листом, мини-тур «Что изменилось»), движок `stores/tour.js` (правила `click/count/set/appear/
