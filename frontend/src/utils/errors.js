@@ -93,6 +93,17 @@ const SENTINELS = {
   'cannot remove the workspace owner': 'cannotRemoveOwner',
   'cannot change your own role': 'cannotChangeOwnRole',
   'cannot remove yourself from the workspace': 'cannotRemoveSelf',
+  // Members v2 (#3063). The window offers neither door to someone it would
+  // refuse, so these, too, are stale-tab answers — or a race between two admins.
+  'only the owner can transfer the workspace': 'transferOwnerOnly',
+  'you already own the workspace': 'transferToSelf',
+  'the new owner must be a member of the workspace': 'transferNotMember',
+  'the owner cannot leave the workspace — transfer it first': 'ownerCannotLeave',
+  'already a member of this workspace': 'alreadyMember',
+  'access request declined recently': 'accessDeclinedRecently',
+  'the request is already decided': 'accessAlreadyDecided',
+  'a group with this name already exists': 'memberGroupNameTaken',
+  'every group member must be a member of the workspace': 'memberGroupOutsider',
   // What a manager hears once they are not one any more. Distinct from the bare
   // `forbidden` above: that one is the generic gate, this one names the rank
   // required, and it is the sentence a demoted admin meets on every subsequent

@@ -4,6 +4,12 @@
 // the latest invitation, invitations waiting for an answer and the roster with
 // a role menu. Every change lands at once; revoking an invitation is undone
 // from its toast, removing a member is a two-step item of the role menu.
+//
+// Members v2 (#3063): each row says the member's groups and when they were
+// last here; the role menu hands the workspace over («Передать владение…», the
+// owner only, the name typed in); the reader's own row leaves the workspace;
+// access requests wait above the invitations; «Группы» and «Роли и права» are
+// real sections. The guest role and the role editor stay «Скоро» (#3075/#3076).
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NTooltip } from 'naive-ui'
@@ -25,6 +31,8 @@ import {
   RefreshOutline,
   TimeOutline,
   TrashOutline,
+  LogOutOutline,
+  HandRightOutline,
 } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -37,6 +45,10 @@ import { copyText } from '@/utils/clipboard'
 import { CAPS, cap } from '@/utils/keyCaps'
 import { stubTask } from '@/utils/featureStubs'
 import { workspaceName } from '@/utils/defaultNames'
+import { serverBase } from '@/utils/serverBase'
+import { humanizeError } from '@/utils/errors'
+import { useMembersStore } from '@/stores/members'
+import { lastActivity, activityLabel, groupsOf } from '@/utils/memberActivity'
 import {
   LOCK_VIEWER,
   LOCK_OWNER,
@@ -45,6 +57,9 @@ import {
   addMemberRefusal,
 } from '@/utils/members'
 import LargeWindow from './kit/LargeWindow.vue'
+import TransferOwnerPop from './members/TransferOwnerPop.vue'
+import MemberGroupsPane from './members/MemberGroupsPane.vue'
+import RolesPane from './members/RolesPane.vue'
 import ActionMenu from './kit/ActionMenu.vue'
 import UserAvatar from './UserAvatar.vue'
 import ShortcutKeys from './ShortcutKeys.vue'
@@ -84,7 +99,12 @@ const winRef = ref(null)
 // store's `canManage`, which follows the globally-selected one — the id
 // arrives here as a prop.
 const workspace = computed(() => wsStore.list.find((w) => w.id === props.wsId) || null)
-const canManage = computed(() => ['owner', 'admin'].includes(workspace.value?.my_role))
+const myRole = computed(() => workspace.value?.my_role || '')
+const canManage = computed(() => ['owner', 'admin'].includes(myRole.value))
+const isOwner = computed(() => myRole.value === 'owner')
+const membersStore = useMembersStore()
+const groups = computed(() => membersStore.groupsFor(props.wsId))
+const accessReqs = ref([])
 
 // Who is looking: the viewer's own row and the owner's are not offered the role
 // menu — see utils/members.js. `ownerId` is left to the row's own `role` field.
@@ -148,15 +168,18 @@ async function load() {
     loadedWsId.value = wsId
     members.value = []
     invitations.value = []
+    accessReqs.value = []
     lastLink.value = ''
     inviteError.value = ''
     chips.value = []
     draft.value = ''
     filter.value = ''
   }
-  const [m, inv] = await Promise.allSettled([
+  const [m, inv, reqs] = await Promise.allSettled([
     wsApi.members(wsId),
     canManage.value ? wsApi.invitations(wsId) : Promise.resolve({ data: [] }),
+    canManage.value ? wsApi.accessRequests(wsId) : Promise.resolve({ data: [] }),
+    membersStore.loadGroups(wsId, { force: true }),
   ])
   // Switched away while these were in flight: the answers are about the
   // workspace that is no longer on screen.
@@ -165,6 +188,82 @@ async function load() {
   else message.error(m.reason.message)
   if (inv.status === 'fulfilled') invitations.value = inv.value.data || []
   else message.error(inv.reason.message)
+  if (reqs.status === 'fulfilled') accessReqs.value = reqs.value.data || []
+}
+
+// ── a member's line: groups and activity (#3073/#3074) ──
+const now = ref(Date.now())
+function memberGroups(m) {
+  return groupsOf(m.user_id, groups.value).join(', ')
+}
+function activity(m) {
+  const a = lastActivity(m, now.value)
+  const l = activityLabel(a.at, now.value)
+  const text =
+    l.key === 'date'
+      ? formatDate(new Date(a.at), { day: 'numeric', month: 'short' })
+      : t(`shell.members.activity.${l.key}`, { n: l.n }, l.n || 1)
+  const parts = []
+  if (m.last_seen_at)
+    parts.push(
+      t('shell.members.seenAt', {
+        at: formatDate(new Date(m.last_seen_at), {
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      }),
+    )
+  if (m.last_active_at)
+    parts.push(
+      t('shell.members.activeAt', {
+        at: formatDate(new Date(m.last_active_at), {
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      }),
+    )
+  return { text, online: a.online, title: parts.join(' · ') }
+}
+
+// ── access requests (#3077) ──
+const reqBusy = ref('')
+async function decide(r, approve) {
+  if (reqBusy.value) return
+  reqBusy.value = r.id
+  try {
+    if (approve) {
+      await wsApi.approveAccess(props.wsId, r.id, 'member')
+      message.success(t('shell.members.requestApproved', { name: r.user_name || r.user_email }))
+    } else {
+      await wsApi.declineAccess(props.wsId, r.id)
+      message.info(t('shell.members.requestDeclined', { name: r.user_name || r.user_email }))
+    }
+  } catch (e) {
+    message.error(humanizeError(e))
+  } finally {
+    reqBusy.value = ''
+    await load()
+  }
+}
+function reqWhen(r) {
+  const l = activityLabel(new Date(r.created_at).getTime(), now.value)
+  return l.key === 'date'
+    ? formatDate(new Date(r.created_at), { day: 'numeric', month: 'short' })
+    : t(`shell.members.activity.${l.key}`, { n: l.n }, l.n || 1)
+}
+
+// ── the workspace's own link: a non-member who opens it can ask to be let in ──
+const spaceLink = computed(() =>
+  props.wsId ? `${serverBase() || window.location.origin}/space/${props.wsId}` : '',
+)
+async function copySpaceLink() {
+  if (!spaceLink.value) return
+  if (await copyText(spaceLink.value)) message.success(t('shell.members.linkCopied'))
+  else message.info(spaceLink.value)
 }
 
 // ── the invite field: addresses become chips ──
@@ -293,21 +392,48 @@ const menuShow = computed({
   },
 })
 const menuMember = computed(() =>
-  menuFor.value && menuFor.value !== 'invite'
+  menuFor.value && menuFor.value !== 'invite' && menuFor.value !== 'self'
     ? members.value.find((m) => m.user_id === menuFor.value) || null
     : null,
 )
-const rolesTask = stubTask('members.roles')
+const guestTask = stubTask('members.guests')
 const menuItems = computed(() => {
+  // The reader's own row: the one thing to do with it is to leave (#3063). The
+  // owner can't — the workspace would be left without one — and is told so.
+  if (menuFor.value === 'self') {
+    return [
+      {
+        key: 'leave',
+        label: t('shell.members.leave'),
+        icon: LogOutOutline,
+        danger: true,
+        testid: 'member-leave',
+        ...(isOwner.value
+          ? { disabled: true, disabledTitle: t('shell.members.leaveOwner') }
+          : {
+              confirm: {
+                title: t('shell.members.leaveConfirm'),
+                sub: workspaceName(workspace.value),
+              },
+            }),
+      },
+    ]
+  }
   const cur = menuFor.value === 'invite' ? role.value : menuMember.value?.role
   const items = []
   if (menuFor.value !== 'invite') {
+    // «Владелец — передать владение…»: the owner's alone (the server says the
+    // same); an admin sees why it is greyed.
     items.push({
       key: 'owner',
       label: t('shell.members.owner'),
       note: t('shell.members.transfer'),
       icon: ShieldCheckmarkOutline,
-      stub: rolesTask,
+      caps: [cap(1)],
+      testid: 'member-transfer',
+      ...(isOwner.value
+        ? {}
+        : { disabled: true, disabledTitle: t('shell.members.transferOwnerOnly') }),
     })
   }
   items.push(
@@ -330,8 +456,9 @@ const menuItems = computed(() => {
     {
       key: 'guest',
       label: t('shell.members.guest'),
+      note: t('shell.members.guestNote'),
       icon: PeopleCircleOutline,
-      stub: rolesTask,
+      stub: guestTask,
     },
   )
   if (menuMember.value) {
@@ -360,14 +487,53 @@ async function onMenu(key) {
     if (key === 'admin' || key === 'member') role.value = key
     return
   }
+  if (target === 'self') {
+    if (key === 'leave') await leave()
+    return
+  }
   const m = menuMember.value
   if (!m) return
+  if (key === 'owner') {
+    if (!isOwner.value) return
+    transferFor.value = m
+    transferAnchor.value = menuAnchor.value
+    menuFor.value = null
+    transferShow.value = true
+    return
+  }
   if (key === 'remove') {
     menuFor.value = null
     await remove(m.user_id)
   } else if ((key === 'admin' || key === 'member') && key !== m.role) {
     await changeRole(m.user_id, key)
   }
+}
+
+// ── handing the workspace over (#3072) ──
+const transferFor = ref(null)
+const transferAnchor = ref(null)
+const transferShow = ref(false)
+async function onTransferred(m) {
+  message.success(t('shell.members.transferDone', { name: m.name || m.email }))
+  // The server dropped our socket so the role re-reads on reconnect; the list
+  // (my_role, hence every manager control here) is re-read now rather than
+  // whenever that lands.
+  await wsStore.resync()
+  await load()
+}
+
+// ── leaving (#3063) ──
+async function leave() {
+  menuFor.value = null
+  try {
+    await wsApi.leave(props.wsId)
+  } catch (e) {
+    message.error(humanizeError(e))
+    return
+  }
+  message.success(t('shell.members.left', { name: workspaceName(workspace.value) }))
+  close()
+  await wsStore.resync()
 }
 
 async function remove(userId) {
@@ -432,6 +598,14 @@ const shownMembers = computed(() => {
 })
 
 const invitesTask = stubTask('members.inviteLink')
+const sectionTitle = computed(
+  () =>
+    ({
+      invites: t('shell.members.navInvites'),
+      groups: t('shell.members.navGroups'),
+      roles: t('shell.members.navRoles'),
+    })[section.value] || t('shell.members.navMembers'),
+)
 const navItems = computed(() => [
   {
     key: 'members',
@@ -445,7 +619,7 @@ const navItems = computed(() => [
           key: 'invites',
           icon: MailOutline,
           label: t('shell.members.navInvites'),
-          count: invitations.value.length || null,
+          count: invitations.value.length + accessReqs.value.length || null,
         },
       ]
     : []),
@@ -453,13 +627,14 @@ const navItems = computed(() => [
     key: 'groups',
     icon: PeopleCircleOutline,
     label: t('shell.members.navGroups'),
-    stub: rolesTask,
+    count: groups.value.length || null,
+    testid: 'members-nav-groups',
   },
   {
     key: 'roles',
     icon: ShieldCheckmarkOutline,
     label: t('shell.members.navRoles'),
-    stub: rolesTask,
+    testid: 'members-nav-roles',
   },
 ])
 
@@ -469,7 +644,13 @@ function focusInvite() {
 }
 // Esc inside the window: an open menu closes itself; a typed filter is cleared
 // first; then the window.
+const groupsPane = ref(null)
 function paneEscape() {
+  if (transferShow.value) {
+    transferShow.value = false
+    return true
+  }
+  if (section.value === 'groups' && groupsPane.value?.escape()) return true
   if (menuFor.value) {
     menuFor.value = null
     return true
@@ -484,6 +665,10 @@ const topmost = () => !!winRef.value?.topmost()
 useShortcuts(
   {
     'members.invite': () => canManage.value && focusInvite(),
+    // N on «Группы» names a new group.
+    'win.new': () => {
+      if (section.value === 'groups' && canManage.value) groupsPane.value?.focusNew()
+    },
     'win.filter': () => {
       section.value = 'members'
       nextTick(() => filterEl.value?.focus())
@@ -505,9 +690,20 @@ function takeDraft() {
 watch(
   () => [props.show, props.wsId],
   ([show]) => {
-    if (show) load().then(takeDraft)
-    else menuFor.value = null
+    if (show) {
+      now.value = Date.now()
+      load().then(takeDraft)
+    } else {
+      menuFor.value = null
+      transferShow.value = false
+    }
   },
+)
+// The roster, the access requests or the groups changed elsewhere (socket,
+// stores/members): re-read while the window is open.
+watch(
+  () => membersStore.rev[props.wsId],
+  () => props.show && load(),
 )
 watch(canManage, (can) => {
   if (!can && section.value === 'invites') section.value = 'members'
@@ -545,24 +741,49 @@ function close() {
 
     <div class="mw" data-testid="members-pane">
       <div class="mw-title">
-        <h2>
-          {{
-            section === 'invites' ? t('shell.members.navInvites') : t('shell.members.navMembers')
-          }}
-        </h2>
-        <span class="mw-note">
+        <h2>{{ sectionTitle }}</h2>
+        <span v-if="section === 'groups'" class="mw-note">
+          {{ t('shell.members.groupsSummary', groups.length) }}
+        </span>
+        <span v-else-if="section !== 'roles'" class="mw-note">
           {{ t('shell.members.summary', members.length) }}
           <template v-if="canManage && pendingCount">
             · {{ t('shell.members.pendingSummary', pendingCount) }}
           </template>
+          <template v-if="canManage && accessReqs.length">
+            · {{ t('shell.members.requestsSummary', accessReqs.length) }}
+          </template>
         </span>
       </div>
 
-      <div class="mw-scroll t-hoverscroll">
+      <div v-if="section === 'groups'" class="mw-scroll t-hoverscroll">
+        <MemberGroupsPane
+          ref="groupsPane"
+          :ws-id="wsId"
+          :members="members"
+          :can-manage="canManage"
+        />
+      </div>
+      <div v-else-if="section === 'roles'" class="mw-scroll t-hoverscroll">
+        <RolesPane :my-role="myRole" />
+      </div>
+      <div v-else class="mw-scroll t-hoverscroll">
         <!-- Every door below this line is requireManager. Saying so once beats
              controls that answer 403, and beats silence — the roster is still
              worth the trip. -->
-        <p v-if="!canManage" class="mw-readonly hint">{{ t('shell.members.readOnly') }}</p>
+        <template v-if="!canManage">
+          <p class="mw-readonly hint">{{ t('shell.members.readOnly') }}</p>
+          <div class="mw-link" data-testid="members-space-link-row">
+            <n-icon :component="LinkOutline" :size="15" class="mw-link-ic" />
+            <span class="mw-link-l">{{ t('shell.members.spaceLink') }}</span>
+            <span class="mw-link-empty">{{ t('shell.members.spaceLinkHint') }}</span>
+            <span class="mw-grow" />
+            <button type="button" class="kit-btn small" @click="copySpaceLink">
+              <n-icon :component="CopyOutline" :size="14" />
+              {{ t('shell.members.copy') }}
+            </button>
+          </div>
+        </template>
 
         <section v-else-if="section === 'members'" class="invite mw-invite">
           <div class="mw-inv-row">
@@ -672,7 +893,74 @@ function close() {
               {{ t('common.stub.soon', { n: invitesTask }) }}
             </n-tooltip>
           </div>
+          <!-- The workspace's own address (#3077): whoever opens it without
+               being a member can ask to be let in — the requests land below. -->
+          <div class="mw-link" data-testid="members-space-link-row">
+            <n-icon :component="HandRightOutline" :size="15" class="mw-link-ic" />
+            <span class="mw-link-l">{{ t('shell.members.spaceLink') }}</span>
+            <code class="mw-link-v" data-testid="members-space-link">{{ spaceLink }}</code>
+            <span class="mw-grow" />
+            <button
+              type="button"
+              class="kit-btn small"
+              data-testid="members-copy-space-link"
+              @click="copySpaceLink"
+            >
+              <n-icon :component="CopyOutline" :size="14" />
+              {{ t('shell.members.copy') }}
+            </button>
+          </div>
         </section>
+
+        <!-- Access requests (#3077): people who opened a link to this space and
+             asked to be let in. «Впустить» makes them a member; the role can be
+             changed afterwards like anyone's. -->
+        <template v-if="canManage && accessReqs.length">
+          <div class="mw-h">
+            {{ t('shell.members.requests') }} <span class="mw-h-n">{{ accessReqs.length }}</span>
+          </div>
+          <div class="mw-list">
+            <div
+              v-for="r in accessReqs"
+              :key="r.id"
+              class="mw-row mw-req"
+              data-testid="access-request-row"
+            >
+              <UserAvatar :user-id="r.user_id" :name="r.user_name" class="mw-av" />
+              <div class="info">
+                <span class="name">{{ r.user_name || r.user_email }}</span>
+                <span class="mail">
+                  {{ r.user_email }}
+                  <template v-if="r.board_name">
+                    · {{ t('shell.members.requestFrom', { board: r.board_name }) }}</template
+                  >
+                </span>
+                <span v-if="r.message" class="mw-req-msg">{{
+                  t('shell.members.requestMessage', { text: r.message })
+                }}</span>
+              </div>
+              <span class="inv-until">{{ reqWhen(r) }}</span>
+              <button
+                type="button"
+                class="kit-btn small primary"
+                :disabled="reqBusy === r.id"
+                data-testid="access-approve"
+                @click="decide(r, true)"
+              >
+                {{ t('shell.members.requestApprove') }}
+              </button>
+              <button
+                type="button"
+                class="mw-act"
+                :disabled="reqBusy === r.id"
+                data-testid="access-decline"
+                @click="decide(r, false)"
+              >
+                {{ t('shell.members.requestDecline') }}
+              </button>
+            </div>
+          </div>
+        </template>
 
         <!-- Invitations waiting for an answer — on «Участники» under the field,
              and the whole of «Приглашения». -->
@@ -720,7 +1008,7 @@ function close() {
             </div>
           </div>
         </template>
-        <p v-else-if="section === 'invites'" class="mw-empty">
+        <p v-else-if="section === 'invites' && !accessReqs.length" class="mw-empty">
           {{ t('shell.members.noInvites') }}
         </p>
 
@@ -757,6 +1045,11 @@ function close() {
                 </span>
                 <span class="mail">{{ m.email }}</span>
               </div>
+              <span class="mw-groups" data-testid="member-groups-cell">{{ memberGroups(m) }}</span>
+              <span class="mw-seen" :title="activity(m).title" data-testid="member-activity">
+                <span v-if="activity(m).online" class="mw-dot" />
+                {{ activity(m).text }}
+              </span>
               <!-- A control that vanishes with no word reads as a broken window,
                    so a locked row keeps its role in place and says why on hover. -->
               <span
@@ -787,15 +1080,16 @@ function close() {
                 <n-icon :component="ChevronDownOutline" :size="12" />
               </button>
               <button
-                v-if="!rowLock(m)"
+                v-if="!rowLock(m) || isSelf(m)"
                 type="button"
                 class="mw-more"
                 :title="t('common.action.more')"
                 data-testid="member-menu"
-                @click="openMenu(m.user_id, $event.currentTarget)"
+                @click="openMenu(isSelf(m) ? 'self' : m.user_id, $event.currentTarget)"
               >
                 <n-icon :component="EllipsisHorizontal" :size="16" />
               </button>
+              <span v-else class="mw-more-gap" />
             </div>
             <p v-if="!shownMembers.length && filter" class="mw-empty">
               {{ t('shell.members.noMatch') }}
@@ -814,6 +1108,14 @@ function close() {
       :width="360"
       testid="member-role-menu"
       @select="onMenu"
+    />
+    <TransferOwnerPop
+      v-model:show="transferShow"
+      :anchor="() => transferAnchor"
+      :ws-id="wsId"
+      :ws-name="workspaceName(workspace)"
+      :member="transferFor"
+      @done="onTransferred"
     />
   </LargeWindow>
 </template>
@@ -1130,6 +1432,55 @@ function close() {
   font-weight: 650;
   text-transform: uppercase;
   letter-spacing: 0.04em;
+}
+/* Groups and activity (#3063) — the mockup's two quiet columns. */
+.mw-groups {
+  flex: 0 1 180px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--t-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mw-seen {
+  flex: 0 0 110px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--t-text3);
+  white-space: nowrap;
+}
+.mw-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #18a058 86%, #000),
+    #18a058 50%,
+    color-mix(in srgb, #18a058 86%, #fff)
+  );
+}
+.mw-more-gap {
+  flex: none;
+  width: 28px;
+}
+.mw-req .info {
+  gap: 1px;
+}
+.mw-req-msg {
+  font-size: 12.5px;
+  color: var(--t-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lw-mobile .mw-groups,
+.lw-mobile .mw-seen {
+  display: none;
 }
 /* Role pills: the owner in the accent, an admin in blue, the rest neutral. */
 .mw-role {

@@ -84,6 +84,9 @@ const routes = [
       // Legacy / deep links by id (UUID or bare slug) — BoardView resolves them
       // and canonicalizes the URL to /project/<slug>/board/<slug>.
       { path: 'board/:id', component: () => import('@/views/BoardView.vue') },
+      // A workspace's own link (#3077): a member goes in, anyone else may ask
+      // for access.
+      { path: 'space/:id', component: () => import('@/views/SpaceLinkView.vue') },
       // The «Заметки» and «Напоминания» sections became the «Входящие» panel
       // (#2999): old links land on the start screen with the panel open on
       // that filter (and on the note a `?note=` named). AppLayout reads the

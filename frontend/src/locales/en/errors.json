@@ -42,7 +42,16 @@
     "templateError": "Template error: {detail}",
     "smtpNotConfigured": "SMTP is not configured on the server — the email was logged, not sent",
     "conferencesNotConfigured": "Calls are not set up on this server — ask your administrator",
-    "recordingNotConfigured": "Recording is not enabled on this server — your administrator turns it on"
+    "recordingNotConfigured": "Recording is not enabled on this server — your administrator turns it on",
+    "transferOwnerOnly": "Only the owner can hand the workspace over",
+    "transferToSelf": "You already own this workspace",
+    "transferNotMember": "The new owner must be a member of the workspace",
+    "ownerCannotLeave": "The owner can’t leave the workspace — hand it over first",
+    "alreadyMember": "You are already a member of this workspace",
+    "accessDeclinedRecently": "The request was declined recently — you can ask again in a day",
+    "accessAlreadyDecided": "This request has already been decided",
+    "memberGroupNameTaken": "A group with this name already exists",
+    "memberGroupOutsider": "Only workspace members can be added to a group"
   },
   "validation": {
     "email": "Enter a valid email",

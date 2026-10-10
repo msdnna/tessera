@@ -5,6 +5,7 @@ import { boards as boardsApi, projects as projectsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { sSet } from '@/utils/serverStorage'
 import KanbanBoard from '@/components/KanbanBoard.vue'
+import NoAccessPane from '@/components/NoAccessPane.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -15,6 +16,11 @@ const wsStore = useWorkspacesStore()
 // KanbanBoard uses for all its calls — and canonicalizes the URL to the nested,
 // human-readable form whatever the entry point.
 const boardId = ref(null)
+// A board of a workspace the reader is not in (#3077): the server answers 403,
+// and the screen offers to ask for access instead of going blank. Holds what the
+// request names — the slug pair from the address, or the board's id.
+const noAccess = ref(null)
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 // Which resolution the screen is waiting for (#2932). Clicking a second board
 // while the first is still resolving leaves two requests in flight, and they
@@ -30,6 +36,7 @@ let resolveSeq = 0
 async function resolve() {
   const { projectSlug, boardSlug, id } = route.params
   const mine = ++resolveSeq
+  noAccess.value = null
   try {
     let board
     if (projectSlug && boardSlug) {
@@ -58,12 +65,17 @@ async function resolve() {
     // «G, then B» (#2956) comes back here from anywhere.
     sSet('tessera_last_board', target)
     sSet('tessera_last_board_id', board.id)
-  } catch {
+  } catch (e) {
     // A board that failed to resolve blanks the view — but only if it is still
     // the board being asked for. An abandoned 404 must not take down the one
     // that answered in the meantime.
     if (mine !== resolveSeq) return
     boardId.value = null
+    if (e?.status === 403) {
+      if (projectSlug && boardSlug)
+        noAccess.value = { project_slug: projectSlug, board_slug: boardSlug }
+      else if (id && UUID_RE.test(id)) noAccess.value = { board_id: id }
+    }
   }
 }
 
@@ -79,6 +91,7 @@ watch(() => route.params, resolve, { immediate: true, deep: true })
        come up (#3000). -->
   <div class="board-view" :data-tour-open-board="boardId">
     <KanbanBoard v-if="boardId" :key="boardId" :board-id="boardId" />
+    <NoAccessPane v-else-if="noAccess" :target="noAccess" />
   </div>
 </template>
 

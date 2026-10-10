@@ -31,11 +31,11 @@ export const FEATURE_STUBS = {
   // «Только срочное и упоминания» (#3050).
   'settings.twoFactor': 3081,
   'notifications.quietExceptions': 3050,
-  // Administration (#3106): invitations across workspaces (#3079), roles and
-  // permissions (#3063), a user's workspaces and last sign-in (#3078), CSV
-  // export of users (#3080).
+  // Administration (#3106): invitations across workspaces (#3079), the editor
+  // of roles and permissions (#3076), a user's workspaces and last sign-in
+  // (#3078), CSV export of users (#3080).
   'admin.invites': 3079,
-  'admin.roles': 3063,
+  'admin.roles': 3076,
   'admin.userSpaces': 3078,
   'admin.csv': 3080,
   // Documents (#3106): the trash (#3006), a document's stage (#3044), template
@@ -56,10 +56,13 @@ export const FEATURE_STUBS = {
   'meet.reactions': 3054,
   'meet.recurrence': 3052,
   'meet.stage': 3053,
-  // Large windows (#2975, package F). Members: roles and permissions, owner
-  // transfer, groups, guests (#3063); resend / extend an invitation and a
+  // Large windows (#2975, package F). Members (#3063 shipped the owner
+  // transfer, activity, groups and access requests): the guest role with access
+  // to chosen projects (#3075) and the editor of roles (#3076) need a
+  // per-project check on every read; resend / extend an invitation and a
   // reusable invite link (#3035).
-  'members.roles': 3063,
+  'members.guests': 3075,
+  'members.roleEditor': 3076,
   'members.inviteLink': 3035,
   // GitLab: several projects on one board, OAuth connection, the token's
   // expiry (#3065); label → stage rules, rule switches and counters, the

@@ -44,6 +44,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useInboxStore } from '@/stores/inbox'
+import { useMembersStore } from '@/stores/members'
 import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWhatsNewStore } from '@/stores/whatsNew'
@@ -76,6 +77,7 @@ const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const inbox = useInboxStore()
+const membersStore = useMembersStore()
 const toasts = useToastsStore()
 const conflicts = useConflictsStore()
 const whatsNew = useWhatsNewStore()
@@ -168,6 +170,8 @@ useRealtime(
     // …and the same record as a toast «про меня» (#3117).
     toasts.onSocket(ev, authStore.user?.id)
     inbox.onEvent(ev)
+    // Roster, access requests and member groups changed elsewhere (#3063).
+    membersStore.onSocket(ev)
     // The «Начало работы» checklist counts what the user did themselves (#3102).
     onboarding.onSocket(ev, authStore.user?.id)
     conflicts.onEvent(ev)

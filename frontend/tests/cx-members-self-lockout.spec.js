@@ -28,6 +28,9 @@ vi.mock('@/api', () => ({
     createInvitation: vi.fn(),
     removeMember: vi.fn(() => Promise.resolve({ data: {} })),
     updateMemberRole: vi.fn(() => Promise.resolve({ data: {} })),
+    // Members v2 (#3063): the access requests and groups the window also reads.
+    accessRequests: () => Promise.resolve({ data: [] }),
+    memberGroups: () => Promise.resolve({ data: [] }),
     deleteInvitation: vi.fn(),
   },
 }))
@@ -76,7 +79,9 @@ describe('MembersModal: своя строка', () => {
 
   it('не даёт удалить себя', async () => {
     const w = await open()
-    expect(rowOf(w, 'Я сам').findAll('button').length).toBe(0)
+    // Своя строка несёт только «⋯» с «Покинуть пространство» (#3063).
+    const btns = rowOf(w, 'Я сам').findAll('button')
+    expect(btns.map((b) => b.attributes('data-testid'))).toEqual(['member-menu'])
   })
 
   it('называет причину, а не просто прячет кнопки', async () => {
