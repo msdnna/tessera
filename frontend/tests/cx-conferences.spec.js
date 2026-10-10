@@ -28,6 +28,8 @@ const api = {
   end: vi.fn(),
   remove: vi.fn(),
   participants: vi.fn(),
+  // «Принять / Отклонить» (#3051).
+  rsvp: vi.fn(),
   // The recordings panel under the room (#2877); empty here, it has its own spec.
   recordings: vi.fn(() => Promise.resolve({ data: [] })),
   // The embedded room (#2871) reaches for a media token. jsdom has no
@@ -430,5 +432,50 @@ describe('routing', () => {
     )
     expect(left.textContent).toContain('Ежедневная летучка')
     expect(w.text()).toContain('Ежедневная летучка')
+  })
+})
+
+// «Принять / Отклонить» an invitation (#3051): in the row while unanswered, as a
+// word once answered, and in the lobby.
+describe('conference invitation answer', () => {
+  it('answers from the row and shows the answer', async () => {
+    api.list.mockResolvedValue({ data: [conf({ created_by: 'u2', my_rsvp: 'pending' })] })
+    api.rsvp.mockResolvedValue({ data: {} })
+    const { w } = await mountAt('/conferences')
+    await w.get('[data-testid="conference-row-accept"]').trigger('click')
+    await flushPromises()
+    expect(api.rsvp).toHaveBeenCalledWith('c1', 'accepted')
+    expect(w.find('[data-testid="conference-row-rsvp"]').exists()).toBe(false)
+    expect(w.get('[data-testid="conference-row-answer"]').text()).toBe('Иду')
+  })
+
+  it('puts the answer back when the server refuses', async () => {
+    api.list.mockResolvedValue({ data: [conf({ created_by: 'u2', my_rsvp: 'pending' })] })
+    api.rsvp.mockRejectedValue(new Error('нет'))
+    const { w } = await mountAt('/conferences')
+    await w.get('[data-testid="conference-row-decline"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="conference-row-rsvp"]').exists()).toBe(true)
+    expect(toast.error).toHaveBeenCalledWith('нет')
+  })
+
+  it('offers the answer in the lobby to an invited member', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        conference: conf({ created_by: 'u2' }),
+        participants: [
+          part({ user_id: 'u2', role: 'host', rsvp: 'accepted' }),
+          part({ role: 'member', rsvp: 'pending' }),
+        ],
+      },
+    })
+    api.rsvp.mockResolvedValue({ data: {} })
+    const { w } = await mountAt('/conferences/c1')
+    const box = w.get('[data-testid="conference-rsvp"]')
+    expect(box.attributes('data-rsvp')).toBe('pending')
+    await w.get('[data-testid="conference-rsvp-decline"]').trigger('click')
+    await flushPromises()
+    expect(api.rsvp).toHaveBeenCalledWith('c1', 'declined')
+    expect(w.get('[data-testid="conference-rsvp"]').attributes('data-rsvp')).toBe('declined')
   })
 })

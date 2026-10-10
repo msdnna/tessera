@@ -804,10 +804,22 @@ function onInviteShow(show) {
                  roster above so «в комнате» stays an honest count. -->
             <div v-if="invited.length" class="invited" data-testid="conference-invited">
               <div class="invited-h">{{ $t('conferences.panel.invitedTitle') }}</div>
-              <div v-for="p in invited" :key="p.user_id" class="invited-row">
+              <div
+                v-for="p in invited"
+                :key="p.user_id"
+                class="invited-row"
+                :class="{ declined: p.rsvp === 'declined' }"
+                :data-rsvp="p.rsvp || 'pending'"
+              >
                 <user-avatar :user-id="p.user_id" :name="p.user_name" class="iav" />
                 <span class="iname">{{ p.user_name }}</span>
-                <span class="itag">{{ $t('conferences.presence.invited') }}</span>
+                <!-- The answer to the invitation (#3051): «иду» / «не иду», or
+                     still «приглашён» while there is none. -->
+                <span class="itag">{{
+                  p.rsvp === 'accepted' || p.rsvp === 'declined'
+                    ? $t(`conferences.rsvp.${p.rsvp}`)
+                    : $t('conferences.presence.invited')
+                }}</span>
               </div>
             </div>
           </div>
@@ -1286,6 +1298,10 @@ function onInviteShow(show) {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
+}
+/* Declined (#3051): still listed, so the host sees who said no — dimmed. */
+.invited-row.declined {
+  opacity: 0.55;
 }
 .iav {
   flex: none;

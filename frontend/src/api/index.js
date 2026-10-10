@@ -585,7 +585,8 @@ export const documents = {
   // colleague resolving a thread must not flash the global progress bar.
   comments: (id) => api.get(`/documents/${id}/comments`, { skipLoader: true }),
   addComment: (id, data) => api.post(`/documents/${id}/comments`, data),
-  updateComment: (commentId, body) => api.patch(`/document-comments/${commentId}`, { body }),
+  updateComment: (commentId, body, mentions = []) =>
+    api.patch(`/document-comments/${commentId}`, { body, mentions }),
   resolveComment: (commentId, resolved = true) =>
     api.patch(`/document-comments/${commentId}/resolve`, { resolved }),
   removeComment: (commentId) => api.delete(`/document-comments/${commentId}`),
@@ -656,15 +657,17 @@ export const conferences = {
   // would skip or repeat a line every time somebody sends one.
   messages: (id, params) => api.get(`/conferences/${id}/messages`, { params, skipLoader: true }),
   // Text only — the common case, and it should not pay for a multipart encoder.
-  postMessage: (id, body) =>
-    api.post(`/conferences/${id}/messages`, { body }, { skipLoader: true }),
+  // `mentions` — the members the line @-mentions (#3048), told by the server.
+  postMessage: (id, body, mentions = []) =>
+    api.post(`/conferences/${id}/messages`, { body, mentions }, { skipLoader: true }),
   // With files. FormData, so the browser sets its own multipart boundary — do
   // not add a Content-Type header here, an explicit one arrives without it and
   // the server cannot parse the form.
-  postMessageWithFiles: (id, body, files) => {
+  postMessageWithFiles: (id, body, files, mentions = []) => {
     const fd = new FormData()
     fd.append('body', body)
     for (const f of files) fd.append('files', f)
+    for (const m of mentions) fd.append('mentions', m)
     return api.post(`/conferences/${id}/messages`, fd, { skipLoader: true })
   },
   removeMessage: (messageId) => api.delete(`/conference-messages/${messageId}`),

@@ -32,6 +32,8 @@ import {
 } from '@vicons/ionicons5'
 import { conferences as confApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { mentionIdsFor } from '@/utils/mentionRoster'
 import { useFormat } from '@/composables/useFormat'
 import {
   CONF_CHAT_MAX_BODY,
@@ -66,6 +68,7 @@ const props = defineProps({
 
 const { t } = useI18n()
 const auth = useAuthStore()
+const wsStore = useWorkspacesStore()
 const message = useMessage()
 const { formatDateTime } = useFormat()
 
@@ -246,9 +249,11 @@ async function send() {
   const body = draft.value.trim()
   const files = pending.value
   try {
+    // The members the line @-mentions are told (#3048).
+    const mentions = await mentionIdsFor(wsStore.currentId, body)
     const { data } = files.length
-      ? await confApi.postMessageWithFiles(id, body, files)
-      : await confApi.postMessage(id, body)
+      ? await confApi.postMessageWithFiles(id, body, files, mentions)
+      : await confApi.postMessage(id, body, mentions)
     // Sent to the call we have since left: it is stored and the people still in
     // that room will see it, but appending it here would put it in a conversation
     // it was never part of.
