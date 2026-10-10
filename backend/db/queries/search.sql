@@ -25,8 +25,8 @@
 -- number («2950» / «#2950»), which then sorts first. The row carries what the
 -- ⌘K palette prints under the title: status column, board, project, milestone.
 -- name: SearchTasks :many
-SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at,
-       t.priority, t.column_id, b.name AS board_name, p.name AS project_name,
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, p.id AS project_id,
+       t.number, t.title, t.parent_id, t.completed_at, t.priority, t.column_id, b.name AS board_name, p.name AS project_name,
        bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color,
        m.title AS milestone_title
 FROM tasks t
@@ -79,8 +79,8 @@ LIMIT 26;
 -- on a live board come back — a record keeps its task_id after the task moves
 -- away, and the chip must not carry the stranger's title with it.
 -- name: InboxTaskChips :many
-SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title,
-       t.completed_at, t.due_date, t.column_id, b.name AS board_name,
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, p.id AS project_id,
+       t.number, t.title, t.completed_at, t.due_date, t.column_id, b.name AS board_name,
        bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color
 FROM tasks t
 JOIN boards b ON b.id = t.board_id

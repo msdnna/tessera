@@ -84,6 +84,7 @@ var bundles = map[string]bundle{
 			"integration_sync_partial": "{label}: +{created} новых, ~{updated} обновлено, за {took} (часть действий с ошибками)",
 			"integration_sync_failed":  "{label}: синхронизация не удалась — {reason} (за {took})",
 			"conference_invited":       "{actor} приглашает вас в конференцию{ctx}",
+			"note_mention":             "{actor} упомянул(а) вас в заметке{ctx}",
 		},
 		fields: map[string]string{
 			"title":       "название",
@@ -156,6 +157,7 @@ var bundles = map[string]bundle{
 			"integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
 			"integration_sync_failed":  "{label}: sync failed — {reason} (after {took})",
 			"conference_invited":       "{actor} invited you to a conference{ctx}",
+			"note_mention":             "{actor} mentioned you in a note{ctx}",
 		},
 		fields: map[string]string{
 			"title":       "title",

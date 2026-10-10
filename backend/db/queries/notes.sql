@@ -1,6 +1,6 @@
 -- name: CreateNote :one
-INSERT INTO notes (workspace_id, project_id, author_id, title, body, slug, task_id, visibility)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+INSERT INTO notes (workspace_id, project_id, author_id, title, body, slug, task_id, visibility, tags, mentions)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, @tags::text[], @mentions::uuid[])
 RETURNING *;
 
 -- ListNotes lists the notes of a workspace the viewer may read: the shared ones
@@ -42,7 +42,8 @@ SELECT * FROM notes WHERE id = $1;
 
 -- name: UpdateNote :one
 UPDATE notes
-SET title = $2, body = $3, task_id = $4, visibility = $5, updated_at = now()
+SET title = $2, body = $3, task_id = $4, visibility = $5,
+    tags = @tags::text[], mentions = @mentions::uuid[], updated_at = now()
 WHERE id = $1
 RETURNING *;
 
