@@ -14,15 +14,23 @@ export function daysLeft(expiresAt, now = Date.now()) {
   return Math.ceil(ms / 864e5)
 }
 
-// linkMeta words the row's settings: «Участник · 6 дней · 3 из 25».
+// linkMeta words the row's settings as the mockup does: «Участник · 6 дней».
+// How many have joined of how many may is the menu's (and the tooltip's) —
+// see linkUses — so the row keeps room for the link itself.
 export function linkMeta(link, t, now = Date.now()) {
   if (!link) return ''
   const role = t(link.role === 'admin' ? 'shell.members.admin' : 'shell.members.member')
   const left = daysLeft(link.expires_at, now)
-  const parts = [role]
-  parts.push(left ? t('shell.members.days', { n: left }, left) : t('shell.members.inviteExpired'))
-  parts.push(t('shell.members.usesOf', { n: link.uses ?? 0, max: link.max_uses }))
-  return parts.join(' · ')
+  return [
+    role,
+    left ? t('shell.members.days', { n: left }, left) : t('shell.members.inviteExpired'),
+  ].join(' · ')
+}
+
+// linkUses is «3/25» — joined by the link out of its limit.
+export function linkUses(link, t) {
+  if (!link) return ''
+  return t('shell.members.usesOf', { n: link.uses ?? 0, max: link.max_uses })
 }
 
 // shortLink drops the scheme for display: «tessera.dev/join/7Kp2…».

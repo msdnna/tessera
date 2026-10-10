@@ -99,14 +99,12 @@ async function submit() {
     <template v-else-if="expired">
       <p class="note" data-testid="reset-expired">{{ $t('common.auth.reset.expired') }}</p>
       <n-button
-        tag="a"
-        href="/forgot-password"
         type="primary"
         size="large"
         block
         class="auth-submit auth-gap"
         data-testid="reset-request-new"
-        @click.prevent="router.push('/forgot-password')"
+        @click="router.push('/forgot-password')"
       >
         {{ $t('common.auth.reset.requestNew') }}
       </n-button>

@@ -38,7 +38,7 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { copyText } from '@/utils/clipboard'
 import { CAPS, cap } from '@/utils/keyCaps'
 import { stubTask } from '@/utils/featureStubs'
-import { linkMeta, shortLink, LINK_TTL_DAYS, LINK_USES } from '@/utils/inviteLink'
+import { linkMeta, linkUses, shortLink, LINK_TTL_DAYS, LINK_USES } from '@/utils/inviteLink'
 import { workspaceName } from '@/utils/defaultNames'
 import {
   LOCK_VIEWER,
@@ -483,6 +483,7 @@ const shared = ref(null)
 const sharedUrl = ref('')
 const sharedBusy = ref(false)
 const sharedMeta = computed(() => (shared.value ? linkMeta(shared.value, t) : ''))
+const sharedUses = computed(() => (shared.value ? linkUses(shared.value, t) : ''))
 const sharedShort = computed(() => shortLink(sharedUrl.value))
 
 async function issueShared(params, toastKey) {
@@ -561,7 +562,9 @@ const linkMenuItems = computed(() => {
     {
       key: 'link-uses',
       label: t('shell.members.sharedUses'),
-      note: t('shell.members.people', { n: p.max_uses }, p.max_uses),
+      note: shared.value
+        ? sharedUses.value
+        : t('shell.members.people', { n: p.max_uses }, p.max_uses),
       icon: PeopleOutline,
       children: LINK_USES.map((n) => ({
         key: `uses:${n}`,
@@ -844,13 +847,17 @@ function close() {
             </button>
           </div>
           <!-- The workspace's shared link (#3062). -->
-          <div class="mw-link" data-testid="members-shared-link">
+          <div class="mw-link mw-shared" data-testid="members-shared-link">
             <n-icon :component="LinkOutline" :size="15" class="mw-link-ic" />
             <span class="mw-link-l">{{ t('shell.members.linkLabel') }}</span>
             <template v-if="shared">
-              <code v-if="sharedUrl" class="mw-link-v link-box" data-testid="members-shared-url">{{
-                sharedShort
-              }}</code>
+              <code
+                v-if="sharedUrl"
+                class="mw-link-v link-box"
+                :title="sharedUrl"
+                data-testid="members-shared-url"
+                >{{ sharedShort }}</code
+              >
               <span
                 v-else
                 class="mw-link-empty mw-link-hidden"
@@ -862,6 +869,7 @@ function close() {
                 type="button"
                 class="mw-link-meta"
                 :class="{ ctx: menuFor === 'link' }"
+                :title="t('shell.members.sharedUsesTitle', { uses: sharedUses })"
                 data-testid="members-shared-meta"
                 @click="openMenu('link', $event.currentTarget)"
               >
@@ -878,7 +886,7 @@ function close() {
               >
                 <n-icon :component="CopyOutline" :size="14" />
                 {{ t('shell.members.copy') }}
-                <ShortcutKeys id="members.copyLink" soft />
+                <ShortcutKeys id="members.copyLink" soft joined />
               </button>
               <button
                 type="button"
@@ -1268,6 +1276,16 @@ function close() {
   white-space: nowrap;
   color: var(--t-text3);
   font-size: 12.5px;
+}
+/* The shared link's URL takes what the row can spare, not the leftovers. */
+/* One line, as in the mockup: the URL gives way first (down to a stub), the
+   label, the settings and the buttons keep their size. */
+.mw-shared > :not(.mw-link-v):not(.mw-grow) {
+  flex-shrink: 0;
+}
+.mw-shared .mw-link-v {
+  flex: 0 1 220px;
+  min-width: 56px;
 }
 .mw-link-hidden {
   font-family: var(--t-mono, ui-monospace, monospace);

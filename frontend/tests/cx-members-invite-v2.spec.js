@@ -142,9 +142,7 @@ describe('MembersModal: ссылка-приглашение', () => {
       max_uses: 25,
     })
     expect(w.find('[data-testid="members-shared-url"]').text()).toBe('tessera.dev/join/abc')
-    expect(w.find('[data-testid="members-shared-meta"]').text()).toContain(
-      'Участник · 6 дней · 0 из 25',
-    )
+    expect(w.find('[data-testid="members-shared-meta"]').text()).toContain('Участник · 6 дней')
     await w.find('[data-testid="members-shared-copy"]').trigger('click')
     await tick(w)
     expect(copied).toEqual(['https://tessera.dev/join/abc'])

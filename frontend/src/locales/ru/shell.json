@@ -153,7 +153,8 @@
     "sharedRevokeConfirm": "Точно отключить? По ней больше никто не войдёт",
     "days": "{n} день | {n} дня | {n} дней",
     "people": "{n} человек | {n} человека | {n} человек",
-    "usesOf": "{n} из {max}"
+    "usesOf": "{n}/{max}",
+    "sharedUsesTitle": "Вошли по ссылке: {uses}"
   },
   "commands": {
     "title": "Команды редактора",

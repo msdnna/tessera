@@ -1,7 +1,7 @@
 // Pure helpers of the account screens and the shared invitation link (#3035).
 import { describe, it, expect } from 'vitest'
 import { safeNext, formatCountdown, minutesLeft, initialsOfSpace } from '@/utils/authFlow'
-import { daysLeft, linkMeta, shortLink } from '@/utils/inviteLink'
+import { daysLeft, linkMeta, linkUses, shortLink } from '@/utils/inviteLink'
 
 describe('safeNext', () => {
   it('keeps in-app paths', () => {
@@ -57,7 +57,7 @@ describe('shared invitation link', () => {
   const now = Date.parse('2026-10-10T12:00:00Z')
   const t = (key, named = {}, plural) => {
     if (key === 'shell.members.days') return `${named.n} дн`
-    if (key === 'shell.members.usesOf') return `${named.n} из ${named.max}`
+    if (key === 'shell.members.usesOf') return `${named.n}/${named.max}`
     return key.split('.').pop() + (plural ?? '')
   }
   it('counts whole days left, rounding up', () => {
@@ -67,8 +67,9 @@ describe('shared invitation link', () => {
   })
   it('words the row: role · days · uses', () => {
     const link = { role: 'member', expires_at: '2026-10-16T11:00:00Z', uses: 3, max_uses: 25 }
-    expect(linkMeta(link, t, now)).toBe('member · 6 дн · 3 из 25')
-    expect(linkMeta({ ...link, role: 'admin' }, t, now)).toBe('admin · 6 дн · 3 из 25')
+    expect(linkMeta(link, t, now)).toBe('member · 6 дн')
+    expect(linkMeta({ ...link, role: 'admin' }, t, now)).toBe('admin · 6 дн')
+    expect(linkUses(link, t)).toBe('3/25')
     expect(linkMeta(null, t, now)).toBe('')
   })
   it('shows the link without its scheme', () => {
