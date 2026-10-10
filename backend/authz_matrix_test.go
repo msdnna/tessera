@@ -97,9 +97,14 @@ func publicAPIRoutes() map[string]publicRoute {
 		"POST /auth/verify-email":    anon,
 		"POST /auth/forgot-password": anon,
 		"POST /auth/reset-password":  anon,
-		"GET /auth/providers":        anon,
-		"GET /auth/gitlab/authorize": anon,
-		"GET /auth/gitlab/callback":  anon,
+		// The recovery link's deadline and the invitation page before any
+		// session exists (#3035): the token in the body is the credential.
+		"POST /auth/reset-password/check": anon,
+		"POST /invitations/lookup":        anon,
+		"POST /invitations/decline":       anon,
+		"GET /auth/providers":             anon,
+		"GET /auth/gitlab/authorize":      anon,
+		"GET /auth/gitlab/callback":       anon,
 		// The desktop/mobile OAuth return trades a one-time handoff code for the
 		// session: the caller has none yet by construction (#2932).
 		"POST /auth/oauth/handoff": anon,

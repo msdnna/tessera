@@ -12,6 +12,41 @@ import (
 	"github.com/google/uuid"
 )
 
+const changeUserEmail = `-- name: ChangeUserEmail :one
+UPDATE users SET email = $2, email_verified = true, updated_at = now() WHERE id = $1
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title
+`
+
+type ChangeUserEmailParams struct {
+	ID    uuid.UUID `json:"id"`
+	Email string    `json:"email"`
+}
+
+// The new address was proven by a code sent to it, so it lands verified (#3058).
+func (q *Queries) ChangeUserEmail(ctx context.Context, arg ChangeUserEmailParams) (User, error) {
+	row := q.db.QueryRow(ctx, changeUserEmail, arg.ID, arg.Email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.PasswordHash,
+		&i.IsAdmin,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Provider,
+		&i.Active,
+		&i.EmailVerified,
+		&i.LastName,
+		&i.FirstName,
+		&i.MiddleName,
+		&i.Bio,
+		&i.Company,
+		&i.JobTitle,
+	)
+	return i, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT count(*) FROM users
 `

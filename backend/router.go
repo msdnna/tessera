@@ -124,10 +124,18 @@ func authRateRules() map[string]middleware.RateRule {
 		"/api/auth/forgot-password": credential,
 		// No email in the body — these carry an opaque token, so IP is the only
 		// key available.
-		"/api/auth/reset-password": token,
-		"/api/auth/verify-email":   token,
-		"/api/auth/refresh":        rotate,
-		"/api/auth/logout":         rotate,
+		"/api/auth/reset-password":       token,
+		"/api/auth/reset-password/check": token,
+		"/api/auth/verify-email":         token,
+		"/api/invitations/lookup":        token,
+		"/api/invitations/decline":       token,
+		// Behind a session, but each one guards something worth guessing at: a
+		// six-digit code (already capped per code) and the password re-check
+		// of an address change.
+		"/api/auth/verify-code":  token,
+		"/api/auth/email-change": token,
+		"/api/auth/refresh":      rotate,
+		"/api/auth/logout":       rotate,
 		// The Sentry tunnel is public and unauthenticated, and forwarding costs
 		// an outbound request. A burst allowance is deliberate: a page that
 		// breaks badly emits a cluster of events at once, and throttling those
@@ -306,6 +314,13 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		api.POST("/auth/verify-email", authHandler.VerifyEmail)
 		api.POST("/auth/forgot-password", authHandler.ForgotPassword)
 		api.POST("/auth/reset-password", authHandler.ResetPassword)
+		// «Ссылка действует ещё N минут» (#3060): checks a recovery link
+		// without spending it.
+		api.POST("/auth/reset-password/check", authHandler.CheckResetToken)
+		// The invitation page before any session exists (#3059): the preview and
+		// «Отклонить». The token is the credential, as for the two above.
+		api.POST("/invitations/lookup", rh.LookupInvitation)
+		api.POST("/invitations/decline", rh.DeclineInvitation)
 		// GitLab OAuth ("Login with GitLab"): public discovery + redirect flow.
 		api.GET("/auth/providers", authHandler.Providers)
 		api.GET("/auth/gitlab/authorize", authHandler.GitlabAuthorize)
@@ -369,6 +384,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		{
 			protected.GET("/auth/me", authHandler.Me)
 			protected.POST("/auth/resend-verification", authHandler.ResendVerification)
+			// The «Проверьте почту» cells (#3057) and «Изменить email» (#3058):
+			// a six-digit code that proves a mailbox to the account that asked.
+			protected.GET("/auth/verification", authHandler.Verification)
+			protected.POST("/auth/verify-code", authHandler.VerifyCode)
+			protected.POST("/auth/email-change", authHandler.StartEmailChange)
+			protected.DELETE("/auth/email-change", authHandler.CancelEmailChange)
 
 			// Personal access tokens: long-lived, revocable bearer credentials
 			// for headless clients (MCP server, CI). Managed from a live session.
@@ -417,7 +438,14 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/workspaces/:id/invitations", rh.CreateInvitation)
 			protected.GET("/workspaces/:id/invitations", rh.ListInvitations)
 			protected.DELETE("/workspaces/:id/invitations/:invId", rh.DeleteInvitation)
+			// «Ещё раз» / «Продлить» (#3061).
+			protected.POST("/workspaces/:id/invitations/:invId/resend", rh.ResendInvitation)
 			protected.POST("/invitations/accept", rh.AcceptInvitation)
+			// The workspace's shared invitation link (#3062): one live at a time,
+			// POST issues (and resets), DELETE switches it off.
+			protected.GET("/workspaces/:id/invite-link", rh.GetInviteLink)
+			protected.POST("/workspaces/:id/invite-link", rh.CreateInviteLink)
+			protected.DELETE("/workspaces/:id/invite-link", rh.RevokeInviteLink)
 
 			// Global admin panel (separate /admin prefix so it doesn't collide
 			// with the /users/me routes). Each handler re-checks is_admin.

@@ -85,6 +85,13 @@ const SENTINELS = {
   // refusal surfaces as the form's error line.
   'invalid or expired invitation': 'invitationInvalid',
   'this invitation is for a different email': 'invitationWrongAccount',
+  // The confirmation code (#3057) and the address change (#3058). The code
+  // screen phrases the three code refusals itself (with the attempts left) and
+  // branches on `err.raw`; these are for anywhere else they surface.
+  'invalid code': 'codeInvalid',
+  'too many attempts': 'codeTooManyAttempts',
+  'code expired': 'codeExpired',
+  'this is already your email': 'emailSame',
   // The workspace membership guards (#2932). The dialog mirrors all four
   // (utils/members.js) and greys the row out, so these are reached from a stale
   // tab — another admin changed something while this one was open — which is

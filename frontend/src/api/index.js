@@ -239,8 +239,10 @@ api.interceptors.response.use(
     wrapped.raw = raw
     // The refusal body as the server sent it, for the few answers that carry
     // more than a sentence — a taken project address names its holder and a
-    // free variant (#3013).
-    wrapped.data = err.response?.data
+    // free variant (#3013), a 429 its `retry_after`, a wrong code its
+    // `attempts_left` (#3035).
+    wrapped.data =
+      err.response?.data && typeof err.response.data === 'object' ? err.response.data : null
     // Distinguish "server unreachable" (network/DNS/timeout — no response at all)
     // from an HTTP error the server answered with. Callers that retry (e.g. the
     // comment composer) only retry when offline; a 4xx/5xx is not a connectivity
@@ -340,6 +342,16 @@ export const accountFlows = {
   resetPassword: (token, newPassword) =>
     api.post('/auth/reset-password', { token, new_password: newPassword }),
   acceptInvitation: (token) => api.post('/invitations/accept', { token }),
+  // v2 (#3035). The code screen's state, the code itself, the address change.
+  verification: () => api.get('/auth/verification'),
+  verifyCode: (code) => api.post('/auth/verify-code', { code }),
+  startEmailChange: (email, password) => api.post('/auth/email-change', { email, password }),
+  cancelEmailChange: () => api.delete('/auth/email-change'),
+  // A recovery link's deadline, without spending it (#3060).
+  checkResetToken: (token) => api.post('/auth/reset-password/check', { token }),
+  // The invitation page's preview and «Отклонить» (#3059) — no session needed.
+  lookupInvitation: (token) => api.post('/invitations/lookup', { token }),
+  declineInvitation: (token) => api.post('/invitations/decline', { token }),
 }
 
 export const users = {
@@ -417,6 +429,12 @@ export const workspaces = {
   invitations: (id) => api.get(`/workspaces/${id}/invitations`),
   createInvitation: (id, data) => api.post(`/workspaces/${id}/invitations`, data),
   deleteInvitation: (id, invId) => api.delete(`/workspaces/${id}/invitations/${invId}`),
+  // «Ещё раз» / «Продлить» (#3061): a new link, a fresh week, a new letter.
+  resendInvitation: (id, invId) => api.post(`/workspaces/${id}/invitations/${invId}/resend`),
+  // The shared invitation link (#3062): its URL comes back only from create.
+  inviteLink: (id) => api.get(`/workspaces/${id}/invite-link`),
+  createInviteLink: (id, data) => api.post(`/workspaces/${id}/invite-link`, data),
+  revokeInviteLink: (id) => api.delete(`/workspaces/${id}/invite-link`),
   groups: (id) => api.get(`/workspaces/${id}/groups`),
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),
   projects: (id) => api.get(`/workspaces/${id}/projects`),

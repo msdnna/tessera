@@ -42,7 +42,11 @@
     "templateError": "Template error: {detail}",
     "smtpNotConfigured": "SMTP is not configured on the server — the email was logged, not sent",
     "conferencesNotConfigured": "Calls are not set up on this server — ask your administrator",
-    "recordingNotConfigured": "Recording is not enabled on this server — your administrator turns it on"
+    "recordingNotConfigured": "Recording is not enabled on this server — your administrator turns it on",
+    "codeInvalid": "Wrong code",
+    "codeTooManyAttempts": "No attempts left — send a new code",
+    "codeExpired": "The code has expired — send a new one",
+    "emailSame": "This is already your email"
   },
   "validation": {
     "email": "Enter a valid email",

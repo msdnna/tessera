@@ -123,9 +123,7 @@
     "or": "or",
     "nextAddress": "next address",
     "linkLabel": "Invite link",
-    "linkEmpty": "appears when you invite a new address",
     "copy": "Copy",
-    "sharedLink": "Shared link",
     "waiting": "Waiting for an answer",
     "resend": "Resend",
     "extend": "Extend",
@@ -137,7 +135,32 @@
     "noMatch": "Nobody matches",
     "youShort": "you",
     "ownerIs": "Owner — {name}",
-    "inviteKey": "invite"
+    "inviteKey": "invite",
+    "inviteDeclined": "Declined",
+    "sentAgo": "sent {when}",
+    "resent": "Invitation for {email} sent again",
+    "extended": "Invitation for {email} extended and sent",
+    "resendWait": "The email has just gone out — you can resend in a minute",
+    "lastLink": "Invitation link",
+    "lastLinkFor": "Link for {email}",
+    "sharedNone": "not created — whoever you give it to can join",
+    "sharedCreate": "Create",
+    "sharedResetBtn": "Reset",
+    "sharedHidden": "The link is shown once, when it is created. Reset it to get a new one — the previous one will stop working.",
+    "sharedHiddenShort": "hidden · reset to copy",
+    "sharedCreated": "Invitation link created",
+    "sharedReset": "A new link is ready — the previous one no longer works",
+    "sharedChanged": "Link settings changed — the previous link no longer works",
+    "sharedOff": "Invitation link turned off",
+    "sharedRole": "Role",
+    "sharedTtl": "Valid for",
+    "sharedUses": "How many people",
+    "sharedRevoke": "Turn the link off",
+    "sharedRevokeConfirm": "Turn it off? Nobody else will join by it",
+    "days": "{n} day | {n} days",
+    "people": "{n} person | {n} people",
+    "usesOf": "{n}/{max}",
+    "sharedUsesTitle": "Joined by the link: {uses}"
   },
   "commands": {
     "title": "Editor commands",
@@ -536,7 +559,8 @@
       "stop": "Job: stop"
     },
     "members": {
-      "invite": "Members: invite"
+      "invite": "Members: invite",
+      "copyLink": "Members: copy the invitation link"
     },
     "commands": {
       "edit": "Commands: edit the row, save",
