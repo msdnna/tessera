@@ -35,7 +35,8 @@ func (h *AuthHandler) sendVerification(c *gin.Context, user db.User) {
 	}); err != nil {
 		return
 	}
-	code, err := h.issueCode(c, user.ID, kindVerifyCode, nil, true)
+	target := user.Email
+	code, err := h.issueCode(c, user.ID, kindVerifyCode, &target, true)
 	if err != nil {
 		soft(c, "issueCode", err)
 	}

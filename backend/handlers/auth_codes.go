@@ -114,15 +114,16 @@ func normalizeCode(raw string) (string, bool) {
 	return s, len(s) == codeDigits
 }
 
-// codeWait is how long the account must wait before another code may be sent:
-// zero when it may go now.
-func (h *AuthHandler) codeWait(ctx context.Context, userID uuid.UUID, now time.Time) (time.Duration, error) {
-	r, err := h.q.RecentUserCodes(ctx, db.RecentUserCodesParams{UserID: userID, Since: now.Add(-time.Hour)})
+// codeWait is how long the account must wait before another code may be sent
+// to target: zero when it may go now. The pause is per address (a typo fixed
+// right after sign-up goes out at once), the hourly cap is per account.
+func (h *AuthHandler) codeWait(ctx context.Context, userID uuid.UUID, target string, now time.Time) (time.Duration, error) {
+	r, err := h.q.RecentUserCodes(ctx, db.RecentUserCodesParams{UserID: userID, Target: target, Since: now.Add(-time.Hour)})
 	if err != nil {
 		return 0, err
 	}
 	var wait time.Duration
-	if r.N > 0 {
+	if r.LastSent.After(now.Add(-time.Hour)) {
 		if w := r.LastSent.Add(codeResendPause).Sub(now); w > wait {
 			wait = w
 		}
@@ -227,7 +228,7 @@ func (h *AuthHandler) verificationState(ctx context.Context, user db.User) (gin.
 	case !errors.Is(err, pgx.ErrNoRows):
 		return nil, err
 	}
-	wait, err := h.codeWait(ctx, user.ID, now)
+	wait, err := h.codeWait(ctx, user.ID, out["target"].(string), now)
 	if err != nil {
 		return nil, err
 	}
@@ -245,9 +246,10 @@ func (h *AuthHandler) answerVerification(c *gin.Context, status int, user db.Use
 	c.JSON(status, st)
 }
 
-// tooSoon answers 429 with the seconds left, when another code may not go yet.
-func (h *AuthHandler) tooSoon(c *gin.Context, userID uuid.UUID) bool {
-	wait, err := h.codeWait(c, userID, time.Now())
+// tooSoon answers 429 with the seconds left, when another code may not go to
+// target yet.
+func (h *AuthHandler) tooSoon(c *gin.Context, userID uuid.UUID, target string) bool {
+	wait, err := h.codeWait(c, userID, target, time.Now())
 	if err != nil {
 		fail(c, err)
 		return true
@@ -288,7 +290,11 @@ func (h *AuthHandler) ResendVerification(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	}
-	if h.tooSoon(c, user.ID) {
+	target := user.Email
+	if changing {
+		target = *live.Email
+	}
+	if h.tooSoon(c, user.ID, target) {
 		return
 	}
 	if changing {
@@ -336,7 +342,7 @@ func (h *AuthHandler) StartEmailChange(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": "current password is incorrect"})
 		return
 	}
-	if h.tooSoon(c, user.ID) {
+	if h.tooSoon(c, user.ID, newEmail) {
 		return
 	}
 	if err := h.beginEmailChange(c, user, newEmail); err != nil {

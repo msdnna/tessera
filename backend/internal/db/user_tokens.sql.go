@@ -183,13 +183,15 @@ func (q *Queries) MarkUserTokenUsed(ctx context.Context, id uuid.UUID) error {
 const recentUserCodes = `-- name: RecentUserCodes :one
 SELECT count(*)::int AS n,
        COALESCE(min(created_at), 'epoch'::timestamptz)::timestamptz AS first_sent,
-       COALESCE(max(created_at), 'epoch'::timestamptz)::timestamptz AS last_sent
+       COALESCE(max(created_at) FILTER (WHERE lower(email) = lower($2::text)),
+                'epoch'::timestamptz)::timestamptz AS last_sent
 FROM user_tokens
-WHERE user_id = $1 AND kind IN ('verify_code', 'email_change') AND created_at > $2::timestamptz
+WHERE user_id = $1 AND kind IN ('verify_code', 'email_change') AND created_at > $3::timestamptz
 `
 
 type RecentUserCodesParams struct {
 	UserID uuid.UUID `json:"user_id"`
+	Target string    `json:"target"`
 	Since  time.Time `json:"since"`
 }
 
@@ -199,10 +201,12 @@ type RecentUserCodesRow struct {
 	LastSent  time.Time `json:"last_sent"`
 }
 
-// Codes issued to the user since a moment, and when the latest of them went out:
-// the pause between resends and the hourly cap.
+// Codes issued to the user since a moment — the hourly cap — and when the latest
+// of them went to this very address — the pause between resends. The pause is
+// per address: a sign-up correcting a typo must not wait out the code that just
+// went to the wrong mailbox.
 func (q *Queries) RecentUserCodes(ctx context.Context, arg RecentUserCodesParams) (RecentUserCodesRow, error) {
-	row := q.db.QueryRow(ctx, recentUserCodes, arg.UserID, arg.Since)
+	row := q.db.QueryRow(ctx, recentUserCodes, arg.UserID, arg.Target, arg.Since)
 	var i RecentUserCodesRow
 	err := row.Scan(&i.N, &i.FirstSent, &i.LastSent)
 	return i, err

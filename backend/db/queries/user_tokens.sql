@@ -45,10 +45,13 @@ UPDATE user_tokens SET used_at = now()
 WHERE user_id = $1 AND kind = ANY(sqlc.arg(kinds)::text[]) AND used_at IS NULL;
 
 -- name: RecentUserCodes :one
--- Codes issued to the user since a moment, and when the latest of them went out:
--- the pause between resends and the hourly cap.
+-- Codes issued to the user since a moment — the hourly cap — and when the latest
+-- of them went to this very address — the pause between resends. The pause is
+-- per address: a sign-up correcting a typo must not wait out the code that just
+-- went to the wrong mailbox.
 SELECT count(*)::int AS n,
        COALESCE(min(created_at), 'epoch'::timestamptz)::timestamptz AS first_sent,
-       COALESCE(max(created_at), 'epoch'::timestamptz)::timestamptz AS last_sent
+       COALESCE(max(created_at) FILTER (WHERE lower(email) = lower(sqlc.arg(target)::text)),
+                'epoch'::timestamptz)::timestamptz AS last_sent
 FROM user_tokens
 WHERE user_id = $1 AND kind IN ('verify_code', 'email_change') AND created_at > sqlc.arg(since)::timestamptz;

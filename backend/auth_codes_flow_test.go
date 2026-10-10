@@ -263,8 +263,11 @@ func TestEmailChangeKillsTheOldVerificationLink(t *testing.T) {
 	link := testMail.waitLetter(t, u.Email, 0).body
 	tok := strings.Fields(link[strings.Index(link, "token=")+len("token="):])[0]
 	newEmail := fmt.Sprintf("typo-fixed-%d@test.local", userSeq.Add(1))
-	ageCodes(t, u.UserID, "2 minutes")
+	// The pause is per address: fixing a typo right after sign-up goes out at
+	// once, while asking for the same new address again has to wait.
 	u.expect(t, u.post("/auth/email-change", map[string]any{"email": newEmail}), http.StatusOK)
+	u.expect(t, u.post("/auth/email-change", map[string]any{"email": newEmail}), http.StatusTooManyRequests)
+	u.expect(t, u.post("/auth/resend-verification", nil), http.StatusTooManyRequests)
 	code := codeIn(t, testMail.waitLetter(t, newEmail, 0))
 	u.expect(t, u.post("/auth/verify-code", map[string]any{"code": code}), http.StatusOK)
 	doReqExpect(t, http.MethodPost, "/auth/verify-email", map[string]any{"token": tok}, http.StatusBadRequest)
