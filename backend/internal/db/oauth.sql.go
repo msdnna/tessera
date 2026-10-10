@@ -14,7 +14,7 @@ import (
 const createOAuthUser = `-- name: CreateOAuthUser :one
 INSERT INTO users (email, name, password_hash, is_admin, provider, email_verified)
 VALUES ($1, $2, '', $3, $4, true)
-RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at
 `
 
 type CreateOAuthUserParams struct {
@@ -51,6 +51,7 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }

@@ -86,7 +86,9 @@ SELECT * FROM memberships WHERE workspace_id = $1 AND user_id = $2;
 -- comment is pushed to GitLab). Scalar subquery rather than a LEFT JOIN:
 -- oauth_identities is unique by (provider, provider_user_id), not by user_id, so
 -- a user linked to two GitLab instances would otherwise be listed twice.
-SELECT m.user_id, m.role, u.email, u.name,
+-- last_seen_at / last_active_at (#3073): when the person was last in the app
+-- and when they last changed something in this workspace.
+SELECT m.user_id, m.role, u.email, u.name, u.last_seen_at, m.last_active_at,
   COALESCE((
     SELECT oi.provider_username FROM oauth_identities oi
     WHERE oi.user_id = u.id AND oi.provider = 'gitlab'

@@ -26,7 +26,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, name, password_hash, is_admin)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at
 `
 
 type CreateUserParams struct {
@@ -61,12 +61,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title FROM users WHERE email = $1
+SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -89,12 +90,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title FROM users WHERE id = $1
+SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -117,6 +119,7 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
@@ -229,7 +232,7 @@ UPDATE users SET
     job_title   = $8,
     updated_at  = now()
 WHERE id = $1
-RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at
 `
 
 type UpdateUserProfileParams struct {
@@ -272,6 +275,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }

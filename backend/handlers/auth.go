@@ -410,6 +410,10 @@ func (h *AuthHandler) mintTokens(c *gin.Context, user db.User) (access, refresh 
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
 		return "", "", uuid.Nil, false
 	}
+	// "Was in the app" (#3073): every sign-in and every refresh comes through
+	// here — roughly once per access-token lifetime of real use, and throttled in
+	// the UPDATE besides. Best-effort.
+	soft(c, "touch last_seen_at", h.q.TouchUserSeen(c, user.ID))
 	return access, refresh, row.ID, true
 }
 

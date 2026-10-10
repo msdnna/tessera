@@ -370,9 +370,25 @@ func (h *API) lookupMembership(c *gin.Context, workspaceID uuid.UUID) membership
 	if err == nil {
 		res.role = m.Role
 		res.ok = true
+		h.touchActive(c, workspaceID)
 	}
 	c.Set(key, res)
 	return res
+}
+
+// touchActive stamps the member's "last action" in this workspace (#3073) on a
+// request that changes something. Here because every workspace-scoped write
+// passes through this lookup, so no handler has to remember it; reads don't
+// count (opening a board is not an action), and the UPDATE itself is throttled
+// to once a minute. Best-effort: activity is a hint, never a reason to fail.
+func (h *API) touchActive(c *gin.Context, workspaceID uuid.UUID) {
+	switch c.Request.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return
+	}
+	soft(c, "touch membership activity", h.q.TouchMembershipActive(c, db.TouchMembershipActiveParams{
+		WorkspaceID: workspaceID, UserID: middleware.CurrentUser(c),
+	}))
 }
 
 // requireMember authorizes the current user against a workspace. It writes a

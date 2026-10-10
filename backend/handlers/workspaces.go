@@ -324,7 +324,7 @@ func (h *API) AddMember(c *gin.Context) {
 }
 
 // UpdateMemberRole changes a member's role (owner/admin). The workspace owner's
-// role is immutable here — ownership transfer is a separate, owner-only flow.
+// role is immutable here — ownership transfer is a separate, owner-only flow (TransferOwnership, #3072).
 func (h *API) UpdateMemberRole(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -427,7 +427,14 @@ func (h *API) RemoveMember(c *gin.Context) {
 		c.JSON(http.StatusForbidden, gin.H{"error": errSelfRemove})
 		return
 	}
-	if err := h.q.DeleteMembership(c, db.DeleteMembershipParams{WorkspaceID: id, UserID: userID}); err != nil {
+	// The member's place in the workspace's groups (#3074) goes with the
+	// membership: the reads already ignore an outsider, this keeps the rows clean.
+	if err := h.inTx(c, func(q *db.Queries) error {
+		if err := q.DropUserFromWorkspaceGroups(c, db.DropUserFromWorkspaceGroupsParams{WorkspaceID: id, UserID: userID}); err != nil {
+			return err
+		}
+		return q.DeleteMembership(c, db.DeleteMembershipParams{WorkspaceID: id, UserID: userID})
+	}); err != nil {
 		fail(c, err)
 		return
 	}
