@@ -13,7 +13,7 @@ description: Run a safe end-to-end check of the Tessera backend against the tess
   `tessera-postgres`, tessera/tessera, :5432) — священна.
 - **Порт 8092+.** На :8090 может висеть зомби со старым кодом; на :8080 — budget. Для
   e2e бери свободный 8092+. При надобности освободить: `fuser -k 8092/tcp`.
-- **Бинарь:** только `go1.25.14` (не системный go).
+- **Бинарь:** только `go1.26.9` (не системный go).
 - **Скрипты — `bash <<'SCRIPT'`** (дефолтный zsh ломается на uuid в арифметике).
 - **JSON парсить `python3`**, не jq-бинарём.
 
@@ -29,7 +29,7 @@ PGPASSWORD=tessera psql -h localhost -U tessera -d tessera -tAc \
 
 # применить миграции на tessera_test
 cd backend && DATABASE_URL="postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable" \
-  go1.25.14 run ./cmd/migrate
+  go1.26.9 run ./cmd/migrate
 # версия схемы:
 PGPASSWORD=tessera psql -h localhost -U tessera -d tessera_test -tAc \
   "select max(version) from schema_migrations;"
@@ -37,7 +37,7 @@ PGPASSWORD=tessera psql -h localhost -U tessera -d tessera_test -tAc \
 
 ## Сборка и запуск тест-инстанса
 ```bash
-cd backend && go1.25.14 build -o /tmp/tessera-bin .
+cd backend && go1.26.9 build -o /tmp/tessera-bin .
 PORT=8092 UPLOAD_DIR=/tmp/tessera-uploads JWT_SECRET=devsecret \
   DATABASE_URL="postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable" \
   /tmp/tessera-bin &

@@ -12,7 +12,7 @@ A monorepo of independently versioned components (each has its own `VERSION`):
 
 | Directory   | Component                                                    |
 |-------------|-------------------------------------------------------------|
-| `backend/`  | Go 1.25 + gin + PostgreSQL 17 (sqlc, pgx/v5, golang-migrate) |
+| `backend/`  | Go 1.26 + gin + PostgreSQL 17 (sqlc, pgx/v5, golang-migrate) |
 | `frontend/` | Vue 3 + Vite + Naive UI + Pinia (Yarn 4 via Corepack)       |
 | `android/`  | Kotlin + Jetpack Compose (online-first)                     |
 | `desktop/`  | Tauri v2 (a Rust shell around the same Vue frontend)        |
@@ -20,7 +20,7 @@ A monorepo of independently versioned components (each has its own `VERSION`):
 
 ## Requirements
 
-- **Go 1.25.x** (in the Makefile — the `GO` variable, `go1.25.14` by default; `go` in CI).
+- **Go 1.26.x** (in the Makefile — the `GO` variable, `go1.26.9` by default; `go` in CI).
 - **Node 22+** and **Corepack** (Yarn 4 — only `corepack yarn ...`, not plain `yarn`).
 - **Docker** + Docker Compose (Postgres for dev/tests).
 - **JDK 21** + Android SDK (compileSdk 37) — for `android/`.

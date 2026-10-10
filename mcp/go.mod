@@ -2,7 +2,7 @@ module tessera-mcp
 
 go 1.25.0
 
-toolchain go1.25.14
+toolchain go1.26.9
 
 require github.com/modelcontextprotocol/go-sdk v1.7.0
 

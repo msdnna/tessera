@@ -5,10 +5,10 @@ description: Add or change a Tessera backend endpoint/feature — the full loop 
 
 # tessera-backend-feature
 
-Цикл добавления/изменения бэкенд-фичи в Tessera. Стек: Go 1.25.14 + gin, pgx/v5,
+Цикл добавления/изменения бэкенд-фичи в Tessera. Стек: Go 1.26.9 + gin, pgx/v5,
 **sqlc** (типобезопасный SQL), golang-migrate. Все команды — из `backend/` (или через `make`).
 
-> Тулчейн: только `go1.25.14` (НЕ системный go), sqlc-бинарь — `~/go/bin/sqlc`.
+> Тулчейн: только `go1.26.9` (НЕ системный go), sqlc-бинарь — `~/go/bin/sqlc`.
 
 ## Слои и где что лежит
 
@@ -26,9 +26,9 @@ description: Add or change a Tessera backend endpoint/feature — the full loop 
   `down` — обратная операция.
 - Применить на **обе** БД (боевую `tessera` И `tessera_test`):
   ```bash
-  cd backend && go1.25.14 run ./cmd/migrate          # → боевая tessera (localhost:5432)
+  cd backend && go1.26.9 run ./cmd/migrate          # → боевая tessera (localhost:5432)
   DATABASE_URL="postgres://tessera:tessera@localhost:5432/tessera_test?sslmode=disable" \
-    go1.25.14 run ./cmd/migrate                       # → tessera_test
+    go1.26.9 run ./cmd/migrate                       # → tessera_test
   ```
   Проверка версии: `make migrate-version`. **Никогда не TRUNCATE/DROP/`down -v`** боевую БД.
 
@@ -54,7 +54,7 @@ description: Add or change a Tessera backend endpoint/feature — the full loop 
 
 ### 4. Проверка
 ```bash
-cd backend && gofmt -w . && go1.25.14 vet ./... && go1.25.14 test ./...
+cd backend && gofmt -w . && go1.26.9 vet ./... && go1.26.9 test ./...
 make lint-backend     # golangci-lint — чинить, не глушить
 ```
 Для проверки поведения вживую — скилл **tessera-e2e** (против `tessera_test`, порт 8092+).
