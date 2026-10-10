@@ -422,7 +422,7 @@ SELECT d.id, d.channel_id, d.created_at, n.kind, COALESCE(t.priority, 0)::int4 A
 FROM notification_deliveries d
 JOIN notifications n ON n.id = d.notification_id
 JOIN notification_channels ch ON ch.id = d.channel_id
-LEFT JOIN tasks t ON t.id = n.task_id
+LEFT JOIN tasks t ON t.id = n.task_id AND t.deleted_at IS NULL
 WHERE n.user_id = $1 AND d.status = 'pending' AND d.attempts = 0
   AND ch.type <> 'device'
 `

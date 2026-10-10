@@ -171,8 +171,8 @@ SELECT
     t.title    AS task_title,
     cp.rsvp    AS rsvp
 FROM notifications n
-LEFT JOIN boards nb ON nb.id = (SELECT board_id FROM tasks WHERE id = n.task_id) AND nb.deleted_at IS NULL
-LEFT JOIN tasks t ON t.id = n.task_id AND nb.id IS NOT NULL
+LEFT JOIN boards nb ON nb.id = (SELECT board_id FROM tasks WHERE id = n.task_id AND deleted_at IS NULL) AND nb.deleted_at IS NULL
+LEFT JOIN tasks t ON t.id = n.task_id AND nb.id IS NOT NULL AND t.deleted_at IS NULL
 LEFT JOIN conference_participants cp ON n.kind = 'conference_invite'
      AND cp.user_id = n.user_id AND cp.conference_id::text = n.payload->>'conference_id'
 WHERE n.user_id = $1

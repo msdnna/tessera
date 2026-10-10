@@ -85,7 +85,7 @@ SELECT DISTINCT ta.user_id
 FROM tasks t
 JOIN task_assignees ta ON ta.task_id = t.id
 JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
-WHERE t.milestone_id = $1 AND t.archived_at IS NULL
+WHERE t.milestone_id = $1 AND t.archived_at IS NULL AND t.deleted_at IS NULL
 `
 
 // MilestoneAssignees are the people the stage's tasks are assigned to — the ones
@@ -117,7 +117,7 @@ SELECT p.name AS project_name, p.slug AS project_slug,
        COUNT(t.id) FILTER (WHERE t.completed_at IS NOT NULL) AS done_count
 FROM milestones m
 JOIN projects p ON p.id = m.project_id
-LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL
+LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL AND t.deleted_at IS NULL
     AND EXISTS (SELECT 1 FROM boards tb WHERE tb.id = t.board_id AND tb.deleted_at IS NULL)
 WHERE m.id = $1
 GROUP BY p.name, p.slug
