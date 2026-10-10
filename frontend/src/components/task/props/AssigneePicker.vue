@@ -14,6 +14,9 @@ import { useI18n } from 'vue-i18n'
 import { PersonOutline } from '@vicons/ionicons5'
 import PropPicker from '../../kit/PropPicker.vue'
 import { useAuthStore } from '@/stores/auth'
+import { useMembersStore } from '@/stores/members'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { groupToggle } from '@/utils/memberActivity'
 import { hasModKey } from '@/utils/keys'
 import {
   assigneeItems,
@@ -52,6 +55,10 @@ const emit = defineEmits([
 ])
 const { t } = useI18n()
 const auth = useAuthStore()
+// Member groups of the open workspace (#3074): one pick, several people.
+const membersStore = useMembersStore()
+const wsStore = useWorkspacesStore()
+const groups = computed(() => membersStore.groupsFor(wsStore.currentId))
 
 const query = ref('')
 const recent = ref(readRecent(RECENT_ASSIGNEES_KEY))
@@ -61,9 +68,17 @@ watch(
     if (!on) return
     query.value = ''
     recent.value = readRecent(RECENT_ASSIGNEES_KEY)
+    membersStore.loadGroups(wsStore.currentId)
   },
 )
 const assignedSet = computed(() => new Set(props.assigned))
+// A group: everyone in it who is not on the task yet comes on; when all of them
+// already are, all of them come off. One toggle per person — the same calls a
+// person's row makes, so nothing new reaches the server.
+function toggleGroup(g) {
+  const { add, remove } = groupToggle(g, assignedSet.value, props.members)
+  for (const uid of [...add, ...remove]) emit('toggle', uid)
+}
 function toggle(uid) {
   // The MRU is «people you actually assign».
   if (!assignedSet.value.has(uid)) recent.value = pushRecent(RECENT_ASSIGNEES_KEY, uid)
@@ -80,8 +95,10 @@ const built = computed(() =>
     glAssigned: new Set(props.glAssigned),
     me: auth.user?.id || '',
     load: props.load,
+    groups: groups.value,
     ops: {
       toggle,
+      toggleGroup,
       toggleGl: (g) => emit('toggle-gl', g),
       clear: () => emit('clear'),
       invite: (email) => emit('invite', email),

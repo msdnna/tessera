@@ -14,6 +14,7 @@
 //
 // `close` marks a single choice: the picker shuts once it ran.
 import {
+  PeopleCircleOutline,
   AddOutline,
   ArchiveOutline,
   ArrowForwardOutline,
@@ -204,6 +205,9 @@ export function assigneeItems({
   glAssigned = new Set(),
   me = '',
   load = null,
+  // Member groups (#3074): [{ id, name, color, member_ids }] — a pick assigns
+  // every member at once (or takes them all off when all are on).
+  groups = [],
   ops,
 }) {
   const ql = query.trim().toLowerCase()
@@ -273,6 +277,27 @@ export function assigneeItems({
   if (others.length) {
     items.push(section(t('props.assignees.members'), ql ? '' : members.length))
     items.push(...others.map(memberRow))
+  }
+  const present = new Set(members.map((m) => m.user_id))
+  const groupRows = groups
+    .map((g) => ({ g, ids: (g.member_ids || []).filter((id) => present.has(id)) }))
+    .filter(({ g, ids }) => ids.length && hit(g.name))
+  if (groupRows.length && ops.toggleGroup) {
+    items.push(section(t('props.assignees.groups')))
+    items.push(
+      ...groupRows.map(({ g, ids }) =>
+        row({
+          id: `g:${g.id}`,
+          label: g.name,
+          icon: PeopleCircleOutline,
+          meta: t('props.assignees.groupCount', ids.length),
+          check: 'multi',
+          on: ids.every((id) => assigned.has(id)),
+          testid: `prop-assignee-group-${g.id}`,
+          run: () => ops.toggleGroup(g),
+        }),
+      ),
+    )
   }
   const glOff = gitlab.filter(
     (g) => !glAssigned.has(g.gl_username) && hit(g.gl_name, g.gl_username),

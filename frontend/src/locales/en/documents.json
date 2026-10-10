@@ -115,7 +115,9 @@
         "text": "text",
         "tag": "tag",
         "milestone": "stage"
-      }
+      },
+      "groups": "Groups",
+      "groupCount": "{n} member | {n} members"
     },
     "bubble": {
       "label": "Selected text",
