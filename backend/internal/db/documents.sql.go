@@ -721,7 +721,7 @@ func (q *Queries) ListDocumentsByProject(ctx context.Context, arg ListDocumentsB
 const listMilestoneDocuments = `-- name: ListMilestoneDocuments :many
 SELECT id, title, slug, icon, preview, updated_at
 FROM documents
-WHERE milestone_id = $1 AND workspace_id = $2
+WHERE milestone_id = $1 AND workspace_id = $2 AND deleted_at IS NULL
 ORDER BY updated_at DESC
 LIMIT 50
 `
@@ -774,7 +774,7 @@ const listWorkspaceConferenceDocuments = `-- name: ListWorkspaceConferenceDocume
 SELECT d.id, d.conference_id, d.title, d.slug, d.icon, d.created_at
 FROM documents d
 JOIN conferences c ON c.id = d.conference_id
-WHERE d.workspace_id = $1 AND c.workspace_id = $1
+WHERE d.workspace_id = $1 AND c.workspace_id = $1 AND d.deleted_at IS NULL
 ORDER BY d.created_at
 `
 
