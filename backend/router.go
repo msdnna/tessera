@@ -702,6 +702,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/conferences/:id/messages", rh.ListConferenceMessages)
 			protected.POST("/conferences/:id/messages", rh.PostConferenceMessage)
 			protected.DELETE("/conference-messages/:id", rh.DeleteConferenceMessage)
+			// «/» in the chat (#3055): a task plus the chat line that announces it.
+			protected.POST("/conferences/:id/tasks", rh.CreateConferenceTask)
 			protected.GET("/conference-attachments/:id", rh.DownloadConferenceMessageAttachment)
 
 			// Server-side recording (#2877). Start and stop are moderation, the

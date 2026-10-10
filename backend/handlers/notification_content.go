@@ -42,6 +42,7 @@ const (
 	evSyncPartial = "integration_sync_partial"
 	evSyncFailed  = "integration_sync_failed"
 	evConfInvited = "conference_invited"
+	evConfMention = "conference_mention"
 )
 
 // kindConferenceInvite is the routing kind of a conference invitation. Unlike
@@ -303,6 +304,21 @@ func msgConferenceInvited(actor, title, confID string) notifyMsg {
 	p["conference_id"] = confID
 	return notifyMsg{
 		text:    fmt.Sprintf("%s приглашает вас в конференцию%s", actor, shortCtx(title)),
+		payload: p,
+	}
+}
+
+// msgConferenceMention is an @-mention in a call's chat (#3055). It rides the
+// "mention" routing kind — a mention is a mention to the reader's switches — but
+// points at the call the way an invitation does: `conference_id` instead of a
+// task number, the call's title as `title`, the line itself as the quote.
+func msgConferenceMention(actor, title, confID, body string) notifyMsg {
+	p := withCtx(event(evConfMention, nil), "title", title)
+	p["actor"] = actor
+	p["conference_id"] = confID
+	withQuote(p, body)
+	return notifyMsg{
+		text:    fmt.Sprintf("%s упомянул(а) вас в чате конференции%s", actor, shortCtx(title)),
 		payload: p,
 	}
 }
