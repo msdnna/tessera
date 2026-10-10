@@ -55,6 +55,7 @@ private val EVENTS = mapOf(
     "integration_sync_partial" to R.string.notif_ev_sync_partial,
     "integration_sync_failed" to R.string.notif_ev_sync_failed,
     "conference_invited" to R.string.notif_ev_conference_invited,
+    "conference_mention" to R.string.notif_ev_conference_mention,
 )
 
 /** Фраза для колокольчика и для тела системного уведомления. */
@@ -92,7 +93,7 @@ fun notificationText(res: Resources, payload: NotificationPayload?, fallback: St
         "task_due_soon" -> res.getString(template, ref, payload?.title.orEmpty())
 
         // Приглашение в конференцию номера задачи не несёт — подстановок две.
-        "conference_invited" -> res.getString(template, actor, ctx)
+        "conference_invited", "conference_mention" -> res.getString(template, actor, ctx)
 
         "integration_sync_ok", "integration_sync_partial" -> res.getString(
             template,

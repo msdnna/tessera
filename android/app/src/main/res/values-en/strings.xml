@@ -1016,6 +1016,22 @@
     <string name="conf_create_ttl_hint">Recordings of this conference are deleted automatically after that many days. 0 keeps them indefinitely.</string>
     <string name="conf_create_ttl_invalid">Enter a number of days: 0 or more</string>
     <string name="conf_create_submit">Schedule</string>
+    <string name="conf_plan_duration">Duration</string>
+    <string name="conf_plan_min">%1$d min</string>
+    <string name="conf_plan_h">%1$d h</string>
+    <string name="conf_plan_hm">%1$d h %2$d min</string>
+    <string name="conf_plan_stage">Stage</string>
+    <string name="conf_plan_no_stage">No stage</string>
+    <string name="conf_plan_no_stages">There are no open stages in this workspace</string>
+    <string name="conf_plan_linked">linked to “%1$s”</string>
+    <string name="conf_plan_repeat">Repeat</string>
+    <string name="conf_repeat_none">Does not repeat</string>
+    <string name="conf_repeat_daily">Every day</string>
+    <string name="conf_repeat_weekdays">Every weekday</string>
+    <string name="conf_repeat_weekly">Every week</string>
+    <string name="conf_repeat_biweekly">Every 2 weeks</string>
+    <string name="conf_repeat_monthly">Every month</string>
+    <string name="conf_plan_repeat_needs_time">A repeat counts from the start time — pick one first</string>
     <string name="conf_back">Back</string>
     <string name="conf_detail_not_found">Conference not found</string>
     <string name="conf_action_join">Join</string>
@@ -1085,6 +1101,17 @@
     <string name="conf_chat_size_b">%1$s B</string>
     <string name="conf_chat_size_kb">%1$s KB</string>
     <string name="conf_chat_size_mb">%1$s MB</string>
+    <string name="conf_chat_hint">Message · / task · @ person</string>
+    <string name="conf_chat_cmd_head">Commands</string>
+    <string name="conf_chat_cmd_task">task</string>
+    <string name="conf_chat_cmd_task_hint">Create a task from the meeting</string>
+    <string name="conf_chat_mention_head">Workspace members</string>
+    <string name="conf_chat_task_created">created a task</string>
+    <string name="conf_chat_task_gone">The task was deleted or is no longer in this workspace</string>
+    <string name="conf_chat_task_in">Task in</string>
+    <string name="conf_chat_task_no_board">No boards — create one in a project</string>
+    <string name="conf_chat_task_title">— type a title</string>
+    <string name="conf_reactions">Reactions</string>
 
     <!-- Screen share and recordings (#2896 §8) -->
     <string name="conf_share">Share screen</string>
@@ -1775,6 +1802,7 @@
     <string name="notif_ev_sync_partial">%1$s: +%2$s new, ~%3$s updated, in %4$s (some actions failed)</string>
     <string name="notif_ev_sync_failed">%1$s: sync failed — %2$s (after %3$s)</string>
     <string name="notif_ev_conference_invited">%1$s invited you to a conference%2$s</string>
+    <string name="notif_ev_conference_mention">%1$s mentioned you in a call chat%2$s</string>
     <string name="notif_ev_field_title">title</string>
     <string name="notif_ev_field_description">description</string>
     <string name="notif_ev_field_priority">priority</string>

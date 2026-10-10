@@ -32,8 +32,12 @@ data class ConfTimeLine(val kind: ConfTimeKind, val iso: String?)
  */
 fun conferenceTimeLine(c: Conference): ConfTimeLine = when {
     c.isEnded && !c.endedAt.isNullOrBlank() -> ConfTimeLine(ConfTimeKind.ENDED, c.endedAt)
+
     c.isLive && !c.startedAt.isNullOrBlank() -> ConfTimeLine(ConfTimeKind.STARTED, c.startedAt)
-    !c.scheduledAt.isNullOrBlank() -> ConfTimeLine(ConfTimeKind.SCHEDULED, c.scheduledAt)
+
+    // A repeat (#3052) is described by its next occurrence, not by the first one.
+    !conferencePlanAt(c).isNullOrBlank() -> ConfTimeLine(ConfTimeKind.SCHEDULED, conferencePlanAt(c))
+
     else -> ConfTimeLine(ConfTimeKind.NONE, null)
 }
 
