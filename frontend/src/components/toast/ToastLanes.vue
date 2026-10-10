@@ -37,6 +37,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useInboxStore } from '@/stores/inbox'
 import { usePaletteStore } from '@/stores/palette'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
+import { useConflictsStore } from '@/stores/conflicts'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { useResponsive } from '@/composables/useResponsive'
 import { useVisualViewport } from '@/composables/useVisualViewport'
@@ -52,6 +53,7 @@ const store = useToastsStore()
 const undo = useUndoStore()
 const notes = useNotificationsStore()
 const ws = useWorkspacesStore()
+const conflicts = useConflictsStore()
 const inbox = useInboxStore()
 const palette = usePaletteStore()
 const dialogs = useWsDialogsStore()
@@ -109,6 +111,12 @@ store.bind({
     notes.markRead(n.id)
   },
   openGitlab: () => dialogs.open('gitlab'),
+  // «Разрешить конфликт» (#3048): the resolver, on this task's conflict.
+  resolveConflict(n) {
+    notes.markRead(n.id)
+    if (n.workspace_id && n.workspace_id !== ws.currentId) ws.selectWorkspace(n.workspace_id)
+    conflicts.openResolver(n.task_id || null)
+  },
   openFeed: () => notes.requestFeed(),
   // An activity toast's ↵: the task on the board in front of you.
   openTask(a) {

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { notifications as api } from '@/api'
+import { notifications as api, conferences as confApi } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
 import { isTauri } from '@/utils/serverBase'
 import { notificationText, notificationTitle } from '@/utils/notificationText'
@@ -159,6 +159,40 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
+  // «Принять / Отклонить» an invitation to a meeting (#3051), from the feed or
+  // the page. Optimistic like markRead: the row shows the answer and goes read
+  // at once (the server closes the invitation too), and a refusal puts both
+  // back. `rows` are the copies of the same notification on screen besides the
+  // store's own — the page of all notifications keeps its own list.
+  async function rsvp(n, response, message, rows = []) {
+    const confId = n?.payload?.conference_id
+    if (!confId) return false
+    const copies = [items.value.find((x) => x.id === n.id), n, ...rows].filter(Boolean)
+    const prev = copies.map((x) => ({ x, rsvp: x.rsvp, read_at: x.read_at }))
+    const now = new Date().toISOString()
+    for (const x of copies) {
+      x.rsvp = response
+      if (!x.read_at) x.read_at = now
+    }
+    try {
+      await confApi.rsvp(confId, response)
+      // Every other invitation to the same call is closed by the server.
+      for (const x of items.value)
+        if (x.payload?.conference_id === confId && x.kind === n.kind) {
+          x.rsvp = response
+          if (!x.read_at) x.read_at = now
+        }
+      return true
+    } catch (e) {
+      for (const p of prev) {
+        p.x.rsvp = p.rsvp
+        p.x.read_at = p.read_at
+      }
+      message?.error(e.message)
+      return false
+    }
+  }
+
   function restore(ids) {
     for (const id of ids) {
       const n = items.value.find((x) => x.id === id)
@@ -204,6 +238,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     onEvent,
     markRead,
     markAllRead,
+    rsvp,
     reset,
     feedRequest,
     requestFeed,

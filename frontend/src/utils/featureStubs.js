@@ -43,10 +43,6 @@ export const FEATURE_STUBS = {
   'documents.trash': 3006,
   'documents.milestone': 3044,
   'documents.templateCategories': 3045,
-  // Notifications (#3107): «Принять / Отклонить» a meeting invitation right in
-  // the feed (#3051), the page of all notifications with paging (#3049).
-  'notifications.rsvp': 3051,
-  'notifications.all': 3049,
   // Toasts (#3117): «В корзину» on the toast about a deleted task — tasks have
   // no trash yet (#3120); «Звук» in the toast settings (#3121).
   'toasts.taskTrash': 3120,

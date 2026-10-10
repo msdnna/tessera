@@ -211,5 +211,16 @@
     "layout": "Layout",
     "grid": "Grid",
     "speaker": "Speaker"
+  },
+  "rsvp": {
+    "pending": "Awaiting reply",
+    "accepted": "Going",
+    "declined": "Not going",
+    "accept": "Accept",
+    "decline": "Decline",
+    "acceptItem": "Accept the invitation",
+    "declineItem": "Decline the invitation",
+    "title": "Your reply",
+    "declinedBy": "declined"
   }
 }

@@ -25,6 +25,10 @@ const BADGE = {
   task_thread_reply: ['ChatbubbleEllipsesOutline', 'acc'],
   task_mention: ['AtOutline', 'acc'],
   conference_invited: ['VideocamOutline', 'gr'],
+  // v2 notifications (#3048).
+  milestone_closed: ['TrailSignOutline', 'acc'],
+  document_mention: ['AtOutline', 'acc'],
+  conference_mention: ['AtOutline', 'acc'],
 }
 
 // A notification without a person leads with a tile instead.
@@ -34,6 +38,8 @@ const TILE = {
   integration_sync_ok: ['GitMergeOutline', 'neu'],
   integration_sync_partial: ['GitMergeOutline', 'or'],
   integration_sync_failed: ['GitMergeOutline', 'red'],
+  integration_conflict: ['GitMergeOutline', 'or'],
+  conference_starting: ['VideocamOutline', 'gr'],
 }
 
 // The chip's status glyph: the column the task stands in, as the board draws
@@ -53,7 +59,15 @@ export function chipStatus(n) {
 export function chipOf(n) {
   const p = n.payload || {}
   const ev = notificationEvent(n)
-  if (ev === 'conference_invited' || ev === 'reminder' || ev.startsWith('integration_sync'))
+  if (
+    ev === 'conference_invited' ||
+    ev === 'conference_starting' ||
+    ev === 'milestone_closed' ||
+    ev === 'document_mention' ||
+    ev === 'conference_mention' ||
+    ev === 'reminder' ||
+    ev.startsWith('integration_sync')
+  )
     return null
   const title = n.task_title || p.title || ''
   const ref = n.task_number ?? p.task_number ?? null
@@ -147,6 +161,7 @@ export function buildNotificationToast(
         },
       ]
       break
+    case 'conference_starting':
     case 'conference_invited':
       spec.actions = [
         {
@@ -184,6 +199,23 @@ export function buildNotificationToast(
         },
       ]
       spec.always = true
+      break
+    case 'integration_conflict':
+      spec.actions = [
+        {
+          id: 'resolve',
+          label: () => t('notifications.pop.resolve'),
+          caps: ['↵'],
+          primary: true,
+          run: () => act.resolveConflict?.(n),
+        },
+      ]
+      spec.always = true
+      break
+    case 'document_mention':
+    case 'conference_mention':
+    case 'milestone_closed':
+      spec.actions = [open]
       break
     default:
       if (ev.startsWith('integration_sync')) {

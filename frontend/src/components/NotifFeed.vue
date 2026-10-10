@@ -12,9 +12,12 @@
 // as a chip or a quote, and the time; an unread row sits on a soft accent with
 // a dot. Keys while it is open: ↑↓ pick, ↵ open, E mark read, ⇧E read all.
 //
-// The filters and groups are the client's own reading of the 50 rows the
-// server sends — paging and a page of all notifications are #3049, accepting a
-// meeting from here is #3051 (both visible stubs).
+// In the popover the filters and groups are the client's own reading of the 50
+// rows the store holds. `all` is the page of all notifications (#3049): the
+// rows come from the server a page at a time (useNotificationPages), filtered
+// there, grouped by day, with «Непрочитанные» among the filters and more rows
+// loaded as the list is scrolled to its end. An invitation to a meeting is
+// answered right in its row (#3051); a sync conflict opens its resolver (#3048).
 import { ref, computed, watch, nextTick, onMounted, onBeforeUnmount } from 'vue'
 import { NIcon, NTooltip } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
@@ -28,6 +31,9 @@ import {
   ChevronBackOutline,
   DocumentTextOutline,
   MoonOutline,
+  VideocamOutline,
+  TrailSignOutline,
+  CheckmarkOutline,
 } from '@vicons/ionicons5'
 import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
@@ -37,19 +43,28 @@ import ShortcutKeys from '@/components/ShortcutKeys.vue'
 import ActionMenu from '@/components/kit/ActionMenu.vue'
 import { notificationText } from '@/utils/notificationText'
 import { notificationRoute } from '@/utils/notificationRoute'
-import { notificationGroup, notificationAge, NOTIFICATION_FILTERS } from '@/utils/notificationFeed'
-import { stubTask } from '@/utils/featureStubs'
+import {
+  notificationGroup,
+  notificationAge,
+  groupByDay,
+  NOTIFICATION_FILTERS,
+  PAGE_FILTERS,
+} from '@/utils/notificationFeed'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useConflictsStore } from '@/stores/conflicts'
+import { useNotificationPages } from '@/composables/useNotificationPages'
 import { useToastsStore } from '@/stores/toasts'
 import { dndPreset } from '@/utils/toastModel'
 import { useFormat } from '@/composables/useFormat'
 import './kit/kit.css'
 
-defineProps({
+const props = defineProps({
   // A phone (#2976): the feed is the page — a back button, no footer of key
   // hints, rows on the page's own surface.
   page: { type: Boolean, default: false },
+  // The page of all notifications (#3049): rows from the server, paged.
+  all: { type: Boolean, default: false },
 })
 // `close` before the feed navigates anywhere: the popover steps aside, the
 // page goes back.
@@ -62,21 +77,42 @@ const router = useRouter()
 const message = useMessage()
 const { formatters } = useFormat()
 const { t, te } = useI18n()
+const conflicts = useConflictsStore()
 
-const rsvpTask = stubTask('notifications.rsvp')
-const allTask = stubTask('notifications.all')
+// The page of all notifications reads its own rows from the server.
+const pager = props.all ? useNotificationPages() : null
+const filters = props.all ? PAGE_FILTERS : NOTIFICATION_FILTERS
 
 // ── the filter and the groups ─────────────────────────────────────────
 const filter = ref('all')
 const visible = computed(() =>
-  notes.items.filter((n) => filter.value === 'all' || notificationGroup(n) === filter.value),
+  pager
+    ? pager.items.value
+    : notes.items.filter((n) => filter.value === 'all' || notificationGroup(n) === filter.value),
 )
 const fresh = computed(() => visible.value.filter((n) => !n.read_at))
-const earlier = computed(() => visible.value.filter((n) => n.read_at))
-// The keyboard walks the rows in the order they are drawn: new first.
-const ordered = computed(() => [...fresh.value, ...earlier.value])
-// Unread per filter, for the counts on the tabs.
+// The groups as drawn: «Новые / Ранее» in the popover, days on the page.
+const groups = computed(() => {
+  if (pager) return groupByDay(visible.value, { t, formatters: formatters.value })
+  const earlier = visible.value.filter((n) => n.read_at)
+  return [
+    {
+      key: 'fresh',
+      label: t('notifications.pop.fresh'),
+      count: fresh.value.length,
+      rows: fresh.value,
+    },
+    { key: 'earlier', label: t('notifications.pop.earlier'), rows: earlier },
+  ].filter((g) => g.rows.length)
+})
+// The keyboard walks the rows in the order they are drawn.
+const ordered = computed(() => groups.value.flatMap((g) => g.rows))
+// Unread per filter, for the counts on the tabs — the server's on the page.
 const unreadBy = computed(() => {
+  if (pager) {
+    const c = pager.counts
+    return { unread: c.total, mentions: c.mentions, assigned: c.assigned, gitlab: c.gitlab }
+  }
   const out = {}
   for (const n of notes.items) {
     if (n.read_at) continue
@@ -85,6 +121,13 @@ const unreadBy = computed(() => {
   }
   return out
 })
+const unreadCount = computed(() => (pager ? pager.counts.total : notes.unread))
+function pickFilter(f) {
+  if (filter.value === f) return
+  filter.value = f
+  if (pager) pager.reset(f)
+}
+if (pager) onMounted(() => pager.reset('all'))
 
 // ── one row ───────────────────────────────────────────────────────────
 // The sentence is rendered from the payload in the reader's language; the
@@ -105,7 +148,15 @@ function chipOf(n) {
   if (p.excerpt) return { quote: p.excerpt }
   // A deleted task (#3114) has no row to join: the number and title come from
   // the payload alone, and the row opens nothing (notificationRoute → null).
-  if (p.title && p.event !== 'task_due_soon' && p.event !== 'conference_invited')
+  // A closed stage (#3048) names itself in the sentence; the chip says where.
+  if (p.event === 'milestone_closed')
+    return { stage: true, title: t('notifications.pop.stageOf', { project: p.project || '' }) }
+  if (
+    p.title &&
+    p.event !== 'task_due_soon' &&
+    p.event !== 'conference_invited' &&
+    p.event !== 'conference_starting'
+  )
     return {
       title: p.title,
       ref: n.task_number ?? p.task_number,
@@ -118,6 +169,9 @@ const SYSTEM = {
   reminder: { icon: AlarmOutline, tone: '#f0a020' },
   due_soon: { icon: TimeOutline, tone: '#e0533d' },
   integration_sync: { icon: GitBranchOutline, tone: '#fc6d26' },
+  // v2 notifications (#3048).
+  integration_conflict: { icon: GitBranchOutline, tone: '#fc6d26' },
+  conference_soon: { icon: VideocamOutline, tone: '#18a058' },
 }
 function systemOf(n) {
   if (n.payload?.actor) return null
@@ -131,6 +185,18 @@ function age(n) {
   return notificationAge(n.created_at, { t, formatters: formatters.value })
 }
 const isInvite = (n) => n.kind === 'conference_invite' || n.payload?.event === 'conference_invited'
+const isConflict = (n) => n.payload?.event === 'integration_conflict' && !!n.task_id
+// «в 15:00» / «завтра, 15:00» beside an invitation to a planned meeting.
+function inviteWhen(n) {
+  const at = n.payload?.scheduled_at
+  if (!at) return ''
+  const d = new Date(at)
+  if (Number.isNaN(d.getTime())) return ''
+  const f = formatters.value
+  const rel = f.formatRelative(d, { dateOnly: false })
+  const time = f.formatTime(d)
+  return rel ? `${rel}, ${time}` : f.formatDateTime(d)
+}
 
 // ── actions ───────────────────────────────────────────────────────────
 function openNotification(n) {
@@ -138,6 +204,7 @@ function openNotification(n) {
   // (see stores/notifications.js): a refused mark rolls the row back to unread,
   // and the reader is told why instead of watching the dot reappear (#2932).
   notes.markRead(n.id, message)
+  pager?.markLocal(n)
   // Switch the active workspace if the task lives in another one, so the sidebar
   // tree reflects where the opened task actually is.
   if (n.workspace_id && n.workspace_id !== ws.currentId) {
@@ -149,11 +216,44 @@ function openNotification(n) {
   router.push(to)
 }
 function markOne(n) {
-  if (n && !n.read_at) notes.markRead(n.id, message)
+  if (!n || n.read_at) return
+  notes.markRead(n.id, message)
+  pager?.markLocal(n)
 }
 function markAll() {
-  if (notes.unread) notes.markAllRead(message)
+  if (!unreadCount.value) return
+  notes.markAllRead(message)
+  pager?.markAllLocal()
 }
+// «Принять / Отклонить» (#3051): the answer shows at once, a refusal undoes it.
+function answer(n, response) {
+  if (n.rsvp === response) return
+  notes.rsvp(n, response, message)
+}
+// «Разрешить конфликт» (#3048): the resolver, on this task's conflict.
+function resolveConflict(n) {
+  markOne(n)
+  if (n.workspace_id && n.workspace_id !== ws.currentId) ws.selectWorkspace(n.workspace_id)
+  emit('close')
+  conflicts.openResolver(n.task_id)
+}
+function openAll() {
+  emit('close')
+  router.push('/notifications')
+}
+// The end of the page's list loads the next page as it comes into view.
+const sentinel = ref(null)
+let io = null
+watch(sentinel, (el) => {
+  io?.disconnect()
+  if (!el || !pager || typeof IntersectionObserver === 'undefined') return
+  io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && pager.loadMore(), {
+    root: list.value,
+    rootMargin: '200px',
+  })
+  io.observe(el)
+})
+onBeforeUnmount(() => io?.disconnect())
 function openSettings() {
   emit('close')
   router.push({ path: '/settings', query: { s: 'notifications' } })
@@ -237,7 +337,13 @@ function onKey(e) {
 </script>
 
 <template>
-  <div class="np" :class="{ page }" data-testid="notifications-feed" @mousemove="kbd = false">
+  <div
+    class="np"
+    :class="{ page, all }"
+    data-testid="notifications-feed"
+    :data-all="all ? '' : undefined"
+    @mousemove="kbd = false"
+  >
     <header class="np-head">
       <button
         v-if="page"
@@ -249,13 +355,15 @@ function onKey(e) {
       >
         <n-icon :component="ChevronBackOutline" :size="22" />
       </button>
-      <span class="np-title">{{ t('shell.tools.notifications') }}</span>
-      <span v-if="notes.unread" class="np-count">{{ notes.unread }}</span>
+      <span class="np-title">{{
+        all && !page ? t('notifications.pop.page') : t('shell.tools.notifications')
+      }}</span>
+      <span v-if="unreadCount" class="np-count">{{ unreadCount }}</span>
       <span class="np-spacer" />
       <button
         type="button"
         class="np-quiet"
-        :disabled="!notes.unread"
+        :disabled="!unreadCount"
         data-testid="notifications-read-all"
         @click="markAll"
       >
@@ -324,7 +432,7 @@ function onKey(e) {
 
     <div class="np-tabs" role="tablist">
       <button
-        v-for="f in NOTIFICATION_FILTERS"
+        v-for="f in filters"
         :key="f"
         type="button"
         role="tab"
@@ -332,7 +440,7 @@ function onKey(e) {
         :class="{ on: filter === f }"
         :aria-selected="filter === f"
         :data-testid="`notifications-filter-${f}`"
-        @click="filter = f"
+        @click="pickFilter(f)"
       >
         {{ t(`notifications.pop.filter.${f}`) }}
         <span v-if="f !== 'all' && unreadBy[f]" class="np-tab-n">{{ unreadBy[f] }}</span>
@@ -340,14 +448,14 @@ function onKey(e) {
     </div>
 
     <div ref="list" class="np-list">
-      <template v-for="grp in ['fresh', 'earlier']" :key="grp">
-        <template v-if="(grp === 'fresh' ? fresh : earlier).length">
-          <div class="np-group">
-            <span>{{ t(`notifications.pop.${grp}`) }}</span>
-            <span v-if="grp === 'fresh'" class="np-group-n">{{ fresh.length }}</span>
+      <template v-for="grp in groups" :key="grp.key">
+        <template v-if="grp.rows.length">
+          <div class="np-group" data-testid="notifications-group">
+            <span>{{ grp.label }}</span>
+            <span v-if="grp.count" class="np-group-n">{{ grp.count }}</span>
           </div>
           <div
-            v-for="n in grp === 'fresh' ? fresh : earlier"
+            v-for="n in grp.rows"
             :key="n.id"
             class="np-row"
             :class="{ unread: !n.read_at, cur: kbd && ordered[cursor]?.id === n.id }"
@@ -384,39 +492,95 @@ function onKey(e) {
                 {{ t('notifications.pop.quote', { text: chipOf(n).quote }) }}
               </div>
               <span v-else-if="chipOf(n)" class="np-chip" :class="{ gone: chipOf(n).gone }">
-                <n-icon :component="DocumentTextOutline" :size="12" />
+                <n-icon
+                  :component="chipOf(n).stage ? TrailSignOutline : DocumentTextOutline"
+                  :size="12"
+                />
                 <span v-if="chipOf(n).ref" class="np-chip-ref">#{{ chipOf(n).ref }}</span>
                 <span class="np-chip-t">{{ chipOf(n).title }}</span>
               </span>
-              <!-- RSVP from the feed is #3051: visible, inactive. -->
-              <div v-if="isInvite(n)" class="np-actions" @click.stop>
-                <n-tooltip :delay="300">
-                  <template #trigger>
-                    <span class="np-stub">
-                      <button type="button" class="kit-btn small primary" disabled>
-                        {{ t('notifications.pop.accept') }}
-                      </button>
-                      <button type="button" class="kit-btn small" disabled>
-                        {{ t('notifications.pop.decline') }}
-                      </button>
-                    </span>
-                  </template>
-                  {{ t('common.stub.soon', { n: rsvpTask }) }}
-                </n-tooltip>
+              <!-- «Принять / Отклонить» (#3051): the answer stays drawn, and
+                   the other button changes it. No seat (the call is gone) —
+                   nothing to answer. -->
+              <div
+                v-if="isInvite(n) && n.rsvp"
+                class="np-actions"
+                data-testid="notification-rsvp"
+                :data-rsvp="n.rsvp"
+                @click.stop
+              >
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  :class="{ primary: n.rsvp === 'pending', chosen: n.rsvp === 'accepted' }"
+                  :aria-pressed="n.rsvp === 'accepted'"
+                  data-testid="notification-accept"
+                  @click="answer(n, 'accepted')"
+                >
+                  <n-icon v-if="n.rsvp === 'accepted'" :component="CheckmarkOutline" :size="13" />
+                  {{
+                    n.rsvp === 'accepted'
+                      ? t('notifications.pop.accepted')
+                      : t('notifications.pop.accept')
+                  }}
+                </button>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  :class="{ chosen: n.rsvp === 'declined' }"
+                  :aria-pressed="n.rsvp === 'declined'"
+                  data-testid="notification-decline"
+                  @click="answer(n, 'declined')"
+                >
+                  {{
+                    n.rsvp === 'declined'
+                      ? t('notifications.pop.declined')
+                      : t('notifications.pop.decline')
+                  }}
+                </button>
+                <span v-if="inviteWhen(n)" class="np-when">{{ inviteWhen(n) }}</span>
+              </div>
+              <div v-else-if="isConflict(n)" class="np-actions" @click.stop>
+                <button
+                  type="button"
+                  class="kit-btn small primary"
+                  data-testid="notification-resolve"
+                  @click="resolveConflict(n)"
+                >
+                  {{ t('notifications.pop.resolve') }}
+                </button>
               </div>
             </div>
           </div>
         </template>
       </template>
       <empty-state
-        v-if="!visible.length"
+        v-if="!visible.length && !pager?.loading.value"
         :icon="NotificationsOutline"
         :text="filter === 'all' ? t('shell.tools.feedEmpty') : t('notifications.pop.emptyFilter')"
         size="small"
       />
+      <!-- The page's end: the next page loads as this comes into view; the
+           button is there for a reader who cannot scroll it into view. -->
+      <div v-if="pager" class="np-more" data-testid="notifications-more">
+        <template v-if="!pager.done.value">
+          <span ref="sentinel" class="np-sentinel" />
+          <button
+            type="button"
+            class="kit-btn small"
+            :disabled="pager.loading.value"
+            data-testid="notifications-load-more"
+            @click="pager.loadMore()"
+          >
+            {{ pager.loading.value ? t('notifications.pop.loading') : t('notifications.pop.more') }}
+          </button>
+        </template>
+        <span v-else-if="visible.length" class="np-end">{{ t('notifications.pop.end') }}</span>
+        <span v-if="pager.error.value" class="np-err">{{ pager.error.value }}</span>
+      </div>
     </div>
 
-    <footer v-if="!page" class="np-foot">
+    <footer v-if="!page && !all" class="np-foot">
       <span class="np-hint">
         <ShortcutKeys id="notifications.select" joined />{{ t('notifications.pop.select') }}
       </span>
@@ -427,15 +591,10 @@ function onKey(e) {
         <ShortcutKeys id="notifications.read" />{{ t('notifications.pop.read') }}
       </span>
       <span class="np-spacer" />
-      <n-tooltip :delay="300">
-        <template #trigger>
-          <span class="np-all">
-            {{ t('notifications.pop.all') }}
-            <n-icon :component="ChevronForwardOutline" :size="12" />
-          </span>
-        </template>
-        {{ t('common.stub.soon', { n: allTask }) }}
-      </n-tooltip>
+      <button type="button" class="np-all" data-testid="notifications-all" @click="openAll">
+        {{ t('notifications.pop.all') }}
+        <n-icon :component="ChevronForwardOutline" :size="12" />
+      </button>
     </footer>
   </div>
 </template>
@@ -747,11 +906,39 @@ function onKey(e) {
 }
 .np-actions {
   display: flex;
+  align-items: center;
+  flex-wrap: wrap;
   gap: 6px;
 }
-.np-stub {
-  display: inline-flex;
+/* The answer given (#3051): the chosen button stays as a pressed pill. */
+.np-actions .kit-btn.chosen {
+  background: color-mix(in srgb, var(--t-primary) 14%, var(--t-pop));
+  color: var(--t-primary);
+  font-weight: 600;
+}
+.np-when {
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.np-more {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
   gap: 6px;
+  padding: 10px 0 6px;
+}
+.np-sentinel {
+  display: block;
+  width: 1px;
+  height: 1px;
+}
+.np-end,
+.np-err {
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.np-err {
+  color: var(--t-error, #e0533d);
 }
 
 .np-foot {
@@ -780,8 +967,43 @@ function onKey(e) {
   display: inline-flex;
   align-items: center;
   gap: 2px;
-  color: var(--t-text3);
-  cursor: default;
+  height: 24px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.np-all:hover {
+  background: var(--t-hover);
+  color: var(--t-primary);
+}
+
+/* ── the page of all notifications on a wide window (#3049) ── */
+.np.all:not(.page) {
+  width: 100%;
+  max-width: 760px;
+  max-height: none;
+  height: 100%;
+  margin: 0 auto;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+.np.all:not(.page) .np-head {
+  padding: 22px 12px 14px;
+}
+.np.all:not(.page) .np-title {
+  font-size: 20px;
+}
+.np.all:not(.page) .np-tabs {
+  margin: 0 0 8px;
+}
+.np.all:not(.page) .np-list {
+  padding: 0 0 24px;
 }
 @media (hover: none) {
   .np-hint {

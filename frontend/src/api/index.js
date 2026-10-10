@@ -638,6 +638,9 @@ export const conferences = {
   leave: (id) => api.post(`/conferences/${id}/leave`),
   end: (id) => api.post(`/conferences/${id}/end`),
   invite: (id, userIds, role) => api.post(`/conferences/${id}/invite`, { user_ids: userIds, role }),
+  // «Принять / Отклонить» an invitation (#3051): response is 'accepted' or
+  // 'declined'; answers the caller's participant row.
+  rsvp: (id, response) => api.put(`/conferences/${id}/rsvp`, { response }, { skipLoader: true }),
   participants: (id) => api.get(`/conferences/${id}/participants`, { skipLoader: true }),
   // Conferences held about a task — for the task page's "discussed in" link.
   byTask: (taskId) => api.get(`/tasks/${taskId}/conferences`, { skipLoader: true }),
@@ -802,6 +805,10 @@ export const notifications = {
   unreadCount: () => api.get('/notifications/unread-count'),
   markRead: (id) => api.post(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/read-all'),
+  // The page of all notifications (#3049): { items, next_cursor } — the
+  // server filters (all · unread · mentions · assigned · gitlab) and pages by
+  // a keyset cursor; next_cursor is null on the last page.
+  page: (params) => api.get('/notifications/page', { params, skipLoader: true }),
 }
 
 // Notification router: per-user delivery channels + Alertmanager-style routing
