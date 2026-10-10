@@ -36,6 +36,10 @@ export const ALLOWLIST = [
   // Quick-entry parser of the start screen (#2960): «завтра», «пт», «!срочный» are
   // words it matches in what people type, in either language — data, not UI.
   'src/utils/quickParse.js',
+  // The call chat's «/задача» (#3055): the command answers to its name in both
+  // alphabets ("/задача", "/task") — typing keys, like docSlash.js; the picker
+  // inserts the catalogue's `conferences.chat.cmd.task`.
+  'src/utils/confChatCommands.js',
   // Get Started scenario. Every word it says is in the catalogue under
   // `tour.steps.*`; what is left are three selectors scoped to a column by name
   // ("К работе", "В процессе"). Those names are server-seeded user data — the

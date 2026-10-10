@@ -122,7 +122,7 @@
   "chat": {
     "tab": "Chat",
     "empty": "No messages yet",
-    "placeholder": "Write to the chat…",
+    "placeholder": "Message · / task · {'@'} person",
     "attach": "Attach a file",
     "download": "Download",
     "delete": "Delete message",
@@ -133,7 +133,18 @@
     "fileTooBig": "“{name}” is larger than 25 MB",
     "filesTooBig": "The attachments add up to more than {limit} — send them in several messages",
     "tooManyFiles": "At most {count} files per message",
-    "tooLong": "The message is longer than {count} characters"
+    "tooLong": "The message is longer than {count} characters",
+    "cmd": {
+      "head": "Commands",
+      "task": "task",
+      "taskHint": "Create a task from the meeting"
+    },
+    "mentionHead": "Workspace members",
+    "taskCreated": "created a task",
+    "taskGone": "The task was deleted or is no longer in this workspace",
+    "taskIn": "Task in",
+    "pickBoard": "Board",
+    "taskTitle": "— type a title"
   },
   "panel": {
     "title": "In the room: {count}",
@@ -237,5 +248,9 @@
     "subtitle": "Everyone in the meeting will see the changes",
     "submit": "Save",
     "saved": "Meeting saved"
+  },
+  "reactions": {
+    "button": "Reactions",
+    "title": "Send a reaction"
   }
 }

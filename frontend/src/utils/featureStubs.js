@@ -51,8 +51,6 @@ export const FEATURE_STUBS = {
   // no trash yet (#3120); «Звук» in the toast settings (#3121).
   'toasts.taskTrash': 3120,
   'toasts.sound': 3121,
-  // Conferences (#3107): reactions in a call (#3054).
-  'meet.reactions': 3054,
   // Large windows (#2975, package F). Members: roles and permissions, owner
   // transfer, groups, guests (#3063); resend / extend an invitation and a
   // reusable invite link (#3035).
