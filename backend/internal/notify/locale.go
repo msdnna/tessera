@@ -84,6 +84,11 @@ var bundles = map[string]bundle{
 			"integration_sync_partial": "{label}: +{created} новых, ~{updated} обновлено, за {took} (часть действий с ошибками)",
 			"integration_sync_failed":  "{label}: синхронизация не удалась — {reason} (за {took})",
 			"conference_invited":       "{actor} приглашает вас в конференцию{ctx}",
+			// Members (#3063).
+			"workspace_owner_transferred": "{actor} передал(а) вам владение пространством «{workspace}»",
+			"access_requested":            "{actor} просит доступ к пространству",
+			"access_approved":             "{actor} открыл(а) вам доступ к пространству «{workspace}»",
+			"access_declined":             "Запрос доступа отклонён",
 		},
 		fields: map[string]string{
 			"title":       "название",
@@ -117,6 +122,8 @@ var bundles = map[string]bundle{
 			"reminder":          "Напоминание",
 			"integration_sync":  "Синхронизация завершена",
 			"conference_invite": "Приглашение в конференцию",
+			"workspace_owner":   "Передано владение пространством",
+			"access_request":    "Запрос доступа",
 			// Not a stored notification: the subject of the probe a user sends to
 			// check a channel they just set up.
 			"test": "Проверка канала",
@@ -156,6 +163,11 @@ var bundles = map[string]bundle{
 			"integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
 			"integration_sync_failed":  "{label}: sync failed — {reason} (after {took})",
 			"conference_invited":       "{actor} invited you to a conference{ctx}",
+			// Members (#3063).
+			"workspace_owner_transferred": "{actor} handed you the workspace “{workspace}”",
+			"access_requested":            "{actor} asks for access to the workspace",
+			"access_approved":             "{actor} let you into the workspace “{workspace}”",
+			"access_declined":             "Your access request was declined",
 		},
 		fields: map[string]string{
 			"title":       "title",
@@ -189,6 +201,8 @@ var bundles = map[string]bundle{
 			"reminder":          "Reminder",
 			"integration_sync":  "Sync finished",
 			"conference_invite": "Conference invitation",
+			"workspace_owner":   "Workspace handed over",
+			"access_request":    "Access request",
 			"test":              "Channel test",
 		},
 		fallbackKind: "Notification",
@@ -305,6 +319,9 @@ func Sentence(payload map[string]any, lang, fallback string) string {
 		"{column}", DefaultName(str(payload["column_key"]), str(payload["column"]), lang),
 		"{title}", str(payload["title"]),
 		"{label}", str(payload["label"]),
+		// The members notifications (#3063) name a workspace; a personal one is
+		// captioned from its key.
+		"{workspace}", DefaultName(str(payload["workspace_key"]), str(payload["workspace"]), lang),
 		"{reason}", reason,
 		"{created}", strconv.Itoa(num(payload["created"])),
 		"{updated}", strconv.Itoa(num(payload["updated"])),

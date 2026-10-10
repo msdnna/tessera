@@ -25,6 +25,10 @@ const BADGE = {
   task_thread_reply: ['ChatbubbleEllipsesOutline', 'acc'],
   task_mention: ['AtOutline', 'acc'],
   conference_invited: ['VideocamOutline', 'gr'],
+  // Members (#3063).
+  workspace_owner_transferred: ['ShieldCheckmarkOutline', 'acc'],
+  access_requested: ['HandRightOutline', 'or'],
+  access_approved: ['EnterOutline', 'gr'],
 }
 
 // A notification without a person leads with a tile instead.
@@ -34,6 +38,8 @@ const TILE = {
   integration_sync_ok: ['GitMergeOutline', 'neu'],
   integration_sync_partial: ['GitMergeOutline', 'or'],
   integration_sync_failed: ['GitMergeOutline', 'red'],
+  // A declined access request names nobody (#3063).
+  access_declined: ['LockClosedOutline', 'neu'],
 }
 
 // The chip's status glyph: the column the task stands in, as the board draws
@@ -53,7 +59,13 @@ export function chipStatus(n) {
 export function chipOf(n) {
   const p = n.payload || {}
   const ev = notificationEvent(n)
-  if (ev === 'conference_invited' || ev === 'reminder' || ev.startsWith('integration_sync'))
+  if (
+    ev === 'conference_invited' ||
+    ev === 'reminder' ||
+    ev.startsWith('integration_sync') ||
+    ev.startsWith('access_') ||
+    ev === 'workspace_owner_transferred'
+  )
     return null
   const title = n.task_title || p.title || ''
   const ref = n.task_number ?? p.task_number ?? null

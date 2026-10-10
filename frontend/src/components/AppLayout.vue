@@ -418,6 +418,20 @@ watch(
   () => wsDialogs.current,
   (v) => v === 'gitlab' && onboarding.note('gitlab.opened'),
 )
+// `?members=<workspace id>` — a members notification (#3063: a transfer, an
+// access request) opens the «Участники» window of that workspace.
+watch(
+  () => route.query.members,
+  async (id) => {
+    if (!id) return
+    const query = { ...route.query }
+    delete query.members
+    await router.replace({ ...route, query })
+    await ws.ensureWorkspace(String(id))
+    wsDialogs.open('members')
+  },
+  { immediate: true },
+)
 // `?tour=<chapter>|start` — ⌘K «Обучение», links from the help articles.
 const { launch: launchTour } = useTourLauncher()
 watch(

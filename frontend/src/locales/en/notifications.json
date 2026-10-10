@@ -17,7 +17,11 @@
     "integration_sync_ok": "{label}: +{created} new, ~{updated} updated, in {took}",
     "integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
     "integration_sync_failed": "{label}: sync failed — {reason} (after {took})",
-    "conference_invited": "{actor} invited you to a conference{ctx}"
+    "conference_invited": "{actor} invited you to a conference{ctx}",
+    "workspace_owner_transferred": "{actor} handed you the workspace “{workspace}”",
+    "access_requested": "{actor} asks for access to the workspace",
+    "access_approved": "{actor} let you into the workspace “{workspace}”",
+    "access_declined": "Your access request was declined"
   },
   "field": {
     "title": "title",
@@ -43,7 +47,9 @@
     "due_soon": "Deadline approaching",
     "reminder": "Reminder",
     "integration_sync": "Sync finished",
-    "conference_invite": "Conference invitation"
+    "conference_invite": "Conference invitation",
+    "workspace_owner": "Workspace handed over",
+    "access_request": "Access request"
   },
   "duration": {
     "instant": "less than a second",
