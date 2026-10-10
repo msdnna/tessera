@@ -211,5 +211,9 @@
     "layout": "Layout",
     "grid": "Grid",
     "speaker": "Speaker"
+  },
+  "agenda": {
+    "open": "Open the agenda",
+    "create": "Create an agenda"
   }
 }

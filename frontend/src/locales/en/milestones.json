@@ -109,6 +109,7 @@
     "unassigned": "Unassigned",
     "pace": "Pace",
     "paceSub": "done per milestone",
-    "paceAvg": "Average over the previous milestones ({n}) — {avg}"
+    "paceAvg": "Average over the previous milestones ({n}) — {avg}",
+    "documents": "Documents"
   }
 }

@@ -64,6 +64,7 @@ import ActionMenu from '@/components/kit/ActionMenu.vue'
 import BurnChart from '@/components/milestone/BurnChart.vue'
 import MetricRing from '@/components/milestone/MetricRing.vue'
 import StageDatesPopover from '@/components/project/StageDatesPopover.vue'
+import StageDocs from '@/components/milestone/StageDocs.vue'
 
 const { t } = useI18n()
 const route = useRoute()
@@ -845,6 +846,8 @@ const forecastLabel = computed(() => {
               </span>
             </div>
           </section>
+
+          <StageDocs :milestone-id="stage?.id || ''" :class="{ 'm-order-6': isMobile }" />
 
           <template v-if="!isMobile">
             <section class="sp-card" data-testid="stage-scope">
@@ -1687,5 +1690,8 @@ const forecastLabel = computed(() => {
 }
 .m-order-5 {
   order: 5;
+}
+.m-order-6 {
+  order: 6;
 }
 </style>
