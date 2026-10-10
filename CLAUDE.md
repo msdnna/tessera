@@ -327,6 +327,13 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   `checklist:hidden`), `spotlight:<ключ>`, `hints:off:new|ctx`, `whatschanged:v2|later`;
   сброс — `DELETE /users/me/acknowledgements?key=|prefix=`. Новый якорь шага — в `MARKUP`
   `tests/dt-get-started.spec.js`; e2e-пользователи (`register()`) выключают тур и подсказки.
+- **Участники v2 (#3063, миграция 0094):** роли по-прежнему owner|admin|member; передача владения
+  `POST /workspaces/:id/owner` (в tx, бывший → admin, ровно один owner), уход `…/leave` (не owner),
+  запросы доступа `/access-requests` (ответ не раскрывает пространство; одобрение — только
+  member/admin), группы участников `member_groups` (прав не дают — в пикерах раскрываются в людей).
+  Активность: `memberships.last_active_at` штампует `lookupMembership` на изменяющих запросах,
+  `users.last_seen_at` — выдача токенов и сокет. Матрица прав — `backend/members_roles_test.go`.
+  Поле ввода во всплывашке внутри крупного окна (NModal) рисовать **на месте**, не телепортом.
 - **Редактор описаний/комментариев — собственный `MarkdownEditor.vue`** (textarea +
   тулбар + Написать/Просмотр + @-mentions), хранит **Markdown**. **TipTap пробовали и
   отвергли** (тема/бандл) — не возвращать без явного запроса.
