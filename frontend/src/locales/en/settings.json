@@ -259,7 +259,10 @@
       "due_soon": "Due soon",
       "reminder": "Reminders (scheduled)",
       "integration_sync": "Integration sync",
-      "conference_invite": "Conference invitation"
+      "conference_invite": "Conference invitation",
+      "milestone_closed": "Stage closed",
+      "conference_soon": "Meeting in 5 minutes",
+      "integration_conflict": "Sync conflict"
     },
     "lead": {
       "0": "At the deadline",
@@ -324,7 +327,8 @@
       "quietHint": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone.",
       "quietHintTz": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone ({tz}).",
       "quietExceptions": "Only urgent and mentions",
-      "quietToasts": "And the in-app pop-ups"
+      "quietToasts": "And the in-app pop-ups",
+      "quietExceptionsHint": "Mentions, tasks marked Urgent and a meeting about to start get through even in quiet hours."
     },
     "confirm": {
       "deleteChannel": "Delete the channel “{name}”?",

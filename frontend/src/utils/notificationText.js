@@ -23,6 +23,8 @@ const FIELDS = [
   'estimate',
   'completed',
   'reopened',
+  // A sync conflict (#3048) names the issue's state among its fields.
+  'state',
 ]
 
 // Title for a native (OS) notification, by notification kind.
@@ -72,6 +74,12 @@ export function notificationText(
     updated: p.updated ?? 0,
     took: formatDuration(p.seconds ?? 0, t),
     fields: fieldList(p.fields, t, f),
+    // v2 notifications (#3048): where a mention was made, a stage's tally, the
+    // minutes left before a meeting.
+    name: p.name || '',
+    done: p.done ?? 0,
+    total: p.total ?? 0,
+    minutes: p.minutes ?? 0,
   })
 }
 

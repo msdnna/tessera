@@ -624,7 +624,8 @@ export const documents = {
   // colleague resolving a thread must not flash the global progress bar.
   comments: (id) => api.get(`/documents/${id}/comments`, { skipLoader: true }),
   addComment: (id, data) => api.post(`/documents/${id}/comments`, data),
-  updateComment: (commentId, body) => api.patch(`/document-comments/${commentId}`, { body }),
+  updateComment: (commentId, body, mentions = []) =>
+    api.patch(`/document-comments/${commentId}`, { body, mentions }),
   resolveComment: (commentId, resolved = true) =>
     api.patch(`/document-comments/${commentId}/resolve`, { resolved }),
   removeComment: (commentId) => api.delete(`/document-comments/${commentId}`),
@@ -688,6 +689,9 @@ export const conferences = {
   leave: (id) => api.post(`/conferences/${id}/leave`),
   end: (id) => api.post(`/conferences/${id}/end`),
   invite: (id, userIds, role) => api.post(`/conferences/${id}/invite`, { user_ids: userIds, role }),
+  // «Принять / Отклонить» an invitation (#3051): response is 'accepted' or
+  // 'declined'; answers the caller's participant row.
+  rsvp: (id, response) => api.put(`/conferences/${id}/rsvp`, { response }, { skipLoader: true }),
   participants: (id) => api.get(`/conferences/${id}/participants`, { skipLoader: true }),
   // Conferences held about a task — for the task page's "discussed in" link.
   byTask: (taskId) => api.get(`/tasks/${taskId}/conferences`, { skipLoader: true }),
@@ -703,15 +707,17 @@ export const conferences = {
   // would skip or repeat a line every time somebody sends one.
   messages: (id, params) => api.get(`/conferences/${id}/messages`, { params, skipLoader: true }),
   // Text only — the common case, and it should not pay for a multipart encoder.
-  postMessage: (id, body) =>
-    api.post(`/conferences/${id}/messages`, { body }, { skipLoader: true }),
+  // `mentions` — the members the line @-mentions (#3048), told by the server.
+  postMessage: (id, body, mentions = []) =>
+    api.post(`/conferences/${id}/messages`, { body, mentions }, { skipLoader: true }),
   // With files. FormData, so the browser sets its own multipart boundary — do
   // not add a Content-Type header here, an explicit one arrives without it and
   // the server cannot parse the form.
-  postMessageWithFiles: (id, body, files) => {
+  postMessageWithFiles: (id, body, files, mentions = []) => {
     const fd = new FormData()
     fd.append('body', body)
     for (const f of files) fd.append('files', f)
+    for (const m of mentions) fd.append('mentions', m)
     return api.post(`/conferences/${id}/messages`, fd, { skipLoader: true })
   },
   removeMessage: (messageId) => api.delete(`/conference-messages/${messageId}`),
@@ -859,6 +865,10 @@ export const notifications = {
   unreadCount: () => api.get('/notifications/unread-count'),
   markRead: (id) => api.post(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/read-all'),
+  // The page of all notifications (#3049): { items, next_cursor } — the
+  // server filters (all · unread · mentions · assigned · gitlab) and pages by
+  // a keyset cursor; next_cursor is null on the last page.
+  page: (params) => api.get('/notifications/page', { params, skipLoader: true }),
 }
 
 // Notification router: per-user delivery channels + Alertmanager-style routing

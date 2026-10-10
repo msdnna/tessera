@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -72,6 +73,25 @@ const (
 	kindUnassigned = "unassigned"
 	kindCompleted  = "completed"
 	kindReopened   = "reopened"
+)
+
+// ── v2 notifications (#3033) ────────────────────────────────────
+//
+// The payload events and routing kinds added with the v2 notifications
+// (#3048). Mentions outside a task — a document's comment, a meeting's chat —
+// keep the routing kind "mention" (one switch, «Меня упомянули в задаче,
+// документе, чате встречи»), and differ only in the event.
+const (
+	evMilestoneClosed = "milestone_closed"
+	evConfStarting    = "conference_starting"
+	evSyncConflict    = "integration_conflict"
+	evDocMention      = "document_mention"
+	evConfMention     = "conference_mention"
+
+	kindMilestoneClosed     = "milestone_closed"
+	kindConferenceSoon      = "conference_soon"
+	kindIntegrationConflict = "integration_conflict"
+	kindMention             = "mention"
 )
 
 // notifyMsg is one notification's content: the legacy pre-rendered sentence and
@@ -164,6 +184,8 @@ var fieldWords = map[string]string{
 	"estimate":    "оценка",
 	"completed":   "выполнена",
 	"reopened":    "возвращена в работу",
+	// A sync conflict (#3048) names the issue's state among its fields.
+	"state": "статус",
 }
 
 func msgMoved(actor string, number *int64, column string, columnKey *string) notifyMsg {
@@ -300,10 +322,19 @@ func withQuote(p map[string]any, s string) {
 // instead of `task_number`: that id is what the bell feed, the desktop deep link
 // and the push payload all navigate by. The title rides in the same `title` key
 // as everywhere else, so the client's `{ctx}` inlining works unchanged.
-func msgConferenceInvited(actor, title, confID string) notifyMsg {
+//
+// scheduledAt (#3051) says when the meeting is, for the feed to show beside the
+// «Принять / Отклонить» buttons; absent for an ad-hoc call.
+func msgConferenceInvited(actor, title, confID string, scheduledAt *time.Time) notifyMsg {
 	p := withCtx(event(evConfInvited, nil), "title", title)
 	p["actor"] = actor
 	p["conference_id"] = confID
+	// The whole title, whatever its length (`title` is only inlined when short):
+	// the feed names the meeting under the sentence (#3051).
+	p["name"] = strings.TrimSpace(title)
+	if scheduledAt != nil {
+		p["scheduled_at"] = scheduledAt.UTC().Format(time.RFC3339)
+	}
 	return notifyMsg{
 		text:    fmt.Sprintf("%s приглашает вас в конференцию%s", actor, shortCtx(title)),
 		payload: p,

@@ -1,6 +1,8 @@
 import { computed, ref } from 'vue'
 import { documents as docsApi } from '@/api'
 import { i18n } from '@/i18n'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { mentionIdsFor, addedMentionIds } from '@/utils/mentionRoster'
 import {
   blockIdsInOrder,
   buildThreads,
@@ -31,6 +33,11 @@ export function useDocComments() {
   const docJSON = ref(null)
 
   let docId = ''
+
+  // The members a comment @-mentions (#3048); the roster is only asked for
+  // when there is an «@» to resolve.
+  const mentionsIn = (body) =>
+    body.includes('@') ? mentionIdsFor(useWorkspacesStore().currentId, body) : []
 
   const threads = computed(() => sortThreads(buildThreads(comments.value)))
   // Document order, not just membership: the panel's card order decides whether
@@ -85,7 +92,9 @@ export function useDocComments() {
    */
   async function add({ blockId = '', body, quote = '' }) {
     if (!docId || !body?.trim()) return false
-    await docsApi.addComment(docId, { block_id: blockId, body: body.trim(), quote })
+    // The members the comment @-mentions are told (#3048).
+    const mentions = await mentionsIn(body)
+    await docsApi.addComment(docId, { block_id: blockId, body: body.trim(), quote, mentions })
     if (blockId) activeBlockId.value = blockId
     await load()
     return true
@@ -94,14 +103,20 @@ export function useDocComments() {
   /** Answers an existing thread. The server takes the anchor from the root. */
   async function reply(parentId, body) {
     if (!docId || !parentId || !body?.trim()) return false
-    await docsApi.addComment(docId, { parent_id: parentId, body: body.trim() })
+    const mentions = await mentionsIn(body)
+    await docsApi.addComment(docId, { parent_id: parentId, body: body.trim(), mentions })
     await load()
     return true
   }
 
   async function edit(commentId, body) {
     if (!body?.trim()) return false
-    await docsApi.updateComment(commentId, body.trim())
+    // Only the people this edit added are told — as for a task comment.
+    const before = comments.value.find((c) => c.id === commentId)?.body || ''
+    const mentions = body.includes('@')
+      ? await addedMentionIds(useWorkspacesStore().currentId, before, body)
+      : []
+    await docsApi.updateComment(commentId, body.trim(), mentions)
     await load()
     return true
   }

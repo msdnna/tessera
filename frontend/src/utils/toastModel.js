@@ -137,6 +137,8 @@ export function notificationCategory(n) {
     case 'task_mention':
     case 'note_mention':
     case 'task_thread_reply':
+    case 'document_mention':
+    case 'conference_mention':
       return 'mentions'
     case 'task_comment':
       return 'comments'
@@ -152,7 +154,10 @@ export function notificationCategory(n) {
     case 'reminder':
       return 'due'
     case 'conference_invited':
+    case 'conference_starting':
       return 'calls'
+    case 'integration_conflict':
+      return 'system'
     default:
       return ev.startsWith('integration_sync') ? 'system' : 'changes'
   }
@@ -161,11 +166,18 @@ export function notificationCategory(n) {
 // The toast kind of a notification: decides its rank and how long it lives.
 export function notificationKind(n) {
   const ev = eventOf(n)
-  if (ev === 'conference_invited') return 'call'
+  if (ev === 'conference_invited' || ev === 'conference_starting') return 'call'
   if (ev === 'reminder') return 'reminder'
-  if (ev.startsWith('integration_sync')) return 'system'
+  if (ev.startsWith('integration_sync') || ev === 'integration_conflict') return 'system'
   // A shared «Входящие» note naming the reader (#3040) is a mention too.
-  if (ev === 'task_mention' || ev === 'note_mention' || ev === 'task_thread_reply') return 'mention'
+  if (
+    ev === 'task_mention' ||
+    ev === 'note_mention' ||
+    ev === 'task_thread_reply' ||
+    ev === 'document_mention' ||
+    ev === 'conference_mention'
+  )
+    return 'mention'
   if (ev === 'task_assigned') return 'assign'
   return 'me'
 }

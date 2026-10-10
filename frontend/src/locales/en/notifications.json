@@ -18,7 +18,12 @@
     "integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
     "integration_sync_failed": "{label}: sync failed — {reason} (after {took})",
     "conference_invited": "{actor} invited you to a conference{ctx}",
-    "note_mention": "{actor} mentioned you in a note{ctx}"
+    "note_mention": "{actor} mentioned you in a note{ctx}",
+    "milestone_closed": "{actor} closed stage “{title}” — {done} of {total} done",
+    "conference_starting": "Meeting “{title}” starts in {minutes} min",
+    "integration_conflict": "{label} · sync conflict on #{ref} ({fields}): changed on both sides",
+    "document_mention": "{actor} mentioned you in document “{name}”{ctx}",
+    "conference_mention": "{actor} mentioned you in the chat of “{name}”{ctx}"
   },
   "field": {
     "title": "title",
@@ -28,7 +33,8 @@
     "start": "start date",
     "estimate": "estimate",
     "completed": "completed",
-    "reopened": "reopened"
+    "reopened": "reopened",
+    "state": "status"
   },
   "kind": {
     "assigned": "Task assigned",
@@ -44,7 +50,10 @@
     "due_soon": "Deadline approaching",
     "reminder": "Reminder",
     "integration_sync": "Sync finished",
-    "conference_invite": "Conference invitation"
+    "conference_invite": "Conference invitation",
+    "milestone_closed": "Stage closed",
+    "conference_soon": "Meeting starting soon",
+    "integration_conflict": "Sync conflict"
   },
   "duration": {
     "instant": "less than a second",
@@ -59,6 +68,7 @@
     "settings": "Notification settings",
     "filter": {
       "all": "All",
+      "unread": "Unread",
       "mentions": "Mentions",
       "assigned": "Assigned",
       "gitlab": "GitLab"
@@ -75,6 +85,19 @@
     "now": "just now",
     "minutes": "{n} min",
     "quote": "“{text}”",
-    "hours": "{n} h"
+    "hours": "{n} h",
+    "accepted": "You're going",
+    "declined": "You declined",
+    "resolve": "Resolve conflict",
+    "join": "Join",
+    "at": "at {time}",
+    "stageOf": "Stage · {project}",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "more": "Show more",
+    "loading": "Loading…",
+    "end": "That's all your notifications",
+    "page": "All notifications",
+    "pageSub": "Every workspace in one feed — newest first"
   }
 }

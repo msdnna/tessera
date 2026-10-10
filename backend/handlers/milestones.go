@@ -196,6 +196,7 @@ func (h *API) UpdateMilestone(c *gin.Context) {
 		}
 	}
 	h.broadcastAs(c, wsID, "milestone.updated", out.Milestone)
+	h.notifyMilestoneClosed(c, prev, out.Milestone, wsID)
 	c.JSON(http.StatusOK, out)
 }
 

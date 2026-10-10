@@ -13,10 +13,8 @@ export const FEATURE_STUBS = {
   // Capture without a connection: keep the record on the device and send it
   // later — #3031.
   'inbox.offline': 3031,
-  // Settings (#3106): two-factor sign-in (#3081); quiet-hours exceptions
-  // «Только срочное и упоминания» (#3050).
+  // Settings (#3106): two-factor sign-in (#3081).
   'settings.twoFactor': 3081,
-  'notifications.quietExceptions': 3050,
   // Administration (#3106): invitations across workspaces (#3079), roles and
   // permissions (#3063), a user's workspaces and last sign-in (#3078), CSV
   // export of users (#3080).
@@ -24,11 +22,6 @@ export const FEATURE_STUBS = {
   'admin.roles': 3063,
   'admin.userSpaces': 3078,
   'admin.csv': 3080,
-  // Notifications (#3107): «Принять / Отклонить» a meeting invitation right in
-  // the feed (#3051), the page of all notifications with paging (#3049).
-  'notifications.rsvp': 3051,
-  'notifications.all': 3049,
-  // Toasts (#3117): «Звук» in the toast settings (#3121).
   'toasts.sound': 3121,
   // Conferences (#3107): reactions in a call (#3054), a meeting's repeat and
   // length (#3052), tying it to a stage (#3053).

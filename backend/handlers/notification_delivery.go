@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -125,6 +126,19 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 				obj["task_column"] = col.Name
 				if col.NameKey != nil {
 					obj["task_column_key"] = *col.NameKey
+				}
+			}
+		}
+	}
+	// An invitation carries the reader's answer, as the list does (#3051), so a
+	// live row draws «Принять / Отклонить» without a reload.
+	if kind == kindConferenceInvite {
+		if id, ok := msg.payload["conference_id"].(string); ok {
+			if cid, perr := uuid.Parse(id); perr == nil {
+				if part, gerr := h.q.GetConferenceParticipant(ctx, db.GetConferenceParticipantParams{
+					ConferenceID: cid, UserID: userID,
+				}); gerr == nil {
+					obj["rsvp"] = part.Rsvp
 				}
 			}
 		}
@@ -542,7 +556,8 @@ func (h *API) outsideQuietHours(ctx context.Context, d db.NotificationDelivery, 
 	if perr != nil {
 		p = defaultPrefs(n.UserID)
 	}
-	if end, quiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, next); quiet {
+	quietAt := quietFor(p, quietExempt(p, n.Kind, h.taskPriorityOf(ctx, p, n.TaskID)))
+	if end, quiet := quietAt(next); quiet {
 		return end
 	}
 	return next
@@ -832,9 +847,25 @@ func conferenceOf(n db.Notification) string {
 func (h *API) notifyLink(n db.Notification) string { return notifyLink(h.publicURL, n) }
 
 func notifyLink(publicURL string, n db.Notification) string {
-	confID := conferenceOf(n)
-	if confID == "" || publicURL == "" {
+	if publicURL == "" {
 		return publicURL
 	}
-	return strings.TrimRight(publicURL, "/") + "/conferences/" + confID
+	base := strings.TrimRight(publicURL, "/")
+	if confID := conferenceOf(n); confID != "" {
+		return base + "/conferences/" + confID
+	}
+	// The v2 notifications about something that is not a task (#3048) open it:
+	// a document someone mentioned the reader in, a stage that was closed.
+	var p map[string]any
+	if json.Unmarshal(n.Payload, &p) == nil {
+		if slug, _ := p["document_slug"].(string); slug != "" {
+			return base + "/documents/" + url.PathEscape(slug)
+		}
+		project, _ := p["project_slug"].(string)
+		stage, _ := p["milestone_id"].(string)
+		if project != "" && stage != "" {
+			return base + "/project/" + url.PathEscape(project) + "/stage/" + stage
+		}
+	}
+	return publicURL
 }

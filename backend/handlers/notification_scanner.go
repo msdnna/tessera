@@ -51,6 +51,7 @@ func (h *API) ScanNotificationsOnce(ctx context.Context) bool {
 	return h.withAdvisoryLock(ctx, NotifyScanLock, func() {
 		h.scanDueTasks(ctx)
 		h.scanReminders(ctx)
+		h.scanConferencesSoon(ctx)
 	})
 }
 
@@ -169,9 +170,10 @@ func (h *API) scanDueTasks(ctx context.Context) {
 			// morning carries it exactly once. Nothing is advanced here either —
 			// last_fired_at keeps its old value, so the repeat resumes on the first
 			// tick after the window (#2932).
+			// An urgent task under «Только срочное и упоминания» (#3050) is not
+			// held by the window, so its repeat is not dropped either.
 			if dueAlreadyFired(*t.DueDate, prior) {
-				if _, inQuiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes),
-					int(p.QuietEndMinutes), p.QuietTz, now); inQuiet {
+				if _, inQuiet := quietFor(p, quietExempt(p, kindDueSoon, t.Priority))(now); inQuiet {
 					continue
 				}
 			}

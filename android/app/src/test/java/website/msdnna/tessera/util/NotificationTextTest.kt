@@ -69,6 +69,27 @@ class NotificationTextTest {
         assertThat(text("en", three)).isEqualTo("Алиса updated task #7: title, priority and due date")
     }
 
+    /** Уведомления v2 (#3048) — те же фразы, что в вебе и в каталоге бэкенда. */
+    @Test
+    fun `v2 notifications read in the reader's language`() {
+        val stage = """{"event":"milestone_closed","actor":"Илья","title":"Спринт 41","done":19,"total":22}"""
+        assertThat(text("ru", stage)).isEqualTo("Илья закрыл(а) этап «Спринт 41» — выполнено 19 из 22")
+        assertThat(text("en", stage)).isEqualTo("Илья closed stage “Спринт 41” — 19 of 22 done")
+
+        val soon = """{"event":"conference_starting","title":"Синк","minutes":5}"""
+        assertThat(text("ru", soon)).isEqualTo("Через 5 мин начнётся встреча «Синк»")
+        assertThat(text("en", soon)).isEqualTo("Meeting “Синк” starts in 5 min")
+
+        val conflict = """{"event":"integration_conflict","label":"GitLab","task_number":418,"fields":["description","state"]}"""
+        assertThat(text("ru", conflict))
+            .isEqualTo("GitLab · конфликт синхронизации в #418 (описание и статус): изменено в обоих местах")
+
+        val doc = """{"event":"document_mention","actor":"Анна","name":"План","excerpt":"глянь"}"""
+        assertThat(text("ru", doc)).isEqualTo("Анна упомянул(а) вас в документе «План» «глянь»")
+        val chat = """{"event":"conference_mention","actor":"Анна","name":"Стендап"}"""
+        assertThat(text("en", chat)).isEqualTo("Анна mentioned you in the chat of “Стендап”")
+    }
+
     @Test
     fun `a seeded column is captioned, a user-named one is verbatim`() {
         val seeded = """{"event":"task_moved","actor":"Алиса","task_number":3,"column":"К работе","column_key":"todo"}"""

@@ -18,7 +18,12 @@
     "integration_sync_partial": "{label}: +{created} новых, ~{updated} обновлено, за {took} (часть действий с ошибками)",
     "integration_sync_failed": "{label}: синхронизация не удалась — {reason} (за {took})",
     "conference_invited": "{actor} приглашает вас в конференцию{ctx}",
-    "note_mention": "{actor} упомянул(а) вас в заметке{ctx}"
+    "note_mention": "{actor} упомянул(а) вас в заметке{ctx}",
+    "milestone_closed": "{actor} закрыл(а) этап «{title}» — выполнено {done} из {total}",
+    "conference_starting": "Через {minutes} мин начнётся встреча «{title}»",
+    "integration_conflict": "{label} · конфликт синхронизации в #{ref} ({fields}): изменено в обоих местах",
+    "document_mention": "{actor} упомянул(а) вас в документе «{name}»{ctx}",
+    "conference_mention": "{actor} упомянул(а) вас в чате встречи «{name}»{ctx}"
   },
   "field": {
     "title": "название",
@@ -28,7 +33,8 @@
     "start": "начало",
     "estimate": "оценка",
     "completed": "выполнена",
-    "reopened": "возвращена в работу"
+    "reopened": "возвращена в работу",
+    "state": "статус"
   },
   "kind": {
     "assigned": "Назначена задача",
@@ -44,7 +50,10 @@
     "due_soon": "Скоро дедлайн",
     "reminder": "Напоминание",
     "integration_sync": "Синхронизация завершена",
-    "conference_invite": "Приглашение в конференцию"
+    "conference_invite": "Приглашение в конференцию",
+    "milestone_closed": "Этап закрыт",
+    "conference_soon": "Скоро встреча",
+    "integration_conflict": "Конфликт синхронизации"
   },
   "duration": {
     "instant": "меньше секунды",
@@ -59,6 +68,7 @@
     "settings": "Настройки уведомлений",
     "filter": {
       "all": "Все",
+      "unread": "Непрочитанные",
       "mentions": "Упоминания",
       "assigned": "Назначения",
       "gitlab": "GitLab"
@@ -75,6 +85,19 @@
     "now": "только что",
     "minutes": "{n} мин",
     "quote": "«{text}»",
-    "hours": "{n} ч"
+    "hours": "{n} ч",
+    "accepted": "Вы идёте",
+    "declined": "Вы отказались",
+    "resolve": "Разрешить конфликт",
+    "join": "Войти",
+    "at": "в {time}",
+    "stageOf": "Этап · {project}",
+    "today": "Сегодня",
+    "yesterday": "Вчера",
+    "more": "Показать ещё",
+    "loading": "Загружаем…",
+    "end": "Это все уведомления",
+    "page": "Все уведомления",
+    "pageSub": "Лента всех пространств — новые сверху"
   }
 }

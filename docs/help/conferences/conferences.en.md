@@ -57,6 +57,8 @@ On the right is a panel with two tabs: **In the room** and **Chat**. A button ab
 
 **In the room** lists who is in the call now, and a separate **Invited** list shows people who were asked but have not arrived yet. **Invite** (the person with a plus) is right there by the tabs: the invitee gets a notification with a link straight into the conference.
 
+An invitation is answered with **Accept** or **Decline** — right in the notification, in the meeting's row on the list, or in the lobby (**Your reply: Going · Not going**). The row shows the answer, and its **⋯** menu changes it. The host sees those who declined dimmed in the Invited list, marked "Not going"; joining the call counts as "going". Those who declined get no "meeting in 5 minutes", and a new invitation asks them again.
+
 Each participant's volume is set **on your side** and only there — it does not change how anyone else hears them.
 
 **Chat** is the conference's own conversation: links shared on the go, and attachments. A picture opens large **without leaving the call**. The chat history stays with the conference, so you can come back to what was said.

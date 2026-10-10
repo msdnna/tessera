@@ -14,17 +14,7 @@
 // rules; the rules are kept and drawn as rows (see #3106).
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import {
-  NButton,
-  NCheckbox,
-  NIcon,
-  NInput,
-  NModal,
-  NSelect,
-  NSpin,
-  NSwitch,
-  NTooltip,
-} from 'naive-ui'
+import { NButton, NCheckbox, NIcon, NInput, NModal, NSelect, NSpin, NSwitch } from 'naive-ui'
 import {
   AddOutline,
   CreateOutline,
@@ -50,7 +40,6 @@ import { useFormat } from '@/composables/useFormat'
 import { workspaceName } from '@/utils/defaultNames'
 import { humanizeError } from '@/utils/errors'
 import { softFill } from '@/utils/gradient'
-import { stubTask } from '@/utils/featureStubs'
 import { useAuthStore } from '@/stores/auth'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useThemeStore } from '@/stores/theme'
@@ -138,6 +127,10 @@ const EVENT_KINDS = [
   'reminder',
   'integration_sync',
   'conference_invite',
+  // v2 notifications (#3048).
+  'milestone_closed',
+  'conference_soon',
+  'integration_conflict',
 ]
 function kindLabel(kind) {
   return EVENT_KINDS.includes(kind) ? t(`settings.notifications.kind.${kind}`) : kind
@@ -179,6 +172,9 @@ const prefs = reactive({
   toasts_enabled: true,
   toasts: {},
   quiet_toasts: false,
+  // «Только срочное и упоминания» (#3050): mentions, urgent tasks and a meeting
+  // about to start get through the quiet window.
+  quiet_allow_urgent: false,
 })
 // The toasts follow a saved change at once — this tab's lanes read the store.
 const toastsStore = useToastsStore()
@@ -212,10 +208,16 @@ async function savePrefs() {
     // would be UTC there, not «по вашему часовому поясу» as the hint promises —
     // so send the browser's own zone, the one this screen renders in.
     prefs.quiet_tz = resolvedTimezone(theme.timezone) || prefs.quiet_tz
-    const res = await prefsApi.update({ ...prefs })
+    const sent = { ...prefs }
+    const res = await prefsApi.update(sent)
     toastsStore.applyServer(res.data)
     applying = true
-    Object.assign(prefs, res.data || {})
+    // A field changed while the save was in flight keeps the new value: the
+    // answer describes what was sent, and the change has its own save queued.
+    // Copying the whole answer back used to undo a click made in that window.
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+    for (const [k, v] of Object.entries(res.data || {}))
+      if (!(k in sent) || same(prefs[k], sent[k])) prefs[k] = v
     // The due picker's «По умолчанию — …» reads these (#3118).
     setNotifyDefaults(res.data || null)
     await nextTick()
@@ -622,7 +624,6 @@ const quietHint = computed(() =>
     ? t('settings.notifications.schedule.quietHintTz', { tz: theme.timezone })
     : t('settings.notifications.schedule.quietHint'),
 )
-const quietExceptionsTask = stubTask('notifications.quietExceptions')
 
 function kindsSummary(r) {
   const ks = r.matcher?.kinds
@@ -852,17 +853,12 @@ function wsSummary(r) {
               {{ t('settings.notifications.schedule.quietToasts') }}
             </n-checkbox>
           </label>
-          <n-tooltip :delay="300">
-            <template #trigger>
-              <label class="st-toggle st-stub" data-testid="notif-quiet-exceptions">
-                <span class="st-toggle-l">{{
-                  t('settings.notifications.schedule.quietExceptions')
-                }}</span>
-                <span class="st-soon">{{ t('common.stub.badge') }}</span>
-              </label>
-            </template>
-            {{ t('common.stub.soon', { n: quietExceptionsTask }) }}
-          </n-tooltip>
+          <label class="st-toggle ns-quiet-toasts" data-testid="notif-quiet-exceptions">
+            <n-checkbox v-model:checked="prefs.quiet_allow_urgent" :disabled="!prefs.quiet_enabled">
+              {{ t('settings.notifications.schedule.quietExceptions') }}
+            </n-checkbox>
+          </label>
+          <p class="st-hint">{{ t('settings.notifications.schedule.quietExceptionsHint') }}</p>
           <div v-if="prefsError" class="st-err">{{ prefsError }}</div>
         </section>
       </div>

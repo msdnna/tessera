@@ -31,10 +31,13 @@ import {
   RepeatOutline,
   TrailSignOutline,
   DocumentTextOutline,
+  CheckmarkOutline,
+  CloseOutline,
 } from '@vicons/ionicons5'
 import { conferences as confApi, documents as docsApi, workspaces as wsApi } from '@/api'
 import { builtinCards, builtinContent } from '@/utils/docTemplates'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useNotificationsStore } from '@/stores/notifications'
 import { useAuthStore } from '@/stores/auth'
 import { useConferenceSession } from '@/stores/conference'
 import { useFormat } from '@/composables/useFormat'
@@ -488,11 +491,29 @@ const menu = ref({ show: false, conf: null, anchor: null })
 function openMenu(c, e) {
   menu.value = { show: true, conf: c, anchor: e.currentTarget }
 }
+// «Принять / Отклонить» (#3051) in the row's menu too — the way to change an
+// answer once the row only shows it.
+const rsvpItems = (c) =>
+  c && c.my_rsvp && c.status !== 'ended'
+    ? [
+        c.my_rsvp !== 'accepted' && {
+          key: 'accept',
+          label: t('conferences.rsvp.acceptItem'),
+          icon: CheckmarkOutline,
+        },
+        c.my_rsvp !== 'declined' && {
+          key: 'decline',
+          label: t('conferences.rsvp.declineItem'),
+          icon: CloseOutline,
+        },
+      ].filter(Boolean)
+    : []
 const menuItems = computed(() => [
   { key: 'link', label: t('conferences.list.copyLink'), icon: LinkOutline },
   menu.value.conf && agendaOf(menu.value.conf)
     ? { key: 'agenda', label: t('conferences.agenda.open'), icon: DocumentTextOutline }
     : { key: 'agenda-new', label: t('conferences.agenda.create'), icon: DocumentTextOutline },
+  ...rsvpItems(menu.value.conf),
   { gap: true },
   {
     key: 'delete',
@@ -509,7 +530,47 @@ function onMenu(key) {
   if (key === 'link') copyLink(c)
   else if (key === 'agenda') openAgenda(agendaOf(c))
   else if (key === 'agenda-new') createAgenda(c)
+  else if (key === 'accept') respond(c, 'accepted')
+  else if (key === 'decline') respond(c, 'declined')
   else if (key === 'delete') remove(c)
+}
+
+// The reader's answer to an invitation (#3051), from a row, its menu or the
+// lobby. Optimistic: the row shows it at once and a refusal puts it back. The
+// server closes the invitation in the feed; the bell's copy follows here.
+const notes = useNotificationsStore()
+async function respond(c, response) {
+  if (!c || c.my_rsvp === response) return
+  const prev = c.my_rsvp
+  c.my_rsvp = response
+  const mine = detail.value?.participants?.find((p) => p.user_id === me.value)
+  const prevMine = mine?.rsvp
+  if (mine && detail.value?.conference?.id === c.id) mine.rsvp = response
+  try {
+    await confApi.rsvp(c.id, response)
+    const now = new Date().toISOString()
+    for (const n of notes.items)
+      if (n.kind === 'conference_invite' && n.payload?.conference_id === c.id) {
+        n.rsvp = response
+        if (!n.read_at) n.read_at = now
+      }
+  } catch (e) {
+    c.my_rsvp = prev
+    if (mine) mine.rsvp = prevMine
+    message.error(e.message)
+  }
+}
+// The lobby's answer: the reader's own seat in the call, when there is one.
+const myRsvp = computed(
+  () => detail.value?.participants?.find((p) => p.user_id === me.value)?.rsvp || null,
+)
+function respondHere(response) {
+  const c = detail.value?.conference
+  if (!c) return
+  const row = list.value.find((x) => x.id === c.id) || { ...c, my_rsvp: myRsvp.value }
+  respond(row, response)
+  const mine = detail.value.participants.find((p) => p.user_id === me.value)
+  if (mine) mine.rsvp = response
 }
 async function copyLink(c) {
   const ok = await copyText(`${location.origin}/conferences/${c.id}`)
@@ -826,6 +887,41 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
                   </button>
                 </div>
               </div>
+              <!-- «Принять / Отклонить» an invitation still unanswered (#3051);
+                   once answered the row says how, and its menu changes it. -->
+              <span
+                v-if="c.my_rsvp === 'pending' && c.status !== 'ended'"
+                class="row-rsvp"
+                data-testid="conference-row-rsvp"
+              >
+                <button
+                  type="button"
+                  class="kit-btn small primary"
+                  data-testid="conference-row-accept"
+                  @click.stop="respond(c, 'accepted')"
+                >
+                  {{ $t('conferences.rsvp.accept') }}
+                </button>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  data-testid="conference-row-decline"
+                  @click.stop="respond(c, 'declined')"
+                >
+                  {{ $t('conferences.rsvp.decline') }}
+                </button>
+              </span>
+              <span
+                v-else-if="
+                  (c.my_rsvp === 'accepted' || c.my_rsvp === 'declined') &&
+                  c.status !== 'ended' &&
+                  !(c.created_by && c.created_by === me)
+                "
+                class="row-answer"
+                :class="c.my_rsvp"
+                data-testid="conference-row-answer"
+                >{{ $t(`conferences.rsvp.${c.my_rsvp}`) }}</span
+              >
               <button
                 v-if="nearest && nearest.id === c.id"
                 type="button"
@@ -999,6 +1095,36 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               <p v-if="detail.conference.description" class="desc">
                 {{ detail.conference.description }}
               </p>
+              <!-- The reader's answer to the invitation (#3051). -->
+              <div
+                v-if="myRsvp && detail.conference.status !== 'ended'"
+                class="lobby-rsvp"
+                data-testid="conference-rsvp"
+                :data-rsvp="myRsvp"
+              >
+                <span class="lobby-rsvp-l">{{ $t('conferences.rsvp.title') }}</span>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  :class="{ chosen: myRsvp === 'accepted' }"
+                  :aria-pressed="myRsvp === 'accepted'"
+                  data-testid="conference-rsvp-accept"
+                  @click="respondHere('accepted')"
+                >
+                  <n-icon v-if="myRsvp === 'accepted'" :component="CheckmarkOutline" :size="13" />
+                  {{ $t('conferences.rsvp.accepted') }}
+                </button>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  :class="{ chosen: myRsvp === 'declined' }"
+                  :aria-pressed="myRsvp === 'declined'"
+                  data-testid="conference-rsvp-decline"
+                  @click="respondHere('declined')"
+                >
+                  {{ $t('conferences.rsvp.declined') }}
+                </button>
+              </div>
             </div>
             <!-- Always enabled: a conference is a reusable room (#2879), so even
                  a legacy "ended" one is joined rather than being a dead end. -->
@@ -1388,6 +1514,38 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+/* «Принять / Отклонить» (#3051): the unanswered invitation's two buttons, and
+   once answered a quiet word — accented for «иду», muted for «не иду». */
+.row-rsvp {
+  flex: none;
+  display: inline-flex;
+  gap: 6px;
+}
+.row-answer {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-text3);
+}
+.row-answer.accepted {
+  color: var(--t-primary);
+}
+.lobby-rsvp {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.lobby-rsvp-l {
+  font-size: 12.5px;
+  color: var(--t-text3);
+  margin-right: 4px;
+}
+.lobby-rsvp .kit-btn.chosen {
+  background: color-mix(in srgb, var(--t-primary) 14%, var(--t-card));
+  color: var(--t-primary);
+  font-weight: 600;
 }
 .row-icon {
   flex: none;

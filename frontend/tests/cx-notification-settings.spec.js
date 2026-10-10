@@ -206,4 +206,19 @@ describe('NotificationSettings.vue — автосохранение распис
     expect(prefsApi.update.mock.calls[0][0].quiet_enabled).toBe(true)
     w.unmount()
   })
+
+  // «Только срочное и упоминания» (#3050) is a real switch now, saved with the
+  // rest of the schedule.
+  it('сохраняет исключения тихих часов', async () => {
+    const w = await mountSettings()
+    prefsApi.update.mockResolvedValue({ data: {} })
+    await w.find('[data-testid="notif-quiet"] .n-switch').trigger('click')
+    await flushPromises()
+    await w.find('[data-testid="notif-quiet-exceptions"] .n-checkbox').trigger('click')
+    vi.advanceTimersByTime(600)
+    await flushPromises()
+    expect(prefsApi.update).toHaveBeenCalledTimes(1)
+    expect(prefsApi.update.mock.calls[0][0].quiet_allow_urgent).toBe(true)
+    w.unmount()
+  })
 })

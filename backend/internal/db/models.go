@@ -82,6 +82,7 @@ type Conference struct {
 	RecordingTtlDays int32      `json:"recording_ttl_days"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+	SoonNotifiedFor  *time.Time `json:"soon_notified_for"`
 }
 
 type ConferenceMessage struct {
@@ -111,6 +112,8 @@ type ConferenceParticipant struct {
 	JoinedAt     *time.Time `json:"joined_at"`
 	LeftAt       *time.Time `json:"left_at"`
 	ForceMuted   bool       `json:"force_muted"`
+	Rsvp         string     `json:"rsvp"`
+	RsvpAt       *time.Time `json:"rsvp_at"`
 }
 
 type ConferenceRecording struct {
@@ -496,6 +499,7 @@ type NotificationPref struct {
 	Toasts            []byte     `json:"toasts"`
 	QuietToasts       bool       `json:"quiet_toasts"`
 	DndUntil          *time.Time `json:"dnd_until"`
+	QuietAllowUrgent  bool       `json:"quiet_allow_urgent"`
 }
 
 type NotificationRoute struct {

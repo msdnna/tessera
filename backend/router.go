@@ -584,6 +584,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Persistent notifications (#3).
 			protected.GET("/notifications", rh.ListNotifications)
 			protected.GET("/notifications/unread-count", rh.UnreadNotificationCount)
+			protected.GET("/notifications/page", rh.ListNotificationsPage)
 			protected.POST("/notifications/:id/read", rh.MarkNotificationRead)
 			protected.POST("/notifications/read-all", rh.MarkAllNotificationsRead)
 
@@ -716,6 +717,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/conferences/:id/leave", rh.LeaveConference)
 			protected.POST("/conferences/:id/end", rh.EndConference)
 			protected.POST("/conferences/:id/invite", rh.InviteConference)
+			protected.PUT("/conferences/:id/rsvp", rh.RespondConference)
 			protected.GET("/conferences/:id/participants", rh.ListConferenceParticipants)
 			// The one media-adjacent route: it hands out a short-lived LiveKit
 			// warrant after our own checks, and creates the SFU room

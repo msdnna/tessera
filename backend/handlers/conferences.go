@@ -170,7 +170,9 @@ func (h *API) ListConferences(c *gin.Context) {
 			return
 		}
 	}
-	rows, err := h.q.ListConferences(c, db.ListConferencesParams{WorkspaceID: wsID, Status: status})
+	rows, err := h.q.ListConferences(c, db.ListConferencesParams{
+		Viewer: middleware.CurrentUser(c), WorkspaceID: wsID, Status: status,
+	})
 	if err != nil {
 		fail(c, err)
 		return
@@ -584,7 +586,8 @@ func (h *API) InviteConference(c *gin.Context) {
 			prev, perr := q.GetConferenceParticipant(c, db.GetConferenceParticipantParams{
 				ConferenceID: conf.ID, UserID: uid,
 			})
-			if errIsNoRows(perr) || (perr == nil && prev.LeftAt != nil) {
+			// So does one who declined (#3051): the invitation is asked again.
+			if errIsNoRows(perr) || (perr == nil && (prev.LeftAt != nil || prev.Rsvp == rsvpDeclined)) {
 				fresh[uid] = true
 			}
 			p, err := q.InviteConferenceParticipant(c, db.InviteConferenceParticipantParams{
@@ -605,7 +608,7 @@ func (h *API) InviteConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	msg := msgConferenceInvited(h.actorName(c), conf.Title, conf.ID.String())
+	msg := msgConferenceInvited(h.actorName(c), conf.Title, conf.ID.String(), conf.ScheduledAt)
 	for _, p := range invited {
 		h.broadcastAs(c, conf.WorkspaceID, "conference.participant.invited", p)
 		if fresh[p.UserID] {
@@ -615,6 +618,55 @@ func (h *API) InviteConference(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, invited)
+}
+
+// The answers to an invitation (#3051).
+const (
+	rsvpAccepted = "accepted"
+	rsvpDeclined = "declined"
+)
+
+// RespondConference records the caller's answer to an invitation —
+// «Принять / Отклонить» in the feed and on the meeting's page (#3051):
+// `PUT /conferences/:id/rsvp {"response": "accepted"|"declined"}`.
+//
+// Only an invited seat answers: a member who was never invited has nothing to
+// accept (they may still walk in, which JoinConference records as acceptance).
+// The answer closes the invitation in the reader's feed wherever it was given,
+// and the workspace hears it, so the host sees who is coming.
+func (h *API) RespondConference(c *gin.Context) {
+	conf, ok := h.conferenceScope(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Response string `json:"response" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Response != rsvpAccepted && req.Response != rsvpDeclined {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ответ — accepted или declined"})
+		return
+	}
+	uid := middleware.CurrentUser(c)
+	part, err := h.q.SetConferenceRsvp(c, db.SetConferenceRsvpParams{
+		Rsvp: req.Response, ConferenceID: conf.ID, UserID: uid,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "вас не приглашали в эту встречу"})
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	soft(c, "MarkConferenceInviteRead", h.q.MarkConferenceInviteRead(c, db.MarkConferenceInviteReadParams{
+		UserID: uid, ConferenceID: conf.ID.String(),
+	}))
+	h.broadcastAs(c, conf.WorkspaceID, "conference.participant.rsvp", part)
+	c.JSON(http.StatusOK, part)
 }
 
 // ListConferenceParticipants returns everyone invited to a conference, with the

@@ -215,5 +215,16 @@
   "agenda": {
     "open": "Open the agenda",
     "create": "Create an agenda"
+  },
+  "rsvp": {
+    "pending": "Awaiting reply",
+    "accepted": "Going",
+    "declined": "Not going",
+    "accept": "Accept",
+    "decline": "Decline",
+    "acceptItem": "Accept the invitation",
+    "declineItem": "Decline the invitation",
+    "title": "Your reply",
+    "declinedBy": "declined"
   }
 }

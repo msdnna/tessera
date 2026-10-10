@@ -104,6 +104,9 @@ const pageCrumb = computed(() => {
     return { cur: t('settings.title'), sub: t(`settings.nav.${known.includes(s) ? s : 'profile'}`) }
   }
   if (p === '/conferences') return { cur: t('conferences.title'), sub: workspaceName(ws.current) }
+  // The page of all notifications (#3049) spans every workspace.
+  if (p === '/notifications')
+    return { cur: t('shell.tools.notifications'), sub: t('notifications.pop.pageSub') }
   if (p === '/admin')
     return {
       cur: t('settings.admin.title'),
