@@ -222,6 +222,9 @@ fun TaskModal(
      *  parity). Reading stays whole — including downloading a file, which is most
      *  of why an archived task gets opened. */
     readonly: Boolean = false,
+    /** The task went to the board's trash from here (#3004): the host shows the
+     *  undo toast — the modal closes, so it cannot. */
+    onDeleted: ((taskId: String, number: Long?, title: String) -> Unit)? = null,
     onClose: (changed: Boolean) -> Unit,
 ) {
     val c = Tessera.colors
@@ -296,7 +299,6 @@ fun TaskModal(
     var tab by remember { mutableStateOf(0) }
     val tabState = rememberSaveableStateHolder()
     var confirmArchive by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
     var showTransfer by remember { mutableStateOf(false) }
     // Milestones inline-created from the picker, merged with the board's list so a
     // freshly-made «Этап» shows immediately (the board reloads on close).
@@ -598,17 +600,14 @@ fun TaskModal(
                         }
                         Spacer(Modifier.width(8.dp))
                         Box {
-                            GhostIconButton(Ion.TRASH, DangerRed) { confirmDelete = true }
-                            TConfirmPopover(
-                                expanded = confirmDelete,
-                                message = stringResource(R.string.task_delete_confirm),
-                                confirmText = stringResource(R.string.common_delete),
-                                onConfirm = {
-                                    confirmDelete = false
-                                    vm.delete { close() }
-                                },
-                                onDismiss = { confirmDelete = false },
-                            )
+                            // Into the trash at once; the board offers the undo (#3004).
+                            GhostIconButton(Ion.TRASH, DangerRed) {
+                                val d = state.detail
+                                vm.delete {
+                                    if (d != null) onDeleted?.invoke(d.id, d.number, d.title)
+                                    close()
+                                }
+                            }
                         }
                         Spacer(Modifier.weight(1f))
                         TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Secondary, onClick = { close() })

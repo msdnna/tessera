@@ -78,6 +78,15 @@ data class BoardActivity(
     val self: Boolean,
 )
 
+/** The undo offered after «Удалить» (#3004, web parity): the task is in the board's
+ *  trash, and «Вернуть» brings it back with its subtasks. */
+data class TrashUndo(
+    val key: Long,
+    val taskId: String,
+    val number: Long?,
+    val title: String,
+)
+
 data class BoardUiState(
     val loading: Boolean = true,
     val error: UiText? = null,
@@ -446,6 +455,11 @@ class BoardViewModel(
     // project.deleted) — the host leaves for Home (web navigate-home-on-delete).
     private val _gone = MutableStateFlow(false)
     val gone: StateFlow<Boolean> = _gone.asStateFlow()
+
+    // The undo of the last delete (#3004): the task is in the trash for 30 days,
+    // the toast offers it back for [TRASH_UNDO_TTL_MS].
+    private val _trashUndo = MutableStateFlow<TrashUndo?>(null)
+    val trashUndo: StateFlow<TrashUndo?> = _trashUndo.asStateFlow()
     private var activitySeq = 0L
 
     private val gson = Gson()
@@ -1187,8 +1201,11 @@ class BoardViewModel(
         }
     }
 
+    /** «Удалить навсегда» of the archive: into the trash and out of it at once —
+     *  the archive's own two-step confirm already asked. */
     fun deleteFromArchive(taskId: String) = launchCatching {
         repo.deleteTask(taskId)
+        repo.purgeTask(taskId)
         if (_state.value.archivedMode) {
             reloadArchiveScope()
         } else {
@@ -1355,9 +1372,36 @@ class BoardViewModel(
         refreshTasks()
     }
 
+    /** «Удалить»: into the board's trash at once, with an undo toast (#3004). */
     fun delete(taskId: String) = launchCatching {
+        val t = (_state.value.tasks + _state.value.subtasks).firstOrNull { it.id == taskId }
         repo.deleteTask(taskId)
         refreshTasks()
+        offerTrashUndo(taskId, t?.number, t?.title.orEmpty())
+    }
+
+    /** Shows the undo toast for a task deleted here or from the task modal. */
+    fun offerTrashUndo(taskId: String, number: Long?, title: String) {
+        val entry = TrashUndo(key = ++activitySeq, taskId = taskId, number = number, title = title)
+        _trashUndo.value = entry
+        viewModelScope.launch {
+            delay(TRASH_UNDO_TTL_MS)
+            if (_trashUndo.value?.key == entry.key) _trashUndo.value = null
+        }
+    }
+
+    /** «Вернуть» on the undo toast: back from the trash (POST /tasks/:id/restore). */
+    fun undoTrash() {
+        val u = _trashUndo.value ?: return
+        _trashUndo.value = null
+        launchCatching {
+            repo.untrashTask(u.taskId)
+            refreshTasks()
+        }
+    }
+
+    fun dismissTrashUndo() {
+        _trashUndo.value = null
     }
 
     private suspend fun refreshTasks() {
@@ -1411,6 +1455,9 @@ class BoardViewModel(
         const val REALTIME_DEBOUNCE_MS = 300L
         const val SUPPRESS_MS = 1500L
         const val ACTIVITY_TTL_MS = 6500L
+
+        /** As long as the web's undo toast (stores/undo UNDO_MS). */
+        const val TRASH_UNDO_TTL_MS = 7000L
 
         // Burst guard: more than MAX activity events within WINDOW (e.g. a GitLab
         // sync creating/moving many tasks) stops the per-event toast flood.

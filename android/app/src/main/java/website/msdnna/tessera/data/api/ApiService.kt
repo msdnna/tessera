@@ -305,8 +305,17 @@ interface ApiService {
     @PATCH("tasks/{id}/archive")
     suspend fun archiveTask(@Path("id") taskId: String)
 
+    /** Puts the task (and its subtasks) in the board's trash (#3004) — kept 30 days. */
     @DELETE("tasks/{id}")
     suspend fun deleteTask(@Path("id") taskId: String)
+
+    /** The undo of [deleteTask]: back from the trash. POST — the archive's restore is PATCH. */
+    @POST("tasks/{id}/restore")
+    suspend fun untrashTask(@Path("id") taskId: String)
+
+    /** Deletes a task that is already in the trash for good. */
+    @DELETE("tasks/{id}/purge")
+    suspend fun purgeTask(@Path("id") taskId: String)
 
     @POST("tasks/{id}/tags")
     suspend fun addTaskTag(@Path("id") taskId: String, @Body body: AddTagRequest)

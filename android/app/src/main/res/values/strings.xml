@@ -211,8 +211,10 @@
     <string name="task_card_menu_add_subtask">Создать подзадачу</string>
     <string name="task_card_menu_restore">Вернуть из архива</string>
     <string name="task_card_menu_delete_forever">Удалить навсегда</string>
+    <string name="task_trash_deleted">Задача #%1$d в корзине</string>
+    <string name="task_trash_deleted_untitled">Задача «%1$s» в корзине</string>
+    <string name="task_trash_undo">Вернуть</string>
     <string name="task_card_archive_confirm">Архивировать задачу «%1$s»?</string>
-    <string name="task_card_delete_confirm">Удалить задачу «%1$s»? Это действие необратимо.</string>
     <string name="task_card_delete_forever_confirm">Удалить задачу «%1$s» навсегда? Это действие необратимо.</string>
     <string name="task_card_conflict">Конфликт</string>
     <string name="task_card_subtask_hint">Название подзадачи, Enter</string>
@@ -232,7 +234,6 @@
     <string name="task_gitlab_grouped">Сгруппированная</string>
     <string name="task_archive_confirm">Архивировать задачу?</string>
     <string name="task_archive_action">В архив</string>
-    <string name="task_delete_confirm">Удалить задачу? Это действие необратимо.</string>
     <string name="task_prop_priority">Приоритет</string>
     <string name="task_prop_due">Срок</string>
     <string name="task_prop_estimate">Оценка</string>

@@ -203,8 +203,10 @@
     <string name="task_card_menu_add_subtask">Add subtask</string>
     <string name="task_card_menu_restore">Restore from archive</string>
     <string name="task_card_menu_delete_forever">Delete forever</string>
+    <string name="task_trash_deleted">Task #%1$d moved to the trash</string>
+    <string name="task_trash_deleted_untitled">Task “%1$s” moved to the trash</string>
+    <string name="task_trash_undo">Restore</string>
     <string name="task_card_archive_confirm">Archive the task “%1$s”?</string>
-    <string name="task_card_delete_confirm">Delete the task “%1$s”? This cannot be undone.</string>
     <string name="task_card_delete_forever_confirm">Delete the task “%1$s” forever? This cannot be undone.</string>
     <string name="task_card_conflict">Conflict</string>
     <string name="task_card_subtask_hint">Subtask title, Enter</string>
@@ -224,7 +226,6 @@
     <string name="task_gitlab_grouped">Grouped</string>
     <string name="task_archive_confirm">Archive this task?</string>
     <string name="task_archive_action">Archive</string>
-    <string name="task_delete_confirm">Delete this task? This cannot be undone.</string>
     <string name="task_prop_priority">Priority</string>
     <string name="task_prop_due">Due</string>
     <string name="task_prop_estimate">Estimate</string>
