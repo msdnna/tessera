@@ -269,7 +269,7 @@ SELECT m.id, m.conference_id, m.user_id, m.body, m.created_at, m.kind, m.task_id
 FROM conference_messages m
 LEFT JOIN users u ON u.id = m.user_id
 LEFT JOIN conferences cf ON cf.id = m.conference_id
-LEFT JOIN tasks t ON t.id = m.task_id
+LEFT JOIN tasks t ON t.id = m.task_id AND t.deleted_at IS NULL
     AND EXISTS (SELECT 1 FROM boards xb JOIN projects xp ON xp.id = xb.project_id
                  WHERE xb.id = t.board_id AND xb.deleted_at IS NULL
                    AND xp.workspace_id = cf.workspace_id)

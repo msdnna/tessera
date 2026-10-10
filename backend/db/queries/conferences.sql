@@ -67,7 +67,7 @@ FROM conferences c
 LEFT JOIN milestones m ON m.id = c.milestone_id
     AND EXISTS (SELECT 1 FROM projects xp WHERE xp.id = m.project_id AND xp.workspace_id = c.workspace_id)
 LEFT JOIN projects mp ON mp.id = m.project_id
-LEFT JOIN tasks t ON t.id = c.task_id
+LEFT JOIN tasks t ON t.id = c.task_id AND t.deleted_at IS NULL
 LEFT JOIN boards tb ON tb.id = t.board_id AND tb.deleted_at IS NULL
     AND EXISTS (SELECT 1 FROM projects tp WHERE tp.id = tb.project_id AND tp.workspace_id = c.workspace_id)
 LEFT JOIN boards sb ON sb.id = (

@@ -1699,6 +1699,7 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
 /* «Принять / Отклонить» (#3051): the unanswered invitation's two buttons, and
    once answered a quiet word — accented for «иду», muted for «не иду». */
 .row-rsvp {

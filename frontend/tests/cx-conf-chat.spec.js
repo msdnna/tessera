@@ -297,7 +297,7 @@ describe('sending', () => {
     await w.find('[data-testid="conference-chat-send"]').trigger('click')
     await flushPromises()
 
-    expect(api.postMessage).toHaveBeenCalledWith('c1', 'привет', [])
+    expect(api.postMessage).toHaveBeenCalledWith('c1', 'привет')
     expect(api.postMessageWithFiles).not.toHaveBeenCalled()
     w.unmount()
   })

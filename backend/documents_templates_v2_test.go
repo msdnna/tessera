@@ -11,7 +11,7 @@ import (
 // categories (#3045), a document as a meeting's agenda (#3046) and board
 // templates for an empty project (#3047).
 
-func mkMilestone(t *testing.T, c *client, projectID, title string) string {
+func mkDocMilestone(t *testing.T, c *client, projectID, title string) string {
 	t.Helper()
 	m := c.expect(t, c.post("/projects/"+projectID+"/milestones",
 		map[string]any{"title": title}), http.StatusCreated)
@@ -29,7 +29,7 @@ func TestDocumentStagePinAndUnpin(t *testing.T) {
 	t.Parallel()
 	c := signup(t)
 	s := mkStack(t, c)
-	ms := mkMilestone(t, c, s.Project, "Спринт 42")
+	ms := mkDocMilestone(t, c, s.Project, "Спринт 42")
 	doc := c.expect(t, c.post("/workspaces/"+s.WS+"/documents",
 		map[string]any{"title": "Спецификация доски"}), http.StatusCreated)
 	id := doc["id"].(string)
@@ -81,7 +81,7 @@ func TestDocumentPinsStayInWorkspace(t *testing.T) {
 	c := signup(t)
 	a := mkStack(t, c)
 	b := mkStack(t, c)
-	foreignMs := mkMilestone(t, c, b.Project, "Чужой этап")
+	foreignMs := mkDocMilestone(t, c, b.Project, "Чужой этап")
 	foreignConf := mkDocConference(t, c, b.WS, "Чужая встреча")
 	doc := c.expect(t, c.post("/workspaces/"+a.WS+"/documents",
 		map[string]any{"title": "Док"}), http.StatusCreated)
@@ -101,7 +101,7 @@ func TestDocumentPinsStayInWorkspace(t *testing.T) {
 
 	// A stranger reads neither the stage's documents nor the meetings' ones.
 	stranger := signup(t)
-	ms := mkMilestone(t, c, a.Project, "Этап")
+	ms := mkDocMilestone(t, c, a.Project, "Этап")
 	if r := stranger.get("/milestones/" + ms + "/documents"); r.Status != http.StatusForbidden && r.Status != http.StatusNotFound {
 		t.Fatalf("stranger reads stage documents: %d", r.Status)
 	}
@@ -154,8 +154,8 @@ func TestTransferProjectUnpinsDocumentStageAndMeeting(t *testing.T) {
 	dst := mkStack(t, owner)
 	stayProject := mkProject(t, owner, src.WS, src.Group, "Остающийся "+t.Name())
 
-	movingMs := mkMilestone(t, owner, src.Project, "Этап переезжающего")
-	stayMs := mkMilestone(t, owner, stayProject, "Этап остающегося")
+	movingMs := mkDocMilestone(t, owner, src.Project, "Этап переезжающего")
+	stayMs := mkDocMilestone(t, owner, stayProject, "Этап остающегося")
 	conf := mkDocConference(t, owner, src.WS, "Встреча")
 
 	// A document of the moving project pinned to a stage that stays, and to a
