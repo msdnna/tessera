@@ -207,7 +207,16 @@ func (h *API) drainWritebacks(ctx context.Context) {
 	// One push run per integration touched in this drain cycle, recording every
 	// delivery attempt (and its outcome) so failures are visible in the journal.
 	journals := map[uuid.UUID]*syncJournal{}
-	for _, w := range rows {
+	for i, w := range rows {
+		// Shutting down (a deploy, or a test respawning the worker): put the rows
+		// still claimed back as they were — pushing them on a dead ctx would only
+		// manufacture failures (#3103).
+		if ctx.Err() != nil {
+			for _, rest := range rows[i:] {
+				h.settleWriteback(ctx, rest, ctx.Err())
+			}
+			break
+		}
 		j := journals[w.IntegrationID]
 		if j == nil {
 			j = h.newJournal(w.IntegrationID, "push", "auto", nil)
@@ -225,6 +234,11 @@ func (h *API) drainWritebacks(ctx context.Context) {
 			continue
 		}
 		h.settleWriteback(ctx, w, perr)
+		// A push cut short by the worker's own cancellation is re-armed above, not
+		// failed — so it gets no «ошибка» line in the push journal either (#3103).
+		if ctx.Err() != nil && errors.Is(perr, context.Canceled) {
+			continue
+		}
 		h.recordWritebackAction(j, w, res, perr)
 	}
 	for _, j := range journals {
@@ -351,6 +365,19 @@ func (h *API) settleWriteback(ctx context.Context, w db.GitlabWriteback, err err
 	soft(ctx, "MarkWritebackRetry", h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{ID: w.ID, LastError: truncErr(err), NextAttemptAt: next}))
 }
 
+// permanentLookup wraps a failed lookup of what a push needs (the task's link, the
+// integration) as permanent — the row can never succeed once those are gone —
+// unless the lookup failed only because the ctx ended: a cancelled or timed-out
+// query says nothing about the row, and burying it as "integration gone" lost
+// the change and logged a false failure (#3103).
+func permanentLookup(what string, err error) error {
+	wrapped := fmt.Errorf("%s: %w", what, err)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return wrapped
+	}
+	return notify.Permanent(wrapped)
+}
+
 // isPermanentWriteback classifies a push error as non-retryable: an explicitly
 // permanent error, or a GitLab 4xx that won't fix itself (except 429 rate-limit).
 func isPermanentWriteback(err error) bool {
@@ -378,7 +405,7 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	}
 	link, err := h.q.GetGitlabLinkByTask(ctx, w.TaskID)
 	if err != nil {
-		return res, notify.Permanent(fmt.Errorf("task no longer linked: %w", err))
+		return res, permanentLookup("task no longer linked", err)
 	}
 	res.glIid = link.GlIid
 	// The task's board is soft-deleted (0078): hold the push — a retry, not a
@@ -391,7 +418,7 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	}
 	integ, err := h.q.GetGitlabIntegrationByID(ctx, w.IntegrationID)
 	if err != nil {
-		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))
+		return res, permanentLookup("integration gone", err)
 	}
 	wb := parseWriteback(integ.Writeback)
 	// Resolve the write connection attributed to the acting user (task #2690): the
