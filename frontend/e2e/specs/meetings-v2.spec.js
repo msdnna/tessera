@@ -141,8 +141,11 @@ test('чат звонка: «/задача» создаёт задачу, «@» 
   // «@» offers the roster; the chip and the notification follow.
   await input.fill('@')
   await input.pressSequentially(mate.name.split(' ')[0].slice(0, 3))
-  await expect(page.getByTestId('conference-chat-suggest-row').first()).toContainText(mate.name)
-  await input.press('Enter')
+  // Pick the mate's row by name: in a full run other e2e users share the seeded
+  // workspace, so the first row is not necessarily theirs.
+  const mateRow = page.getByTestId('conference-chat-suggest-row').filter({ hasText: mate.name })
+  await expect(mateRow).toBeVisible()
+  await mateRow.click()
   await input.pressSequentially('глянь прогноз')
   await input.press('Enter')
   const msg = page.getByTestId('conference-chat-message').filter({ hasText: 'глянь прогноз' })

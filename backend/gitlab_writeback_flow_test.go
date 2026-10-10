@@ -212,7 +212,8 @@ func newWritebackStand(t *testing.T, username, projectPath string) wbStand {
 
 	triggerSync(t, c, s.WS, integID)
 	waitSyncRuns(t, c, s.WS, 1)
-	tasks := c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	// A finished run is not yet a visible import under load (#3123).
+	tasks := waitBoardTaskCount(t, c, s.Board, 1)
 	task := taskByIid(t, tasks, 1)
 	return wbStand{c: c, s: s, w: w, integID: integID, taskID: task["id"].(string)}
 }
