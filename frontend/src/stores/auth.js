@@ -7,6 +7,7 @@ import { useNotificationsStore } from './notifications'
 import { useToastsStore } from './toasts'
 import { useWorkspacesStore } from './workspaces'
 import { useGitlabStore } from './gitlab'
+import { useFavoritesStore } from './favorites'
 import { useConflictsStore } from './conflicts'
 import { useConferenceSession } from './conference'
 
@@ -77,6 +78,7 @@ export const useAuthStore = defineStore('auth', () => {
     // server: the sidebar tree (with `my_role` on it) and the GitLab connection.
     useWorkspacesStore().reset()
     useGitlabStore().reset()
+    useFavoritesStore().reset()
   }
 
   // logout revokes the session server-side — the refresh token outlives the tab

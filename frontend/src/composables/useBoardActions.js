@@ -6,10 +6,16 @@ import {
   LogoGitlab,
   PricetagsOutline,
   SettingsOutline,
+  Star,
+  StarOutline,
   TrailSignOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 import { useBoardViewStore } from '@/stores/boardView'
+import { useFavoritesStore } from '@/stores/favorites'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { useMessage } from '@/composables/useMessage'
+import { humanizeError } from '@/utils/errors'
 import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useConflictsStore } from '@/stores/conflicts'
@@ -32,13 +38,39 @@ export function useBoardActions() {
   const projectWindow = useProjectWindowStore()
   const dialogs = useWsDialogsStore()
   const conflicts = useConflictsStore()
+  const favorites = useFavoritesStore()
+  const ws = useWorkspacesStore()
+  const message = useMessage()
   const route = useRoute()
   const router = useRouter()
 
   const isArchive = computed(() => isArchiveQuery(route.query))
   const isTrash = computed(() => isTrashQuery(route.query))
 
+  // The open board in / out of the reader's favourites (#3115) — the crumbs'
+  // star on a desktop; on a phone the header has no room for it, so this row
+  // is where the star lives there.
+  const isFavorite = computed(() => favorites.isFavorite(store.boardId))
+  async function toggleFavorite() {
+    if (!store.board?.id) return
+    const project = ws.projects.find((p) => p.id === store.projectId) || null
+    try {
+      await favorites.toggle(store.board, project)
+    } catch (e) {
+      message.error(humanizeError(e))
+    }
+  }
+
   const items = computed(() => [
+    {
+      key: 'favorite',
+      label: t(isFavorite.value ? 'board.crumbs.unfavorite' : 'board.crumbs.favorite'),
+      icon: isFavorite.value ? Star : StarOutline,
+      iconGrad: isFavorite.value,
+      keys: 'board.favorite',
+      testid: 'board-action-favorite',
+    },
+    { gap: true },
     // «Теги», «Этапы» and the settings open the «Проект» window (#2971) on
     // their tab — full screen on a phone.
     { key: 'tags', label: t('board.actions.tags'), icon: PricetagsOutline },
@@ -87,7 +119,8 @@ export function useBoardActions() {
 
   // true when the key was one of these rows.
   function select(key) {
-    if (key === 'tags') projectWindow.open(store.projectId, 'tags')
+    if (key === 'favorite') toggleFavorite()
+    else if (key === 'tags') projectWindow.open(store.projectId, 'tags')
     else if (key === 'stages') projectWindow.open(store.projectId, 'stages')
     else if (key === 'project') projectWindow.open(store.projectId, 'general')
     else if (key === 'gitlab') dialogs.open('gitlab')

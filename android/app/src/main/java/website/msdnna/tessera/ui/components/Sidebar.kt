@@ -348,6 +348,17 @@ fun Sidebar(
                 )
             }
 
+            // «Избранное» (#3115): the reader's starred boards, over «Проекты».
+            SidebarFavorites(
+                favorites = state.favorites,
+                onOpen = { board ->
+                    focus.clearFocus()
+                    onOpenBoard(board)
+                },
+                onRemove = { vm.removeFavorite(it) },
+                onStep = { id, delta -> vm.stepFavorite(id, delta) },
+            )
+
             // "ПРОЕКТЫ" section header + add project/group (inline creators).
             Row(
                 Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 2.dp),

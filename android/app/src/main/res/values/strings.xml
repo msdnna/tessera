@@ -184,6 +184,10 @@
 
     <!-- Боковая панель: дерево проектов -->
     <string name="sidebar_projects_header">ПРОЕКТЫ</string>
+    <string name="sidebar_favorites_header">ИЗБРАННОЕ</string>
+    <string name="sidebar_favorite_up">Выше</string>
+    <string name="sidebar_favorite_down">Ниже</string>
+    <string name="sidebar_favorite_remove">Убрать из избранного</string>
     <string name="sidebar_add_project">Проект</string>
     <string name="sidebar_add_group">Группа</string>
     <string name="sidebar_group_name_hint">Название группы</string>
@@ -1629,6 +1633,8 @@
     <!-- Оболочка приложения: шапка, меню доски, выход по «Назад» -->
     <string name="main_boards_of_project">ДОСКИ ПРОЕКТА</string>
     <string name="main_board_menu_archive">Архив доски</string>
+    <string name="main_board_menu_favorite">В избранное</string>
+    <string name="main_board_menu_unfavorite">Убрать из избранного</string>
     <string name="main_provider_soon">%1$s · скоро</string>
     <string name="main_back_again_to_exit">Нажмите «Назад» ещё раз для выхода</string>
 

@@ -244,6 +244,22 @@ interface ApiService {
     @DELETE("boards/{id}")
     suspend fun deleteBoard(@Path("id") boardId: String)
 
+    // Favourite boards (#3115): the caller's own, per workspace.
+    @GET("workspaces/{id}/favorites")
+    suspend fun favorites(@Path("id") workspaceId: String): List<website.msdnna.tessera.data.model.BoardFavorite>?
+
+    @PUT("boards/{id}/favorite")
+    suspend fun addFavorite(@Path("id") boardId: String): website.msdnna.tessera.data.model.BoardFavorite
+
+    @DELETE("boards/{id}/favorite")
+    suspend fun removeFavorite(@Path("id") boardId: String)
+
+    @PATCH("boards/{id}/favorite/move")
+    suspend fun moveFavorite(
+        @Path("id") boardId: String,
+        @Body body: website.msdnna.tessera.data.model.FavoriteMoveRequest,
+    ): website.msdnna.tessera.data.model.BoardFavorite
+
     @GET("boards/{id}/columns")
     suspend fun columns(@Path("id") boardId: String): List<BoardColumn>?
 

@@ -4,6 +4,7 @@ import {
   ChevronForwardOutline,
   CloudDownloadOutline,
   FileTrayOutline,
+  Star,
   StarOutline,
 } from '@vicons/ionicons5'
 import SearchBar from './SearchBar.vue'
@@ -20,7 +21,10 @@ import ActionMenu from './kit/ActionMenu.vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { workspaceName } from '@/utils/defaultNames'
-import { stubTask } from '@/utils/featureStubs'
+import { useFavoritesStore } from '@/stores/favorites'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { useMessage } from '@/composables/useMessage'
+import { humanizeError } from '@/utils/errors'
 
 // The desktop header. A phone has a header of its own (mobile/MobileTopbar,
 // #2976) next to the bottom navigation.
@@ -41,9 +45,24 @@ const project = computed(() => ws.projectById(board.projectId))
 const crumbProject = computed(() => project.value?.name || '')
 const crumbBoard = computed(() => board.board?.name || '')
 // Both crumbs are doors (#3112): the project opens its «Проект» window, the
-// board lists the project's boards to jump to. The star after them is the
-// favourite board — a stub until #3115.
-const favoriteStub = stubTask('board.favorite')
+// board lists the project's boards to jump to. The star after them puts the
+// board into the reader's favourites (#3115) — the section on top of the
+// sidebar tree; ⇧F does the same from anywhere on the board.
+const favorites = useFavoritesStore()
+const message = useMessage()
+const isFavorite = computed(() => favorites.isFavorite(board.boardId))
+async function toggleFavorite() {
+  if (!board.board?.id) return
+  try {
+    await favorites.toggle(board.board, project.value)
+  } catch (e) {
+    message.error(humanizeError(e))
+  }
+}
+useShortcuts(
+  { 'board.favorite': toggleFavorite },
+  { when: () => board.active && !!board.board?.id },
+)
 function openProject() {
   if (board.projectId) projectWindow.open(board.projectId, 'general')
 }
@@ -135,18 +154,26 @@ const pageCrumb = computed(() => {
         </button>
         <n-tooltip :delay="300">
           <template #trigger>
-            <span
+            <button
+              type="button"
               class="crumb-star"
-              role="button"
-              tabindex="0"
-              aria-disabled="true"
-              :aria-label="t('board.crumbs.favorite')"
+              :class="{ on: isFavorite }"
+              :aria-pressed="isFavorite"
+              :aria-label="t(isFavorite ? 'board.crumbs.unfavorite' : 'board.crumbs.favorite')"
               data-testid="crumb-favorite"
+              @click="toggleFavorite"
             >
-              <n-icon :component="StarOutline" :size="14" />
-            </span>
+              <n-icon
+                :component="isFavorite ? Star : StarOutline"
+                :size="14"
+                :class="{ 'grad-icon': isFavorite }"
+              />
+            </button>
           </template>
-          {{ t('board.crumbs.favorite') }} · {{ t('common.stub.soon', { n: favoriteStub }) }}
+          <span class="tb-tip"
+            >{{ t(isFavorite ? 'board.crumbs.unfavorite' : 'board.crumbs.favorite') }}
+            <ShortcutKeys id="board.favorite"
+          /></span>
         </n-tooltip>
         <ActionMenu
           v-model:show="boardsOpen"
@@ -424,7 +451,8 @@ const pageCrumb = computed(() => {
   outline: 2px solid var(--t-primary);
   outline-offset: 1px;
 }
-/* Favourite boards are not built yet (#3115): drawn, inert. */
+/* The favourite star (#3115): a text3 outline as in the mockup, a well under
+   the pointer; a starred board fills it with the accent gradient. */
 .crumb-star {
   flex: none;
   display: inline-flex;
@@ -433,10 +461,26 @@ const pageCrumb = computed(() => {
   width: 24px;
   height: 24px;
   margin-left: 2px;
+  padding: 0;
+  border: 0;
   border-radius: 7px;
+  background: transparent;
   color: var(--t-text3);
-  cursor: not-allowed;
-  opacity: 0.7;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.crumb-star:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.crumb-star.on {
+  color: var(--t-primary);
+}
+.crumb-star:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
 }
 .crumb-sep,
 .crumb-dot {

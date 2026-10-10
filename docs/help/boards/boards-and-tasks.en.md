@@ -12,8 +12,8 @@ The board is the main working screen. Columns set the stages, cards are the task
 
 ## What's on the screen
 
-- **Header** — the breadcrumbs “project › board”: a click on the project opens the [«Project» window](/help/project-window), a click on the board opens the list of the project's boards for a quick jump. Next to them is the favourites star (coming soon).
-- **The “⋯” button on the right of the board bar** — the board menu: «Tags», «Milestones», «Project settings», GitLab, «Archive» and [«Trash»](/help/trash). Next to it is a cascade of avatars — the people who have tasks on this board.
+- **Header** — the breadcrumbs “project › board”: a click on the project opens the [«Project» window](/help/project-window), a click on the board opens the list of the project's boards for a quick jump. Next to them is the **favourites star**: a click (or <kbd>⇧F</kbd>) adds the board to “Favourites” at the top of the sidebar, another click takes it out; a favourite board shows a filled star.
+- **The “⋯” button on the right of the board bar** — the board menu: «Add to favourites», «Tags», «Milestones», «Project settings», GitLab, «Archive» and [«Trash»](/help/trash). Next to it is a cascade of avatars — the people who have tasks on this board.
 
 ## Grouping by tags
 

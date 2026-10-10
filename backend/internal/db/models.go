@@ -40,6 +40,13 @@ type BoardColumn struct {
 	DeletedWasDone bool       `json:"deleted_was_done"`
 }
 
+type BoardFavorite struct {
+	UserID    uuid.UUID `json:"user_id"`
+	BoardID   uuid.UUID `json:"board_id"`
+	Position  float64   `json:"position"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type BoardView struct {
 	ID        uuid.UUID  `json:"id"`
 	BoardID   uuid.UUID  `json:"board_id"`

@@ -21,6 +21,7 @@ On the left is the project tree. Projects can be filed into **groups**, and grou
 A project has an **address** — the `…/project/<address>` part of a link. It comes from the name, and the workspace owner and admins can pick their own when creating the project or later (“Change the address…” in the project menu, <kbd>U</kbd>). Addresses are unique across the whole server: when one is taken, the form says which project holds it and offers a free variant — a click on it or <kbd>Alt+Enter</kbd> (<kbd>⌥↵</kbd> on a Mac) puts it into the field. After a change, old links keep leading to the project for **30 days** and switch to the new address by themselves — unless another project takes the old address in the meantime.
 
 Deleting a project or a workspace can’t be undone, so the confirmation names what goes with it: “3 boards and 148 tasks” for a project, “4 projects, 23 boards and 612 tasks” for a workspace (which you also delete by typing its name).
+Above the tree is **Favourites**: the boards you starred next to the board breadcrumbs (or with <kbd>⇧F</kbd>). It shows up once it holds at least one board, and everyone has their own. Drag rows to reorder them; “Remove from favourites” is in a row’s menu (“⋯” or right-click), and “Undo” in the toast brings a removed board back. The arrow keys and <kbd>G</kbd> <kbd>S</kbd> walk through Favourites just like the tree; in the <kbd>Ctrl</kbd>+<kbd>K</kbd> palette favourite boards come as a group of their own and first among search results.
 
 ## Board
 

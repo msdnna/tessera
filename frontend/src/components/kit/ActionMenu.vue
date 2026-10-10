@@ -20,6 +20,7 @@
 //   { key, label, glyph: 'layout-kanban', active, note, noteWarn, locked,
 //     caps: ['1'] }                                // a list entry (#2987)
 //   { key, label, icon, children: [...items], subWidth }  // a submenu (#3111)
+//   { key, label, icon, iconGrad: true }   // the icon in the accent gradient
 // ]
 // Emits select(key, value) — value is the colour for a swatch row, the new
 // state for a switch row. A row of a submenu emits its own key.
@@ -492,7 +493,13 @@ function stubTitle(item) {
               :src="item.avatar.src || ''"
               :name="item.avatar.name || item.label"
             />
-            <n-icon v-else-if="item.icon" :component="item.icon" :size="16" class="am-icon" />
+            <n-icon
+              v-else-if="item.icon"
+              :component="item.icon"
+              :size="16"
+              class="am-icon"
+              :class="{ 'grad-icon': item.iconGrad }"
+            />
             <span class="am-label">{{ item.label }}</span>
             <span v-if="item.note" class="am-note" :class="{ warn: item.noteWarn }">{{
               item.note

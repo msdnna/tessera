@@ -118,6 +118,8 @@ export const CATALOG = [
   // Stage selector in the sub-toolbar and the stage strip over the board (#2994).
   { id: 'board.stage', keys: 'shift+e', group: 'board', command: 'TrailSignOutline' },
   { id: 'board.stageStrip', keys: 'shift+h', group: 'board' },
+  // The star after the crumbs (#3115): the open board in / out of favourites.
+  { id: 'board.favorite', keys: 'shift+f', group: 'board', command: 'StarOutline' },
   // Six equal views (#2970): Канбан · Список · Таймлайн · Гант · Календарь · Матрица.
   { id: 'board.layout', keys: 'v digit', group: 'board', digit: '1–6' },
   // The column under the pointer, or the selected card's (#2969): F2 renames in

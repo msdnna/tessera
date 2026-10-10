@@ -329,6 +329,12 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   + переключатели) — ключи `list`/`calendar`/`chart` конфига представления (`utils/boardViews.js`).
   Клавиши видов — свои id в каталоге (`list.*`, `cal.*`, `matrix.*`) плюс `card.*` с `when` на
   свой вид; действия над задачами — общие функции KanbanBoard (`listActions`/`calendarActions`).
+- **Избранные доски (#3115, миграция 0089):** `board_favorites(user_id, board_id, position)`, личные,
+  читаются по пространству (`GET /workspaces/:id/favorites`, удалённые доски и чужие пространства
+  отфильтрованы запросом), сокет `favorites.changed` — только себе. Web: стор `stores/favorites`,
+  звезда у крошек (⇧F) + пункт «⋯ Действия доски» (на телефоне звезда только там), раздел
+  `sidebar/FavoritesSection` над «Проектами», группа «Избранное» в ⌘K. Переход из палитры —
+  `go()` через `unwindOverlay`, иначе `history.back()` палитры отменяет push на другую доску.
 - **Экраны с колонкой разделов (#3106):** Настройки и Администрирование — утопленная колонка
   `--t-sub` слева, открытый раздел в `?s=`; секции настроек — `components/settings/*` (общие
   классы `st-*` в `settings.css`). Документы — дерево `documents/DocTree` слева (прячется, если

@@ -98,6 +98,15 @@ class WorkspaceRepository {
 
     suspend fun deleteBoard(boardId: String) = api.deleteBoard(boardId)
 
+    // ── favourite boards (#3115) ────────────────────────────────────────────
+    suspend fun favorites(workspaceId: String): List<website.msdnna.tessera.data.model.BoardFavorite> =
+        api.favorites(workspaceId).orEmpty()
+
+    suspend fun addFavorite(boardId: String) = api.addFavorite(boardId)
+    suspend fun removeFavorite(boardId: String) = api.removeFavorite(boardId)
+    suspend fun moveFavorite(boardId: String, beforeId: String?, afterId: String?) =
+        api.moveFavorite(boardId, website.msdnna.tessera.data.model.FavoriteMoveRequest(beforeId, afterId))
+
     suspend fun columns(boardId: String): List<BoardColumn> = api.columns(boardId).orEmpty()
 
     // ── members ──────────────────────────────────────────────────────────────

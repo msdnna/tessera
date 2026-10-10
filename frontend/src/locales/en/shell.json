@@ -20,6 +20,12 @@
   },
   "tree": {
     "projects": "Projects",
+    "favorites": "Favourites",
+    "favoriteOpen": "Open",
+    "favoriteRemove": "Remove from favourites",
+    "favoriteRemoved": "“{name}” removed from favourites",
+    "favoriteRestored": "“{name}” is back in favourites",
+    "favoriteRestoreFailed": "Couldn't put the board back into favourites",
     "add": "Add",
     "addProject": "Project",
     "addGroup": "Group",
@@ -313,7 +319,8 @@
       "layout": "View: kanban / list / timeline / Gantt / calendar / matrix",
       "select": "Select a card",
       "stage": "Pick a milestone in the sub-toolbar",
-      "stageStrip": "Fold / unfold the milestone strip"
+      "stageStrip": "Fold / unfold the milestone strip",
+      "favorite": "Board to / from favourites"
     },
     "card": {
       "open": "Open",
@@ -575,6 +582,7 @@
     },
     "groups": {
       "recent": "Recent",
+      "favorites": "Favourites",
       "tasks": "Tasks",
       "boards": "Boards & milestones",
       "commands": "Commands",
