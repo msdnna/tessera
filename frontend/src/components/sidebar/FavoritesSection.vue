@@ -258,9 +258,9 @@ function onRowKey(e, f) {
 .favs {
   display: flex;
   flex-direction: column;
-  flex: 0 1 auto;
-  min-height: 0;
-  /* A long list scrolls on its own and leaves the tree below its room. */
+  /* Its own height (the sidebar column must not squeeze it under the tree);
+     a long list scrolls inside and leaves the tree below its room. */
+  flex: none;
   max-height: 38%;
 }
 /* The section head — the same as «Проекты» (Sidebar.vue .proj-head). */
@@ -284,6 +284,7 @@ function onRowKey(e, f) {
   text-transform: uppercase;
 }
 .fav-list {
+  flex: 0 1 auto;
   min-height: 0;
   overflow-y: auto;
   padding: 0 8px;
@@ -302,6 +303,7 @@ function onRowKey(e, f) {
   font-size: 13px;
   color: var(--t-text2);
   outline: 0;
+  user-select: none;
 }
 .row:hover {
   background: var(--t-hover-side);

@@ -554,7 +554,7 @@ const enterLabel = (row) => {
             </div>
             <template v-for="g in groups" v-else :key="g.id">
               <div v-if="!g.title" class="cp-gap" />
-              <div v-else class="cp-group">
+              <div v-else class="cp-group" :data-group="g.id">
                 <span>{{ g.title }}</span>
                 <span v-if="g.count" class="cp-group-n">{{ g.count }}</span>
               </div>

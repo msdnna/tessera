@@ -9,6 +9,7 @@ import { usePaletteStore } from '@/stores/palette'
 import { useInboxStore } from '@/stores/inbox'
 import { useFavoritesStore } from '@/stores/favorites'
 import { favoriteFirst } from '@/utils/favorites'
+import { unwindOverlay } from '@/utils/overlayNav'
 import { workspaceName } from '@/utils/defaultNames'
 import { CATALOG } from '@/shortcuts/catalog'
 import { isLive, runShortcut } from '@/shortcuts/dispatcher'
@@ -138,9 +139,17 @@ export function usePaletteResults() {
     }
   }
 
-  function go(path, ctx) {
-    if (ctx?.newTab) window.open(router.resolve(path).href, '_blank', 'noopener')
-    else router.push(path)
+  // The palette owns a history entry (useOverlayBack): closing it after the
+  // push let its `history.back()` cancel a push that was still resolving — a
+  // board in another place stayed unopened (#3115). Close it first and wait
+  // for the unwind (utils/overlayNav).
+  async function go(path, ctx) {
+    if (ctx?.newTab) {
+      window.open(router.resolve(path).href, '_blank', 'noopener')
+      return
+    }
+    await unwindOverlay(() => palette.hide())
+    router.push(path)
   }
 
   function taskRow(task, hl) {

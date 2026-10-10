@@ -47,6 +47,7 @@ export const test = base.extend({
       raw: api,
       get: (p) => api.get(p, t),
       post: (p, b) => api.post(p, b, t),
+      put: (p, b) => api.put(p, b, t),
       patch: (p, b) => api.patch(p, b, t),
       del: (p) => api.del(p, t),
       createTask: (columnId, title, extra) => createTask(t, seed.boardId, columnId, title, extra),
