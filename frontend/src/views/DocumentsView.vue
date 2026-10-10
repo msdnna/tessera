@@ -2,7 +2,7 @@
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { onBeforeRouteLeave, useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NSpin, NTooltip } from 'naive-ui'
+import { NIcon, NSpin } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
   AddOutline,
@@ -22,10 +22,10 @@ import {
   LinkOutline,
   ListOutline,
   TimeOutline,
-  TrailSignOutline,
   TrashOutline,
+  VideocamOutline,
 } from '@vicons/ionicons5'
-import { documents as docsApi } from '@/api'
+import { conferences as confApi, documents as docsApi } from '@/api'
 import EmptyState from '@/components/EmptyState.vue'
 import DocEditor from '@/components/documents/DocEditor.vue'
 import DocComments from '@/components/documents/DocComments.vue'
@@ -34,6 +34,7 @@ import DocLinks from '@/components/documents/DocLinks.vue'
 import DocTemplates from '@/components/documents/DocTemplates.vue'
 import DocToc from '@/components/documents/DocToc.vue'
 import DocTree from '@/components/documents/DocTree.vue'
+import DocPins from '@/components/documents/DocPins.vue'
 import ActionMenu from '@/components/kit/ActionMenu.vue'
 import { fileToTemplate } from '@/utils/docImport'
 import {
@@ -46,8 +47,9 @@ import {
   needsConverter,
   isOfficeFile,
 } from '@/utils/docOffice'
-import { builtinCards, builtinContent } from '@/utils/docTemplates'
+import { TEMPLATE_CATEGORIES, builtinCards, builtinContent } from '@/utils/docTemplates'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { initials } from '@/utils/initials'
 import { mergeRemoteBlocks } from '@/utils/docMerge'
@@ -61,7 +63,6 @@ import { useDocPresence } from '@/composables/useDocPresence'
 import { useDocVersions } from '@/composables/useDocVersions'
 import { useFormat } from '@/composables/useFormat'
 import { sGet, sSet } from '@/utils/serverStorage'
-import { stubTask } from '@/utils/featureStubs'
 import { workspaceName } from '@/utils/defaultNames'
 import { toDocJSON } from '@/utils/docSchema'
 import { blockNodeById, quoteFromBlock } from '@/utils/docComments'
@@ -70,6 +71,7 @@ import { docOutline, headingForBlock } from '@/utils/docToc'
 const message = useMessage()
 const { t } = useI18n()
 const wsStore = useWorkspacesStore()
+const authStore = useAuthStore()
 const theme = useThemeStore()
 const { formatDate, formatDateTime } = useFormat()
 const route = useRoute()
@@ -843,10 +845,24 @@ async function createFromGallery() {
   await create()
 }
 
+// The workspace's meetings, for the agenda template's meeting picker (#3046):
+// fetched with the gallery, in the background — the grid does not wait for them.
+const tplMeetings = ref(null)
+async function loadTplMeetings(ws) {
+  tplMeetings.value = null
+  try {
+    const res = await confApi.list(ws)
+    if (ws === wsStore.currentId) tplMeetings.value = res.data || []
+  } catch {
+    tplMeetings.value = []
+  }
+}
+
 async function openTemplates() {
   templatesOpen.value = true
   tplError.value = ''
   if (!wsStore.currentId) return
+  loadTplMeetings(wsStore.currentId)
   tplLoading.value = true
   try {
     const res = await docsApi.templates(wsStore.currentId)
@@ -864,16 +880,21 @@ async function openTemplates() {
 // them. A built-in has no row to point at, so its body is written straight
 // after the create — the document is empty for exactly that one call, which is
 // also why the version journal records no "empty" baseline for it.
-async function useTemplate(card) {
+//
+// An agenda is created tied to the meeting the gallery offered (#3046) and is
+// named after it, so the tree tells two agendas apart.
+async function useTemplate(card, { conferenceId = null } = {}) {
   if (!wsStore.currentId || tplBusy.value) return
   tplBusy.value = card.id
   tplError.value = ''
+  const meeting = conferenceId ? (tplMeetings.value || []).find((c) => c.id === conferenceId) : null
   try {
     const res = await docsApi.create(wsStore.currentId, {
-      title: card.title,
+      title: meeting ? `${card.title}: ${meeting.title}` : card.title,
       icon: card.icon || '',
       parent_id: parentId.value,
       template_id: card.builtin ? undefined : card.id,
+      conference_id: meeting ? meeting.id : undefined,
     })
     let doc = res.data
     if (card.builtin) {
@@ -896,23 +917,36 @@ async function useTemplate(card) {
 // Saving the open document as a template sends only its id: copying the body
 // through the browser would let a stale editor state become the template, and
 // the server already has the saved document.
-async function saveAsTemplate() {
+async function saveAsTemplate(category = '') {
   if (!selected.value?.id) return
   try {
     await flushSave()
-    await docsApi.createTemplate(wsStore.currentId, { document_id: selected.value.id })
+    await docsApi.createTemplate(wsStore.currentId, { document_id: selected.value.id, category })
     message.success(t('documents.view.toast.templateSaved'))
   } catch (e) {
     message.error(e.message)
   }
 }
 
-async function uploadTemplate(file) {
+async function uploadTemplate(file, category = '') {
   tplError.value = ''
   try {
     const draft = await fileToTemplate(file)
-    await docsApi.createTemplate(wsStore.currentId, draft)
+    await docsApi.createTemplate(wsStore.currentId, { ...draft, category })
     await openTemplates()
+  } catch (e) {
+    tplError.value = e.message
+  }
+}
+
+// Re-filing a saved template under another category (#3045).
+async function setTemplateCategory(card, category) {
+  tplError.value = ''
+  try {
+    const res = await docsApi.updateTemplate(card.id, { category })
+    savedTemplates.value = savedTemplates.value.map((x) =>
+      x.id === card.id ? { ...x, category: res.data?.category ?? category } : x,
+    )
   } catch (e) {
     tplError.value = e.message
   }
@@ -980,10 +1014,21 @@ const docActions = computed(() => {
       label: t('documents.view.action.children', { count: childCount.value }),
       icon: FolderOutline,
     })
+  if (!selected.value?.conference_id)
+    items.push({
+      key: 'meeting',
+      label: t('documents.pins.pinMeeting'),
+      icon: VideocamOutline,
+    })
+  // Saving as a template files it under a gallery category (#3045) right away.
   items.push({
     key: 'saveTemplate',
     label: t('documents.view.saveTemplate'),
     icon: BookmarkOutline,
+    children: TEMPLATE_CATEGORIES.map((c) => ({
+      key: `saveTemplate:${c}`,
+      label: t(`documents.templates.category.${c || 'none'}`),
+    })),
   })
   items.push({ heading: t('documents.view.export') })
   for (const o of exportOptions.value)
@@ -1016,7 +1061,8 @@ const docActions = computed(() => {
 async function onDocAction(key) {
   if (key === 'nested') createNested()
   else if (key === 'children') drillInto(selected.value)
-  else if (key === 'saveTemplate') saveAsTemplate()
+  else if (key === 'meeting') pinsRef.value?.openMeeting(actionsAnchor.value)
+  else if (key.startsWith('saveTemplate:')) saveAsTemplate(key.slice('saveTemplate:'.length))
   else if (key.startsWith('export-')) exportAs(key.slice('export-'.length))
   else if (key === 'remove') await remove()
 }
@@ -1220,7 +1266,18 @@ const ancestors = computed(() => {
   }
   return out
 })
-const milestoneTask = stubTask('documents.milestone')
+// The head's stage and meeting chips (#3044, #3046). A pin is not a content
+// edit — the server leaves updated_at alone — so only the two ids are taken
+// from the answer, never the body or the save token.
+const pinsRef = ref(null)
+function onPinsUpdate(doc) {
+  if (!selected.value || doc?.id !== selected.value.id) return
+  selected.value = {
+    ...selected.value,
+    milestone_id: doc.milestone_id ?? null,
+    conference_id: doc.conference_id ?? null,
+  }
+}
 function fmtUpdated(v) {
   return v ? formatDateTime(v) : ''
 }
@@ -1712,15 +1769,12 @@ watch(
                 <n-icon :component="FolderOutline" :size="13" />
                 {{ $t('documents.view.nestedCount', { count: childCount }) }}
               </button>
-              <n-tooltip :delay="300">
-                <template #trigger>
-                  <span class="dchip stub" aria-disabled="true" data-testid="doc-milestone">
-                    <n-icon :component="TrailSignOutline" :size="13" />
-                    {{ $t('documents.view.milestone') }}
-                  </span>
-                </template>
-                {{ $t('common.stub.soon', { n: milestoneTask }) }}
-              </n-tooltip>
+              <doc-pins
+                ref="pinsRef"
+                :doc="selected"
+                :ws-id="wsStore.currentId || ''"
+                @update="onPinsUpdate"
+              />
             </div>
           </div>
           <div ref="workEl" class="work">
@@ -1858,10 +1912,13 @@ watch(
       :busy="tplBusy"
       :error="tplError"
       :target="parentTitle"
+      :user-id="authStore.user?.id || ''"
+      :meetings="tplMeetings"
       @use="useTemplate"
       @blank="createFromGallery"
       @upload="uploadTemplate"
       @remove="removeTemplate"
+      @category="setTemplateCategory"
     />
   </div>
 </template>

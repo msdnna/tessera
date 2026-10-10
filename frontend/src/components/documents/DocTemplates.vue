@@ -7,24 +7,36 @@
 // v2: a tier-2 window — search in the head (/), a sunken column of sources on
 // the left, cards with a tinted preview, «Пустой документ» first. A click
 // selects, a double click or ↵ creates; arrows move the selection. Deleting a
-// saved template is a two-step button on its card. Template categories from the
-// mockup are not in the data yet — a stub (#3045).
+// saved template is a two-step button on its card.
+//
+// The column lists the categories of the mockup (#3045): Все · Спринт · Продукт
+// · Инженерия · Встречи · Мои шаблоны. «Мои» is the reader's own saved
+// templates (author_id), the rest are document_templates.category; a saved
+// template is re-filed from the folder button on its card, and a file uploaded
+// while a category is open lands in it. An agenda template («Повестка встречи»,
+// or a saved one filed under «Встречи») offers a meeting in the footer, the
+// nearest one preselected — the new document is created tied to it (#3046).
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NModal, NSpin, NTooltip } from 'naive-ui'
+import { NIcon, NModal, NSelect, NSpin } from 'naive-ui'
 import {
   AddOutline,
   ArrowForwardOutline,
   CloudUploadOutline,
   DocumentOutline,
   DocumentTextOutline,
+  FolderOutline,
   SearchOutline,
   TrashOutline,
+  VideocamOutline,
 } from '@vicons/ionicons5'
 import Kbd from '@/components/Kbd.vue'
+import ActionMenu from '@/components/kit/ActionMenu.vue'
 import { CAPS } from '@/utils/keyCaps'
 import { IMPORT_EXTENSIONS } from '@/utils/docImport'
-import { stubTask } from '@/utils/featureStubs'
+import { TEMPLATE_CATEGORIES, inSource, isAgendaTemplate } from '@/utils/docTemplates'
+import { defaultAgendaMeeting, meetingChoices } from '@/utils/docPins'
+import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -37,10 +49,16 @@ const props = defineProps({
   error: { type: String, default: '' },
   // Where the new document lands, for the head: «Новый документ в «…»».
   target: { type: String, default: '' },
+  // The reader — whose saved templates «Мои шаблоны» lists.
+  userId: { type: String, default: '' },
+  // The workspace's meetings, for the agenda's meeting picker; null while they
+  // load.
+  meetings: { type: Array, default: null },
 })
-const emit = defineEmits(['update:show', 'use', 'blank', 'upload', 'remove'])
+// use(card, { conferenceId }) · upload(file, category) · category(tpl, category)
+const emit = defineEmits(['update:show', 'use', 'blank', 'upload', 'remove', 'category'])
 const { t } = useI18n()
-const categoriesTask = stubTask('documents.templateCategories')
+const { formatDateTime } = useFormat()
 
 const fileInput = ref(null)
 const query = ref('')
@@ -48,18 +66,21 @@ const source = ref('all')
 const searchEl = ref(null)
 const gridEl = ref(null)
 
-const counts = computed(() => ({
-  all: props.templates.length,
-  builtin: props.templates.filter((x) => x.builtin).length,
-  mine: props.templates.filter((x) => !x.builtin).length,
-}))
-const SOURCES = ['all', 'builtin', 'mine']
+const SOURCES = ['all', ...TEMPLATE_CATEGORIES.filter(Boolean), 'mine']
+const counts = computed(() =>
+  Object.fromEntries(
+    SOURCES.map((s) => [s, props.templates.filter((x) => inSource(x, s, props.userId)).length]),
+  ),
+)
+const sourceLabel = (s) =>
+  s === 'all' || s === 'mine'
+    ? t(`documents.templates.source.${s}`)
+    : t(`documents.templates.category.${s}`)
 
 const shown = computed(() => {
   const q = query.value.trim().toLowerCase()
   return props.templates.filter((tpl) => {
-    if (source.value === 'builtin' && !tpl.builtin) return false
-    if (source.value === 'mine' && tpl.builtin) return false
+    if (!inSource(tpl, source.value, props.userId)) return false
     if (!q) return true
     return `${tpl.title} ${tpl.description || ''}`.toLowerCase().includes(q)
   })
@@ -103,7 +124,58 @@ function pick(i) {
 function use(card) {
   if (!card || props.busy) return
   if (card.id === '__blank') emit('blank')
-  else emit('use', card)
+  else emit('use', card, { conferenceId: isAgendaTemplate(card) ? meetingId.value : null })
+}
+
+// ── the agenda's meeting (#3046) ──
+const agenda = computed(() => isAgendaTemplate(cards.value[sel.value]))
+const meetingId = ref(null)
+let meetingTouched = false
+watch(
+  () => [props.show, props.meetings],
+  ([on]) => {
+    if (on && !meetingTouched) meetingId.value = defaultAgendaMeeting(props.meetings)?.id || null
+  },
+  { immediate: true },
+)
+watch(
+  () => props.show,
+  (on) => {
+    if (!on) meetingTouched = false
+  },
+)
+function meetingWhen(c) {
+  const at = c?.scheduled_at || c?.started_at || c?.ended_at
+  return at ? formatDateTime(at, { day: 'numeric', month: 'short' }) : ''
+}
+const meetingOptions = computed(() => [
+  { value: null, label: t('documents.templates.meetingPick.none') },
+  ...meetingChoices(props.meetings || [], meetingId.value, { noteOf: meetingWhen }).map((r) => ({
+    value: r.key.slice('conf:'.length),
+    label: r.note ? `${r.label} · ${r.note}` : r.label,
+  })),
+])
+function onMeeting(v) {
+  meetingTouched = true
+  meetingId.value = v
+}
+
+// ── a saved template's category (#3045): the folder button on its card ──
+const catMenu = ref({ show: false, tpl: null, anchor: null })
+function openCategory(tpl, e) {
+  catMenu.value = { show: true, tpl, anchor: e.currentTarget }
+}
+const catItems = computed(() =>
+  TEMPLATE_CATEGORIES.map((c) => ({
+    key: c || 'none',
+    label: t(`documents.templates.category.${c || 'none'}`),
+    checked: (catMenu.value.tpl?.category || '') === c,
+  })),
+)
+function onCategory(key) {
+  const tpl = catMenu.value.tpl
+  catMenu.value = { show: false, tpl: null, anchor: null }
+  if (tpl) emit('category', tpl, key === 'none' ? '' : key)
 }
 
 // Two-step delete on a saved template's card.
@@ -161,7 +233,9 @@ function onFile(e) {
   // Reset first: picking the same file twice in a row fires no change event
   // otherwise, and a failed import is exactly when someone retries the same file.
   e.target.value = ''
-  if (file) emit('upload', file)
+  // A file uploaded while a category is open is filed under it.
+  const category = TEMPLATE_CATEGORIES.includes(source.value) ? source.value : ''
+  if (file) emit('upload', file, category)
 }
 </script>
 
@@ -209,18 +283,9 @@ function onFile(e) {
             :data-testid="`tpl-source-${s}`"
             @click="source = s"
           >
-            <span class="tpl-src-l">{{ t(`documents.templates.source.${s}`) }}</span>
+            <span class="tpl-src-l">{{ sourceLabel(s) }}</span>
             <span class="tpl-src-n">{{ counts[s] }}</span>
           </button>
-          <n-tooltip :delay="300" placement="right">
-            <template #trigger>
-              <span class="tpl-src stub" aria-disabled="true">
-                <span class="tpl-src-l">{{ t('documents.templates.categories') }}</span>
-                <span class="tpl-soon">{{ t('common.stub.badge') }}</span>
-              </span>
-            </template>
-            {{ t('common.stub.soon', { n: categoriesTask }) }}
-          </n-tooltip>
         </nav>
 
         <div class="tpl-main">
@@ -283,6 +348,19 @@ function onFile(e) {
                 <button
                   v-if="!tpl.builtin"
                   type="button"
+                  class="tpl-act"
+                  :title="`${t('documents.templates.setCategory')}: ${t(
+                    `documents.templates.category.${tpl.category || 'none'}`,
+                  )}`"
+                  :aria-label="t('documents.templates.setCategory')"
+                  data-testid="tpl-category"
+                  @click.stop="openCategory(tpl, $event)"
+                >
+                  <n-icon :component="FolderOutline" :size="14" />
+                </button>
+                <button
+                  v-if="!tpl.builtin"
+                  type="button"
                   class="tpl-act trash"
                   :class="{ armed: armed === tpl.id }"
                   :title="t('documents.templates.removeTitle')"
@@ -326,6 +404,23 @@ function onFile(e) {
           {{ t('documents.templates.upload') }}
         </button>
         <span class="tpl-grow" />
+        <label
+          v-if="agenda && meetings && meetings.length"
+          class="tpl-meeting"
+          :title="t('documents.templates.meetingPick.hint')"
+          data-testid="tpl-meeting"
+        >
+          <n-icon :component="VideocamOutline" :size="15" class="tpl-meeting-ic" />
+          <span class="tpl-meeting-l">{{ t('documents.templates.meetingPick.label') }}</span>
+          <n-select
+            :value="meetingId"
+            size="small"
+            class="tpl-meeting-sel"
+            :options="meetingOptions"
+            :consistent-menu-width="false"
+            @update:value="onMeeting"
+          />
+        </label>
         <button
           type="button"
           class="tpl-btn primary"
@@ -345,6 +440,19 @@ function onFile(e) {
         class="tpl-file"
         :accept="IMPORT_EXTENSIONS.join(',')"
         @change="onFile"
+      />
+      <!-- In place: the modal's focus trap would pull the focus out of a menu
+           drawn in <body>. -->
+      <ActionMenu
+        v-model:show="catMenu.show"
+        :anchor="() => catMenu.anchor"
+        placement="bottom-end"
+        :width="220"
+        :header="t('documents.templates.setCategory')"
+        :items="catItems"
+        in-place
+        testid="tpl-category-menu"
+        @select="onCategory"
       />
     </div>
   </n-modal>
@@ -459,13 +567,6 @@ function onFile(e) {
   background: var(--t-active);
   font-weight: 650;
 }
-.tpl-src.stub {
-  opacity: 0.55;
-  cursor: default;
-}
-.tpl-src.stub:hover {
-  background: transparent;
-}
 .tpl-src-l {
   flex: 1;
   min-width: 0;
@@ -477,14 +578,6 @@ function onFile(e) {
   font-size: 12px;
   color: var(--t-text3);
   font-variant-numeric: tabular-nums;
-}
-.tpl-soon {
-  padding: 1px 7px;
-  border-radius: var(--t-r-pill);
-  background: var(--t-pill);
-  color: var(--t-text3);
-  font-size: 10.5px;
-  font-weight: 650;
 }
 .tpl-main {
   min-height: 0;
@@ -699,6 +792,21 @@ function onFile(e) {
   outline: 2px solid var(--t-primary);
   outline-offset: 2px;
 }
+/* The agenda's meeting (задача 3046): a label and a select beside «Создать». */
+.tpl-meeting {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13px;
+  color: var(--t-text2);
+}
+.tpl-meeting-ic {
+  color: var(--t-primary);
+}
+.tpl-meeting-sel {
+  width: 260px;
+}
 .tpl-cap {
   background: color-mix(in srgb, var(--t-on-primary) 22%, transparent);
   color: var(--t-on-primary);
@@ -733,6 +841,17 @@ function onFile(e) {
   }
   .tpl-target {
     display: none;
+  }
+  .tpl-foot-bar {
+    flex-wrap: wrap;
+  }
+  .tpl-meeting {
+    order: -1;
+    flex: 1 1 100%;
+  }
+  .tpl-meeting-sel {
+    flex: 1;
+    width: auto;
   }
 }
 </style>

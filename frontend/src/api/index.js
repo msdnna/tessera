@@ -616,6 +616,17 @@ export const documents = {
   createApproval: (id, data) => api.post(`/documents/${id}/approvals`, data),
   decideApproval: (approvalId, data) => api.post(`/document-approvals/${approvalId}/decide`, data),
   cancelApproval: (approvalId) => api.post(`/document-approvals/${approvalId}/cancel`),
+  // A document's stage and meeting (#3044, #3046) — null unpins.
+  setMilestone: (id, milestoneId) =>
+    api.put(`/documents/${id}/milestone`, { milestone_id: milestoneId || null }),
+  setConference: (id, conferenceId) =>
+    api.put(`/documents/${id}/conference`, { conference_id: conferenceId || null }),
+  // The documents pinned to a stage (its page) and to the workspace's meetings
+  // (an agenda chip per row of the meetings list).
+  byMilestone: (milestoneId) =>
+    api.get(`/milestones/${milestoneId}/documents`, { skipLoader: true }),
+  byConferences: (wsId) =>
+    api.get(`/workspaces/${wsId}/conference-documents`, { skipLoader: true }),
 }
 
 // Conferences (#2864). Media never comes through here — it goes to the LiveKit

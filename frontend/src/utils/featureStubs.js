@@ -38,11 +38,8 @@ export const FEATURE_STUBS = {
   'admin.roles': 3063,
   'admin.userSpaces': 3078,
   'admin.csv': 3080,
-  // Documents (#3106): the trash (#3006), a document's stage (#3044), template
-  // categories (#3045).
+  // Documents (#3106): the trash (#3006).
   'documents.trash': 3006,
-  'documents.milestone': 3044,
-  'documents.templateCategories': 3045,
   // Notifications (#3107): «Принять / Отклонить» a meeting invitation right in
   // the feed (#3051), the page of all notifications with paging (#3049).
   'notifications.rsvp': 3051,
