@@ -3,7 +3,7 @@ title: First steps
 category: Getting started
 order: 10
 keywords: start, sign up, workspace, project, board, onboarding, guide
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 Tessera is a task tracker: boards with tasks, documents, notes and reminders. This article walks the path from an empty account to your first task on a board.
@@ -17,6 +17,8 @@ To invite a colleague: the workspace menu (its name at the top of the sidebar) �
 ## Projects and groups
 
 On the left is the project tree. Projects can be filed into **groups**, and groups nest inside one another: handy when you have many directions of work. The “+” button in the “Projects” heading creates a project or a group at the root; every node in the tree has the same button. Drag a project into a group with the mouse.
+
+Above the tree is **Favourites**: the boards you starred next to the board breadcrumbs (or with <kbd>⇧F</kbd>). It shows up once it holds at least one board, and everyone has their own. Drag rows to reorder them; “Remove from favourites” is in a row’s menu (“⋯” or right-click), and “Undo” in the toast brings a removed board back. The arrow keys and <kbd>G</kbd> <kbd>S</kbd> walk through Favourites just like the tree; in the <kbd>Ctrl</kbd>+<kbd>K</kbd> palette favourite boards come as a group of their own and first among search results.
 
 ## Board
 

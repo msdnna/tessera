@@ -4,7 +4,7 @@ category: Getting started
 order: 20
 platforms: web
 keywords: phone, mobile, smartphone, bottom navigation, tabs, more, drawer, swipe, gestures, project tree, browser
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 Tessera opens in a phone's browser as a full app: the same boards, tasks, Inbox and documents as on a computer, with the controls gathered in the bottom third of the screen — under your thumb.
@@ -25,13 +25,13 @@ The system Back button works inside the app: it closes an open sheet, menu or th
 
 ## The project tree
 
-There is no hamburger button: the project tree slides in from the left when you **tap the board's name** in the header or **swipe in from the left edge** of the screen. At the top are the workspaces (their tiles) and a “Find a board” field, below them groups, projects and boards, and at the bottom documents, conferences and stages. A long press on a row of the tree opens its menu.
+There is no hamburger button: the project tree slides in from the left when you **tap the board's name** in the header or **swipe in from the left edge** of the screen. At the top are the workspaces (their tiles) and a “Find a board” field, below them “Favourites” (if you have starred boards), groups, projects and boards, and at the bottom documents, conferences and stages. A long press on a row of the tree opens its menu.
 
 ![The project tree in the panel on the left](../assets/mobile-drawer-light.png)
 
 ## The board
 
-Columns scroll sideways one at a time; under the board you can see which column you are on (“To do · 1 of 4”). On the right of the header are “Board view” (card size, fields, grouping, saved views — in a bottom sheet), the board menu (views: kanban, list, calendar, matrix, timeline, Gantt; tags, stages, archive) and the notification bell. A card keeps only its “⋯”: its menu has complete, priority, move to a column and the rest.
+Columns scroll sideways one at a time; under the board you can see which column you are on (“To do · 1 of 4”). On the right of the header are “Board view” (card size, fields, grouping, saved views — in a bottom sheet), the board menu (views: kanban, list, calendar, matrix, timeline, Gantt; “Add to favourites” — on a phone the star lives here, tags, stages, archive) and the notification bell. A card keeps only its “⋯”: its menu has complete, priority, move to a column and the rest.
 
 A task opens as a full-screen sheet. To close it, pull the sheet down by its handle or tap “×”.
 
