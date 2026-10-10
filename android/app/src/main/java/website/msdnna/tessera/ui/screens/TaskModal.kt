@@ -13,6 +13,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -80,6 +82,7 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.model.AssigneeUser
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.GitlabAssignee
@@ -427,6 +430,13 @@ fun TaskModal(
                                     Spacer(Modifier.matchParentSize().clickableNoRipple {})
                                 }
                             }
+                            // «Подписаны» (#2963) sits outside the read-only veil: following
+                            // an archived task is reading it, not changing it.
+                            SubscribersRow(
+                                subscribers = detail.subscribers,
+                                subscribed = detail.subscribed,
+                                onToggle = { vm.toggleSubscription() },
+                            )
 
                             Spacer(Modifier.height(18.dp))
                             UnderlineTabs(
@@ -1315,6 +1325,52 @@ private fun MemberAvatar(size: Dp, name: String, userId: String? = null, avatarU
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(size).clip(CircleShape))
         }
+    }
+}
+
+/**
+ * «Подписаны» (#2963, TaskModal.dc): who hears about the task — a cascade of
+ * avatars — and a plain text button to follow / unfollow. The author, the
+ * assignees and the commenters follow implicitly; the list comes computed.
+ */
+@Composable
+private fun SubscribersRow(subscribers: List<AssigneeUser>, subscribed: Boolean, onToggle: () -> Unit) {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth().padding(top = 10.dp).testTag(TestTags.TASK_SUBSCRIBERS),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(stringResource(R.string.task_subscribers_title), color = c.text3, fontSize = 13.sp)
+        Spacer(Modifier.width(10.dp))
+        if (subscribers.isEmpty()) {
+            Text(stringResource(R.string.task_subscribers_nobody), color = c.text3, fontSize = 13.sp)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
+                subscribers.take(5).forEach { u ->
+                    Box(Modifier.border(2.dp, c.surface, CircleShape)) {
+                        MemberAvatar(22.dp, u.name.ifBlank { u.email }, userId = u.id)
+                    }
+                }
+            }
+            if (subscribers.size > 5) {
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.task_subscribers_more, subscribers.size - 5), color = c.text3, fontSize = 13.sp)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Text(
+            stringResource(if (subscribed) R.string.task_subscribers_unsubscribe else R.string.task_subscribers_subscribe),
+            color = c.text2,
+            fontSize = 14.sp,
+            modifier = Modifier
+                .testTag(TestTags.TASK_SUBSCRIBE_TOGGLE)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onToggle)
+                // 44dp touch target, like the rest of the modal's controls.
+                .heightIn(min = 44.dp)
+                .wrapContentHeight()
+                .padding(horizontal = 8.dp),
+        )
     }
 }
 

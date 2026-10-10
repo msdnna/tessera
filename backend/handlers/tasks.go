@@ -27,6 +27,10 @@ type taskDetail struct {
 	GitlabAssignees []db.ListTaskGitlabAssigneesRow `json:"gitlab_assignees"`
 	Subtasks        []db.ListSubtasksWithMetaRow    `json:"subtasks"`
 	GitLab          *gitlabLinkView                 `json:"gitlab,omitempty"`
+	// Subscribers — who hears about the task (#2963); Subscribed — whether the
+	// viewer is among them.
+	Subscribers []db.ListTaskSubscribersRow `json:"subscribers"`
+	Subscribed  bool                        `json:"subscribed"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -287,7 +291,6 @@ func (h *API) GetTask(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	_ = wsID
 	if subtasks == nil {
 		subtasks = []db.ListSubtasksWithMetaRow{}
 	}
@@ -295,9 +298,15 @@ func (h *API) GetTask(c *gin.Context) {
 	if glAssignees == nil {
 		glAssignees = []db.ListTaskGitlabAssigneesRow{}
 	}
+	subs, subscribed, err := h.taskSubscribers(c, id, wsID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	c.JSON(http.StatusOK, taskDetail{
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, GitlabAssignees: glAssignees,
 		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id),
+		Subscribers: subs, Subscribed: subscribed,
 	})
 }
 

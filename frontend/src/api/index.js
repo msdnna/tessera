@@ -719,6 +719,8 @@ export const tasks = {
   // Board cards ship without the description (see backend task_list_dto.go); the
   // card fetches it lazily on hover. Background call — no global progress bar.
   description: (id) => api.get(`/tasks/${id}/description`, { skipLoader: true }),
+  // Follow / unfollow a task (#2963): returns { subscribers, subscribed }.
+  setSubscription: (id, subscribed) => api.put(`/tasks/${id}/subscription`, { subscribed }),
   update: (id, data) => api.patch(`/tasks/${id}`, data),
   move: (id, data) => api.patch(`/tasks/${id}/move`, data),
   setParent: (id, parentId) => api.patch(`/tasks/${id}/parent`, { parent_id: parentId }),

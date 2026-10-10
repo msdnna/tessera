@@ -535,5 +535,14 @@
   "arm": {
     "delete": "Delete?",
     "unlink": "Remove?"
+  },
+  "subscribers": {
+    "title": "Following",
+    "nobody": "Nobody",
+    "subscribe": "Follow",
+    "unsubscribe": "Unfollow",
+    "hint": "Followers are notified about the task's comments, moves, completion and edits. The author, the assignees and the commenters follow it on their own.",
+    "more": "{n} more",
+    "failed": "Could not change the subscription"
   }
 }

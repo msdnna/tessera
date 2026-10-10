@@ -40,6 +40,11 @@ data class TaskDetail(
     @SerializedName("subtasks") private val subtasksRaw: List<Task>? = null,
     // GitLab provenance — present when this task mirrors a GitLab issue.
     @SerializedName("gitlab") val gitlab: GitlabLink? = null,
+    // Who hears about the task (#2963): the author, the assignees and the
+    // commenters unless they unfollowed, plus whoever followed it; `subscribed` —
+    // whether the viewer is among them.
+    @SerializedName("subscribers") private val subscribersRaw: List<AssigneeUser>? = null,
+    @SerializedName("subscribed") val subscribed: Boolean = false,
 ) {
     val isCompleted: Boolean get() = completedAt != null
     val isArchived: Boolean get() = archivedAt != null
@@ -47,7 +52,11 @@ data class TaskDetail(
     val assignees: List<AssigneeUser> get() = assigneesRaw.orEmpty()
     val gitlabAssignees: List<GitlabAssignee> get() = gitlabAssigneesRaw.orEmpty()
     val subtasks: List<Task> get() = subtasksRaw.orEmpty()
+    val subscribers: List<AssigneeUser> get() = subscribersRaw.orEmpty()
 }
+
+/** Body of `PUT /tasks/:id/subscription` (#2963). */
+data class SetSubscriptionRequest(@SerializedName("subscribed") val subscribed: Boolean)
 
 /** A task assignee — mirrors `ListTaskAssigneesRow`. */
 data class AssigneeUser(

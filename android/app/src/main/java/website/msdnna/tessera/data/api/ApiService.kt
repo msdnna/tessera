@@ -264,6 +264,14 @@ interface ApiService {
     @GET("tasks/{id}")
     suspend fun task(@Path("id") taskId: String): TaskDetail
 
+    // Follow / unfollow a task (#2963). The answer carries the new list too, but
+    // the modal re-reads the detail anyway, so it is not parsed here.
+    @PUT("tasks/{id}/subscription")
+    suspend fun setTaskSubscription(
+        @Path("id") taskId: String,
+        @Body body: website.msdnna.tessera.data.model.SetSubscriptionRequest,
+    )
+
     // milestone: <uuid> shows one sprint, "backlog" shows milestone-less tasks,
     // null shows all (server-side sprint scope — for large GitLab imports).
     // archived=1 returns the board's archived tasks (read-only archive scope).

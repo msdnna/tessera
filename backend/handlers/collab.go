@@ -59,8 +59,10 @@ func (h *API) notify(c *gin.Context, userID, wsID uuid.UUID, taskID *uuid.UUID, 
 	h.deliverNotification(c, userID, wsID, taskID, &a, kind, msg)
 }
 
-// notifyTaskParticipants notifies a task's assignees and creator (minus the
-// actor) — used when something happens that watchers should hear about.
+// notifyTaskParticipants notifies a task's subscribers (minus the actor) —
+// used when something happens that watchers should hear about. Subscribers are
+// the author, the assignees and the commenters unless they unsubscribed, plus
+// whoever subscribed explicitly (#2963, ListTaskSubscribers).
 func (h *API) notifyTaskParticipants(c *gin.Context, t db.Task, wsID uuid.UUID, kind string, msg notifyMsg) {
 	h.notifyTaskParticipantsExcept(c, t, wsID, kind, msg, nil)
 }
@@ -68,20 +70,14 @@ func (h *API) notifyTaskParticipants(c *gin.Context, t db.Task, wsID uuid.UUID, 
 // notifyTaskParticipantsExcept is notifyTaskParticipants with a set of user ids
 // to skip (e.g. users already reached by a more specific mention notification).
 func (h *API) notifyTaskParticipantsExcept(c *gin.Context, t db.Task, wsID uuid.UUID, kind string, msg notifyMsg, skip map[uuid.UUID]bool) {
-	seen := map[uuid.UUID]bool{}
-	for id := range skip {
-		seen[id] = true
+	subs, err := h.q.ListTaskSubscribers(c, db.ListTaskSubscribersParams{TaskID: t.ID, WorkspaceID: wsID})
+	if err != nil {
+		return
 	}
-	if assignees, err := h.q.ListTaskAssignees(c, t.ID); err == nil {
-		for _, a := range assignees {
-			if !seen[a.ID] {
-				seen[a.ID] = true
-				h.notify(c, a.ID, wsID, &t.ID, kind, msg)
-			}
+	for _, u := range subs {
+		if !skip[u.ID] {
+			h.notify(c, u.ID, wsID, &t.ID, kind, msg)
 		}
-	}
-	if t.CreatedBy != nil && !seen[*t.CreatedBy] {
-		h.notify(c, *t.CreatedBy, wsID, &t.ID, kind, msg)
 	}
 }
 

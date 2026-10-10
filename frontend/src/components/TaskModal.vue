@@ -61,6 +61,7 @@ import DuePicker from './due/DuePicker.vue'
 import { recurrenceHint } from '@/utils/dueModel'
 import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
+import TaskSubscribers from './task/TaskSubscribers.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import TesseraIcon from './TesseraIcon.vue'
 import ShortcutKeys from './ShortcutKeys.vue'
@@ -137,6 +138,11 @@ const router = useRouter()
 const message = useMessage()
 const loading = ref(false)
 const task = ref(null)
+// «Подписаны» (#2963): the follow toggle answers with the new list.
+function onSubscribers({ subscribers, subscribed }) {
+  if (!task.value) return
+  task.value = { ...task.value, subscribers, subscribed }
+}
 // Read-only is a property of the TASK, not of the screen it was opened from.
 // The `readonly` prop carries the board's archive SCOPE (?archived=1); `archived_at`
 // carries the task's own state — and half the doors into this modal walk past the
@@ -361,6 +367,26 @@ const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, ta
 const assigneeObjs = computed(() =>
   selectedAssignees.value.map((id) => members.value.find((m) => m.user_id === id)).filter(Boolean),
 )
+// «Подписаны» follows the implicit participants: assigning someone or posting a
+// comment here changes the list, so it is re-read quietly once things settle.
+let subsTimer = null
+function onCommentsChanged() {
+  emit('changed')
+  refreshSubscribers()
+}
+function refreshSubscribers() {
+  const id = props.taskId
+  clearTimeout(subsTimer)
+  subsTimer = setTimeout(async () => {
+    try {
+      const { data } = await tasksApi.get(id)
+      if (props.taskId === id) onSubscribers(data)
+    } catch {
+      // the list stays as it was; the next open reads it afresh
+    }
+  }, 600)
+}
+onBeforeUnmount(() => clearTimeout(subsTimer))
 // External GitLab assignees (display-only) from the task detail.
 const glAssignees = computed(() => task.value?.gitlab_assignees || [])
 // GitLab half of the assignee picker: the project roster plus whoever this task
@@ -971,6 +997,7 @@ async function toggleAssignee(uid) {
     }
     emit('changed')
     refreshEvents()
+    refreshSubscribers()
   } catch (e) {
     message.error(e.message)
   }
@@ -992,6 +1019,7 @@ async function clearAssignees() {
     if (logins.length) task.value = (await tasksApi.get(props.taskId)).data
     emit('changed')
     refreshEvents()
+    refreshSubscribers()
   } catch (e) {
     message.error(e.message)
   }
@@ -1884,6 +1912,14 @@ useShortcuts(
                       @open-document="openDocument"
                     />
                   </template>
+
+                  <TaskSubscribers
+                    v-if="task"
+                    :task-id="taskId"
+                    :subscribers="task.subscribers || []"
+                    :subscribed="!!task.subscribed"
+                    @update="onSubscribers"
+                  />
                 </aside>
               </Teleport>
               <TaskPropPickers
@@ -1977,7 +2013,7 @@ useShortcuts(
                   :composer-rows="1"
                   :people="editorPeople"
                   :editor-task="editorTask"
-                  @changed="emit('changed')"
+                  @changed="onCommentsChanged"
                   @reload-detail="loadDetail"
                 />
                 <TaskFilesTab
