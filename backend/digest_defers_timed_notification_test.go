@@ -104,6 +104,7 @@ func TestActivityNotificationStillWaitsForDigestWindow(t *testing.T) {
 
 	s := mkStack(t, owner)
 	task := mkTask(t, owner, s.Board, s.col(t, 0), "Заметная задача")
+	before := time.Now()
 	owner.expect(t, owner.post("/workspaces/"+s.WS+"/members", map[string]any{"email": member.Email}), http.StatusCreated)
 	if r := owner.post("/tasks/"+task["id"].(string)+"/assignees", map[string]any{"user_id": member.UserID}); r.Status != http.StatusNoContent {
 		t.Fatalf("assign: %d\n%s", r.Status, r.Body)
@@ -113,8 +114,11 @@ func TestActivityNotificationStillWaitsForDigestWindow(t *testing.T) {
 	if group == "" {
 		t.Errorf("назначение осталось вне группы свода — окно дайджеста перестало собирать активность")
 	}
-	if !next.After(time.Now().Add(time.Minute)) {
-		t.Errorf("назначение готово к отправке в %s — окно дайджеста его не придержало", next)
+	// «Придержало» = отложило до слота HH:00, а не «сейчас». Не «дальше минуты
+	// вперёд»: в последнюю минуту часа слот наступает раньше, и такая проверка
+	// падала в xx:59 (#3123).
+	if !next.After(before) || !next.Truncate(time.Hour).Equal(next) {
+		t.Errorf("назначение готово к отправке в %s — окно дайджеста его не придержало до слота HH:00", next)
 	}
 }
 
