@@ -16,6 +16,9 @@ data class Reminder(
     @SerializedName("message") val message: String = "",
     @SerializedName("done") val done: Boolean = false,
     @SerializedName("created_at") val createdAt: String = "",
+    // «Входящие» tags (names) and mentioned member ids (#3040) — shown only.
+    @SerializedName("tags") val tags: List<String>? = null,
+    @SerializedName("mentions") val mentions: List<String>? = null,
 )
 
 data class CreateReminderRequest(

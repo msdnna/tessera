@@ -16,6 +16,11 @@ data class Note(
     @SerializedName("body") val body: String = "",
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("updated_at") val updatedAt: String = "",
+    // «Входящие» tags (names) and mentioned member ids (#3040). Nullable: Gson
+    // leaves a field the server did not send as null, not as the default. The
+    // editor's update sends neither, so the server keeps them.
+    @SerializedName("tags") val tags: List<String>? = null,
+    @SerializedName("mentions") val mentions: List<String>? = null,
 )
 
 data class CreateNoteRequest(
