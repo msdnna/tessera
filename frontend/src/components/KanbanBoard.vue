@@ -2364,11 +2364,13 @@ useRealtime((ev) => {
   // (the resolver lives in the GitLab modal's «Конфликты» entry).
   if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
     // A warning with its way out (#3117): «Разрешить» opens the resolver on it.
+    // A stage's conflict (#3025) names the stage instead of a task.
     const taskId = ev.data?.task_id || null
+    const milestoneId = ev.data?.milestone_id || null
     message.warning(t('board.toast.gitlabConflict'), {
       action: {
         label: () => t('toasts.act.resolve'),
-        run: () => useConflictsStore().openResolver(taskId),
+        run: () => useConflictsStore().openResolver(taskId, { milestoneId }),
       },
     })
   }

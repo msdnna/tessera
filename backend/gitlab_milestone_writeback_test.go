@@ -357,3 +357,24 @@ func TestGitlabStageWriteback_LegacyLinkWithoutBaseline(t *testing.T) {
 		t.Fatalf("GitLab after legacy edit = %q", got)
 	}
 }
+
+// Write-back switched off while an edit was still unsent: nothing local can go
+// out any more, so the pull hands the stage back to GitLab and drops the mark.
+func TestGitlabStageWriteback_WritebackOffHandsStageBack(t *testing.T) {
+	t.Parallel()
+	g := newGitlabStage(t, "gl-stw-off", writableBinding())
+	g.f.mu.Lock()
+	g.f.milestonePutStatus = http.StatusInternalServerError
+	g.f.mu.Unlock()
+	if st := syncStatus(t, g.patch(t, map[string]any{"description": "Never sent"})); st != "failed" {
+		t.Fatalf("refused write did not fail")
+	}
+	if _, err := testPool.Exec(context.Background(),
+		`UPDATE gitlab_integrations SET writeback = '{}'::jsonb WHERE id = $1::uuid`, g.integID); err != nil {
+		t.Fatalf("switch write-back off: %v", err)
+	}
+	g.sync(t)
+	if m := g.stage(t); m["description"] != "Goals: ship login" || m["gl_push_error"] != "" || m["gl_writable"] != false {
+		t.Fatalf("stage after write-back went off: %v", m)
+	}
+}

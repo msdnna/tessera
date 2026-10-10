@@ -97,7 +97,7 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 	switch {
 	case err == nil:
 		// Merge GitLab's version into the native milestone, then refresh the link.
-		if uerr := h.pullGitlabMilestone(ctx, link, integ.WorkspaceID, snapOfIssue(issue)); uerr != nil {
+		if uerr := h.pullGitlabMilestone(ctx, link, integ.WorkspaceID, snapOfIssue(issue), milestoneWritable(integ)); uerr != nil {
 			return uuid.Nil, uerr
 		}
 		soft(ctx, "UpdateGitlabMilestoneLink", h.q.UpdateGitlabMilestoneLink(ctx, db.UpdateGitlabMilestoneLinkParams{

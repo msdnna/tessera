@@ -367,9 +367,11 @@ func firstNonEmpty(a, b string) string {
 // pullGitlabMilestone merges GitLab's version of a linked stage (seen through an
 // issue during the pull) into the stage, three ways. A field only GitLab changed
 // is taken; one only Tessera changed (a write that has not gone through yet) is
-// kept; one both changed is parked as a conflict. Without a baseline GitLab wins
-// on every field — the behaviour from before #3010.
-func (h *API) pullGitlabMilestone(ctx context.Context, link db.GitlabMilestoneLink, wsID uuid.UUID, theirs milestoneSnap) error {
+// kept; one both changed is parked as a conflict. Without a baseline — or when
+// the binding no longer writes to GitLab (writable false), so nothing local could
+// ever go out — GitLab wins on every field, the behaviour from before #3010, and
+// a leftover «not synced» mark is dropped with the edit it stood for.
+func (h *API) pullGitlabMilestone(ctx context.Context, link db.GitlabMilestoneLink, wsID uuid.UUID, theirs milestoneSnap, writable bool) error {
 	m, err := h.q.GetMilestone(ctx, link.MilestoneID)
 	if err != nil {
 		return err
@@ -378,7 +380,12 @@ func (h *API) pullGitlabMilestone(ctx context.Context, link db.GitlabMilestoneLi
 	base, hasBase := parseMilestoneSnap(link.GlSnapshot)
 	local, newBase := theirs, theirs
 	var conflicts []conflictField
-	if hasBase {
+	if !writable && link.PushError != "" {
+		soft(ctx, "SetGitlabMilestonePushResult", h.q.SetGitlabMilestonePushResult(ctx, db.SetGitlabMilestonePushResultParams{
+			MilestoneID: link.MilestoneID, PushError: "", PushFields: []string{}, PushActorID: nil,
+		}))
+	}
+	if hasBase && writable {
 		local, newBase = ours, base
 		for _, f := range milestoneSyncFields {
 			r := mergeMilestoneField(ours.get(f), base.get(f), theirs.get(f))
