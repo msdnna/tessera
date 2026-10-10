@@ -6,6 +6,7 @@ import { PRIORITY_KEYS, priorityLabel } from '@/utils/priority'
 import { defaultFormatters } from '@/utils/format'
 import { columnName } from '@/utils/defaultNames'
 import { sourceMeta } from '@/utils/sources'
+import { codeChangeText } from '@/utils/codeLinks'
 
 // Short "12 янв., 14:03" stamp used on comment and journal rows. `fmt` is a
 // formatter set from useFormat() — it carries the language, the timezone and the
@@ -131,6 +132,12 @@ export function eventText(e) {
     // spelling of a name the relation badges already print.
     case 'synced':
       return t('task.journal.synced', { source: sourceMeta(d.source).label })
+    // A merge request appeared on the task, or was merged / closed (#2964). The
+    // row's «actor» is the provider (see TaskCommentsTab), the text the event.
+    case 'code_change': {
+      const { key, params } = codeChangeText(d)
+      return t(`task.journal.${key}`, params)
+    }
     case 'attachment':
       return d.filename
         ? t('task.journal.attachmentNamed', { name: d.filename })

@@ -101,6 +101,11 @@ UPDATE gitlab_integrations SET last_synced_at = now(), last_full_synced_at = now
 -- name: MarkGitlabMembersSynced :exec
 UPDATE gitlab_integrations SET members_synced_at = now() WHERE id = $1;
 
+-- MarkGitlabMRSynced moves the merge-request poll's cursor (#2964) — to the moment
+-- the poll started, so changes made while it ran are re-read next time.
+-- name: MarkGitlabMRSynced :exec
+UPDATE gitlab_integrations SET mr_synced_at = $2 WHERE id = $1;
+
 -- ListAutoSyncIntegrations returns integrations due for unattended sync: enabled,
 -- with a positive interval, an owner credential set, and either never synced or
 -- past their interval. Used by the background worker.
@@ -217,6 +222,12 @@ RETURNING *;
 
 -- name: LinkedIidsForIntegration :many
 SELECT gl_iid FROM gitlab_links WHERE integration_id = $1;
+
+-- GitlabTasksForIids resolves issue iids of a binding to the tasks mirroring them
+-- — how a merge request that names issues finds its tasks (#2964).
+-- name: GitlabTasksForIids :many
+SELECT task_id, gl_iid FROM gitlab_links
+WHERE integration_id = $1 AND gl_iid = ANY(sqlc.arg(iids)::bigint[]);
 
 -- LinkedTasksForIntegration maps every linked task to its GitLab global id, so a
 -- full sweep can detect issues deleted in GitLab (a link with no matching issue in

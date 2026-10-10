@@ -51,7 +51,7 @@
       "copy": "Копировать",
       "copied": "Скопировано",
       "copyFailed": "Не удалось скопировать — выделите и скопируйте вручную",
-      "onceWarning": "Секрет показывается один раз. Вставьте URL и токен в GitLab: Settings → Webhooks, события «Issues» и «Comments». Потеряли — сгенерируйте заново.",
+      "onceWarning": "Секрет показывается один раз. Вставьте URL и токен в GitLab: Settings → Webhooks, события «Issues», «Comments», «Merge request events» и «Pipeline events» (последние два — для блока «Разработка» в задаче). Потеряли — сгенерируйте заново.",
       "lastEvent": "Последнее событие: {at}",
       "never": "не было",
       "failed": "Не удалось изменить вебхук"

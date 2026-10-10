@@ -57,6 +57,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
@@ -84,6 +85,7 @@ import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.AssigneeUser
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.CodeLink
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.GitlabAssignee
 import website.msdnna.tessera.data.model.GitlabLink
@@ -140,8 +142,11 @@ import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.attachmentPickError
 import website.msdnna.tessera.util.attachmentSizeText
 import website.msdnna.tessera.util.avatarInitials
+import website.msdnna.tessera.util.branchLine
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.changeStatus
+import website.msdnna.tessera.util.ciStatus
 import website.msdnna.tessera.util.columnById
 import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.doneTarget
@@ -407,6 +412,7 @@ fun TaskModal(
                                     gitlabAssignees = detail.gitlabAssignees,
                                     createdBy = detail.createdBy,
                                     gitlab = detail.gitlab,
+                                    codeLinks = detail.codeLinks,
                                     gitlabCreate = gitlabCreate,
                                     gitlabCanGroup = gitlabCanGroup,
                                     glCreating = state.glCreating,
@@ -719,6 +725,8 @@ private fun PropertyGrid(
     gitlabAssignees: List<GitlabAssignee>,
     createdBy: String?,
     gitlab: GitlabLink?,
+    /** Merge requests working on the task (#2964) — read-only cards under the GitLab row. */
+    codeLinks: List<CodeLink>,
     /** Whether this board's GitLab binding allows creating an issue from a task (and
      *  prefilling it from a repo template) — resolved by the board view-model. */
     gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps,
@@ -812,6 +820,16 @@ private fun PropertyGrid(
                     onPickTemplate = onApplyTemplate,
                     onCreate = onCreateIssue,
                 )
+            }
+        }
+        // «Разработка» (#2964): the merge requests working on the task, full width
+        // under the GitLab row — the value column is too narrow for a branch line.
+        if (codeLinks.isNotEmpty()) {
+            Column(
+                Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                codeLinks.forEach { CodeLinkCard(it) }
             }
         }
         // Grouped-task marker (#2592): the parent half of the GitLab hierarchy. Shown
@@ -1405,6 +1423,80 @@ private fun GitlabLinkValue(gitlab: GitlabLink) {
         Text("!${gitlab.iid}", fontSize = 14.sp, style = TextStyle(brush = accentGradient(c.primary)))
         Spacer(Modifier.width(6.dp))
         IonIcon(Ion.LINK, size = 13.dp, tint = c.text3)
+    }
+}
+
+/**
+ * One merge request of «Разработка» (#2964), after the web card: «!418 · title ·
+ * state pill» over «source → target · pipeline». Read-only — a tap opens the MR in
+ * the browser.
+ */
+@Composable
+private fun CodeLinkCard(link: CodeLink) {
+    val c = Tessera.colors
+    val ctx = LocalContext.current
+    val status = changeStatus(link)
+    val ci = ciStatus(link.ciStatus)
+    val branches = branchLine(link)
+    Column(
+        Modifier.fillMaxWidth()
+            .testTag(TestTags.TASK_MR)
+            .clip(RoundedCornerShape(11.dp))
+            .background(c.surfaceAlt)
+            .clickableNoRipple {
+                if (link.url.isNotBlank()) {
+                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link.url))) }
+                }
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IonIcon(Ion.GIT_MERGE, size = 15.dp, tint = c.text2)
+            Spacer(Modifier.width(8.dp))
+            Text("!${link.number}", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                link.title,
+                color = c.text2,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            val hue = status.hex?.let { parseHexColor(it, c.text2) }
+            Text(
+                stringResource(status.label),
+                color = hue?.let { readableHue(it, c.isDark) } ?: c.text2,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(hue?.let { accentGradient(lerp(c.surfaceAlt, it, 0.18f)) } ?: SolidColor(c.border))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            )
+        }
+        if (branches.isNotEmpty() || ci != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    branches,
+                    color = c.text3,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (ci != null) {
+                    Spacer(Modifier.width(8.dp))
+                    IonIcon(ci.icon, size = 13.dp, tint = ci.hex?.let { parseHexColor(it, c.text3) } ?: c.text3)
+                    Spacer(Modifier.width(5.dp))
+                    Text(stringResource(ci.label), color = c.text3, fontSize = 12.sp, maxLines = 1)
+                }
+            }
+        }
     }
 }
 
@@ -2692,11 +2784,21 @@ private fun HistoryTab(events: List<website.msdnna.tessera.data.model.TaskEvent>
                 Modifier.fillMaxWidth().padding(vertical = 6.dp).testTag(TestTags.taskEventRow(e.id)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // A merge request's line (#2964) is the provider's, not a person's:
+                // a merge glyph and «GitLab ·» instead of initials and a name.
+                val fromCode = e.kind == "code_change"
                 Box(Modifier.size(22.dp).clip(CircleShape).background(c.surfaceAlt), contentAlignment = Alignment.Center) {
-                    Text(avatarInitials(e.actorName ?: "?"), color = c.text2, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                    if (fromCode) {
+                        IonIcon(Ion.GIT_MERGE, size = 12.dp, tint = c.text2)
+                    } else {
+                        Text(avatarInitials(e.actorName ?: "?"), color = c.text2, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
                 Spacer(Modifier.width(8.dp))
-                val actor = e.actorName ?: stringResource(R.string.task_someone)
+                val actor = when {
+                    fromCode -> "${sourceMeta(e.data?.source).label} ·"
+                    else -> e.actorName ?: stringResource(R.string.task_someone)
+                }
                 Text(
                     "$actor ${journalText(LocalResources.current, e)}",
                     color = c.text2,

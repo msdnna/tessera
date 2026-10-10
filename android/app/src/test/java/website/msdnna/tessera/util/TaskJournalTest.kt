@@ -41,7 +41,7 @@ class TaskJournalTest {
             "completed", "reopened", "recurred", "moved", "assigned", "unassigned",
             "archived", "restored", "comment", "relation", "relation_removed",
             "tagged", "untagged", "commands", "synced", "attachment", "attachment_removed",
-            "milestone", "milestone_removed",
+            "milestone", "milestone_removed", "code_change",
         )
         for (language in listOf("ru", "en")) {
             for (kind in kinds) {
@@ -146,6 +146,15 @@ class TaskJournalTest {
             .isEqualTo("синхронизировал(а) с GitLab")
         assertThat(text("en", "synced", """{"source":"gitlab"}"""))
             .isEqualTo("synced it with GitLab")
+    }
+
+    @Test
+    fun `a merge request line names the MR, its branch and what happened (#2964)`() {
+        assertThat(text("ru", "code_change", """{"source":"gitlab","number":418,"state":"open","branch":"feat/board-v2"}"""))
+            .isEqualTo("открыт !418 в feat/board-v2")
+        assertThat(text("ru", "code_change", """{"number":418,"state":"merged"}""")).isEqualTo("смержен !418")
+        assertThat(text("en", "code_change", """{"number":9,"state":"closed"}""")).isEqualTo("closed !9")
+        assertThat(text("en", "code_change", """{"number":5}""")).isEqualTo("opened !5")
     }
 
     @Test

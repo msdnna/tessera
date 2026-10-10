@@ -510,6 +510,14 @@ func (h *API) DeleteGitlabIntegration(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// The binding's merge requests (#2964) live in the provider-neutral
+	// task_code_links, which has no FK into GitLab's tables — clean them here.
+	// Best-effort: an orphan row only shows a stale MR on a task.
+	if err := h.q.DeleteCodeLinksForSource(c, db.DeleteCodeLinksForSourceParams{
+		Provider: codeProviderGitlab, SourceID: integ.ID,
+	}); err != nil {
+		log.Printf("gitlab integration %s: drop code links: %v", integ.ID, err)
+	}
 	c.Status(http.StatusNoContent)
 }
 
@@ -871,6 +879,9 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 	// so a link between two issues of this run resolves on the first pass.
 	h.syncRelations(ctx, integ, client, syncedIIDs, j)
 	r.markSynced(ctx, issues, childrenOf)
+	// Merge requests and their pipelines (#2964) last: they hang off the tasks the
+	// steps above just mirrored. Best-effort — never fails the pull.
+	h.syncMergeRequests(ctx, integ, client)
 
 	// One board-level reload signal (no per-task toasts) so open boards refresh once.
 	if created+updated > 0 {

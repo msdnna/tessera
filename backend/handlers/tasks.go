@@ -31,6 +31,8 @@ type taskDetail struct {
 	// viewer is among them.
 	Subscribers []db.ListTaskSubscribersRow `json:"subscribers"`
 	Subscribed  bool                        `json:"subscribed"`
+	// CodeLinks are the merge requests working on the task (#2964), always a list.
+	CodeLinks []codeLinkView `json:"code_links"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -307,6 +309,7 @@ func (h *API) GetTask(c *gin.Context) {
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, GitlabAssignees: glAssignees,
 		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id),
 		Subscribers: subs, Subscribed: subscribed,
+		CodeLinks: h.codeLinksForTask(c, id),
 	})
 }
 

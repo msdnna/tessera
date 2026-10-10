@@ -257,6 +257,7 @@ type GitlabIntegration struct {
 	WebhookSecretEnc    string     `json:"webhook_secret_enc"`
 	WebhookEnabled      bool       `json:"webhook_enabled"`
 	LastWebhookAt       *time.Time `json:"last_webhook_at"`
+	MrSyncedAt          *time.Time `json:"mr_synced_at"`
 }
 
 type GitlabIssueLink struct {
@@ -640,6 +641,29 @@ type TaskAttachment struct {
 	Size        int64      `json:"size"`
 	StoragePath string     `json:"storage_path"`
 	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type TaskCodeLink struct {
+	TaskID          uuid.UUID  `json:"task_id"`
+	Provider        string     `json:"provider"`
+	SourceID        uuid.UUID  `json:"source_id"`
+	Kind            string     `json:"kind"`
+	Number          int64      `json:"number"`
+	ExternalID      string     `json:"external_id"`
+	Repo            string     `json:"repo"`
+	Url             string     `json:"url"`
+	Title           string     `json:"title"`
+	State           string     `json:"state"`
+	Draft           bool       `json:"draft"`
+	SourceBranch    string     `json:"source_branch"`
+	TargetBranch    string     `json:"target_branch"`
+	CiStatus        string     `json:"ci_status"`
+	CiUrl           string     `json:"ci_url"`
+	CiRunID         int64      `json:"ci_run_id"`
+	Via             string     `json:"via"`
+	RemoteUpdatedAt *time.Time `json:"remote_updated_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 type TaskComment struct {

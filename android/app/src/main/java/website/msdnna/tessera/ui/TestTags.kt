@@ -184,6 +184,9 @@ object TestTags {
     const val TASK_GITLAB_GROUPED = "task-gitlab-grouped"
     const val TASK_SUBSCRIBERS = "task-subscribers"
     const val TASK_SUBSCRIBE_TOGGLE = "task-subscribe-toggle"
+
+    /** A merge request card in «Разработка» (#2964). */
+    const val TASK_MR = "task-mr"
     const val TASK_SUBTASK_GL_CHIP = "task-subtask-gl-chip"
     const val TASK_SUBTASK_GL_HINT = "task-subtask-gl-hint"
 

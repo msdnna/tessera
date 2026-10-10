@@ -514,7 +514,11 @@
     "milestone": "linked it to a milestone",
     "milestoneNamed": "linked it to the milestone “{name}”",
     "milestoneRemoved": "unlinked it from a milestone",
-    "milestoneRemovedNamed": "unlinked it from the milestone “{name}”"
+    "milestoneRemovedNamed": "unlinked it from the milestone “{name}”",
+    "codeOpenedOn": "opened {ref} on {branch}",
+    "codeOpened": "opened {ref}",
+    "codeMerged": "merged {ref}",
+    "codeClosed": "closed {ref}"
   },
   "ref": {
     "notFound": "Task #{number} not found"
@@ -544,5 +548,21 @@
     "hint": "Followers are notified about the task's comments, moves, completion and edits. The author, the assignees and the commenters follow it on their own.",
     "more": "{n} more",
     "failed": "Could not change the subscription"
+  },
+  "dev": {
+    "openMr": "Open {ref} in GitLab",
+    "state": {
+      "open": "open",
+      "merged": "merged",
+      "closed": "closed",
+      "draft": "draft"
+    },
+    "ci": {
+      "success": "pipeline passed",
+      "running": "pipeline running",
+      "failed": "pipeline failed",
+      "canceled": "pipeline canceled",
+      "manual": "pipeline awaiting start"
+    }
   }
 }

@@ -46,6 +46,7 @@ import { useNotificationsStore } from '@/stores/notifications'
 import { useInboxStore } from '@/stores/inbox'
 import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
+import { useCodeLinksStore } from '@/stores/codeLinks'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useTourStore } from '@/stores/tour'
 import { useOnboardingStore } from '@/stores/onboarding'
@@ -78,6 +79,7 @@ const notes = useNotificationsStore()
 const inbox = useInboxStore()
 const toasts = useToastsStore()
 const conflicts = useConflictsStore()
+const codeLinks = useCodeLinksStore()
 const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
 const onboarding = useOnboardingStore()
@@ -171,6 +173,8 @@ useRealtime(
     // The «Начало работы» checklist counts what the user did themselves (#3102).
     onboarding.onSocket(ev, authStore.user?.id)
     conflicts.onEvent(ev)
+    // A merge request or its pipeline moved in GitLab → the open task window (#2964).
+    codeLinks.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
     // A renamed or recoloured workspace repaints its rail tile everywhere.

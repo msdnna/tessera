@@ -3,7 +3,7 @@ title: A task's history
 category: Tasks
 order: 35
 keywords: history, journal, audit, who changed, events, log
-updated: 2026-08-28
+updated: 2026-10-10
 ---
 
 The **History** tab is the task's journal: who did what to it, and when. It is kept automatically — nothing has to be switched on.
@@ -29,6 +29,7 @@ Each row is an avatar and a name, a short sentence about what happened, and a ti
 | Comment | left a comment |
 | [Relation](/help/task-links) | added a relation to #2591 |
 | Attachment | attached the file “report.pdf” |
+| [Merge request](/help/task-modal) | GitLab · opened !418 on feat/board-v2 · merged !418 · closed !418 — a line from GitLab, not from a person |
 
 ## What the journal does not keep
 
