@@ -496,7 +496,6 @@ async function onMenu(key) {
   if (key === 'owner') {
     if (!isOwner.value) return
     transferFor.value = m
-    transferAnchor.value = menuAnchor.value
     menuFor.value = null
     transferShow.value = true
     return
@@ -511,7 +510,6 @@ async function onMenu(key) {
 
 // ── handing the workspace over (#3072) ──
 const transferFor = ref(null)
-const transferAnchor = ref(null)
 const transferShow = ref(false)
 async function onTransferred(m) {
   message.success(t('shell.members.transferDone', { name: m.name || m.email }))
@@ -628,13 +626,11 @@ const navItems = computed(() => [
     icon: PeopleCircleOutline,
     label: t('shell.members.navGroups'),
     count: groups.value.length || null,
-    testid: 'members-nav-groups',
   },
   {
     key: 'roles',
     icon: ShieldCheckmarkOutline,
     label: t('shell.members.navRoles'),
-    testid: 'members-nav-roles',
   },
 ])
 
@@ -1030,67 +1026,77 @@ function close() {
             </label>
           </div>
           <div class="members mw-list">
-            <div
-              v-for="m in shownMembers"
-              :key="m.user_id"
-              class="member mw-row"
-              :class="{ ctx: menuFor === m.user_id }"
-              data-testid="member-row"
-            >
-              <UserAvatar :user-id="m.user_id" :name="m.name" class="mw-av" />
-              <div class="info">
-                <span class="name">
-                  {{ m.name }}
-                  <span v-if="isSelf(m)" class="mw-you">{{ t('shell.members.youShort') }}</span>
+            <template v-for="m in shownMembers" :key="m.user_id">
+              <div
+                class="member mw-row"
+                :class="{ ctx: menuFor === m.user_id }"
+                data-testid="member-row"
+              >
+                <UserAvatar :user-id="m.user_id" :name="m.name" class="mw-av" />
+                <div class="info">
+                  <span class="name">
+                    {{ m.name }}
+                    <span v-if="isSelf(m)" class="mw-you">{{ t('shell.members.youShort') }}</span>
+                  </span>
+                  <span class="mail">{{ m.email }}</span>
+                </div>
+                <span class="mw-groups" data-testid="member-groups-cell">{{
+                  memberGroups(m)
+                }}</span>
+                <span class="mw-seen" :title="activity(m).title" data-testid="member-activity">
+                  <span v-if="activity(m).online" class="mw-dot" />
+                  {{ activity(m).text }}
                 </span>
-                <span class="mail">{{ m.email }}</span>
-              </div>
-              <span class="mw-groups" data-testid="member-groups-cell">{{ memberGroups(m) }}</span>
-              <span class="mw-seen" :title="activity(m).title" data-testid="member-activity">
-                <span v-if="activity(m).online" class="mw-dot" />
-                {{ activity(m).text }}
-              </span>
-              <!-- A control that vanishes with no word reads as a broken window,
+                <!-- A control that vanishes with no word reads as a broken window,
                    so a locked row keeps its role in place and says why on hover. -->
-              <span
-                v-if="rowLock(m)"
-                class="mw-role locked"
-                :class="`r-${m.role}`"
-                :title="lockReason(m)"
-                :aria-label="`${roleName(m.role)} — ${lockReason(m)}`"
-                data-testid="member-role-locked"
-              >
-                {{ roleName(m.role) }}
-                <n-icon
-                  v-if="canManage"
-                  :component="LockClosedOutline"
-                  :size="11"
-                  class="mw-lock"
-                />
-              </span>
-              <button
-                v-else
-                type="button"
-                class="mw-role btn"
-                :class="`r-${m.role}`"
-                data-testid="member-role"
-                @click="openMenu(m.user_id, $event.currentTarget)"
-              >
-                {{ roleName(m.role) }}
-                <n-icon :component="ChevronDownOutline" :size="12" />
-              </button>
-              <button
-                v-if="!rowLock(m) || isSelf(m)"
-                type="button"
-                class="mw-more"
-                :title="t('common.action.more')"
-                data-testid="member-menu"
-                @click="openMenu(isSelf(m) ? 'self' : m.user_id, $event.currentTarget)"
-              >
-                <n-icon :component="EllipsisHorizontal" :size="16" />
-              </button>
-              <span v-else class="mw-more-gap" />
-            </div>
+                <span
+                  v-if="rowLock(m)"
+                  class="mw-role locked"
+                  :class="`r-${m.role}`"
+                  :title="lockReason(m)"
+                  :aria-label="`${roleName(m.role)} — ${lockReason(m)}`"
+                  data-testid="member-role-locked"
+                >
+                  {{ roleName(m.role) }}
+                  <n-icon
+                    v-if="canManage"
+                    :component="LockClosedOutline"
+                    :size="11"
+                    class="mw-lock"
+                  />
+                </span>
+                <button
+                  v-else
+                  type="button"
+                  class="mw-role btn"
+                  :class="`r-${m.role}`"
+                  data-testid="member-role"
+                  @click="openMenu(m.user_id, $event.currentTarget)"
+                >
+                  {{ roleName(m.role) }}
+                  <n-icon :component="ChevronDownOutline" :size="12" />
+                </button>
+                <button
+                  v-if="!rowLock(m) || isSelf(m)"
+                  type="button"
+                  class="mw-more"
+                  :title="t('common.action.more')"
+                  data-testid="member-menu"
+                  @click="openMenu(isSelf(m) ? 'self' : m.user_id, $event.currentTarget)"
+                >
+                  <n-icon :component="EllipsisHorizontal" :size="16" />
+                </button>
+                <span v-else class="mw-more-gap" />
+              </div>
+              <TransferOwnerPop
+                v-if="transferShow && transferFor?.user_id === m.user_id"
+                v-model:show="transferShow"
+                :ws-id="wsId"
+                :ws-name="workspaceName(workspace)"
+                :member="transferFor"
+                @done="onTransferred"
+              />
+            </template>
             <p v-if="!shownMembers.length && filter" class="mw-empty">
               {{ t('shell.members.noMatch') }}
             </p>
@@ -1108,14 +1114,6 @@ function close() {
       :width="360"
       testid="member-role-menu"
       @select="onMenu"
-    />
-    <TransferOwnerPop
-      v-model:show="transferShow"
-      :anchor="() => transferAnchor"
-      :ws-id="wsId"
-      :ws-name="workspaceName(workspace)"
-      :member="transferFor"
-      @done="onTransferred"
     />
   </LargeWindow>
 </template>
@@ -1435,7 +1433,7 @@ function close() {
 }
 /* Groups and activity (#3063) — the mockup's two quiet columns. */
 .mw-groups {
-  flex: 0 1 180px;
+  flex: 0 0 160px;
   min-width: 0;
   font-size: 12.5px;
   color: var(--t-text2);

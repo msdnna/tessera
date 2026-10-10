@@ -1,15 +1,15 @@
 <script setup>
-// «Передать владение…» (#3072, MembersWin role menu): a popover form at the
-// member's row with the workspace's name typed in — the irreversible-action
-// rule of the v2 model (#2969: two steps or the name). Lives inside the members
-// window's NModal, hence AnchorLayer + the inline form (a teleport to <body>
-// would lose the modal's focus trap).
+// «Передать владение…» (#3072, MembersWin role menu): the popover form drawn in
+// place right under the member's row, with the workspace's name typed in — the
+// irreversible-action rule of the v2 model (#2969: two steps or the name).
+// In place rather than at an anchor: the members window is an NModal, and a
+// layer teleported out of its card has its field's focus pulled back by the
+// modal's focus trap (the e2e caught the typed name landing in the invite field).
 //
 // The server holds the real guard (only the owner may transfer); the typed name
 // only stops a slip of the hand.
-import { computed, ref, watch } from 'vue'
+import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import AnchorLayer from '@/components/kit/AnchorLayer.vue'
 import PopoverForm from '@/components/kit/PopoverForm.vue'
 import FormField from '@/components/kit/FormField.vue'
 import { workspaces as wsApi } from '@/api'
@@ -17,7 +17,6 @@ import { humanizeError } from '@/utils/errors'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
-  anchor: { type: Function, default: () => null },
   wsId: { type: String, default: '' },
   // The workspace's name as the reader sees it (personal spaces are localised).
   wsName: { type: String, default: '' },
@@ -35,8 +34,11 @@ watch(
     if (!on) return
     typed.value = ''
     error.value = ''
+    nextTick(() => field.value?.focus())
   },
+  { immediate: true },
 )
+const field = ref(null)
 const matches = computed(() => !!props.wsName && typed.value.trim() === props.wsName.trim())
 const who = computed(() => props.member?.name || props.member?.email || '')
 
@@ -57,45 +59,42 @@ async function submit() {
 </script>
 
 <template>
-  <AnchorLayer
+  <PopoverForm
+    inline
     :show="show"
-    :anchor="anchor"
-    placement="bottom-end"
-    :offset="{ x: 0, y: 6 }"
-    focus=".kf-input"
+    :width="420"
     :title="t('shell.members.transferTitle', { name: who })"
-    testid="transfer-owner-layer"
+    :subtitle="t('shell.members.transferSub')"
+    :primary="t('shell.members.transferGo')"
+    :busy="busy"
+    :disabled="!matches"
+    danger
+    class="tr-pop"
+    testid="transfer-owner"
     @update:show="emit('update:show', $event)"
+    @submit="submit"
   >
-    <PopoverForm
-      inline
-      :show="show"
-      :width="340"
-      :title="t('shell.members.transferTitle', { name: who })"
-      :subtitle="t('shell.members.transferSub')"
-      :primary="t('shell.members.transferGo')"
-      :busy="busy"
-      :disabled="!matches"
-      danger
-      testid="transfer-owner"
-      @update:show="emit('update:show', $event)"
-      @submit="submit"
+    <FormField
+      :label="t('shell.members.transferType')"
+      :error="error"
+      :message="t('shell.members.transferHint')"
     >
-      <FormField
-        :label="t('shell.members.transferType')"
-        :error="error"
-        :message="t('shell.members.transferHint')"
-      >
-        <input
-          v-model="typed"
-          class="kf-input"
-          :placeholder="wsName"
-          :disabled="busy"
-          autocomplete="off"
-          spellcheck="false"
-          data-testid="transfer-owner-name"
-        />
-      </FormField>
-    </PopoverForm>
-  </AnchorLayer>
+      <input
+        ref="field"
+        v-model="typed"
+        class="kf-input"
+        :placeholder="wsName"
+        :disabled="busy"
+        autocomplete="off"
+        spellcheck="false"
+        data-testid="transfer-owner-name"
+      />
+    </FormField>
+  </PopoverForm>
 </template>
+
+<style scoped>
+.tr-pop {
+  margin: 4px 0 8px auto;
+}
+</style>
