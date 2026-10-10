@@ -3,7 +3,7 @@ title: The «Project» window
 category: Boards
 order: 27
 keywords: project, project settings, project window, tags, milestones, milestones, estimation, address, icon, colour, group, delete project, Ctrl+comma
-updated: 2026-10-07
+updated: 2026-10-10
 ---
 
 Everything a project is set up with lives in one window: its name and address, icon and colour, tags, milestones and the unit tasks are estimated in. Changes save at once — there is no «Save» button here.
@@ -28,7 +28,7 @@ At the bottom left are links to the workspace windows that also concern the proj
 - **Address** — the `…/project/<address>` part of a link. The workspace owner and admins can change it. Links with the old address stop opening — the note under the field says so.
 - **Icon and colour** — the same ones the sidebar, breadcrumbs and the rail show.
 - **Group** — which project group it sits in in the tree.
-- **Danger zone.** «Archive» is not available yet. **«Delete project»** takes two steps: the first press asks «Delete for good?», the second deletes it with all its boards, tasks and milestones.
+- **Danger zone.** **«Archive»** (<kbd>E</kbd>) moves the project to the [archived projects](/help/project-archive) — at once, with an undo in the message; an archived project shows **«Restore»** in its place. **«Delete project»** takes two steps: the first press asks «Delete for good?», the second deletes it with all its boards, tasks and milestones.
 
 ## Tags
 

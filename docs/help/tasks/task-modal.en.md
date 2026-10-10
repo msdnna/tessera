@@ -3,7 +3,7 @@ title: The task window
 category: Tasks
 order: 30
 keywords: task, window, modal, estimate, milestone, priority, due, recurrence, assignees, status, parent, tabs, link, side panel
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 A card on the board shows a task in two lines. Everything else — the estimate, the milestone, the author, the relations, the files, the history — lives in the **task window**. It opens with a click on the card and closes with `Esc` or a click outside it.
@@ -80,7 +80,7 @@ Every tab label carries a counter, so a closed tab still tells you whether there
 
 ## The bottom of the window
 
-At the bottom: **Archive** and **Delete**. The difference matters: [the archive](/help/archive) keeps the task whole and lets you bring it back, deleting is irreversible.
+At the bottom: **Archive** and **Delete**. The difference matters: [the archive](/help/archive) keeps a finished task for as long as you like, while deleting sends it to the [board's trash](/help/trash) for 30 days — right after the delete, Undo in the message at the bottom brings it back.
 
 If the task has subtasks, archiving asks what to do with them: archive them along with the parent, or detach them and leave them on the board.
 

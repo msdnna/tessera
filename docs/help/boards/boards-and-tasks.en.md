@@ -3,7 +3,7 @@ title: The board: basics
 category: Boards
 order: 20
 keywords: board, kanban, columns, tags, grouping, filter, views, task, subtasks, priority, due date
-updated: 2026-08-21
+updated: 2026-10-10
 ---
 
 The board is the main working screen. Columns set the stages, cards are the tasks, and dragging a card with the mouse changes its state.
@@ -13,7 +13,7 @@ The board is the main working screen. Columns set the stages, cards are the task
 ## What's on the screen
 
 - **Header** — the breadcrumbs “project › board”: a click on the project opens the [«Project» window](/help/project-window), a click on the board opens the list of the project's boards for a quick jump. Next to them is the favourites star (coming soon).
-- **The “⋯” button on the right of the board bar** — the board menu: «Tags», «Milestones», «Project settings», GitLab and «Archive». Next to it is a cascade of avatars — the people who have tasks on this board.
+- **The “⋯” button on the right of the board bar** — the board menu: «Tags», «Milestones», «Project settings», GitLab, «Archive» and [«Trash»](/help/trash). Next to it is a cascade of avatars — the people who have tasks on this board.
 
 ## Grouping by tags
 
