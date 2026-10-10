@@ -438,7 +438,8 @@
       "move": "Move the view up / down"
     },
     "project": {
-      "window": "«Project» window of the current project"
+      "window": "«Project» window of the current project",
+      "blankBoard": "A blank board on an empty project’s screen"
     },
     "tags": {
       "select": "Select a tag row · a range",

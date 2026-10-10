@@ -352,11 +352,13 @@ async function openProject() {
   await ensureBoards()
   expanded.value = true
   if (boards.value[0]) openBoard(boards.value[0])
+  // No board yet: the project's own page — the board templates (#3047).
+  else router.push(`/project/${props.project.slug}`)
 }
 async function copyLink() {
   await ensureBoards()
   const b = boards.value[0]
-  const url = `${window.location.origin}${b ? boardPath(b) : '/'}`
+  const url = `${window.location.origin}${b ? boardPath(b) : `/project/${props.project.slug}`}`
   try {
     await navigator.clipboard.writeText(url)
     message.success(t('project.menu.linkCopied'))

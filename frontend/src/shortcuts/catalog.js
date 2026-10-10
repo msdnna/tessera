@@ -330,6 +330,8 @@ export const CATALOG = [
   // switch its tabs. The tag table's keys are caught by the table itself (they
   // only mean something on its rows); these entries list them.
   { id: 'project.window', keys: 'mod+,', group: 'project', command: 'SettingsOutline' },
+  // «или пустая доска ⇧N» on an empty project's screen (#3047).
+  { id: 'project.blankBoard', keys: 'shift+n', group: 'project' },
   { id: 'tags.select', group: 'project', display: [['space'], ['shift', '↑/↓']] },
   { id: 'tags.rename', group: 'project', display: [['enter'], ['f2']] },
   { id: 'tags.new', group: 'project', display: [['n'], ['/']] },

@@ -96,9 +96,10 @@ async function submit({ open }) {
     await store.refresh()
     if (open && res.data) {
       // The project is born without a board; ⌘↵ lands on the first one if it
-      // has any, else on the project's row stays the focus target.
+      // has any, else on the project's page with the board templates (#3047).
       const boards = (await projApi.boards(res.data.id)).data || []
       if (boards[0]) router.push(`/project/${res.data.slug}/board/${boards[0].slug}`)
+      else router.push(`/project/${res.data.slug}`)
     }
   } catch (e) {
     if (e.status === 409) slugError.value = t('project.slug.taken')
