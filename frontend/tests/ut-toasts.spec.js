@@ -89,6 +89,9 @@ describe('toastModel', () => {
   it('names the kind and the switch of a notification', () => {
     const n = (event, kind) => ({ kind, payload: { event } })
     expect(notificationKind(n('task_mention'))).toBe('mention')
+    // A shared «Входящие» note naming the reader (#3040).
+    expect(notificationKind(n('note_mention'))).toBe('mention')
+    expect(notificationCategory(n('note_mention'))).toBe('mentions')
     expect(notificationKind(n('conference_invited'))).toBe('call')
     expect(notificationKind(n('', 'reminder'))).toBe('reminder')
     expect(notificationCategory(n('task_deleted'))).toBe('removal')
