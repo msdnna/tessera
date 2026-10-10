@@ -8,6 +8,12 @@
 // Keys: ↵ save · ⇧↵ open the body (Markdown) · ⌘↵ save from the body · Tab
 // switch the type (a manual choice sticks: «вручную ×») · ↑ in the empty field
 // brings the last record back · Esc close.
+//
+// «#тег» and «@человек» (#3040) become chips and are saved with the record: a
+// tag the named task's project has takes its colour (the record wears the
+// project's tag), any other is a free label; a handle that names one member
+// is a mention, one that names nobody stays in the title. The people the body
+// names (its @-chips) are mentioned too.
 import { computed, nextTick, onBeforeUnmount, ref, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon, NTooltip } from 'naive-ui'
@@ -25,6 +31,7 @@ import Kbd from '@/components/Kbd.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import TesseraIcon from '@/components/TesseraIcon.vue'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
+import TagPill from '@/components/TagPill.vue'
 import BottomSheet from '@/components/kit/BottomSheet.vue'
 import { taskStatus } from '@/components/palette/rows'
 import { useInboxStore } from '@/stores/inbox'
@@ -36,6 +43,7 @@ import { parseCapture } from '@/utils/quickParse'
 import { CAPS } from '@/utils/keyCaps'
 import { stubTask } from '@/utils/featureStubs'
 import { humanizeError } from '@/utils/errors'
+import { mentionIdsIn } from '@/utils/mentions'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -88,7 +96,17 @@ watch(
 )
 onBeforeUnmount(() => release?.())
 
-const parsed = computed(() => parseCapture(text.value, { now: now.value }))
+const taskHit = ref(null)
+const taskMissing = ref('')
+const taskBusy = ref(false)
+// The members a handle may name; the named task's project tags colour a tag.
+const people = computed(() => inbox.members.map((m) => ({ ...m, id: m.user_id })))
+const projectTags = computed(
+  () => (taskHit.value?.project_id && inbox.tagsOf.get(taskHit.value.project_id)) || [],
+)
+const parsed = computed(() =>
+  parseCapture(text.value, { now: now.value, people: people.value, tags: projectTags.value }),
+)
 const kind = computed(() => manual.value || parsed.value.kind)
 // The next whole hour — a hand-picked reminder without a time in the text.
 function nextHour() {
@@ -104,9 +122,6 @@ const dateStruck = computed(() => kind.value === 'note' && !!parsed.value.remind
 const title = computed(() => parsed.value.title)
 
 // ── the task named by «/…» ──
-const taskHit = ref(null)
-const taskMissing = ref('')
-const taskBusy = ref(false)
 let taskSeq = 0
 let taskTimer = 0
 watch(
@@ -171,12 +186,21 @@ async function save() {
   const heading = title.value || body.value.trim().split('\n')[0].slice(0, 120)
   try {
     const taskId = taskHit.value?.id || undefined
+    const tags = parsed.value.tags.map((tg) => tg.tag?.name || tg.name)
+    const mentions = [
+      ...new Set([
+        ...parsed.value.people.map((p) => p.user_id),
+        ...mentionIdsIn(body.value, inbox.mentionItems),
+      ]),
+    ]
     if (kind.value === 'reminder') {
       await inbox.createReminder({
         message: heading,
         body: body.value,
         remind_at: remindAt.value,
         task_id: taskId,
+        tags,
+        mentions,
       })
     } else {
       await inbox.createNote({
@@ -184,6 +208,8 @@ async function save() {
         body: body.value,
         task_id: taskId,
         visibility: 'private',
+        tags,
+        mentions,
       })
     }
     inbox.lastCaptured = line
@@ -260,7 +286,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocDown, tru
 
 const status = computed(() => (taskHit.value ? taskStatus(taskHit.value) : null))
 const AT = '@'
-const tagStub = stubTask('inbox.tags')
+// A free label (no project tag of that name) — the mockup's neutral tag hue.
+const FREE_TAG = '#9aa0aa'
 const offlineStub = stubTask('inbox.offline')
 const sheetShow = computed({
   get: () => show.value && isMobile.value,
@@ -361,18 +388,22 @@ const sheetShow = computed({
               <n-icon :component="AlarmOutline" :size="14" />
               <span>{{ whenLong(dateStruck ? parsed.remindAt : remindAt, now) }}</span>
             </span>
-            <n-tooltip v-for="tg in parsed.tags" :key="`t-${tg.name}`" :delay="300">
-              <template #trigger>
-                <span class="cap-chip stub">#{{ tg.name }}</span>
-              </template>
-              {{ t('common.stub.soon', { n: tagStub }) }}
-            </n-tooltip>
-            <n-tooltip v-for="m in parsed.mentions" :key="`m-${m}`" :delay="300">
-              <template #trigger>
-                <span class="cap-chip stub">{{ AT }}{{ m }}</span>
-              </template>
-              {{ t('common.stub.soon', { n: tagStub }) }}
-            </n-tooltip>
+            <TagPill
+              v-for="tg in parsed.tags"
+              :key="`t-${tg.name}`"
+              :tag="tg.tag || { name: tg.name, color: FREE_TAG }"
+              class="cap-chip tag"
+              data-testid="capture-tag"
+              :title="tg.tag ? '' : t('inbox.capture.freeTag')"
+            />
+            <span
+              v-for="p in parsed.people"
+              :key="`m-${p.user_id}`"
+              class="cap-chip who"
+              data-testid="capture-mention"
+              :title="p.email"
+              ><span class="accent-grad-text">{{ AT }}{{ p.name || p.email }}</span></span
+            >
           </div>
           <div v-if="parsed.taskRef" class="cap-chips">
             <span v-if="taskBusy" class="cap-chip task busy">
@@ -406,6 +437,7 @@ const sheetShow = computed({
             v-model="body"
             variant="boxed"
             :min-rows="4"
+            :mention-items="inbox.mentionItems"
             :placeholder="t('inbox.capture.bodyPlaceholder')"
           />
         </div>
@@ -651,9 +683,8 @@ const sheetShow = computed({
 .cap-chip.when.struck :deep(.n-icon) {
   color: var(--t-text3);
 }
-.cap-chip.stub {
-  opacity: 0.6;
-  cursor: default;
+.cap-chip.who {
+  font-weight: 600;
 }
 .cap-chip.task {
   min-width: 0;

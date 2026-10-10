@@ -11,6 +11,11 @@ import {
   firedCount,
   doneTodayCount,
   remindersByTask,
+  recordTags,
+  recordPeople,
+  parseTagLine,
+  tagLine,
+  tagsByProject,
 } from '@/utils/inbox'
 
 // «Входящие» (#2972): the capture line and the feed's grouping, on a fixed clock.
@@ -50,11 +55,86 @@ describe('parseCapture', () => {
     expect(parseCapture('через 3 дня', { now }).remindAt).toBe(iso(2026, 9, 10, 9, 40))
   })
 
-  it('ties a task by word, keeps @handles out of the title', () => {
-    const r = parseCapture('спросить @илья про /webhook', { now })
+  const people = [
+    { user_id: 'u1', name: 'Анна Ким', email: 'anna@x.dev' },
+    { user_id: 'u2', name: 'Илья Петров', email: 'ilya@x.dev' },
+  ]
+
+  it('ties a task by word, takes a member out of the title as a mention (#3040)', () => {
+    const r = parseCapture('спросить @илья про /webhook', { now, people })
     expect(r.taskRef).toEqual({ word: 'webhook' })
-    expect(r.mentions).toEqual(['илья'])
+    expect(r.people.map((p) => p.user_id)).toEqual(['u2'])
     expect(r.title).toBe('Спросить про')
+  })
+
+  it('keeps a handle that names nobody in the title', () => {
+    const r = parseCapture('спросить @борис', { now, people })
+    expect(r.people).toEqual([])
+    expect(r.title).toBe('Спросить @борис')
+  })
+
+  it('reads «Созвон #релиз @Анна завтра 10:00»', () => {
+    const tags = [{ id: 't1', name: 'Релиз', color: '#7c5cff' }]
+    const r = parseCapture('Созвон #релиз @Анна завтра 10:00', { now, people, tags })
+    expect(r.kind).toBe('reminder')
+    expect(r.title).toBe('Созвон')
+    expect(r.remindAt).toBe(iso(2026, 9, 8, 10, 0))
+    expect(r.tags).toEqual([{ name: 'релиз', tag: tags[0] }])
+    expect(r.people.map((p) => p.user_id)).toEqual(['u1'])
+  })
+})
+
+describe('record tags and mentions (#3040)', () => {
+  const wsTags = [
+    { id: 't1', project_id: 'p1', name: 'Frontend', color: '#7c5cff' },
+    { id: 't2', project_id: 'p2', name: 'релиз', color: '#e0533d' },
+  ]
+  const byProject = tagsByProject(wsTags)
+
+  it('paints a tag of the record’s project, leaves the rest free labels', () => {
+    const rec = { kind: 'note', tags: ['frontend', 'релиз'], task: { project_id: 'p1' } }
+    expect(recordTags(rec, byProject)).toEqual([
+      { name: 'frontend', tag: wsTags[0] },
+      { name: 'релиз', tag: null },
+    ])
+    // A note written in a project, with no task, wears that project's tags.
+    expect(recordTags({ tags: ['РЕЛИЗ'], project_id: 'p2' }, byProject)[0].tag).toBe(wsTags[1])
+    // Without any project every tag is a free label.
+    expect(recordTags({ tags: ['frontend'] }, byProject)[0].tag).toBe(null)
+    expect(recordTags({}, byProject)).toEqual([])
+  })
+
+  it('lists the mentioned members in order, dropping the ones who left', () => {
+    const members = [
+      { user_id: 'u1', name: 'Анна Ким' },
+      { user_id: 'u2', name: 'Илья Петров' },
+    ]
+    const got = recordPeople({ mentions: ['u2', 'gone', 'u1', 'u2'] }, members)
+    expect(got.map((m) => m.user_id)).toEqual(['u2', 'u1'])
+  })
+
+  it('reads and writes the tag line of an opened record', () => {
+    expect(parseTagLine('#релиз, frontend  #Релиз #идеи')).toEqual(['релиз', 'frontend', 'идеи'])
+    expect(parseTagLine('')).toEqual([])
+    expect(tagLine(['релиз', 'frontend'])).toBe('#релиз #frontend')
+  })
+
+  it('narrows the feed to a tag', () => {
+    const later = new Date(2026, 9, 7, 15, 0).toISOString()
+    const feed = {
+      reminders: [
+        { id: 'r1', kind: 'reminder', remind_at: later, tags: ['Релиз'] },
+        { id: 'r2', kind: 'reminder', remind_at: later, tags: [] },
+      ],
+      notes: [
+        { id: 'n1', kind: 'note', updated_at: later, tags: ['релиз', 'идеи'] },
+        { id: 'n2', kind: 'note', updated_at: later },
+      ],
+    }
+    const ids = (groups) => groups.flatMap((g) => g.items.map((r) => r.id))
+    expect(ids(groupInbox(feed, { now, tag: 'релиз' }))).toEqual(['r1', 'n1'])
+    expect(ids(groupInbox(feed, { now, tag: 'релиз', filter: 'notes' }))).toEqual(['n1'])
+    expect(ids(groupInbox(feed, { now }))).toHaveLength(4)
   })
 })
 

@@ -7,6 +7,12 @@
 // Icon by state: note — neutral; upcoming — soft accent; fired — a solid
 // orange gradient (attention, not an error: red in v2 is an overdue task);
 // done — soft green; snoozed — neutral with a moon.
+//
+// Tags and mentions (#3040) ride in the chip row after the task: a project tag
+// in its colour (TagPill), a free label neutral, a mentioned person as «@Имя»
+// in the accent. A tag pill narrows the feed to that tag. Opened, the record
+// edits its tags as a «#тег #тег» line; the mentions are the ones its text
+// names (the same chips comments draw) plus the ones the capture line named.
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
@@ -20,12 +26,22 @@ import {
 } from '@vicons/ionicons5'
 import Kbd from '@/components/Kbd.vue'
 import TesseraIcon from '@/components/TesseraIcon.vue'
+import TagPill from '@/components/TagPill.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import { taskStatus } from '@/components/palette/rows'
 import { useInboxStore } from '@/stores/inbox'
 import { useInboxFormat } from '@/composables/useInboxFormat'
 import { recordTitle } from '@/composables/useInboxActions'
-import { firstLine, recordState } from '@/utils/inbox'
+import {
+  firstLine,
+  parseTagLine,
+  recordPeople,
+  recordState,
+  recordTags,
+  tagKey,
+  tagLine,
+} from '@/utils/inbox'
+import { mentionIdsIn } from '@/utils/mentions'
 import { hueGrad } from '@/utils/gradient'
 import { CAPS, cap } from '@/utils/keyCaps'
 import { isMac } from '@/utils/keys'
@@ -39,7 +55,7 @@ const props = defineProps({
   expanded: { type: Boolean, default: false },
   touch: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'select', 'menu', 'collapse', 'task'])
+const emit = defineEmits(['open', 'select', 'menu', 'collapse', 'task', 'tag'])
 const { t } = useI18n()
 const inbox = useInboxStore()
 const { whenShort, hint, noteWhen, formatTime } = useInboxFormat()
@@ -64,12 +80,27 @@ const time = computed(() =>
 const sub = computed(() => (props.rec.kind === 'note' ? '' : hint(props.rec, props.now)))
 const status = computed(() => (props.rec.task ? taskStatus(props.rec.task) : null))
 const isPrivate = computed(() => props.rec.kind === 'note' && props.rec.visibility === 'private')
+const tags = computed(() => recordTags(props.rec, inbox.tagsOf))
+const people = computed(() => recordPeople(props.rec, inbox.members))
+const AT = '@'
+// A free label (no project tag of that name) — the mockup's neutral tag hue.
+const FREE_TAG = '#9aa0aa'
+const firstName = (m) => (m.name || m.email || '').split(/\s+/)[0]
+const hasChips = computed(
+  () =>
+    !!props.rec.task ||
+    (state.value === 'snoozed' && !!props.rec.snoozed_from) ||
+    tags.value.length > 0 ||
+    people.value.length > 0,
+)
 const shiftD = isMac ? '⇧D' : 'Shift D'
 
 // ── in-place editing ──
 const draftTitle = ref('')
 const draftBody = ref('')
+const draftTags = ref('')
 const editEl = ref(null)
+const tagsEl = ref(null)
 // Only a record that was actually opened writes back when it closes.
 let editing = false
 watch(
@@ -79,8 +110,11 @@ watch(
       editing = true
       draftTitle.value = recordTitle(props.rec)
       draftBody.value = props.rec.body || ''
+      draftTags.value = tagLine(props.rec.tags || [])
       await nextTick()
-      editEl.value?.querySelector('textarea')?.focus()
+      if (inbox.editFocus === 'tags') tagsEl.value?.focus()
+      else editEl.value?.querySelector('textarea')?.focus()
+      inbox.editFocus = ''
     } else if (editing) {
       editing = false
       save()
@@ -91,13 +125,29 @@ watch(
 onBeforeUnmount(() => {
   if (editing) save()
 })
+// The mentions after an edit: the people the new text names, plus the ones
+// the record named outside its text (the capture line's «@человек»).
+function mentionsAfterEdit(r) {
+  const items = inbox.mentionItems
+  const before = new Set(mentionIdsIn(r.body || '', items))
+  const kept = (r.mentions || []).filter((id) => !before.has(id))
+  return [...new Set([...kept, ...mentionIdsIn(draftBody.value, items)])]
+}
+const sameList = (a, b) => a.length === b.length && a.every((x, i) => x === b[i])
 async function save() {
   const r = props.rec
   const heading = draftTitle.value.trim() || recordTitle(r)
-  if (heading === recordTitle(r) && draftBody.value === (r.body || '')) return
+  const nextTags = parseTagLine(draftTags.value)
+  const tagsChanged = !sameList(nextTags.map(tagKey), (r.tags || []).map(tagKey))
+  const bodyChanged = draftBody.value !== (r.body || '')
+  if (heading === recordTitle(r) && !bodyChanged && !tagsChanged) return
+  const extra = {}
+  if (tagsChanged) extra.tags = nextTags
+  if (bodyChanged) extra.mentions = mentionsAfterEdit(r)
   try {
-    if (r.kind === 'note') await inbox.updateNote(r, { title: heading, body: draftBody.value })
-    else await inbox.updateReminder(r, { message: heading, body: draftBody.value })
+    if (r.kind === 'note')
+      await inbox.updateNote(r, { title: heading, body: draftBody.value, ...extra })
+    else await inbox.updateReminder(r, { message: heading, body: draftBody.value, ...extra })
   } catch {
     /* the panel's next load shows the server's text again */
   }
@@ -144,10 +194,7 @@ function onEditKey(e) {
         />
       </div>
       <div v-if="line && !expanded" class="ii-sub">{{ line }}</div>
-      <div
-        v-if="(rec.task || (state === 'snoozed' && rec.snoozed_from)) && !expanded"
-        class="ii-chips"
-      >
+      <div v-if="hasChips && !expanded" class="ii-chips" data-testid="inbox-item-chips">
         <button
           v-if="rec.task"
           type="button"
@@ -170,6 +217,25 @@ function onEditKey(e) {
           class="ii-chip since"
           :title="t('inbox.item.snoozedTip', { time: formatTime(rec.snoozed_from) })"
           >{{ t('inbox.item.since', { time: formatTime(rec.snoozed_from) }) }}</span
+        >
+        <TagPill
+          v-for="tg in tags"
+          :key="`t-${tg.name}`"
+          :tag="tg.tag || { name: tg.name, color: FREE_TAG }"
+          class="ii-chip tag"
+          :class="{ free: !tg.tag }"
+          role="button"
+          data-testid="inbox-item-tag"
+          :title="t('inbox.item.tagFilter', { tag: tg.name })"
+          @click.stop="emit('tag', tg.name)"
+        />
+        <span
+          v-for="m in people"
+          :key="`m-${m.user_id}`"
+          class="ii-chip who"
+          data-testid="inbox-item-mention"
+          :title="m.name || m.email"
+          ><span class="accent-grad-text">{{ AT }}{{ firstName(m) }}</span></span
         >
       </div>
       <div v-if="kbd && selected && !expanded" class="ii-keys" data-testid="inbox-item-keys">
@@ -202,10 +268,21 @@ function onEditKey(e) {
         >
       </div>
       <div v-if="expanded" ref="editEl" class="ii-edit" @click.stop @keydown="onEditKey">
+        <input
+          ref="tagsEl"
+          v-model="draftTags"
+          class="ii-tags-in"
+          :placeholder="t('inbox.item.tagsPlaceholder')"
+          :aria-label="t('inbox.item.tagsLabel')"
+          data-testid="inbox-item-tags-input"
+          autocomplete="off"
+          spellcheck="false"
+        />
         <MarkdownEditor
           v-model="draftBody"
           variant="boxed"
           :min-rows="3"
+          :mention-items="inbox.mentionItems"
           :placeholder="t('inbox.capture.bodyPlaceholder')"
         />
         <div class="ii-edit-foot">
@@ -333,6 +410,7 @@ function onEditKey(e) {
 }
 .ii-chips {
   display: flex;
+  flex-wrap: wrap;
   gap: 6px;
   min-width: 0;
 }
@@ -362,6 +440,17 @@ function onEditKey(e) {
 .ii-chip.since {
   flex: none;
   color: var(--t-text3);
+}
+.ii-chip.tag {
+  flex: none;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.ii-chip.who {
+  flex: none;
+  font-weight: 600;
 }
 .ii-num {
   color: var(--t-text3);
@@ -424,6 +513,23 @@ function onEditKey(e) {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+.ii-tags-in {
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  outline: 0;
+  border-radius: 8px;
+  background: var(--t-input-bg);
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 12.5px;
+}
+.ii-tags-in:focus {
+  box-shadow: 0 0 0 2px var(--t-primary);
+}
+.ii-tags-in::placeholder {
+  color: var(--t-placeholder);
 }
 .ii-more {
   position: absolute;

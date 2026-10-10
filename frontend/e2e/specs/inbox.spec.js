@@ -1,4 +1,5 @@
 import { test, expect, openBoard } from '../fixtures.js'
+import { newCredentials, register } from '../api.js'
 
 // «Входящие» (#2972): one capture line makes a note or a reminder, the panel
 // shows them by group and answers to its keys, the task modal and the card
@@ -85,6 +86,59 @@ test('захват: заметка и напоминание из одной с�
   await page.keyboard.press('g')
   await page.keyboard.press('i')
   await expect(panel).toHaveCount(0)
+})
+
+test('теги и упоминания: «Созвон #релиз @Анна завтра 10:00» — пилл тега и упоминание в ленте', async ({
+  page,
+  backend,
+  seed,
+}) => {
+  const { ws, board } = await backend.freshBoard('inbox-tags')
+  const s = stamp()
+  // A second member named Анна — the handle in the line names her.
+  const creds = { ...newCredentials(seed.runId, `-anna-${s}`), name: `Анна Ким ${s}` }
+  const anna = await register(creds)
+  await backend.post(`/workspaces/${ws.id}/members`, { email: creds.email, role: 'member' })
+  await openBoard(page, board.id)
+
+  await page.keyboard.press('n')
+  await page.keyboard.press('m')
+  const input = page.getByTestId('capture-input')
+  await expect(input).toBeFocused()
+  await input.fill('Созвон #релиз @Анна завтра 10:00')
+  await expect(page.getByTestId('capture-when')).toBeVisible()
+  await expect(page.getByTestId('capture-tag')).toHaveText('релиз')
+  await expect(page.getByTestId('capture-mention')).toContainText(`@Анна Ким ${s}`)
+  await expect(page.getByTestId('capture-title')).toHaveText('Созвон')
+  await input.press('Enter')
+  await expect(input).toHaveCount(0)
+
+  await expect
+    .poll(async () => (await feed(backend, ws.id)).reminders.find((r) => r.message === 'Созвон'))
+    .toMatchObject({ tags: ['релиз'], mentions: [anna.user.id] })
+
+  await page.keyboard.press('g')
+  await page.keyboard.press('i')
+  const panel = page.getByTestId('inbox-panel')
+  const item = panel.getByTestId('inbox-item').filter({ hasText: 'Созвон' })
+  await expect(item.getByTestId('inbox-item-tag')).toHaveText('релиз')
+  await expect(item.getByTestId('inbox-item-mention')).toHaveText('@Анна')
+
+  // A note without the tag, then the tag pill narrows the feed to the tagged one.
+  await backend.post(`/workspaces/${ws.id}/notes`, {
+    title: `Без тега ${s}`,
+    visibility: 'private',
+  })
+  await expect(panel.getByTestId('inbox-item')).toHaveCount(2)
+  await panel
+    .getByTestId('inbox-item')
+    .filter({ hasText: 'Созвон' })
+    .getByTestId('inbox-item-tag')
+    .click()
+  await expect(panel.getByTestId('inbox-tag-filter')).toContainText('#релиз')
+  await expect(panel.getByTestId('inbox-item')).toHaveCount(1)
+  await panel.getByTestId('inbox-tag-filter').getByRole('button').click()
+  await expect(panel.getByTestId('inbox-item')).toHaveCount(2)
 })
 
 test('модалка задачи: ⇧R и цифра ставят напоминание, на карточке — колокольчик', async ({
