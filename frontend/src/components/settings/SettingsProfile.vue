@@ -3,10 +3,11 @@
 // before; only the surfaces changed. The avatar is still checked before the
 // upload (#2932): the server's own refusal is a bare English sentence.
 import { computed, reactive, ref } from 'vue'
+import { useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
 import { NButton, NIcon, NInput } from 'naive-ui'
 import { CheckmarkCircle, CloudUploadOutline, TrashOutline } from '@vicons/ionicons5'
-import { accountFlows, users } from '@/api'
+import { users } from '@/api'
 import { useAuthStore } from '@/stores/auth'
 import { useApiImage } from '@/composables/useApiImage'
 import { AVATAR_MAX_BYTES, AVATAR_TYPES, avatarPickError } from '@/utils/avatar'
@@ -91,15 +92,16 @@ async function removeAvatar() {
   }
 }
 
-// ── email verification ──
-const verifySent = ref(false)
-async function resendVerify() {
-  try {
-    await accountFlows.resendVerification()
-  } catch {
-    /* no-op mailer / network — still mark as sent so the UI settles */
-  }
-  verifySent.value = true
+// ── the address: confirm it by code, or change it (#3057, #3058) ──
+// Both open the «Проверьте почту» screen, which sends the code itself and comes
+// back here when done.
+const router = useRouter()
+const back = '/settings?s=profile'
+function confirmEmail() {
+  router.push({ path: '/verify-email', query: { next: back } })
+}
+function changeEmail() {
+  router.push({ path: '/verify-email', query: { change: '1', next: back } })
 }
 </script>
 
@@ -117,11 +119,21 @@ async function resendVerify() {
           </span>
           <template v-else>
             <span class="sp-pending">{{ t('settings.profile.verify.pending') }}</span>
-            <n-button v-if="!verifySent" size="tiny" secondary @click="resendVerify">{{
-              t('settings.profile.verify.send')
-            }}</n-button>
-            <span v-else class="sp-pending">{{ t('settings.profile.verify.sent') }}</span>
+            <n-button
+              size="tiny"
+              secondary
+              data-testid="settings-verify-email"
+              @click="confirmEmail"
+              >{{ t('settings.profile.verify.send') }}</n-button
+            >
           </template>
+          <n-button
+            size="tiny"
+            quaternary
+            data-testid="settings-change-email"
+            @click="changeEmail"
+            >{{ t('settings.profile.changeEmail') }}</n-button
+          >
         </div>
         <div class="sp-ava-actions">
           <!-- Same allowlist the picked file is then checked against (no SVG). -->

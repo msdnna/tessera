@@ -1,12 +1,14 @@
 <script setup>
 // «Участники пространства» — a large window (v2, #2975, mockup MembersWin):
-// invite by email (addresses become chips, a bad one is marked), the link of
-// the latest invitation, invitations waiting for an answer and the roster with
-// a role menu. Every change lands at once; revoking an invitation is undone
-// from its toast, removing a member is a two-step item of the role menu.
+// invite by email (addresses become chips, a bad one is marked), the
+// workspace's shared invitation link (#3062: role, lifetime and limit in its
+// menu, «Копировать ⌘C», «Сбросить»), invitations waiting for an answer with
+// «Ещё раз» / «Продлить» (#3061) and the roster with a role menu. Every change
+// lands at once; revoking an invitation is undone from its toast, removing a
+// member is a two-step item of the role menu.
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
   PeopleOutline,
@@ -36,6 +38,7 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { copyText } from '@/utils/clipboard'
 import { CAPS, cap } from '@/utils/keyCaps'
 import { stubTask } from '@/utils/featureStubs'
+import { linkMeta, shortLink, LINK_TTL_DAYS, LINK_USES } from '@/utils/inviteLink'
 import { workspaceName } from '@/utils/defaultNames'
 import {
   LOCK_VIEWER,
@@ -65,7 +68,7 @@ const props = defineProps({
 const emit = defineEmits(['update:show'])
 
 const { t } = useI18n()
-const { formatDate } = useFormat()
+const { formatDate, formatRelative } = useFormat()
 const message = useMessage()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
@@ -120,14 +123,26 @@ const loadedWsId = ref('')
 // "invalid or expired invitation"; there is no unique key on (workspace, email)
 // either, so re-invites pile up and only the newest of the identical-looking
 // rows works. The date is what tells them apart.
+//
+// A declined one (#3059) is dead the same way, and says so; «Продлить» brings
+// either back to life (#3061).
 const invitationRows = computed(() =>
   invitations.value.map((inv) => {
     const until = inv.expires_at ? new Date(inv.expires_at) : null
     const expired = !!until && until.getTime() <= Date.now()
-    return { ...inv, expired, until: until && !expired ? formatDate(until) : '' }
+    const declined = !!inv.declined_at
+    const rel = inv.sent_at ? formatRelative(inv.sent_at) : ''
+    return {
+      ...inv,
+      expired,
+      declined,
+      dead: expired || declined,
+      until: until && !expired ? formatDate(until) : '',
+      sent: rel ? rel.charAt(0).toLowerCase() + rel.slice(1) : '',
+    }
   }),
 )
-const pendingCount = computed(() => invitationRows.value.filter((i) => !i.expired).length)
+const pendingCount = computed(() => invitationRows.value.filter((i) => !i.dead).length)
 
 // The two lists are fetched behind different gates — ListMembers is
 // `requireMember`, ListInvitations is `requireManager` — so under `Promise.all`
@@ -149,14 +164,19 @@ async function load() {
     members.value = []
     invitations.value = []
     lastLink.value = ''
+    shared.value = null
+    sharedUrl.value = ''
     inviteError.value = ''
     chips.value = []
     draft.value = ''
     filter.value = ''
   }
-  const [m, inv] = await Promise.allSettled([
+  const [m, inv, link] = await Promise.allSettled([
     wsApi.members(wsId),
     canManage.value ? wsApi.invitations(wsId) : Promise.resolve({ data: [] }),
+    canManage.value
+      ? Promise.resolve().then(() => wsApi.inviteLink(wsId))
+      : Promise.resolve({ data: { link: null } }),
   ])
   // Switched away while these were in flight: the answers are about the
   // workspace that is no longer on screen.
@@ -165,6 +185,11 @@ async function load() {
   else message.error(m.reason.message)
   if (inv.status === 'fulfilled') invitations.value = inv.value.data || []
   else message.error(inv.reason.message)
+  // The shared link is a convenience on top of the list: a failed read leaves
+  // the row offering to create one rather than a second error toast.
+  const live = link.status === 'fulfilled' ? link.value?.data?.link || null : null
+  if (!live || live.id !== shared.value?.id) sharedUrl.value = ''
+  shared.value = live
 }
 
 // ── the invite field: addresses become chips ──
@@ -248,6 +273,7 @@ async function inviteOne(e) {
       try {
         const res = await wsApi.createInvitation(props.wsId, { email: e, role: role.value })
         lastLink.value = res.data.link || ''
+        lastLinkFor.value = e
         message.success(t('shell.members.inviteCreated'))
         return true
       } catch (err2) {
@@ -293,12 +319,13 @@ const menuShow = computed({
   },
 })
 const menuMember = computed(() =>
-  menuFor.value && menuFor.value !== 'invite'
+  menuFor.value && menuFor.value !== 'invite' && menuFor.value !== 'link'
     ? members.value.find((m) => m.user_id === menuFor.value) || null
     : null,
 )
 const rolesTask = stubTask('members.roles')
 const menuItems = computed(() => {
+  if (menuFor.value === 'link') return linkMenuItems.value
   const cur = menuFor.value === 'invite' ? role.value : menuMember.value?.role
   const items = []
   if (menuFor.value !== 'invite') {
@@ -356,6 +383,10 @@ function openMenu(key, el) {
 }
 async function onMenu(key) {
   const target = menuFor.value
+  if (target === 'link') {
+    await onLinkMenu(key)
+    return
+  }
   if (target === 'invite') {
     if (key === 'admin' || key === 'member') role.value = key
     return
@@ -420,6 +451,146 @@ async function copyLink() {
   else message.info(lastLink.value)
 }
 
+// «Ещё раз» on a waiting invitation, «Продлить» on an expired or declined one
+// (#3061): the server issues a new link and a fresh week and mails it again —
+// the new link is offered for copying, as after an invitation.
+const resending = ref('')
+async function resendInvite(inv) {
+  if (resending.value) return
+  resending.value = inv.id
+  try {
+    const res = await wsApi.resendInvitation(props.wsId, inv.id)
+    lastLink.value = res.data?.link || ''
+    lastLinkFor.value = inv.email
+    message.success(
+      t(inv.dead ? 'shell.members.extended' : 'shell.members.resent', { email: inv.email }),
+    )
+    await load()
+  } catch (e) {
+    if (e.status === 429) message.info(t('shell.members.resendWait'))
+    else message.error(e.message)
+  } finally {
+    resending.value = ''
+  }
+}
+
+// ── the shared invitation link (#3062) ──
+// One live link per workspace. Only its hash is kept on the server, so the URL
+// exists here only after this window created it — reopened later, the row says
+// the link is hidden and «Сбросить» issues a fresh one. Any change of its role,
+// lifetime or limit issues a new link too (the old one stops working).
+const shared = ref(null)
+const sharedUrl = ref('')
+const sharedBusy = ref(false)
+const sharedMeta = computed(() => (shared.value ? linkMeta(shared.value, t) : ''))
+const sharedShort = computed(() => shortLink(sharedUrl.value))
+
+async function issueShared(params, toastKey) {
+  if (sharedBusy.value) return
+  sharedBusy.value = true
+  const wsId = props.wsId
+  try {
+    const res = await wsApi.createInviteLink(wsId, params)
+    if (wsId !== props.wsId) return
+    shared.value = res.data?.link || null
+    sharedUrl.value = res.data?.link?.url || ''
+    if (toastKey) message.success(t(toastKey))
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    sharedBusy.value = false
+  }
+}
+function currentParams(over = {}) {
+  const s = shared.value
+  const days = s
+    ? Math.max(1, Math.round((new Date(s.expires_at) - new Date(s.created_at)) / 864e5))
+    : 7
+  return {
+    role: s?.role || 'member',
+    ttl_days: LINK_TTL_DAYS.includes(days) ? days : 7,
+    max_uses: s?.max_uses || 25,
+    ...over,
+  }
+}
+function createShared() {
+  return issueShared(currentParams(), 'shell.members.sharedCreated')
+}
+function resetShared() {
+  return issueShared(currentParams(), 'shell.members.sharedReset')
+}
+async function revokeShared() {
+  try {
+    await wsApi.revokeInviteLink(props.wsId)
+    shared.value = null
+    sharedUrl.value = ''
+    message.success(t('shell.members.sharedOff'))
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+async function copyShared() {
+  if (!sharedUrl.value) return
+  if (await copyText(sharedUrl.value)) message.success(t('shell.members.linkCopied'))
+  else message.info(sharedUrl.value)
+}
+const linkMenuItems = computed(() => {
+  const p = currentParams()
+  return [
+    {
+      key: 'link-role',
+      label: t('shell.members.sharedRole'),
+      note: roleName(p.role),
+      icon: ShieldCheckmarkOutline,
+      children: [
+        { key: 'role:member', label: roleName('member'), checked: p.role === 'member' },
+        { key: 'role:admin', label: roleName('admin'), checked: p.role === 'admin' },
+      ],
+    },
+    {
+      key: 'link-ttl',
+      label: t('shell.members.sharedTtl'),
+      note: t('shell.members.days', { n: p.ttl_days }, p.ttl_days),
+      icon: TimeOutline,
+      children: LINK_TTL_DAYS.map((d) => ({
+        key: `ttl:${d}`,
+        label: t('shell.members.days', { n: d }, d),
+        checked: p.ttl_days === d,
+      })),
+    },
+    {
+      key: 'link-uses',
+      label: t('shell.members.sharedUses'),
+      note: t('shell.members.people', { n: p.max_uses }, p.max_uses),
+      icon: PeopleOutline,
+      children: LINK_USES.map((n) => ({
+        key: `uses:${n}`,
+        label: t('shell.members.people', { n }, n),
+        checked: p.max_uses === n,
+      })),
+    },
+    { gap: true },
+    {
+      key: 'link-off',
+      label: t('shell.members.sharedRevoke'),
+      icon: TrashOutline,
+      danger: true,
+      confirm: { title: t('shell.members.sharedRevokeConfirm'), sub: sharedShort.value || '' },
+      testid: 'members-shared-off',
+    },
+  ]
+})
+async function onLinkMenu(key) {
+  menuFor.value = null
+  if (key === 'link-off') return revokeShared()
+  const [kind, value] = String(key).split(':')
+  if (!value) return
+  const over =
+    kind === 'role' ? { role: value } : kind === 'ttl' ? { ttl_days: +value } : { max_uses: +value }
+  await issueShared(currentParams(over), shared.value ? 'shell.members.sharedChanged' : '')
+}
+const lastLinkFor = ref('')
+
 // ── the roster filter ──
 const filter = ref('')
 const filterEl = ref(null)
@@ -431,7 +602,6 @@ const shownMembers = computed(() => {
   )
 })
 
-const invitesTask = stubTask('members.inviteLink')
 const navItems = computed(() => [
   {
     key: 'members',
@@ -490,6 +660,18 @@ useShortcuts(
     },
   },
   { when: topmost },
+)
+// ⌘C copies the shared link — only while there is one to copy and nothing is
+// selected: copying text out of the window keeps working as everywhere.
+useShortcuts(
+  { 'members.copyLink': copyShared },
+  {
+    when: () =>
+      topmost() &&
+      !!sharedUrl.value &&
+      section.value === 'members' &&
+      !String(window.getSelection?.() || ''),
+  },
 )
 
 // «Пригласить «…»» from the assignee picker (#3118) hands an address over: it
@@ -640,16 +822,18 @@ function close() {
               <span>{{ t('shell.members.nextAddress') }}</span>
             </span>
           </div>
-          <div class="mw-link">
-            <n-icon :component="LinkOutline" :size="15" class="mw-link-ic" />
-            <span class="mw-link-l">{{ t('shell.members.linkLabel') }}</span>
-            <code v-if="lastLink" class="mw-link-v link-box" data-testid="members-invite-link">{{
-              lastLink
-            }}</code>
-            <span v-else class="mw-link-empty">{{ t('shell.members.linkEmpty') }}</span>
+          <!-- The link of the invitation just sent: with SMTP off it is the only
+               copy of that token anywhere (#2932). -->
+          <div v-if="lastLink" class="mw-link mw-last">
+            <n-icon :component="MailOutline" :size="15" class="mw-link-ic" />
+            <span class="mw-link-l">{{
+              lastLinkFor
+                ? t('shell.members.lastLinkFor', { email: lastLinkFor })
+                : t('shell.members.lastLink')
+            }}</span>
+            <code class="mw-link-v link-box" data-testid="members-invite-link">{{ lastLink }}</code>
             <span class="mw-grow" />
             <button
-              v-if="lastLink"
               type="button"
               class="kit-btn small"
               data-testid="members-copy-link"
@@ -658,19 +842,69 @@ function close() {
               <n-icon :component="CopyOutline" :size="14" />
               {{ t('shell.members.copy') }}
             </button>
-            <n-tooltip :delay="300">
-              <template #trigger>
-                <span
-                  class="kit-btn small stub"
-                  aria-disabled="true"
-                  data-testid="members-link-stub"
-                >
-                  <n-icon :component="RefreshOutline" :size="14" />
-                  {{ t('shell.members.sharedLink') }}
-                </span>
-              </template>
-              {{ t('common.stub.soon', { n: invitesTask }) }}
-            </n-tooltip>
+          </div>
+          <!-- The workspace's shared link (#3062). -->
+          <div class="mw-link" data-testid="members-shared-link">
+            <n-icon :component="LinkOutline" :size="15" class="mw-link-ic" />
+            <span class="mw-link-l">{{ t('shell.members.linkLabel') }}</span>
+            <template v-if="shared">
+              <code v-if="sharedUrl" class="mw-link-v link-box" data-testid="members-shared-url">{{
+                sharedShort
+              }}</code>
+              <span
+                v-else
+                class="mw-link-empty mw-link-hidden"
+                :title="t('shell.members.sharedHidden')"
+                data-testid="members-shared-hidden"
+                >{{ t('shell.members.sharedHiddenShort') }}</span
+              >
+              <button
+                type="button"
+                class="mw-link-meta"
+                :class="{ ctx: menuFor === 'link' }"
+                data-testid="members-shared-meta"
+                @click="openMenu('link', $event.currentTarget)"
+              >
+                {{ sharedMeta }}
+                <n-icon :component="ChevronDownOutline" :size="12" />
+              </button>
+              <span class="mw-grow" />
+              <button
+                v-if="sharedUrl"
+                type="button"
+                class="kit-btn small"
+                data-testid="members-shared-copy"
+                @click="copyShared"
+              >
+                <n-icon :component="CopyOutline" :size="14" />
+                {{ t('shell.members.copy') }}
+                <ShortcutKeys id="members.copyLink" soft />
+              </button>
+              <button
+                type="button"
+                class="kit-btn small"
+                :disabled="sharedBusy"
+                data-testid="members-shared-reset"
+                @click="resetShared"
+              >
+                <n-icon :component="RefreshOutline" :size="14" />
+                {{ t('shell.members.sharedResetBtn') }}
+              </button>
+            </template>
+            <template v-else>
+              <span class="mw-link-empty">{{ t('shell.members.sharedNone') }}</span>
+              <span class="mw-grow" />
+              <button
+                type="button"
+                class="kit-btn small"
+                :disabled="sharedBusy"
+                data-testid="members-shared-create"
+                @click="createShared"
+              >
+                <n-icon :component="LinkOutline" :size="14" />
+                {{ t('shell.members.sharedCreate') }}
+              </button>
+            </template>
           </div>
         </section>
 
@@ -685,28 +919,41 @@ function close() {
               v-for="inv in invitationRows"
               :key="inv.id"
               class="invite-row mw-row"
-              :class="{ 'is-expired': inv.expired }"
+              :class="{ 'is-expired': inv.dead }"
               data-testid="invite-row"
             >
               <span class="mw-tile inv-icon"><n-icon :component="MailOutline" :size="15" /></span>
               <span class="inv-mail">{{ inv.email }}</span>
               <span class="mw-role" :class="`r-${inv.role}`">{{ roleName(inv.role) }}</span>
-              <span v-if="inv.expired" class="inv-expired mw-expired">
+              <span
+                v-if="inv.declined"
+                class="inv-expired mw-expired"
+                data-testid="invite-declined"
+              >
+                {{ t('shell.members.inviteDeclined') }}
+              </span>
+              <span v-else-if="inv.expired" class="inv-expired mw-expired">
                 {{ t('shell.members.inviteExpired') }}
               </span>
-              <span v-else-if="inv.until" class="inv-until">
-                <n-icon :component="TimeOutline" :size="12" />
-                {{ t('shell.members.inviteUntil', { date: inv.until }) }}
-              </span>
+              <template v-else>
+                <span v-if="inv.sent" class="inv-sent">{{
+                  t('shell.members.sentAgo', { when: inv.sent })
+                }}</span>
+                <span v-if="inv.until" class="inv-until">
+                  <n-icon :component="TimeOutline" :size="12" />
+                  {{ t('shell.members.inviteUntil', { date: inv.until }) }}
+                </span>
+              </template>
               <span class="mw-grow" />
-              <n-tooltip :delay="300">
-                <template #trigger>
-                  <span class="mw-act stub" aria-disabled="true">{{
-                    inv.expired ? t('shell.members.extend') : t('shell.members.resend')
-                  }}</span>
-                </template>
-                {{ t('common.stub.soon', { n: invitesTask }) }}
-              </n-tooltip>
+              <button
+                type="button"
+                class="mw-act"
+                :disabled="resending === inv.id"
+                data-testid="invite-resend"
+                @click="resendInvite(inv)"
+              >
+                {{ inv.dead ? t('shell.members.extend') : t('shell.members.resend') }}
+              </button>
               <!-- Revoke stays on an expired row: clearing it out of the list is
                    the only thing left to do with it. -->
               <button
@@ -1022,6 +1269,35 @@ function close() {
   color: var(--t-text3);
   font-size: 12.5px;
 }
+.mw-link-hidden {
+  font-family: var(--t-mono, ui-monospace, monospace);
+  letter-spacing: 0.02em;
+}
+/* «Участник · 6 дней · 3 из 25» — the link's settings, its menu on a click. */
+.mw-link-meta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text3);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mw-link-meta:hover,
+.mw-link-meta.ctx {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.mw-last {
+  min-height: 32px;
+}
 .stub,
 .kit-btn.stub {
   opacity: 0.55;
@@ -1207,6 +1483,11 @@ function close() {
   white-space: nowrap;
   font-size: 13.5px;
 }
+.inv-sent {
+  font-size: 12px;
+  color: var(--t-text3);
+  white-space: nowrap;
+}
 .inv-until {
   display: inline-flex;
   align-items: center;
@@ -1243,7 +1524,11 @@ function close() {
   display: inline-flex;
   align-items: center;
 }
-.mw-act:not(.stub):hover {
+.mw-act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.mw-act:not(.stub):not(:disabled):hover {
   background: var(--t-hover);
   color: var(--t-text1);
 }
@@ -1284,7 +1569,8 @@ function close() {
 }
 .lw-mobile .mw-inv-keys,
 .lw-mobile .mw-inv-hint,
-.lw-mobile .mw-link-empty,
+.lw-mobile .mw-link-empty:not(.mw-link-hidden),
+.lw-mobile .inv-until,
 .lw-mobile .mw-send :deep(.kbd),
 .lw-mobile .mw-filter :deep(.kbd) {
   display: none;

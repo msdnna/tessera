@@ -37,6 +37,14 @@ const routes = [
     component: () => import('@/views/AcceptInviteView.vue'),
     meta: { open: true },
   },
+  // The workspace's shared invitation link (#3062) — `/join/<token>` is what a
+  // manager copies. It lands on the invitation page: the server tells a shared
+  // link from an addressed invitation, and every hop of the account fork already
+  // knows how to carry `/invite?token=`.
+  {
+    path: '/join/:token',
+    redirect: (to) => ({ path: '/invite', query: { token: to.params.token } }),
+  },
   // GitLab OAuth handoff: parses the session from the URL fragment. `open` so it
   // runs regardless of the (about-to-change) auth state.
   {

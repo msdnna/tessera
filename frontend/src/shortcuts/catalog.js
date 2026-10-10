@@ -370,6 +370,9 @@ export const CATALOG = [
   { id: 'jobs.stop', keys: 'shift+backspace', group: 'window', modal: true },
   { id: 'jobs.run', keys: 'r', modal: true },
   { id: 'members.invite', keys: 'i', group: 'window', modal: true },
+  // The shared invitation link (#3062); only while it is on screen and no text
+  // is selected — see MembersModal.
+  { id: 'members.copyLink', keys: 'mod+c', group: 'window', modal: true },
   { id: 'commands.edit', group: 'window', display: [['enter']] },
   { id: 'commands.move', group: 'window', display: [['alt', '↑/↓']] },
 

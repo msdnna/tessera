@@ -43,9 +43,9 @@
     "verify": {
       "done": "Email verified",
       "pending": "Email not verified",
-      "send": "Send email",
-      "sent": "Email sent"
-    }
+      "send": "Confirm"
+    },
+    "changeEmail": "Change"
   },
   "security": {
     "title": "Security",
