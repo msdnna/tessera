@@ -576,6 +576,7 @@ watch(
       v-model:show="conflicts.resolverOpen"
       :ws-id="ws.currentId"
       :focus-task-id="conflicts.focusTaskId"
+      :focus-milestone-id="conflicts.focusMilestoneId"
       @resolved="conflicts.load()"
     />
 

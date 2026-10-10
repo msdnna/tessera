@@ -295,22 +295,34 @@ func (h *API) recordConflictAction(j *syncJournal, w db.GitlabWriteback, res wri
 
 // ── HTTP: conflicts inbox + interactive resolution ──────────
 
-// conflictDTO is one open conflict for the inbox/resolver.
+// conflictDTO is one open conflict for the inbox/resolver. Entity tells a task's
+// conflict from a stage's (#3025): a stage conflict carries the stage instead of
+// the task (TaskID null, change_kind "milestone"), and its ID is the stage's id.
 type conflictDTO struct {
 	ID         uuid.UUID       `json:"id"`
-	TaskID     uuid.UUID       `json:"task_id"`
+	Entity     string          `json:"entity"` // task | milestone
+	TaskID     *uuid.UUID      `json:"task_id"`
 	TaskTitle  string          `json:"task_title"`
 	TaskNumber *int64          `json:"task_number"`
 	ChangeKind string          `json:"change_kind"`
 	GlIid      int64           `json:"gl_iid"`
 	Fields     []conflictField `json:"fields"`
 	DetectedAt time.Time       `json:"detected_at"`
+
+	MilestoneID    *uuid.UUID `json:"milestone_id,omitempty"`
+	MilestoneTitle string     `json:"milestone_title,omitempty"`
+	MilestoneSlug  string     `json:"milestone_slug,omitempty"`
+	ProjectSlug    string     `json:"project_slug,omitempty"`
 }
 
 // ListGitlabConflicts returns every open write-back conflict for the workspace's
 // integration, newest first — the conflicts inbox. Returns an empty list (not 400)
 // when the workspace has no GitLab integration, so clients can poll any workspace
 // for a conflict count without special-casing.
+//
+// ?include=milestones appends the stages' conflicts (#3025) after the tasks'. Opt
+// in, so a client that only knows task conflicts (Android) never receives an
+// entry it would try to resolve as a task.
 func (h *API) ListGitlabConflicts(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok || !h.requireMember(c, wsID) {
@@ -328,10 +340,35 @@ func (h *API) ListGitlabConflicts(c *gin.Context) {
 		if link, lerr := h.q.GetGitlabLinkByTask(c, r.TaskID); lerr == nil {
 			iid = link.GlIid
 		}
+		tid := r.TaskID
 		out = append(out, conflictDTO{
-			ID: r.ID, TaskID: r.TaskID, TaskTitle: r.TaskTitle, TaskNumber: r.TaskNumber,
+			ID: r.ID, Entity: "task", TaskID: &tid, TaskTitle: r.TaskTitle, TaskNumber: r.TaskNumber,
 			ChangeKind: r.ChangeKind, GlIid: iid, Fields: cd.Fields, DetectedAt: cd.DetectedAt,
 		})
+	}
+	if c.Query("include") == "milestones" {
+		ms, merr := h.q.ListOpenMilestoneConflictsByWorkspace(c, wsID)
+		if merr != nil {
+			fail(c, merr)
+			return
+		}
+		for _, r := range ms {
+			cd := parseMilestoneConflict(r.Conflict)
+			if len(cd.Fields) == 0 {
+				continue
+			}
+			var iid int64
+			if r.GlIid != nil {
+				iid = *r.GlIid
+			}
+			mid := r.MilestoneID
+			out = append(out, conflictDTO{
+				ID: mid, Entity: "milestone", ChangeKind: "milestone", GlIid: iid,
+				Fields: cd.Fields, DetectedAt: cd.DetectedAt,
+				MilestoneID: &mid, MilestoneTitle: r.MilestoneTitle,
+				MilestoneSlug: r.MilestoneSlug, ProjectSlug: r.ProjectSlug,
+			})
+		}
 	}
 	c.JSON(http.StatusOK, out)
 }

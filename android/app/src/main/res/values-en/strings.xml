@@ -1279,6 +1279,11 @@
     <string name="milestones_range">%1$s – %2$s</string>
     <string name="milestones_range_until">until %1$s</string>
     <string name="milestones_range_from">from %1$s</string>
+    <string name="milestones_gitlab_unsynced">Not synced with GitLab</string>
+    <string name="milestones_gitlab_retry">Retry</string>
+    <string name="milestones_gitlab_conflict_mark">Conflict with GitLab — resolve it on the web</string>
+    <string name="milestones_gitlab_failed">Saved in Tessera, but GitLab did not accept the change: %1$s</string>
+    <string name="milestones_gitlab_conflict">The stage was changed in GitLab too — pick a version in the conflicts window on the web</string>
 
     <!-- Due picker: start/due tabs -->
     <string name="due_picker_tab_start">Start</string>

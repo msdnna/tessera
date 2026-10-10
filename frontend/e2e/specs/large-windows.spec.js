@@ -160,7 +160,8 @@ test('GitLab: разделы, правка правила и ⌘S, конфли�
     fields: [{ field: 'title', base: 'Экспорт', ours: 'Экспорт в PDF', theirs: 'Экспорт в CSV' }],
   }
   let resolved = null
-  await page.route('**/api/workspaces/*/gitlab/conflicts', (r) =>
+  // `*` at the end: the list asks for the stages' conflicts too (?include=milestones, #3025).
+  await page.route('**/api/workspaces/*/gitlab/conflicts*', (r) =>
     r.fulfill({ json: resolved ? [] : [conflict] }),
   )
   await page.route('**/api/tasks/*/gitlab/conflicts/*/resolve', async (r) => {

@@ -519,11 +519,19 @@ func (h *API) MilestoneMetrics(c *gin.Context) {
 		"state": m.State, "closed_at": m.ClosedAt, "created_at": m.CreatedAt,
 		"updated_at": m.UpdatedAt,
 		"gl_url":     nil, "gl_iid": nil, "gl_synced_at": nil,
+		"gl_push_error": nil, "gl_push_fields": nil, "gl_conflict": false, "gl_writable": false,
 	}
 	if link, lerr := h.q.GetGitlabMilestoneLink(c, m.ID); lerr == nil {
 		head["gl_url"] = link.GlWebUrl
 		head["gl_iid"] = link.GlIid
 		head["gl_synced_at"] = link.LastSyncedAt
+		// The write-back state (#3010), as ListMilestones carries it.
+		head["gl_push_error"] = link.PushError
+		head["gl_push_fields"] = link.PushFields
+		head["gl_conflict"] = len(parseMilestoneConflict(link.Conflict).Fields) > 0
+		if integ, ierr := h.q.GetGitlabIntegrationByID(c, link.IntegrationID); ierr == nil {
+			head["gl_writable"] = milestoneWritable(integ)
+		}
 	}
 	out.Milestone = head
 	c.JSON(http.StatusOK, out)

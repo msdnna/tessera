@@ -1314,6 +1314,11 @@
     <string name="milestones_range">%1$s – %2$s</string>
     <string name="milestones_range_until">до %1$s</string>
     <string name="milestones_range_from">с %1$s</string>
+    <string name="milestones_gitlab_unsynced">Не синхронизировано с GitLab</string>
+    <string name="milestones_gitlab_retry">Повторить</string>
+    <string name="milestones_gitlab_conflict_mark">Конфликт с GitLab — разрешите в веб-версии</string>
+    <string name="milestones_gitlab_failed">Сохранено в Tessera, но GitLab не принял изменения: %1$s</string>
+    <string name="milestones_gitlab_conflict">Этап изменили и в GitLab — выберите версию в окне конфликтов веб-версии</string>
 
     <!-- Выбор срока: вкладки начала/срока -->
     <string name="due_picker_tab_start">Начало</string>

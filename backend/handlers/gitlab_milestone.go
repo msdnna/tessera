@@ -19,7 +19,9 @@ import (
 
 // GitLab milestone pull-mapping (B/M1): map a GitLab issue's milestone onto a native
 // Tessera milestone + a gitlab_milestone_links row, and point the task at it. The
-// link's presence marks the milestone GitLab-sourced (read-only in Tessera).
+// link's presence marks the milestone GitLab-sourced; since #3010 it is editable in
+// Tessera and written back (gitlab_milestone_sync.go), so the pull merges three
+// ways instead of overwriting.
 
 // gidNumericID extracts the trailing numeric id from a GraphQL global id
 // ("gid://gitlab/Milestone/42" → 42), for the REST milestone_id parameter.
@@ -72,8 +74,10 @@ func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegra
 }
 
 // ensureGitlabMilestone upserts the native milestone + link for a GitLab milestone,
-// returning the native milestone id. GitLab is the source of truth for the synced
-// fields (title/description/dates/state) — an empty GitLab value clears ours too.
+// returning the native milestone id. An existing stage is merged three ways
+// against the link's baseline (pullGitlabMilestone): a field only GitLab changed is
+// taken — an empty GitLab value clears ours too — while a local edit not yet
+// written to GitLab is kept and one changed on both sides becomes a conflict.
 func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegration, projectID uuid.UUID, issue gitlab.Issue) (uuid.UUID, error) {
 	state := issue.MilestoneState
 	if state != "closed" {
@@ -92,11 +96,8 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 	})
 	switch {
 	case err == nil:
-		// Refresh the native milestone from GitLab + the link.
-		if _, uerr := h.q.UpdateMilestone(ctx, db.UpdateMilestoneParams{
-			ID: link.MilestoneID, Title: issue.MilestoneTitle, Description: issue.MilestoneDescription,
-			StartDate: issue.MilestoneStart, DueDate: issue.MilestoneDue, State: state,
-		}); uerr != nil {
+		// Merge GitLab's version into the native milestone, then refresh the link.
+		if uerr := h.pullGitlabMilestone(ctx, link, integ.WorkspaceID, snapOfIssue(issue), milestoneWritable(integ)); uerr != nil {
 			return uuid.Nil, uerr
 		}
 		soft(ctx, "UpdateGitlabMilestoneLink", h.q.UpdateGitlabMilestoneLink(ctx, db.UpdateGitlabMilestoneLinkParams{
@@ -124,6 +125,7 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 			return q.CreateGitlabMilestoneLink(ctx, db.CreateGitlabMilestoneLinkParams{
 				MilestoneID: m.ID, IntegrationID: integ.ID, GlGlobalID: issue.MilestoneGID,
 				GlIid: iid, GlNumericID: numeric, GlWebUrl: issue.MilestoneURL, GlState: state, TitleHash: titleHash,
+				GlSnapshot: snapOfIssue(issue).marshal(),
 			})
 		}); terr != nil {
 			return uuid.Nil, terr
@@ -202,6 +204,11 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		MilestoneID: id, IntegrationID: integ.ID, GlGlobalID: created.GlobalID(),
 		GlIid: iid, GlNumericID: created.ID, GlWebUrl: created.WebURL, GlState: state,
 		TitleHash: gitlab.HashStr(m.Title),
+		// GitLab now holds exactly what was sent: the baseline of the next sync.
+		GlSnapshot: milestoneSnap{
+			Title: m.Title, Description: m.Description,
+			Start: dateStr(m.StartDate), Due: dateStr(m.DueDate), State: normMilestoneState(state),
+		}.marshal(),
 	}); cerr != nil {
 		log.Printf("gitlab push milestone: link milestone %s to %s failed: %v", id, created.WebURL, cerr)
 		fail(c, cerr)

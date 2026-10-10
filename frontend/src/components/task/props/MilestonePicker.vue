@@ -3,8 +3,9 @@
 // project's stages, «Без этапа» (0), «Активные» with their progress and days
 // left, «Запланированные», «Закрытые» folded behind a row, and «Создать этап…»
 // (⌘↵) — whose second step is a popover form with the dates at the same
-// anchor. A stage that comes from GitLab carries a lock: the stage itself is
-// changed in GitLab only (#3010), a task can still be put on it.
+// anchor. The picker only puts a task on a stage; the stage itself — a GitLab
+// one included, written back to GitLab (#3010) — is edited on its page and in
+// the «Проект» window.
 //
 // The host sets the stage (`set` — and journals it: every path that changes
 // milestone_id must, see journalMilestoneActor); a new stage is created here

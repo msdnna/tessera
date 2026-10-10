@@ -615,6 +615,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/tasks/:id/milestone", rh.SetTaskMilestone)
 			protected.DELETE("/tasks/:id/milestone", rh.ClearTaskMilestone)
 			protected.POST("/milestones/:id/gitlab", rh.PushMilestoneToGitlab)
+			// GitLab stage write-back (#3010): retry a failed write, resolve a conflict.
+			protected.POST("/milestones/:id/gitlab/sync", rh.RetryMilestoneGitlab)
+			protected.POST("/milestones/:id/gitlab/conflict/resolve", rh.ResolveMilestoneConflict)
 
 			protected.GET("/notes/:id", rh.GetNote)
 			protected.PATCH("/notes/:id", rh.UpdateNote)

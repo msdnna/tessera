@@ -161,6 +161,14 @@ type fakeGitlab struct {
 	// issues does MR !n close», keyed by MR iid. See gitlab_mr_flow_test.go.
 	mrs    []glMR
 	closes map[int64][]int64
+	// Project milestones by numeric id — the REST read/write surface of the stage
+	// write-back (#3010). An issue's Milestone points at the same struct, so an
+	// edit through REST is what the next pull sees. milestonePutStatus, when set,
+	// makes every PUT fail with it (GitLab down / refusing); milestonePuts records
+	// the forms of the PUTs that got through.
+	milestones         map[int64]*glMilestone
+	milestonePutStatus int
+	milestonePuts      []url.Values
 }
 
 // fakeUpload is one attachment the fake instance hands back, declared type and
@@ -216,6 +224,7 @@ func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
 		children:          map[int64][]int64{},
 		childrenErr:       map[int64]bool{},
 		uploads:           map[string]fakeUpload{},
+		milestones:        map[int64]*glMilestone{},
 	}
 	f.srv = httptest.NewServer(f)
 	t.Cleanup(f.srv.Close)
@@ -245,8 +254,59 @@ func (f *fakeGitlab) addIssue(is glIssue) *glIssue {
 		is.UpdatedAt = time.Now().UTC()
 	}
 	cp := is
+	if cp.Milestone != nil {
+		// One milestone, many issues: they all share the registered struct.
+		if known, ok := f.milestones[cp.Milestone.ID]; ok {
+			cp.Milestone = known
+		} else {
+			f.milestones[cp.Milestone.ID] = cp.Milestone
+		}
+	}
 	f.issues = append(f.issues, &cp)
 	return &cp
+}
+
+// milestone returns a copy of a registered milestone as GitLab holds it now.
+func (f *fakeGitlab) milestone(id int64) glMilestone {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if m, ok := f.milestones[id]; ok {
+		return *m
+	}
+	f.t.Fatalf("fake gitlab: no milestone %d", id)
+	return glMilestone{}
+}
+
+// editMilestone changes a milestone on the GitLab side, as a person in GitLab
+// would, and touches its issues so an incremental pull sees them.
+func (f *fakeGitlab) editMilestone(id int64, edit func(*glMilestone)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, ok := f.milestones[id]
+	if !ok {
+		f.t.Fatalf("fake gitlab: no milestone %d", id)
+	}
+	edit(m)
+	for _, is := range f.issues {
+		if is.Milestone == m {
+			is.UpdatedAt = time.Now().UTC()
+		}
+	}
+}
+
+// milestoneJSON is a milestone in the REST v4 shape.
+func (f *fakeGitlab) milestoneJSON(m *glMilestone) map[string]any {
+	nullable := func(s string) any {
+		if s == "" {
+			return nil
+		}
+		return s
+	}
+	return map[string]any{
+		"id": m.ID, "iid": m.IID, "title": m.Title, "description": m.Description, "state": m.State,
+		"start_date": nullable(m.StartDate), "due_date": nullable(m.DueDate),
+		"web_url": f.srv.URL + "/" + f.projectPath + "/-/milestones/" + strconv.FormatInt(m.IID, 10),
+	}
 }
 
 func (f *fakeGitlab) findIssue(iid int64) *glIssue {
@@ -665,10 +725,55 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 		if hook != nil {
 			hook()
 		}
-		writeJSON(w, http.StatusCreated, map[string]any{
-			"id": id, "iid": id - 9000, "state": "active",
-			"web_url": f.srv.URL + "/" + f.projectPath + "/-/milestones/" + strconv.FormatInt(id-9000, 10),
-		})
+		created := &glMilestone{
+			ID: id, IID: id - 9000, Title: r.PostForm.Get("title"), Description: r.PostForm.Get("description"),
+			State: "active", StartDate: r.PostForm.Get("start_date"), DueDate: r.PostForm.Get("due_date"),
+		}
+		f.mu.Lock()
+		f.milestones[id] = created
+		out := f.milestoneJSON(created)
+		f.mu.Unlock()
+		writeJSON(w, http.StatusCreated, out)
+	case strings.HasPrefix(rest, "milestones/") && (r.Method == http.MethodGet || r.Method == http.MethodPut):
+		id, _ := strconv.ParseInt(strings.TrimPrefix(rest, "milestones/"), 10, 64)
+		_ = r.ParseForm()
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		m, ok := f.milestones[id]
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Milestone Not Found"})
+			return
+		}
+		if r.Method == http.MethodPut {
+			if f.milestonePutStatus != 0 {
+				writeJSON(w, f.milestonePutStatus, map[string]any{"message": "milestone write refused"})
+				return
+			}
+			form := url.Values{}
+			for k, v := range r.PostForm {
+				form[k] = v
+			}
+			f.milestonePuts = append(f.milestonePuts, form)
+			if _, has := form["title"]; has {
+				m.Title = form.Get("title")
+			}
+			if _, has := form["description"]; has {
+				m.Description = form.Get("description")
+			}
+			if _, has := form["start_date"]; has {
+				m.StartDate = form.Get("start_date")
+			}
+			if _, has := form["due_date"]; has {
+				m.DueDate = form.Get("due_date")
+			}
+			switch form.Get("state_event") {
+			case "close":
+				m.State = "closed"
+			case "activate":
+				m.State = "active"
+			}
+		}
+		writeJSON(w, http.StatusOK, f.milestoneJSON(m))
 	default:
 		// Issue mutations (labels/state/notes/…) from incidental write-backs.
 		writeJSON(w, http.StatusOK, map[string]any{})

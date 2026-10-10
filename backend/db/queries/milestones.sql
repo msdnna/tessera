@@ -1,9 +1,12 @@
 -- Milestones («Этап») — project-scoped planning unit. CRUD + task assignment.
--- GitLab-sourced milestones get a row in gitlab_milestone_links (added later); the
--- presence of that link makes a milestone read-only in Tessera.
+-- GitLab-sourced milestones get a row in gitlab_milestone_links; since #3010 such a
+-- milestone is editable in Tessera when its binding allows writing (gl_writable).
 
 -- ListMilestones returns a project's milestones with their GitLab link info (null
--- columns when native), so the UI can tell native from GitLab-sourced.
+-- columns when native), so the UI can tell native from GitLab-sourced — and, for
+-- a GitLab one (#3010), whether it may be written back (gl_writable: binding on
+-- and write-back on), whether the last write failed (gl_push_error) and whether
+-- a conflict waits in the conflicts window (gl_conflict).
 --
 -- Each row also carries the project-level rollups the «Проект» window and the
 -- sidebar show next to a stage (#2992): task_count / done_count and Σ estimate
@@ -11,16 +14,20 @@
 -- archived tasks, tasks in the trash and tasks of deleted boards excluded.
 -- name: ListMilestones :many
 SELECT m.*, l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id, l.gl_iid AS gl_iid,
+       l.push_error AS gl_push_error, l.push_fields AS gl_push_fields,
+       COALESCE(l.conflict <> '{}'::jsonb, false)::bool AS gl_conflict,
+       COALESCE(gi.enabled AND COALESCE((gi.writeback->>'enabled')::boolean, false), false)::bool AS gl_writable,
        COUNT(t.id) AS task_count,
        COUNT(t.id) FILTER (WHERE t.completed_at IS NOT NULL) AS done_count,
        COALESCE(SUM(t.estimate), 0)::float8 AS estimate_sum,
        COALESCE(SUM(t.estimate) FILTER (WHERE t.completed_at IS NOT NULL), 0)::float8 AS done_estimate
 FROM milestones m
 LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
+LEFT JOIN gitlab_integrations gi ON gi.id = l.integration_id
 LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL AND t.deleted_at IS NULL
     AND EXISTS (SELECT 1 FROM boards tb WHERE tb.id = t.board_id AND tb.deleted_at IS NULL)
 WHERE m.project_id = $1
-GROUP BY m.id, l.gl_web_url, l.gl_global_id, l.gl_iid
+GROUP BY m.id, l.milestone_id, gi.id
 ORDER BY m.position, m.created_at;
 
 -- ListWorkspaceMilestones returns every milestone across a workspace's projects with

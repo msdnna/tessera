@@ -737,4 +737,11 @@ object TestTags {
 
     const val TRASH_UNDO = "trash-undo"
     const val TRASH_UNDO_BUTTON = "trash-undo-button"
+    // ── milestones: GitLab write-back (#3010) ─────────────────────────────
+
+    /** «Не синхронизировано с GitLab» under a manager row. */
+    const val MILESTONE_UNSYNCED = "milestone-unsynced"
+
+    /** Its «Повторить». */
+    const val MILESTONE_RETRY = "milestone-retry"
 }

@@ -289,14 +289,16 @@
       "due": "Due (YYYY-MM-DD)",
       "estimate": "Estimate (minutes)",
       "state": "State",
-      "priority": "Priority"
+      "priority": "Priority",
+      "start": "Start (YYYY-MM-DD)"
     },
     "kind": {
       "title_desc": "Title and description",
       "due": "Due",
       "estimate": "Estimate",
       "state": "State",
-      "priority": "Priority"
+      "priority": "Priority",
+      "milestone": "stage"
     },
     "state": {
       "open": "Open",
@@ -320,7 +322,12 @@
     "keyVersion": "version",
     "postpone": "Postpone",
     "apply": "Apply and push",
-    "keyFieldHint": "↑↓ — field, B / T / G — version, M — merge by hand"
+    "keyFieldHint": "↑↓ — field, B / T / G — version, M — merge by hand",
+    "stageWord": "Stage",
+    "openStage": "Open the stage",
+    "fromMilestone": "milestone %{iid} · {at}",
+    "hintStage": "The stage changed both in Tessera and in GitLab since the last sync. Pick a version for each field.",
+    "onePushStage": "The decision goes straight to the GitLab milestone"
   },
   "window": {
     "crumb": "Integrations",
