@@ -14,7 +14,8 @@ import (
 const listTaskSubscribers = `-- name: ListTaskSubscribers :many
 
 WITH implicit AS (
-    SELECT t.created_by AS user_id FROM tasks t WHERE t.id = $2 AND t.created_by IS NOT NULL
+    SELECT t.created_by AS user_id FROM tasks t
+    WHERE t.id = $2 AND t.created_by IS NOT NULL AND t.deleted_at IS NULL
     UNION
     SELECT ta.user_id FROM task_assignees ta WHERE ta.task_id = $2
     UNION

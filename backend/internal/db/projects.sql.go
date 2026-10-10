@@ -356,7 +356,8 @@ SELECT
     (SELECT count(*) FROM boards b
       WHERE b.project_id = $1::uuid AND b.deleted_at IS NULL)::bigint AS boards,
     (SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id
-      WHERE b.project_id = $1::uuid AND b.deleted_at IS NULL)::bigint AS tasks
+      WHERE b.project_id = $1::uuid AND b.deleted_at IS NULL
+        AND t.deleted_at IS NULL)::bigint AS tasks
 `
 
 type ProjectFootprintRow struct {
@@ -669,7 +670,8 @@ SELECT
     (SELECT count(*) FROM boards b JOIN projects p ON p.id = b.project_id
       WHERE p.workspace_id = $1::uuid AND b.deleted_at IS NULL)::bigint AS boards,
     (SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id JOIN projects p ON p.id = b.project_id
-      WHERE p.workspace_id = $1::uuid AND b.deleted_at IS NULL)::bigint AS tasks
+      WHERE p.workspace_id = $1::uuid AND b.deleted_at IS NULL
+        AND t.deleted_at IS NULL)::bigint AS tasks
 `
 
 type WorkspaceFootprintRow struct {
