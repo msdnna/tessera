@@ -12,9 +12,14 @@ export const useConflictsStore = defineStore('conflicts', () => {
   // The resolver modal is mounted once (AppLayout); any surface opens it via the store.
   const resolverOpen = ref(false)
   const focusTaskId = ref(null) // pre-select this task's conflict when opening
+  const focusMilestoneId = ref(null) // …or this stage's (#3025)
 
+  // Stage conflicts (entity 'milestone', #3025) count too, but carry no task.
   const count = computed(() => list.value.length)
-  const taskIds = computed(() => new Set(list.value.map((c) => c.task_id)))
+  const taskIds = computed(() => new Set(list.value.map((c) => c.task_id).filter(Boolean)))
+  const milestoneIds = computed(
+    () => new Set(list.value.filter((c) => c.entity === 'milestone').map((c) => c.milestone_id)),
+  )
   const has = (taskId) => taskIds.value.has(taskId)
 
   // Choices made in the resolver window but not applied yet (#2975): Esc closes
@@ -30,9 +35,11 @@ export const useConflictsStore = defineStore('conflicts', () => {
     delete drafts[id]
   }
 
-  // Open the conflicts resolver, optionally focused on one task's conflict.
-  function openResolver(taskId = null) {
+  // Open the conflicts resolver, optionally focused on one task's conflict — or,
+  // with { milestoneId }, on a stage's.
+  function openResolver(taskId = null, { milestoneId = null } = {}) {
     focusTaskId.value = taskId
+    focusMilestoneId.value = milestoneId
     resolverOpen.value = true
   }
 
@@ -78,12 +85,14 @@ export const useConflictsStore = defineStore('conflicts', () => {
     list,
     count,
     taskIds,
+    milestoneIds,
     has,
     load,
     onEvent,
     clear,
     resolverOpen,
     focusTaskId,
+    focusMilestoneId,
     openResolver,
     draftFor,
     dropDraft,

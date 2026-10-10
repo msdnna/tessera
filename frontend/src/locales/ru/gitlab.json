@@ -289,14 +289,16 @@
       "due": "Срок (ГГГГ-ММ-ДД)",
       "estimate": "Оценка (минуты)",
       "state": "Статус",
-      "priority": "Приоритет"
+      "priority": "Приоритет",
+      "start": "Начало (ГГГГ-ММ-ДД)"
     },
     "kind": {
       "title_desc": "Заголовок и описание",
       "due": "Срок",
       "estimate": "Оценка",
       "state": "Статус",
-      "priority": "Приоритет"
+      "priority": "Приоритет",
+      "milestone": "этап"
     },
     "state": {
       "open": "Открыта",
@@ -320,7 +322,12 @@
     "keyVersion": "версия",
     "postpone": "Отложить",
     "apply": "Применить и отправить",
-    "keyFieldHint": "↑↓ — поле, B / T / G — версия, M — объединить вручную"
+    "keyFieldHint": "↑↓ — поле, B / T / G — версия, M — объединить вручную",
+    "stageWord": "Этап",
+    "openStage": "Открыть этап",
+    "fromMilestone": "milestone %{iid} · {at}",
+    "hintStage": "Этап изменён и в Tessera, и в GitLab после последней синхронизации. Выберите версию для каждого поля.",
+    "onePushStage": "Решение сразу уйдёт в milestone GitLab"
   },
   "window": {
     "crumb": "Интеграции",

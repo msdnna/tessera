@@ -18,9 +18,6 @@ export const FEATURE_STUBS = {
   'project.slugAliases': 3012,
   // Counts in the delete confirmations («3 доски и 148 задач») — #3014.
   'delete.counts': 3014,
-  // Editing, closing and reopening a GitLab-sourced stage with the change
-  // written back to GitLab (#3010) — until then such a stage is read-only here.
-  'stage.gitlabWrite': 3010,
   // «Входящие» (#2972): #tags and @mentions of a record are read by the capture
   // but not stored yet — #3040.
   'inbox.tags': 3040,

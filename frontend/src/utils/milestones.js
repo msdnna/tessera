@@ -7,6 +7,24 @@ import { i18n } from '@/i18n'
 // language of the first render (#2799).
 const t = (key, ...rest) => i18n.global.t(key, ...rest)
 
+// ── GitLab stages (#3010) ──
+// A stage linked to a GitLab milestone is edited in Tessera only while its binding
+// writes to GitLab (gl_writable: binding on, write-back on); otherwise it stays
+// read-only, as GitLab would undo the edit on the next pull.
+export const isGitlabStage = (m) => !!m?.gl_global_id
+export const stageEditable = (m) => !!m && (!isGitlabStage(m) || !!m.gl_writable)
+// The last write to GitLab failed: the edit is kept here, marked «not synced».
+export const stageUnsynced = (m) => isGitlabStage(m) && !!m.gl_push_error
+// Changed both here and in GitLab — waits in the conflicts window.
+export const stageConflict = (m) => isGitlabStage(m) && !!m.gl_conflict
+// What the «not synced» mark names: the goals alone (the mockup's case), or the stage.
+export function unsyncedKey(m) {
+  const f = m?.gl_push_fields || []
+  return f.length === 1 && f[0] === 'description'
+    ? 'milestones.gitlab.unsyncedGoals'
+    : 'milestones.gitlab.unsynced'
+}
+
 // The reserved ?milestone= value for "tasks without a milestone".
 export const BACKLOG_SCOPE = 'backlog'
 

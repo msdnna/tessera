@@ -483,6 +483,10 @@ export const milestones = {
   pushToGitlab: (id) => api.post(`/milestones/${id}/gitlab`),
   // Everything the stage page draws (#2992): progress, burn-up, scope, pace.
   metrics: (id) => api.get(`/milestones/${id}/metrics`),
+  // GitLab stage write-back (#3010): re-send a write GitLab refused («повторить»),
+  // and settle a stage's conflict — { resolution: ours|theirs|manual, value? }.
+  retryGitlab: (id) => api.post(`/milestones/${id}/gitlab/sync`),
+  resolveConflict: (id, data) => api.post(`/milestones/${id}/gitlab/conflict/resolve`, data),
 }
 
 export const groups = {
@@ -901,8 +905,10 @@ export const gitlab = {
   setGroup: (taskId) => api.post(`/tasks/${taskId}/gitlab-group`),
   clearGroup: (taskId) => api.delete(`/tasks/${taskId}/gitlab-group`),
   pushChild: (taskId) => api.post(`/tasks/${taskId}/gitlab-child`),
-  // Write-back conflicts: open-conflict inbox + interactive resolution.
-  conflicts: (wsId) => api.get(`/workspaces/${wsId}/gitlab/conflicts`),
+  // Write-back conflicts: open-conflict inbox + interactive resolution. The
+  // stages' conflicts (#3025) come along on request — entity: 'milestone'.
+  conflicts: (wsId) =>
+    api.get(`/workspaces/${wsId}/gitlab/conflicts`, { params: { include: 'milestones' } }),
   resolveConflict: (taskId, conflictId, data) =>
     api.post(`/tasks/${taskId}/gitlab/conflicts/${conflictId}/resolve`, data), // { resolution, value? }
 }

@@ -8,8 +8,11 @@
 // GET /milestones/:id/metrics (#2992).
 //
 // Keys: E — edit the goals, B — the stage's board, ⇧X — close the stage (two
-// steps), Esc — back. A GitLab stage is read-only until writing back to GitLab
-// exists (#3010): the goals come from GitLab, editing and closing are stubs.
+// steps), Esc — back. A GitLab stage (#3010) is edited and closed here when its
+// binding writes to GitLab — the change goes to the milestone at once; a refused
+// write is marked «не синхронизировано · повторить» on the goals card, a change
+// made in GitLab meanwhile opens the conflicts window. Without writing the stage
+// stays read-only, with the reason on the disabled controls.
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CAPS } from '@/utils/keyCaps'
@@ -31,6 +34,7 @@ import {
   PersonOutline,
   AlertCircleOutline,
   TimeOutline,
+  GitMergeOutline,
 } from '@vicons/ionicons5'
 import { projects as projApi, milestones as msApi, workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -39,7 +43,7 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { useResponsive } from '@/composables/useResponsive'
 import { useFormat } from '@/composables/useFormat'
 import { humanizeError } from '@/utils/errors'
-import { stubTask } from '@/utils/featureStubs'
+import { useStageSync } from '@/composables/useStageSync'
 import { formatHours } from '@/utils/estimation'
 import { buildMentionItems } from '@/utils/mentions'
 import {
@@ -49,6 +53,10 @@ import {
   daysLeft,
   todayUTC,
   stageDay,
+  stageEditable,
+  stageUnsynced,
+  stageConflict,
+  unsyncedKey,
 } from '@/utils/milestones'
 import { percent, paceAverage, forecast, dayMs } from '@/utils/milestoneMetrics'
 import { columnStatusName, isReviewColumn } from '@/utils/columnStatus'
@@ -105,7 +113,7 @@ async function load({ quiet = false } = {}) {
       const q = { ...route.query }
       delete q.edit
       router.replace({ query: q })
-      if (!m.gl_global_id) nextTick(startEdit)
+      if (stageEditable(m)) nextTick(startEdit)
     }
   } catch (e) {
     failed.value = humanizeError(e)
@@ -139,7 +147,22 @@ const topbar = ref(false)
 
 const head = computed(() => metrics.value?.milestone || stage.value || {})
 const linked = computed(() => !!(stage.value?.gl_global_id || head.value.gl_url))
-const gitlabStub = stubTask('stage.gitlabWrite')
+// The project list carries the write-back state of a GitLab stage (#3010).
+const editable = computed(() => stageEditable(stage.value))
+const unsynced = computed(() => stageUnsynced(stage.value))
+const conflict = computed(() => stageConflict(stage.value))
+const readOnlyTip = computed(() => t('milestones.gitlab.readOnly'))
+const sync = useStageSync()
+const retrying = ref(false)
+async function retrySync() {
+  if (retrying.value || !stage.value) return
+  retrying.value = true
+  try {
+    if (await sync.retry(stage.value)) await load({ quiet: true })
+  } finally {
+    retrying.value = false
+  }
+}
 const today = computed(() => todayUTC())
 const state = computed(() => stageState(stage.value, today.value))
 const left = computed(() => daysLeft(stage.value, today.value))
@@ -264,6 +287,7 @@ async function patchStage(patch) {
     state: m.state,
     ...patch,
   })
+  sync.report(data)
   return data
 }
 
@@ -271,7 +295,7 @@ async function patchStage(patch) {
 const closeArmed = ref(false)
 let disarm = 0
 async function onClose() {
-  if (!stage.value || linked.value) return
+  if (!stage.value || !editable.value) return
   if (stage.value.state === 'closed') {
     await setState('active')
     return
@@ -302,7 +326,7 @@ const saving = ref(false)
 const goalsEl = ref(null)
 const mentionItems = computed(() => buildMentionItems(members.value, [], {}))
 function startEdit() {
-  if (!stage.value || linked.value) return
+  if (!stage.value || !editable.value) return
   draft.value = stage.value.description || ''
   editing.value = true
   nextTick(() => goalsEl.value?.querySelector('textarea')?.focus())
@@ -352,10 +376,15 @@ const menuItems = computed(() => {
       key: 'dates',
       label: t('milestones.stage.datesMenu'),
       icon: CalendarClearOutline,
-      ...(gl ? { stub: gitlabStub } : {}),
+      ...(!editable.value ? { disabled: true, disabledTitle: readOnlyTip.value } : {}),
     },
     { key: 'window', label: t('milestones.stage.inWindow'), icon: OpenOutline },
   ]
+  if (conflict.value) {
+    items.push({ key: 'resolve', label: t('milestones.gitlab.resolveMenu'), icon: GitMergeOutline })
+  } else if (unsynced.value) {
+    items.push({ key: 'retry', label: t('milestones.gitlab.retryMenu'), icon: RefreshOutline })
+  }
   if (gl && head.value.gl_url) {
     items.push({
       key: 'gitlab',
@@ -381,6 +410,8 @@ const datesShow = ref(false)
 async function onMenu(key) {
   if (key === 'dates') datesShow.value = true
   else if (key === 'window') projectWindow.open(project.value?.id, 'stages')
+  else if (key === 'retry') retrySync()
+  else if (key === 'resolve') sync.resolve(stage.value)
   else if (key === 'gitlab') window.open(head.value.gl_url, '_blank', 'noopener')
   else if (key === 'delete') {
     deleting.value = true
@@ -502,13 +533,13 @@ const forecastLabel = computed(() => {
             {{ t('milestones.page.openBoard') }}
             <ShortcutKeys id="stage.board" />
           </button>
-          <n-tooltip :disabled="!linked">
+          <n-tooltip :disabled="editable">
             <template #trigger>
               <button
                 type="button"
                 class="sp-btn"
                 :class="{ armed: closeArmed }"
-                :disabled="linked"
+                :disabled="!editable"
                 data-testid="stage-close"
                 @click="onClose"
               >
@@ -526,7 +557,7 @@ const forecastLabel = computed(() => {
                 <ShortcutKeys v-if="stage.state !== 'closed'" id="stage.close" />
               </button>
             </template>
-            {{ t('common.stub.soon', { n: gitlabStub }) }}
+            {{ readOnlyTip }}
           </n-tooltip>
           <button
             ref="menuBtn"
@@ -561,19 +592,39 @@ const forecastLabel = computed(() => {
           >
             <div class="sp-card-h">
               <span class="sp-card-t">{{ t('milestones.page.goals') }}</span>
-              <span v-if="editing" class="sp-card-s">{{ t('milestones.page.goalsMarkdown') }}</span>
+              <span v-if="editing" class="sp-card-s">{{
+                linked ? t('milestones.gitlab.goalsMarkdown') : t('milestones.page.goalsMarkdown')
+              }}</span>
+              <span
+                v-else-if="unsynced || conflict"
+                class="sp-card-s sp-unsynced"
+                data-testid="stage-unsynced"
+              >
+                <n-icon :component="AlertCircleOutline" :size="13" class="sp-err-ic" />
+                {{ conflict ? t('milestones.gitlab.conflict') : t(unsyncedKey(stage)) }}
+                <button
+                  type="button"
+                  class="sp-link"
+                  :disabled="retrying"
+                  :title="conflict ? '' : stage.gl_push_error"
+                  data-testid="stage-retry"
+                  @click="conflict ? sync.resolve(stage) : retrySync()"
+                >
+                  · {{ conflict ? t('milestones.gitlab.resolve') : t('milestones.gitlab.retry') }}
+                </button>
+              </span>
               <span v-else-if="linked" class="sp-card-s">
                 <n-icon :component="GitBranchOutline" :size="12" />
                 {{ t('milestones.page.syncedFrom', { iid: head.gl_iid ?? '' }) }}
                 <template v-if="syncedLabel">· {{ syncedLabel }}</template>
               </span>
               <span class="sp-grow" />
-              <n-tooltip v-if="!editing" :disabled="!linked">
+              <n-tooltip v-if="!editing" :disabled="editable">
                 <template #trigger>
                   <button
                     type="button"
                     class="sp-btn small"
-                    :disabled="linked"
+                    :disabled="!editable"
                     data-testid="stage-goals-edit"
                     @click="startEdit"
                   >
@@ -582,7 +633,7 @@ const forecastLabel = computed(() => {
                     <ShortcutKeys v-if="!isMobile" id="stage.edit" />
                   </button>
                 </template>
-                {{ t('common.stub.soon', { n: gitlabStub }) }}
+                {{ readOnlyTip }}
               </n-tooltip>
             </div>
             <template v-if="editing">
@@ -620,7 +671,7 @@ const forecastLabel = computed(() => {
             <div v-else-if="stage.description" class="sp-goals">
               <RichContent :source="stage.description" :members="members" />
             </div>
-            <button v-else-if="!linked" type="button" class="sp-goals-empty" @click="startEdit">
+            <button v-else-if="editable" type="button" class="sp-goals-empty" @click="startEdit">
               {{ t('milestones.page.goalsEmpty') }}
             </button>
             <div v-else class="sp-goals-empty static">
@@ -1295,6 +1346,15 @@ const forecastLabel = computed(() => {
 }
 .lg.fc::before {
   border-top: 2px dashed var(--t-primary);
+}
+.sp-unsynced {
+  color: var(--t-text1);
+}
+.sp-err-ic {
+  color: var(--t-error);
+}
+.sp-unsynced .sp-link {
+  font-size: 12px;
 }
 .sp-link {
   padding: 0;

@@ -18,6 +18,11 @@
 //
 // Opened from anywhere through the conflicts store (the conflict pill on a card,
 // the GitLab window, the bell).
+//
+// Stages take part too (#3025): a GitLab stage changed both here and in GitLab
+// (its goals, usually) is one more entry of the queue — entity 'milestone',
+// fields title / description / start / due — resolved through the stage's own
+// endpoint, which writes the decision to the GitLab milestone at once.
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -25,13 +30,14 @@ import { NIcon, NTooltip } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
   GitMergeOutline,
+  TrailSignOutline,
   CheckmarkOutline,
   CloudUploadOutline,
   OpenOutline,
   ArrowUpOutline,
   LogoGitlab,
 } from '@vicons/ionicons5'
-import { gitlab as glApi, tasks as tasksApi } from '@/api'
+import { gitlab as glApi, tasks as tasksApi, milestones as msApi } from '@/api'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useShortcuts } from '@/composables/useShortcuts'
@@ -53,6 +59,7 @@ const props = defineProps({
   show: { type: Boolean, default: false },
   wsId: { type: String, default: null },
   focusTaskId: { type: String, default: null },
+  focusMilestoneId: { type: String, default: null },
 })
 const emit = defineEmits(['update:show', 'resolved'])
 
@@ -73,13 +80,15 @@ const resolving = ref(false)
 // Field and change-kind names come from the catalog per call (a frozen map would
 // keep the language of the first render). An unknown key from the server is
 // shown raw.
-const FIELD_KEYS = ['title', 'description', 'due', 'estimate', 'state', 'priority']
-const KIND_KEYS = ['title_desc', 'due', 'estimate', 'state', 'priority']
+const FIELD_KEYS = ['title', 'description', 'start', 'due', 'estimate', 'state', 'priority']
+const KIND_KEYS = ['title_desc', 'due', 'estimate', 'state', 'priority', 'milestone']
 // Free text and numbers can be merged by hand; state and priority are discrete.
-const MERGEABLE = ['title', 'description', 'due', 'estimate']
+const MERGEABLE = ['title', 'description', 'start', 'due', 'estimate']
 const SIDES = ['base', 'ours', 'theirs']
 
 const selected = computed(() => conflicts.value.find((c) => c.id === selectedId.value) || null)
+const isStage = (c) => c?.entity === 'milestone'
+const stageSel = computed(() => isStage(selected.value))
 const index = computed(() => conflicts.value.findIndex((c) => c.id === selectedId.value))
 const fields = computed(() => selected.value?.fields || [])
 
@@ -89,6 +98,8 @@ const emptyVal = (v) => v === '' || v == null
 const isText = (field) => field === 'title' || field === 'description'
 function displayVal(field, v) {
   if (emptyVal(v)) return t('gitlab.conflicts.emptyValue')
+  if (field === 'state' && stageSel.value)
+    return t(v === 'closed' ? 'milestones.state.closed' : 'milestones.state.active')
   if (field === 'state')
     return t(v === 'closed' ? 'gitlab.conflicts.state.closed' : 'gitlab.conflicts.state.open')
   if (field === 'priority') return priorityLabel(v) || v
@@ -160,7 +171,9 @@ async function load() {
     // Pre-select the focused task's conflict (opened from a card), else keep
     // the current one if still there, else the first.
     const focused =
-      props.focusTaskId && conflicts.value.find((c) => c.task_id === props.focusTaskId)
+      (props.focusTaskId && conflicts.value.find((c) => c.task_id === props.focusTaskId)) ||
+      (props.focusMilestoneId &&
+        conflicts.value.find((c) => isStage(c) && c.milestone_id === props.focusMilestoneId))
     if (focused) selectedId.value = focused.id
     else if (!conflicts.value.find((c) => c.id === selectedId.value))
       selectedId.value = conflicts.value[0]?.id || null
@@ -177,7 +190,15 @@ async function apply() {
   if (!c || !ready.value || resolving.value) return
   resolving.value = true
   try {
-    await glApi.resolveConflict(c.task_id, c.id, resolutionOf(c))
+    if (isStage(c)) {
+      const { data } = await msApi.resolveConflict(c.milestone_id, resolutionOf(c))
+      // The decision went to GitLab in the same request; a refusal leaves the
+      // stage «not synced» with its own retry.
+      if (data?.gl_sync?.status === 'failed')
+        message.warning(t('milestones.gitlab.failedToast', { error: data.gl_sync.error || '' }))
+    } else {
+      await glApi.resolveConflict(c.task_id, c.id, resolutionOf(c))
+    }
     message.success(t('gitlab.conflicts.resolved'))
     store.dropDraft(c.id)
     const at = index.value
@@ -204,19 +225,27 @@ function step(delta) {
   pick(list[i])
 }
 
-// Leave for the task: close (its history entry unwinds first), then go.
+// Leave for the task (or the stage's page): close (its history entry unwinds
+// first), then go.
 async function openTask() {
   const c = selected.value
   if (!c) return
-  let boardId
-  try {
-    const { data } = await tasksApi.get(c.task_id)
-    boardId = data?.board_id
-  } catch (e) {
-    message.error(e.message)
-    return
+  let target
+  if (isStage(c)) {
+    if (!c.project_slug || !c.milestone_slug) return
+    target = `/project/${c.project_slug}/stage/${c.milestone_slug}`
+  } else {
+    let boardId
+    try {
+      const { data } = await tasksApi.get(c.task_id)
+      boardId = data?.board_id
+    } catch (e) {
+      message.error(e.message)
+      return
+    }
+    if (!boardId) return
+    target = `/board/${boardId}?task=${c.task_number ?? c.task_id}`
   }
-  if (!boardId) return
   const ours = !!window.history.state?.tOverlay
   emit('update:show', false)
   if (ours) {
@@ -230,7 +259,7 @@ async function openTask() {
       window.addEventListener('popstate', done)
     })
   }
-  router.push(`/board/${boardId}?task=${c.task_number ?? c.task_id}`)
+  router.push(target)
 }
 
 // ── keys: ↑↓ the field, B / T / G its version, M merge by hand ──
@@ -280,7 +309,7 @@ useShortcuts(
 )
 
 watch(
-  () => [props.show, props.wsId, props.focusTaskId],
+  () => [props.show, props.wsId, props.focusTaskId, props.focusMilestoneId],
   ([show]) => {
     if (show) load()
   },
@@ -336,8 +365,14 @@ const detectedText = computed(() =>
         @click="pick(c)"
       >
         <span class="cr-q-t">
-          <span v-if="c.task_number" class="cr-num">#{{ c.task_number }}</span>
-          {{ c.task_title || t('gitlab.conflicts.taskFallback') }}
+          <template v-if="isStage(c)">
+            <n-icon :component="TrailSignOutline" :size="13" class="cr-stage-ic" />
+            {{ c.milestone_title || t('gitlab.conflicts.stageWord') }}
+          </template>
+          <template v-else>
+            <span v-if="c.task_number" class="cr-num">#{{ c.task_number }}</span>
+            {{ c.task_title || t('gitlab.conflicts.taskFallback') }}
+          </template>
         </span>
         <span class="cr-q-s">
           <span class="cr-dot" :class="{ done: !leftOf(c) }" />
@@ -349,9 +384,16 @@ const detectedText = computed(() =>
     <template #nav-foot>
       <div v-if="selected?.gl_iid" class="lw-foot-row">
         <n-icon :component="ArrowUpOutline" :size="12" />
-        {{ t('gitlab.conflicts.fromPush', { iid: selected.gl_iid, at: detectedText }) }}
+        {{
+          t(stageSel ? 'gitlab.conflicts.fromMilestone' : 'gitlab.conflicts.fromPush', {
+            iid: selected.gl_iid,
+            at: detectedText,
+          })
+        }}
       </div>
-      <div class="lw-foot-row">{{ t('gitlab.conflicts.onePush') }}</div>
+      <div class="lw-foot-row">
+        {{ t(stageSel ? 'gitlab.conflicts.onePushStage' : 'gitlab.conflicts.onePush') }}
+      </div>
     </template>
 
     <div
@@ -370,17 +412,23 @@ const detectedText = computed(() =>
       />
       <template v-else-if="selected">
         <div class="cr-title">
-          <h2>
+          <h2 v-if="stageSel">
+            <span class="cr-num">{{ t('gitlab.conflicts.stageWord') }}</span>
+            {{ selected.milestone_title }}
+          </h2>
+          <h2 v-else>
             <span v-if="selected.task_number" class="cr-num">#{{ selected.task_number }}</span>
             {{ selected.task_title || t('gitlab.conflicts.taskFallback') }}
           </h2>
           <span class="cr-grow" />
           <button type="button" class="kit-btn" data-testid="conflict-open-task" @click="openTask">
             <n-icon :component="OpenOutline" :size="15" />
-            {{ t('gitlab.conflicts.openTask') }}
+            {{ stageSel ? t('gitlab.conflicts.openStage') : t('gitlab.conflicts.openTask') }}
           </button>
         </div>
-        <p class="cr-hint">{{ t('gitlab.conflicts.hintV2') }}</p>
+        <p class="cr-hint">
+          {{ stageSel ? t('gitlab.conflicts.hintStage') : t('gitlab.conflicts.hintV2') }}
+        </p>
 
         <div class="cr-scroll t-hoverscroll">
           <div class="cr-grid cr-head">
@@ -530,6 +578,11 @@ const detectedText = computed(() =>
   white-space: nowrap;
 }
 /* The queue in the sunken column. */
+.cr-stage-ic {
+  vertical-align: -2px;
+  margin-right: 2px;
+  color: var(--t-primary);
+}
 .cr-qh {
   margin: 8px 10px 6px;
   font-size: 11px;

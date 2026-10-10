@@ -3,7 +3,10 @@
 // project's stages with dates, state, progress and their GitLab milestone. A
 // click (↵) opens the stage page; a new stage is an empty row — name, Tab, dates,
 // ↵. Closed stages sit in their own folded group. A stage that comes from
-// GitLab is read-only here until writing back to GitLab exists (#3010).
+// GitLab (#3010) is renamed, re-dated and closed here (⇧X on its row) when its
+// binding writes to GitLab — the change goes to the milestone at once; without
+// writing it stays read-only. A refused write shows as a red mark in the GitLab
+// column, with «Повторить запись в GitLab» in the row's menu.
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CAPS, cap } from '@/utils/keyCaps'
@@ -23,12 +26,14 @@ import {
   RefreshOutline,
   CloudUploadOutline,
   TrashOutline,
+  AlertCircleOutline,
+  GitMergeOutline,
 } from '@vicons/ionicons5'
 import { projects as projApi, milestones as msApi, gitlab as glApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useFormat } from '@/composables/useFormat'
 import { humanizeError } from '@/utils/errors'
-import { stubTask } from '@/utils/featureStubs'
+import { useStageSync } from '@/composables/useStageSync'
 import {
   milestoneRangeShort,
   toDateOnlyISO,
@@ -37,6 +42,10 @@ import {
   stageProgress,
   sortStages,
   stagePath,
+  stageEditable,
+  stageUnsynced,
+  stageConflict,
+  unsyncedKey,
 } from '@/utils/milestones'
 import InlineEdit from '../kit/InlineEdit.vue'
 import ActionMenu from '../kit/ActionMenu.vue'
@@ -95,7 +104,15 @@ const open = computed(() => sorted.value.filter((m) => m.state !== 'closed'))
 const closed = computed(() => sorted.value.filter((m) => m.state === 'closed'))
 const showClosed = ref(false)
 const linked = (m) => !!m.gl_global_id
-const gitlabStub = stubTask('stage.gitlabWrite')
+const sync = useStageSync()
+// A GitLab stage whose binding does not write stays read-only (#3010).
+const lockOf = (m) =>
+  stageEditable(m) ? {} : { disabled: true, disabledTitle: t('milestones.gitlab.readOnly') }
+function syncMarkTitle(m) {
+  if (stageConflict(m)) return t('milestones.gitlab.conflict')
+  if (stageUnsynced(m)) return `${t(unsyncedKey(m))}: ${m.gl_push_error}`
+  return ''
+}
 
 const range = (m) => milestoneRangeShort(m, formatters.value)
 function stateLabel(m) {
@@ -171,7 +188,7 @@ const renamingId = ref(null)
 const renameValue = ref('')
 const renameBusy = ref(false)
 function startRename(m) {
-  if (linked(m)) return
+  if (!stageEditable(m)) return
   renamingId.value = m.id
   renameValue.value = m.title
 }
@@ -184,13 +201,14 @@ async function commitRename(m, value, { via }) {
   }
   renameBusy.value = true
   try {
-    await msApi.update(m.id, {
+    const { data } = await msApi.update(m.id, {
       title: n,
       description: m.description || '',
       start_date: m.start_date || null,
       due_date: m.due_date || null,
       state: m.state,
     })
+    sync.report(data)
     renamingId.value = null
     await changed()
   } catch (e) {
@@ -223,21 +241,27 @@ const menuItems = computed(() => {
       label: t('milestones.stage.rename'),
       icon: CreateOutline,
       caps: ['F2'],
-      ...(gl ? { stub: gitlabStub } : {}),
+      ...lockOf(m),
     },
     {
       key: 'dates',
       label: t('milestones.stage.datesMenu'),
       icon: CalendarClearOutline,
-      ...(gl ? { stub: gitlabStub } : {}),
+      ...lockOf(m),
     },
     {
       key: 'state',
       label: m.state === 'closed' ? t('milestones.stage.reopen') : t('milestones.stage.close'),
       icon: m.state === 'closed' ? RefreshOutline : CheckmarkDoneOutline,
-      ...(gl ? { stub: gitlabStub } : {}),
+      keys: 'stage.close',
+      ...lockOf(m),
     },
   ]
+  if (stageConflict(m)) {
+    items.push({ key: 'resolve', label: t('milestones.gitlab.resolveMenu'), icon: GitMergeOutline })
+  } else if (stageUnsynced(m)) {
+    items.push({ key: 'retry', label: t('milestones.gitlab.retryMenu'), icon: RefreshOutline })
+  }
   if (!gl && glLinkable.value) {
     items.push({ key: 'push', label: t('milestones.manager.push'), icon: CloudUploadOutline })
   }
@@ -282,18 +306,26 @@ async function onMenu(key) {
     datesFor.value = m
   } else if (key === 'state') await toggleState(m)
   else if (key === 'push') await pushToGitlab(m)
-  else if (key === 'gitlab') window.open(m.gl_url, '_blank', 'noopener')
+  else if (key === 'retry') {
+    menuFor.value = null
+    if (await sync.retry(m)) await changed()
+  } else if (key === 'resolve') {
+    menuFor.value = null
+    sync.resolve(m)
+  } else if (key === 'gitlab') window.open(m.gl_url, '_blank', 'noopener')
   else if (key === 'delete') await remove(m)
 }
 async function toggleState(m) {
+  if (!stageEditable(m)) return
   try {
-    await msApi.update(m.id, {
+    const { data } = await msApi.update(m.id, {
       title: m.title,
       description: m.description || '',
       start_date: m.start_date || null,
       due_date: m.due_date || null,
       state: m.state === 'closed' ? 'active' : 'closed',
     })
+    sync.report(data)
     await changed()
   } catch (e) {
     message.error(humanizeError(e))
@@ -336,6 +368,10 @@ function rowKey(e, m, i, rows) {
   } else if (e.key === 'F2') {
     e.preventDefault()
     startRename(m)
+  } else if (e.shiftKey && e.code === 'KeyX' && !e.metaKey && !e.ctrlKey && !e.altKey) {
+    // ⇧X — close the stage (or reopen a closed one), as on its page.
+    e.preventDefault()
+    toggleState(m)
   } else if (e.code === 'Period' || (e.shiftKey && e.key === 'F10')) {
     e.preventDefault()
     openMenu(m, rowEls[m.id])
@@ -437,6 +473,14 @@ defineExpose({ focusFirst, escape })
           <span class="st-gl">
             <template v-if="linked(m)">
               <n-icon :component="GitBranchOutline" :size="13" />%{{ m.gl_iid ?? '' }}
+              <n-icon
+                v-if="syncMarkTitle(m)"
+                :component="AlertCircleOutline"
+                :size="13"
+                class="st-gl-err"
+                :title="syncMarkTitle(m)"
+                data-testid="stage-row-unsynced"
+              />
             </template>
           </span>
           <button
@@ -527,6 +571,14 @@ defineExpose({ focusFirst, escape })
             <span class="st-gl">
               <template v-if="linked(m)">
                 <n-icon :component="GitBranchOutline" :size="13" />%{{ m.gl_iid ?? '' }}
+                <n-icon
+                  v-if="syncMarkTitle(m)"
+                  :component="AlertCircleOutline"
+                  :size="13"
+                  class="st-gl-err"
+                  :title="syncMarkTitle(m)"
+                  data-testid="stage-row-unsynced"
+                />
               </template>
             </span>
             <button
@@ -740,6 +792,10 @@ defineExpose({ focusFirst, escape })
   font-variant-numeric: tabular-nums;
   color: var(--t-text2);
   white-space: nowrap;
+}
+.st-gl-err {
+  margin-left: 4px;
+  color: var(--t-error);
 }
 .st-gl {
   display: inline-flex;
