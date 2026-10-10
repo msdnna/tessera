@@ -137,6 +137,8 @@ type Document struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	Preview     string     `json:"preview"`
+	DeletedAt   *time.Time `json:"deleted_at"`
+	DeletedBy   *uuid.UUID `json:"deleted_by"`
 }
 
 type DocumentApproval struct {
@@ -541,6 +543,7 @@ type Project struct {
 	Estimation  *json.RawMessage `json:"estimation"`
 	IconMode    string           `json:"icon_mode"`
 	TreeMode    string           `json:"tree_mode"`
+	ArchivedAt  *time.Time       `json:"archived_at"`
 }
 
 type ProjectGroup struct {
@@ -623,6 +626,8 @@ type Task struct {
 	StartDate          *time.Time       `json:"start_date"`
 	Estimate           *float64         `json:"estimate"`
 	MilestoneID        *uuid.UUID       `json:"milestone_id"`
+	DeletedAt          *time.Time       `json:"deleted_at"`
+	DeletedBy          *uuid.UUID       `json:"deleted_by"`
 }
 
 type TaskAssignee struct {

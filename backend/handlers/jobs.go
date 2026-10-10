@@ -71,7 +71,7 @@ var workerOps = map[string]string{
 	opDueScan:        "проверка сроков и напоминаний",
 	opRecurrence:     "продвижение повторяющихся задач",
 	opRecordingSweep: "проверка записей конференций и уборка по сроку",
-	opTrashPurge:     "окончательное удаление досок и колонок после срока отмены",
+	opTrashPurge:     "окончательное удаление досок и колонок (через сутки), задач и документов из корзины (через 30 дней)",
 }
 
 // tick refreshes a worker's heartbeat; a thin wrapper so worker loops don't import

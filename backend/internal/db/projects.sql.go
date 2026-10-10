@@ -12,6 +12,34 @@ import (
 	"github.com/google/uuid"
 )
 
+const archiveProject = `-- name: ArchiveProject :one
+UPDATE projects SET archived_at = now(), updated_at = now()
+WHERE id = $1 AND archived_at IS NULL
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at
+`
+
+func (q *Queries) ArchiveProject(ctx context.Context, id uuid.UUID) (Project, error) {
+	row := q.db.QueryRow(ctx, archiveProject, id)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.GroupID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Icon,
+		&i.Slug,
+		&i.Estimation,
+		&i.IconMode,
+		&i.TreeMode,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
 const countProjectTasks = `-- name: CountProjectTasks :one
 SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id WHERE b.project_id = $1
 `
@@ -29,7 +57,7 @@ func (q *Queries) CountProjectTasks(ctx context.Context, projectID uuid.UUID) (i
 const createProject = `-- name: CreateProject :one
 INSERT INTO projects (workspace_id, group_id, name, color, icon, slug, position)
 VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at
 `
 
 type CreateProjectParams struct {
@@ -67,6 +95,7 @@ func (q *Queries) CreateProject(ctx context.Context, arg CreateProjectParams) (P
 		&i.Estimation,
 		&i.IconMode,
 		&i.TreeMode,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -81,7 +110,7 @@ func (q *Queries) DeleteProject(ctx context.Context, id uuid.UUID) error {
 }
 
 const getProject = `-- name: GetProject :one
-SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode FROM projects WHERE id = $1
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at FROM projects WHERE id = $1
 `
 
 func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error) {
@@ -101,12 +130,13 @@ func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error)
 		&i.Estimation,
 		&i.IconMode,
 		&i.TreeMode,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
 const getProjectBySlug = `-- name: GetProjectBySlug :one
-SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode FROM projects WHERE slug = $1
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at FROM projects WHERE slug = $1
 `
 
 func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, error) {
@@ -126,16 +156,58 @@ func (q *Queries) GetProjectBySlug(ctx context.Context, slug string) (Project, e
 		&i.Estimation,
 		&i.IconMode,
 		&i.TreeMode,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
 
+const listArchivedProjects = `-- name: ListArchivedProjects :many
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at FROM projects WHERE workspace_id = $1 AND archived_at IS NOT NULL ORDER BY archived_at DESC, name
+`
+
+func (q *Queries) ListArchivedProjects(ctx context.Context, workspaceID uuid.UUID) ([]Project, error) {
+	rows, err := q.db.Query(ctx, listArchivedProjects, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Project
+	for rows.Next() {
+		var i Project
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.GroupID,
+			&i.Name,
+			&i.Color,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Icon,
+			&i.Slug,
+			&i.Estimation,
+			&i.IconMode,
+			&i.TreeMode,
+			&i.ArchivedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listProjects = `-- name: ListProjects :many
-SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode FROM projects WHERE workspace_id = $1 ORDER BY position, created_at, id
+SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at FROM projects WHERE workspace_id = $1 AND archived_at IS NULL ORDER BY position, created_at, id
 `
 
 // ListProjects: created_at/id break position ties — see ListColumns
 // (boards.sql); the sidebar orders itself by the same midpoint scheme.
+// The sidebar tree: archived projects (0086) are out of it — they open from the
+// «Архив проектов» list (ListArchivedProjects) only.
 func (q *Queries) ListProjects(ctx context.Context, workspaceID uuid.UUID) ([]Project, error) {
 	rows, err := q.db.Query(ctx, listProjects, workspaceID)
 	if err != nil {
@@ -159,6 +231,7 @@ func (q *Queries) ListProjects(ctx context.Context, workspaceID uuid.UUID) ([]Pr
 			&i.Estimation,
 			&i.IconMode,
 			&i.TreeMode,
+			&i.ArchivedAt,
 		); err != nil {
 			return nil, err
 		}
@@ -185,7 +258,7 @@ const moveProject = `-- name: MoveProject :one
 UPDATE projects
 SET group_id = $2, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at
 `
 
 type MoveProjectParams struct {
@@ -211,8 +284,24 @@ func (q *Queries) MoveProject(ctx context.Context, arg MoveProjectParams) (Proje
 		&i.Estimation,
 		&i.IconMode,
 		&i.TreeMode,
+		&i.ArchivedAt,
 	)
 	return i, err
+}
+
+const projectArchivedForBoard = `-- name: ProjectArchivedForBoard :one
+SELECT (p.archived_at IS NOT NULL)::boolean
+FROM boards b JOIN projects p ON p.id = b.project_id
+WHERE b.id = $1
+`
+
+// ProjectArchivedForBoard tells a write on a board (or a task on it) whether the
+// board's project is in the archive (0086) — read-only there.
+func (q *Queries) ProjectArchivedForBoard(ctx context.Context, id uuid.UUID) (bool, error) {
+	row := q.db.QueryRow(ctx, projectArchivedForBoard, id)
+	var column_1 bool
+	err := row.Scan(&column_1)
+	return column_1, err
 }
 
 const projectSlugExists = `-- name: ProjectSlugExists :one
@@ -311,7 +400,7 @@ const setProjectEstimation = `-- name: SetProjectEstimation :one
 UPDATE projects
 SET estimation = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at
 `
 
 type SetProjectEstimationParams struct {
@@ -338,6 +427,7 @@ func (q *Queries) SetProjectEstimation(ctx context.Context, arg SetProjectEstima
 		&i.Estimation,
 		&i.IconMode,
 		&i.TreeMode,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -360,7 +450,7 @@ const transferProject = `-- name: TransferProject :one
 UPDATE projects
 SET workspace_id = $2, group_id = NULL, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at
 `
 
 type TransferProjectParams struct {
@@ -389,6 +479,35 @@ func (q *Queries) TransferProject(ctx context.Context, arg TransferProjectParams
 		&i.Estimation,
 		&i.IconMode,
 		&i.TreeMode,
+		&i.ArchivedAt,
+	)
+	return i, err
+}
+
+const unarchiveProject = `-- name: UnarchiveProject :one
+UPDATE projects SET archived_at = NULL, updated_at = now()
+WHERE id = $1 AND archived_at IS NOT NULL
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at
+`
+
+func (q *Queries) UnarchiveProject(ctx context.Context, id uuid.UUID) (Project, error) {
+	row := q.db.QueryRow(ctx, unarchiveProject, id)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.GroupID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Icon,
+		&i.Slug,
+		&i.Estimation,
+		&i.IconMode,
+		&i.TreeMode,
+		&i.ArchivedAt,
 	)
 	return i, err
 }
@@ -397,7 +516,7 @@ const updateProject = `-- name: UpdateProject :one
 UPDATE projects
 SET name = $2, color = $3, icon = $4, group_id = $5, icon_mode = $6, tree_mode = $7, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode
+RETURNING id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode, archived_at
 `
 
 type UpdateProjectParams struct {
@@ -435,6 +554,7 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.Estimation,
 		&i.IconMode,
 		&i.TreeMode,
+		&i.ArchivedAt,
 	)
 	return i, err
 }

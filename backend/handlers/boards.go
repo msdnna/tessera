@@ -41,6 +41,10 @@ func (h *API) CreateBoard(c *gin.Context) {
 	if !h.requireMember(c, p.WorkspaceID) {
 		return
 	}
+	if p.ArchivedAt != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": errProjectArchived, "archived": true})
+		return
+	}
 	var req struct {
 		Name string `json:"name" binding:"required"`
 		// The view a new board opens in (#3017) — the inline row's Tab switches
@@ -310,7 +314,7 @@ func (h *API) UpdateBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	b, err := h.q.GetBoard(c, id)
@@ -380,7 +384,7 @@ func (h *API) DeleteBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	if _, err := h.q.SoftDeleteBoard(c, id); notFound(c, err) {
@@ -439,7 +443,7 @@ func (h *API) SetDoneColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	var req struct {
@@ -482,7 +486,7 @@ func (h *API) CreateColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, boardID) {
 		return
 	}
 	var req struct {
@@ -548,7 +552,7 @@ func (h *API) UpdateColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -590,7 +594,7 @@ func (h *API) MoveColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -666,7 +670,7 @@ func (h *API) DeleteColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -772,7 +776,7 @@ func (h *API) RestoreColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	var (

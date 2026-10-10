@@ -99,7 +99,7 @@ SELECT p.workspace_id
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
-WHERE t.id = $1 AND b.deleted_at IS NULL
+WHERE t.id = $1 AND b.deleted_at IS NULL AND t.deleted_at IS NULL
 `
 
 func (q *Queries) WorkspaceIDForTask(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {

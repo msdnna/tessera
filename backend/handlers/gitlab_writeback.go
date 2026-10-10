@@ -384,7 +384,13 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	// The task's board is soft-deleted (0078): hold the push — a retry, not a
 	// refusal. A restore lets it through on the next attempt; the purge takes the
 	// link, and the next attempt then gives up on "task no longer linked".
-	if t, terr := h.q.GetTask(ctx, w.TaskID); terr == nil {
+	// The same hold for a task in the trash (0086): its link survives the soft
+	// delete, and a push from the trash would reach GitLab for a task nobody
+	// can see. A restore lets it through; the purge takes the link.
+	if t, terr := h.q.GetTaskAny(ctx, w.TaskID); terr == nil {
+		if t.DeletedAt != nil {
+			return res, errors.New("task is deleted")
+		}
 		if b, berr := h.q.GetBoardAny(ctx, t.BoardID); berr == nil && b.DeletedAt != nil {
 			return res, errors.New("task board is deleted")
 		}

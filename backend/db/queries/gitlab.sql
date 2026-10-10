@@ -110,7 +110,10 @@ WHERE enabled
   AND sync_interval_sec > 0
   AND owner_user_id IS NOT NULL
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
-  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL);
+  -- A binding on a deleted board (0078) or in an archived project (0086 — read
+  -- only) sits the unattended sync out.
+  AND EXISTS (SELECT 1 FROM boards b JOIN projects p ON p.id = b.project_id
+              WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL AND p.archived_at IS NULL);
 
 -- ListDueSyncIntegrations returns integrations due for unattended sync regardless
 -- of an owner credential — used when an instance service token drives the sync.
@@ -119,7 +122,10 @@ SELECT * FROM gitlab_integrations
 WHERE enabled
   AND sync_interval_sec > 0
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
-  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL);
+  -- A binding on a deleted board (0078) or in an archived project (0086 — read
+  -- only) sits the unattended sync out.
+  AND EXISTS (SELECT 1 FROM boards b JOIN projects p ON p.id = b.project_id
+              WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL AND p.archived_at IS NULL);
 
 -- ── Webhook (near-realtime trigger, #2594) ─────────────────
 

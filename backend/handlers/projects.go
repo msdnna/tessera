@@ -300,7 +300,13 @@ func (h *API) ListProjects(c *gin.Context) {
 	if !ok || !h.requireMember(c, wsID) {
 		return
 	}
-	projects, err := h.q.ListProjects(c, wsID)
+	// ?archived=1 is the «Архив проектов» list (0086); the default is the
+	// sidebar tree, which leaves archived projects out.
+	list := h.q.ListProjects
+	if c.Query("archived") == "1" {
+		list = h.q.ListArchivedProjects
+	}
+	projects, err := list(c, wsID)
 	if err != nil {
 		fail(c, err)
 		return

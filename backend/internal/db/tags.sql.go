@@ -253,7 +253,7 @@ func (q *Queries) ListTags(ctx context.Context, projectID uuid.UUID) ([]Tag, err
 const listTagsWithCounts = `-- name: ListTagsWithCounts :many
 SELECT g.id, g.workspace_id, g.name, g.color, g.created_at, g.project_id, g.source,
        (SELECT COUNT(*) FROM task_tags tt
-        JOIN tasks t ON t.id = tt.task_id AND t.archived_at IS NULL
+        JOIN tasks t ON t.id = tt.task_id AND t.archived_at IS NULL AND t.deleted_at IS NULL
         JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
         WHERE tt.tag_id = g.id) AS task_count
 FROM tags g
@@ -274,7 +274,7 @@ type ListTagsWithCountsRow struct {
 
 // ListTagsWithCounts is ListTags with the number of live tasks wearing each tag
 // — the «Задачи» column of the project window's tag table (#2990). Archived
-// tasks and tasks of deleted boards are not counted, like everywhere else a
+// tasks, tasks in the trash and tasks of deleted boards are not counted, like everywhere else a
 // figure is shown.
 func (q *Queries) ListTagsWithCounts(ctx context.Context, projectID uuid.UUID) ([]ListTagsWithCountsRow, error) {
 	rows, err := q.db.Query(ctx, listTagsWithCounts, projectID)

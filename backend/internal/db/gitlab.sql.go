@@ -874,7 +874,10 @@ WHERE enabled
   AND sync_interval_sec > 0
   AND owner_user_id IS NOT NULL
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
-  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL)
+  -- A binding on a deleted board (0078) or in an archived project (0086 — read
+  -- only) sits the unattended sync out.
+  AND EXISTS (SELECT 1 FROM boards b JOIN projects p ON p.id = b.project_id
+              WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL AND p.archived_at IS NULL)
 `
 
 // ListAutoSyncIntegrations returns integrations due for unattended sync: enabled,
@@ -931,7 +934,10 @@ SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_a
 WHERE enabled
   AND sync_interval_sec > 0
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
-  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL)
+  -- A binding on a deleted board (0078) or in an archived project (0086 — read
+  -- only) sits the unattended sync out.
+  AND EXISTS (SELECT 1 FROM boards b JOIN projects p ON p.id = b.project_id
+              WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL AND p.archived_at IS NULL)
 `
 
 // ListDueSyncIntegrations returns integrations due for unattended sync regardless
@@ -1398,7 +1404,7 @@ const syncUpdateTask = `-- name: SyncUpdateTask :one
 UPDATE tasks
 SET title = $2, description = $3, priority = $4, column_id = $5, completed_at = $6, board_id = $7, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by
 `
 
 type SyncUpdateTaskParams struct {
@@ -1448,6 +1454,8 @@ func (q *Queries) SyncUpdateTask(ctx context.Context, arg SyncUpdateTaskParams) 
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }

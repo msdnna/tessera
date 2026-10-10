@@ -164,7 +164,7 @@ SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date, m.s
        COALESCE(SUM(t.estimate) FILTER (WHERE t.completed_at IS NOT NULL), 0)::float8 AS done_estimate
 FROM milestones m
 LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
-LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL
+LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL AND t.deleted_at IS NULL
     AND EXISTS (SELECT 1 FROM boards tb WHERE tb.id = t.board_id AND tb.deleted_at IS NULL)
 WHERE m.project_id = $1
 GROUP BY m.id, l.gl_web_url, l.gl_global_id, l.gl_iid
@@ -202,7 +202,7 @@ type ListMilestonesRow struct {
 // Each row also carries the project-level rollups the «Проект» window and the
 // sidebar show next to a stage (#2992): task_count / done_count and Σ estimate
 // (total and done), counted the way ListWorkspaceMilestones counts them —
-// archived tasks and tasks of deleted boards excluded.
+// archived tasks, tasks in the trash and tasks of deleted boards excluded.
 func (q *Queries) ListMilestones(ctx context.Context, projectID uuid.UUID) ([]ListMilestonesRow, error) {
 	rows, err := q.db.Query(ctx, listMilestones, projectID)
 	if err != nil {
@@ -256,7 +256,7 @@ SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date,
 FROM milestones m
 JOIN projects p ON p.id = m.project_id
 LEFT JOIN gitlab_milestone_links l ON l.milestone_id = m.id
-LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL
+LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL AND t.deleted_at IS NULL
     AND EXISTS (SELECT 1 FROM boards tb WHERE tb.id = t.board_id AND tb.deleted_at IS NULL)
 WHERE p.workspace_id = $1
 GROUP BY m.id, l.gl_web_url, l.gl_global_id, p.name, p.slug, p.id
@@ -333,7 +333,7 @@ func (q *Queries) ListWorkspaceMilestones(ctx context.Context, workspaceID uuid.
 
 const milestoneEventTasks = `-- name: MilestoneEventTasks :many
 SELECT t.id, t.estimate, t.completed_at, t.created_at,
-       (t.archived_at IS NOT NULL OR b.deleted_at IS NOT NULL)::boolean AS gone
+       (t.archived_at IS NOT NULL OR t.deleted_at IS NOT NULL OR b.deleted_at IS NOT NULL)::boolean AS gone
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 WHERE t.id = ANY($1::uuid[])
@@ -458,7 +458,7 @@ SELECT ta.task_id, u.id AS user_id, u.name, u.email
 FROM task_assignees ta
 JOIN tasks t ON t.id = ta.task_id
 JOIN users u ON u.id = ta.user_id
-WHERE t.milestone_id = $1 AND t.archived_at IS NULL
+WHERE t.milestone_id = $1 AND t.archived_at IS NULL AND t.deleted_at IS NULL
 ORDER BY u.name
 `
 
@@ -504,7 +504,7 @@ SELECT t.id, t.number, t.title, t.parent_id, t.board_id, t.column_id, t.priority
 FROM tasks t
 JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
 JOIN board_columns c ON c.id = t.column_id
-WHERE t.milestone_id = $1 AND t.archived_at IS NULL
+WHERE t.milestone_id = $1 AND t.archived_at IS NULL AND t.deleted_at IS NULL
 ORDER BY c.position, t.position
 `
 
@@ -606,7 +606,7 @@ SELECT m.id, m.title, m.slug, m.start_date, m.due_date, m.closed_at,
        COUNT(t.id) FILTER (WHERE t.completed_at IS NOT NULL) AS done_count,
        COUNT(t.id) AS task_count
 FROM milestones m
-LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL
+LEFT JOIN tasks t ON t.milestone_id = m.id AND t.archived_at IS NULL AND t.deleted_at IS NULL
     AND EXISTS (SELECT 1 FROM boards tb WHERE tb.id = t.board_id AND tb.deleted_at IS NULL)
 WHERE m.project_id = $1 AND m.id <> $2 AND m.state = 'closed'
   AND COALESCE(m.closed_at, m.due_date, m.updated_at) <= $3::timestamptz

@@ -5,14 +5,16 @@ RETURNING *;
 
 -- name: ListNotifications :many
 -- A task on a soft-deleted board (0078) keeps its notification text — that was
--- written at send time — but loses the link: the board would answer 404.
+-- written at send time — but loses the link: the board would answer 404. The
+-- same for a task in the trash (0086). (The «deleted» notification itself has
+-- no task_id: msgDeleted carries the board in its payload.)
 SELECT
     n.*,
     t.number   AS task_number,
     t.board_id AS task_board_id
 FROM notifications n
-LEFT JOIN boards nb ON nb.id = (SELECT board_id FROM tasks WHERE id = n.task_id) AND nb.deleted_at IS NULL
-LEFT JOIN tasks t ON t.id = n.task_id AND nb.id IS NOT NULL
+LEFT JOIN boards nb ON nb.id = (SELECT board_id FROM tasks WHERE id = n.task_id AND deleted_at IS NULL) AND nb.deleted_at IS NULL
+LEFT JOIN tasks t ON t.id = n.task_id AND nb.id IS NOT NULL AND t.deleted_at IS NULL
 WHERE n.user_id = $1
 ORDER BY n.created_at DESC
 LIMIT 50;

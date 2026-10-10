@@ -23,6 +23,7 @@ JOIN board_columns bc ON bc.id = t.column_id
 WHERE t.id = ANY($1::uuid[])
   AND p.workspace_id = $2
   AND b.deleted_at IS NULL
+  AND t.deleted_at IS NULL
 `
 
 type InboxTaskChipsParams struct {
@@ -90,6 +91,7 @@ FROM boards b
 JOIN projects p ON p.id = b.project_id
 WHERE p.workspace_id = $1
   AND b.deleted_at IS NULL
+  AND p.archived_at IS NULL
   AND (b.name ILIKE '%' || $2 || '%' OR p.name ILIKE '%' || $2 || '%')
 ORDER BY (b.name ILIKE '%' || $2 || '%') DESC, p.name, b.position
 LIMIT 10
@@ -146,6 +148,7 @@ const searchDocuments = `-- name: SearchDocuments :many
 SELECT id, title, slug
 FROM documents
 WHERE workspace_id = $1
+  AND deleted_at IS NULL
   AND title ILIKE '%' || $2 || '%'
 ORDER BY updated_at DESC
 LIMIT 26
@@ -241,7 +244,9 @@ JOIN board_columns bc ON bc.id = t.column_id
 LEFT JOIN milestones m ON m.id = t.milestone_id
 WHERE p.workspace_id = $1
   AND b.deleted_at IS NULL
+  AND p.archived_at IS NULL
   AND t.archived_at IS NULL
+  AND t.deleted_at IS NULL
   AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%'
        OR t.number = $3::bigint)
 ORDER BY (t.number = $3::bigint) DESC, t.number DESC

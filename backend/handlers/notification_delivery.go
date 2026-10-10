@@ -277,11 +277,16 @@ func (h *API) deliveryStillInReach(ctx context.Context, n db.Notification) error
 // An unreadable task or board answers yes: the caller's job is to refuse a
 // delivery that would leak, not one whose lookup failed. A board that reads
 // fine but is soft-deleted (0078) answers no — the task is in the trash, and a
-// held delivery must not render its title after the user threw it away.
+// held delivery must not render its title after the user threw it away. A task
+// in the task trash (0086) answers no for the same reason; GetTaskAny, because
+// GetTask would hide it and an unreadable task answers yes.
 func (h *API) taskStillInReach(ctx context.Context, userID, taskID uuid.UUID) bool {
-	t, err := h.q.GetTask(ctx, taskID)
+	t, err := h.q.GetTaskAny(ctx, taskID)
 	if err != nil {
 		return true
+	}
+	if t.DeletedAt != nil {
+		return false
 	}
 	if b, berr := h.q.GetBoardAny(ctx, t.BoardID); berr == nil && b.DeletedAt != nil {
 		return false

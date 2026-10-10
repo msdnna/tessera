@@ -474,6 +474,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/workspaces/:id/documents", rh.CreateDocument)
 			protected.GET("/workspaces/:id/documents", rh.ListDocuments)
 			protected.GET("/workspaces/:id/documents/by-slug/:slug", rh.ResolveDocumentBySlug)
+			// The documents' trash (0086).
+			protected.GET("/workspaces/:id/documents/trash", rh.ListDeletedDocuments)
 
 			protected.PATCH("/groups/:id", rh.UpdateProjectGroup)
 			protected.PATCH("/groups/:id/move", rh.MoveProjectGroup)
@@ -485,6 +487,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/projects/:id/move", rh.MoveProject)
 			protected.POST("/projects/:id/transfer", rh.TransferProject)
 			protected.DELETE("/projects/:id", rh.DeleteProject)
+			// Archive (0086): reversible, no expiry; the list is ?archived=1 above.
+			protected.POST("/projects/:id/archive", rh.ArchiveProject)
+			protected.POST("/projects/:id/restore", rh.UnarchiveProject)
 			protected.POST("/projects/:id/boards", rh.CreateBoard)
 			protected.GET("/projects/:id/boards", rh.ListBoards)
 
@@ -499,6 +504,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/boards/:id/tasks", rh.ListBoardTasks)
 			protected.GET("/boards/:id/subtasks", rh.ListBoardSubtasks)
 			protected.GET("/boards/:id/archive", rh.ListBoardArchived)
+			protected.GET("/boards/:id/trash", rh.ListBoardTrash)
 			protected.GET("/boards/:id/dependencies", rh.BoardDependencies)
 			protected.GET("/boards/:id/views", rh.ListBoardViews)
 			protected.POST("/boards/:id/views", rh.SaveBoardView)
@@ -524,6 +530,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/tasks/:id/archive", rh.ArchiveTask)
 			protected.PATCH("/tasks/:id/restore", rh.RestoreTask)
 			protected.DELETE("/tasks/:id", rh.DeleteTask)
+			// The trash (0086): POST …/restore is the undo of DELETE — not the
+			// archive's PATCH …/restore above — and …/purge is «Удалить навсегда».
+			protected.POST("/tasks/:id/restore", rh.RestoreDeletedTask)
+			protected.DELETE("/tasks/:id/purge", rh.PurgeDeletedTask)
 			protected.POST("/tasks/:id/tags", rh.AddTaskTag)
 			protected.DELETE("/tasks/:id/tags/:tagId", rh.RemoveTaskTag)
 			protected.POST("/tasks/:id/assignees", rh.AddTaskAssignee)
@@ -623,6 +633,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/workspaces/:id/documents/import", rh.ImportDocument)
 			protected.GET("/documents/:id/export", rh.ExportDocument)
 			protected.DELETE("/documents/:id", rh.DeleteDocument)
+			protected.POST("/documents/:id/restore", rh.RestoreDeletedDocument)
+			protected.DELETE("/documents/:id/purge", rh.PurgeDeletedDocument)
 
 			// Block-anchored annotations and their threads (#2730). The thread
 			// endpoints sit on their own prefix rather than under the document:
