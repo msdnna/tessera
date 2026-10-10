@@ -241,7 +241,7 @@ func (h *API) performChildWriteback(ctx context.Context, w db.GitlabWriteback) (
 	var res writebackResult
 	integ, err := h.q.GetGitlabIntegrationByID(ctx, w.IntegrationID)
 	if err != nil {
-		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))
+		return res, permanentLookup("integration gone", err)
 	}
 	res.wsID = integ.WorkspaceID
 	wb := parseWriteback(integ.Writeback)
