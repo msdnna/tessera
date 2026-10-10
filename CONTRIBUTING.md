@@ -12,7 +12,7 @@
 
 | Каталог     | Компонент                                                    |
 |-------------|-------------------------------------------------------------|
-| `backend/`  | Go 1.25 + gin + PostgreSQL 17 (sqlc, pgx/v5, golang-migrate) |
+| `backend/`  | Go 1.26 + gin + PostgreSQL 17 (sqlc, pgx/v5, golang-migrate) |
 | `frontend/` | Vue 3 + Vite + Naive UI + Pinia (Yarn 4 через Corepack)      |
 | `android/`  | Kotlin + Jetpack Compose (online-first)                     |
 | `desktop/`  | Tauri v2 (Rust-оболочка вокруг того же Vue-фронтенда)        |
@@ -20,7 +20,7 @@
 
 ## Требования
 
-- **Go 1.25.x** (в Makefile — переменная `GO`, по умолчанию `go1.25.14`; в CI — `go`).
+- **Go 1.26.x** (в Makefile — переменная `GO`, по умолчанию `go1.26.9`; в CI — `go`).
 - **Node 22+** и **Corepack** (Yarn 4 — только `corepack yarn ...`, не плейн `yarn`).
 - **Docker** + Docker Compose (Postgres для dev/тестов).
 - **JDK 21** + Android SDK (compileSdk 37) — для `android/`.

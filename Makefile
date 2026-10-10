@@ -1,4 +1,4 @@
-GO ?= go1.25.14
+GO ?= go1.26.9
 COMPOSE ?= docker compose
 
 .PHONY: help
