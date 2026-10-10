@@ -78,7 +78,12 @@ import {
   chartConfig,
   CHART_DEFAULTS,
 } from '@/utils/boardViews'
-import { withoutArchiveQuery, isArchiveQuery } from '@/utils/boardScope'
+import {
+  withoutArchiveQuery,
+  isArchiveQuery,
+  isTrashQuery,
+  withoutTrashQuery,
+} from '@/utils/boardScope'
 import { columnWidth, BOARD_GAP } from '@/utils/boardLayout'
 import {
   BACKLOG_SCOPE,
@@ -100,6 +105,7 @@ import { humanizeError } from '@/utils/errors'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { usePaletteStore } from '@/stores/palette'
 import { useUndoStore } from '@/stores/undo'
+import { useProjectArchive } from '@/composables/useProjectArchive'
 import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
 import { storeToRefs } from 'pinia'
@@ -108,6 +114,7 @@ import TaskModal from './TaskModal.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import ColumnHeader from './ColumnHeader.vue'
 import BoardCustomizePanel from './BoardCustomizePanel.vue'
+import BoardTrashPanel from './BoardTrashPanel.vue'
 import ViewsSection from './boardViews/ViewsSection.vue'
 import ViewChip from './boardViews/ViewChip.vue'
 import BoardLayoutSwitch from './BoardLayoutSwitch.vue'
@@ -224,7 +231,24 @@ const chartCfg = reactive({ ...CHART_DEFAULTS })
 // The «Вид доски» panel (#2986) — docked right of the board in every view.
 const customizeOpen = ref(false)
 const customizePanel = ref(null)
-watch([customizeOpen, isMobile], ([on, mobile]) => (boardViewStore.panelOpen = on && !mobile))
+// The board's trash (#3004): a DockPanel in the same slot, opened by ?trash=1
+// («⋯ Действия доски» → «Корзина», or a toast's «В корзину», #3120). One panel
+// at a time — opening either closes the other.
+const trashOpen = computed({
+  get: () => isTrashQuery(route.query),
+  set: (on) => {
+    if (!on && isTrashQuery(route.query)) router.replace({ query: withoutTrashQuery(route.query) })
+  },
+})
+const trashToken = ref(0)
+watch(trashOpen, (on) => on && (customizeOpen.value = false))
+watch(customizeOpen, (on) => on && (trashOpen.value = false))
+watch(
+  [customizeOpen, trashOpen, isMobile],
+  ([on, trash, mobile]) => (boardViewStore.panelOpen = (on || trash) && !mobile),
+  // ?trash=1 can be in the address the board opens with (the toast's link).
+  { immediate: true },
+)
 // Board-name mirror for the customize panel's rename input (kept in sync with the
 // loaded board; committed via boards.update on blur/enter).
 const boardName = ref('')
@@ -238,7 +262,7 @@ watch(board, (b) => (boardName.value = b?.name || ''))
 // the name input commits on blur, so any path that leaves a stale value behind
 // would otherwise write it to the live board.
 async function updateBoard(patch) {
-  if (!board.value || archivedMode.value) return
+  if (!board.value || readOnly.value) return
   const name = (patch.name ?? board.value.name ?? '').trim()
   if (!name) {
     boardName.value = board.value.name
@@ -467,6 +491,20 @@ const groupTags = computed(() =>
 // Archive scope: ?archived=1 shows the board's archived tasks read-only (no DnD, no
 // create, no inline edits) with a Restore action. Reuses all board filters/grouping.
 const archivedMode = computed(() => isArchiveQuery(route.query))
+// An archived project (#3005) opens its boards on view only: everything the
+// archive scope locks is locked here too, but the cards are live ones — no
+// «Вернуть из архива» on them. `readOnly` is the gate for both.
+// The board's own flag is what the server said at load; the tree's two lists
+// follow an archive or a restore made since (here, in the sidebar or by a
+// colleague — project.archived / .restored re-read them).
+const projectArchived = computed(() => {
+  const id = board.value?.project_id
+  if (!id) return false
+  if (wsStore.archivedProjects.some((p) => p.id === id)) return true
+  if (wsStore.projects.some((p) => p.id === id)) return false
+  return !!board.value?.project_archived
+})
+const readOnly = computed(() => archivedMode.value || projectArchived.value)
 // Is the «+ колонка» tile part of this row? Status grouping only (tag/milestone lanes
 // are not columns to create), and never in the archive — the tile would create a live
 // column on the board from a read-only view. Asked in two places that must agree: the
@@ -474,13 +512,13 @@ const archivedMode = computed(() => isArchiveQuery(route.query))
 // separately, and when the archive gate was added to the template the arithmetic kept
 // reserving the tile's 232px there — every column in an archived board came out that
 // much narrower between them, with a dead band along the right edge.
-const showAddColumn = computed(() => groupMode.value === 'status' && !archivedMode.value)
+const showAddColumn = computed(() => groupMode.value === 'status' && !readOnly.value)
 // The board has columns but not one task yet (#3112, CatalogE «Пустая доска»):
 // a card over the lanes offers the first one. Not while one is being typed.
 const noTasks = computed(
   () =>
     !loading.value &&
-    !archivedMode.value &&
+    !readOnly.value &&
     !isMobile.value &&
     layout.value === 'board' &&
     displayColumns.value.length > 0 &&
@@ -499,7 +537,7 @@ function addFirstTask() {
 // Asked in two places that must agree: the column draggable's `:disabled`, and the
 // `.col-drag` handle class on the collapsed strip — a collapsed column renders no
 // header, so the strip is the only element left that can carry the handle.
-const canReorderColumns = computed(() => groupMode.value === 'status' && !archivedMode.value)
+const canReorderColumns = computed(() => groupMode.value === 'status' && !readOnly.value)
 function exitArchive() {
   router.replace({ query: withoutArchiveQuery(route.query) })
 }
@@ -1813,7 +1851,7 @@ const hoveredColKey = ref(null)
 const groupCtlEl = ref(null)
 
 const kanbanOn = () => !!board.value && layout.value === 'board' && !isMobile.value
-const editable = () => !!board.value && !archivedMode.value
+const editable = () => !!board.value && !readOnly.value
 
 function navCols() {
   return colModel.value.map((d) => ({
@@ -2398,6 +2436,12 @@ useRealtime((ev) => {
   // decides whose actions show and folds bursts, #3117).
   if (ev.type === 'task.created' || ev.type === 'task.moved' || ev.type === 'task.deleted')
     pushActivity(ev)
+  // The trash panel re-reads its list when a task of this board goes in or out.
+  if (
+    (ev.type === 'task.deleted' || ev.type === 'task.restored' || ev.type === 'task.purged') &&
+    ev.data?.board_id === props.boardId
+  )
+    trashToken.value++
   // A drag holds the board still (SortableJS needs a stable DOM), so the event
   // cannot be acted on now — but it must not be forgotten either: remember what it
   // would have cost and fetch that once the card lands (#2932).
@@ -2688,6 +2732,16 @@ watch([() => route.query.milestone, () => route.query.archived], ([ms]) => {
   load(props.boardId)
 })
 
+// «Восстановить» on the archived-project chip (#3005): the project goes back
+// into the tree and the board becomes writable again.
+const { restoreProject } = useProjectArchive()
+async function restoreArchivedProject() {
+  const id = board.value?.project_id
+  const p = id && wsStore.projectById(id)
+  if (!p) return
+  if (await restoreProject(p)) await load(props.boardId, { silent: true })
+}
+
 // Restore a task from the archive view (the only mutation allowed there).
 async function restoreFromArchive(taskId) {
   try {
@@ -2748,6 +2802,25 @@ async function restoreFromArchive(taskId) {
                 @click.stop="exitArchive"
               >
                 ×
+              </button>
+            </span>
+            <!-- An archived project (#3005): the board is on view only; owners
+                 and admins can put the project back from here. -->
+            <span
+              v-if="projectArchived"
+              class="facet facet-archive"
+              :title="t('project.archive.chipTitle')"
+              data-testid="project-archived-chip"
+            >
+              <n-icon class="facet-ic" :component="ArchiveOutline" :size="13" />
+              {{ t('project.archive.chip') }}
+              <button
+                v-if="wsStore.canManage"
+                class="facet-restore"
+                data-testid="project-archived-restore"
+                @click.stop="restoreArchivedProject"
+              >
+                {{ t('project.archive.restore') }}
               </button>
             </span>
 
@@ -2994,7 +3067,9 @@ async function restoreFromArchive(taskId) {
                 ref="actionsBtnEl"
                 type="button"
                 class="bar-ic"
-                :class="{ on: actionsOpen || boardActions.isArchive.value }"
+                :class="{
+                  on: actionsOpen || boardActions.isArchive.value || boardActions.isTrash.value,
+                }"
                 :aria-label="t('board.actions.more')"
                 aria-haspopup="menu"
                 :aria-expanded="actionsOpen"
@@ -3026,7 +3101,7 @@ async function restoreFromArchive(taskId) {
       <StageStrip
         v-if="stripStage && !stripHidden && !archivedMode"
         :stage="stripStage"
-        :project-slug="wsStore.projects.find((p) => p.id === board.project_id)?.slug || ''"
+        :project-slug="wsStore.projectById(board.project_id)?.slug || ''"
         :open="stripOpen"
         :estimation="wsStore.estimationFor(board.project_id)"
         :mobile="isMobile"
@@ -3058,7 +3133,7 @@ async function restoreFromArchive(taskId) {
             :is-folded="isColCollapsed"
             :can-reorder="canSortCards && groupMode === 'status'"
             :actions="listActions"
-            :readonly="archivedMode"
+            :readonly="readOnly"
             @open="openTask"
             @changed="onChanged"
             @restore="restoreFromArchive"
@@ -3073,7 +3148,7 @@ async function restoreFromArchive(taskId) {
             :done-column-id="doneColumnId"
             :mode="calendarCfg.mode"
             :actions="calendarActions"
-            :readonly="archivedMode"
+            :readonly="readOnly"
             @open="openTask"
             @changed="onChanged"
             @restore="restoreFromArchive"
@@ -3097,7 +3172,7 @@ async function restoreFromArchive(taskId) {
             :subtasks-by-parent="filteredSubtasksByParent"
             :milestones="milestonesList"
             :chart="chartCfg"
-            :readonly="archivedMode"
+            :readonly="readOnly"
             @open="openTask"
             @changed="onChanged"
             @restore="restoreFromArchive"
@@ -3123,7 +3198,7 @@ async function restoreFromArchive(taskId) {
             :milestones="milestonesList"
             :deps-token="depsToken"
             :chart="chartCfg"
-            :readonly="archivedMode"
+            :readonly="readOnly"
             @open="openTask"
             @changed="onChanged"
             @restore="restoreFromArchive"
@@ -3139,7 +3214,7 @@ async function restoreFromArchive(taskId) {
             :urgent-window-days="matrixCfg.dueDays"
             :important-priority="matrixCfg.minPriority"
             :actions="listActions"
-            :readonly="archivedMode"
+            :readonly="readOnly"
             @open="openTask"
             @changed="onChanged"
             @create="createInQuadrant"
@@ -3219,7 +3294,7 @@ async function restoreFromArchive(taskId) {
                     :total="colCounts(dcol).total"
                     :estimate="columnEstimate(dcol)"
                     :editable="groupMode === 'status'"
-                    :readonly="archivedMode"
+                    :readonly="readOnly"
                     :is-done="groupMode === 'status' && dcol.key === doneColumnId"
                     :first="groupMode === 'status' && dcol.key === (colModel[0] && colModel[0].key)"
                     :collapsed="isColCollapsed(dcol)"
@@ -3247,7 +3322,7 @@ async function restoreFromArchive(taskId) {
                     :fallback-on-body="true"
                     filter=".add-sub, .sub-add-input"
                     :prevent-on-filter="false"
-                    :disabled="archivedMode"
+                    :disabled="readOnly"
                     :sort="canSortCards"
                     :animation="150"
                     :delay="160"
@@ -3281,7 +3356,7 @@ async function restoreFromArchive(taskId) {
                           :subtasks-expanded="subtasksExpanded"
                           :sorted="composerSorted"
                           :dragging="draggingCard"
-                          :readonly="archivedMode"
+                          :readonly="readOnly"
                           :selected="isFocused(dcol, element.id)"
                           @open="(id) => onCardOpen(dcol, id)"
                           @changed="onChanged"
@@ -3291,7 +3366,7 @@ async function restoreFromArchive(taskId) {
                     </template>
                   </draggable>
 
-                  <template v-if="!archivedMode">
+                  <template v-if="!readOnly">
                     <div
                       v-if="addingInColumn === dcol.key"
                       class="add-task-input"
@@ -3406,7 +3481,7 @@ async function restoreFromArchive(taskId) {
           v-model:auto-collapse-empty="autoCollapseEmpty"
           v-model:subtasks-expanded="subtasksExpanded"
           :layout="layout"
-          :readonly="archivedMode"
+          :readonly="readOnly"
           :field-vis="fieldVis"
           :facet-chips="facetChips"
           :filters="filters"
@@ -3440,6 +3515,14 @@ async function restoreFromArchive(taskId) {
             />
           </template>
         </BoardCustomizePanel>
+        <BoardTrashPanel
+          v-model:show="trashOpen"
+          :board-id="props.boardId"
+          :reload-token="trashToken"
+          :highlight="route.query.hl || null"
+          :readonly="projectArchived"
+          @restored="load(props.boardId, { silent: true })"
+        />
       </div>
     </div>
   </n-spin>
@@ -3451,7 +3534,7 @@ async function restoreFromArchive(taskId) {
     :show="showTaskModal"
     :task-id="selectedTaskId"
     :board-top-tasks="allTasks"
-    :readonly="archivedMode"
+    :readonly="readOnly"
     :nav="taskNav"
     @update:show="(v) => v || closeTask()"
     @changed="onChanged"
@@ -3693,6 +3776,22 @@ async function restoreFromArchive(taskId) {
 .facet-x:hover {
   color: var(--t-text1);
   background: var(--t-hover);
+}
+.facet-restore {
+  margin-left: 4px;
+  padding: 0 6px;
+  height: 18px;
+  border: 0;
+  border-radius: 5px;
+  background: color-mix(in srgb, currentColor 16%, transparent);
+  color: inherit;
+  font: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.facet-restore:hover {
+  background: color-mix(in srgb, currentColor 26%, transparent);
 }
 .facet-archive .facet-x {
   color: #b5792a;

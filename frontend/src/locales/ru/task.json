@@ -10,9 +10,7 @@
     "delete": "Удалить",
     "addSubtask": "Создать подзадачу",
     "archived": "Задача «{title}» в архиве",
-    "archivedUndone": "Задача «{title}» возвращена",
-    "deleteArmed": "Точно удалить задачу?",
-    "deleteArmedSub": "Без возврата — вместе с её файлами"
+    "archivedUndone": "Задача «{title}» возвращена"
   },
   "confirm": {
     "delete": "Удалить безвозвратно? Это действие необратимо.",
@@ -514,7 +512,9 @@
     "milestone": "привязал(а) к этапу",
     "milestoneNamed": "привязал(а) к этапу «{name}»",
     "milestoneRemoved": "отвязал(а) от этапа",
-    "milestoneRemovedNamed": "отвязал(а) от этапа «{name}»"
+    "milestoneRemovedNamed": "отвязал(а) от этапа «{name}»",
+    "trashed": "удалил(а) в корзину",
+    "untrashed": "вернул(а) из корзины"
   },
   "ref": {
     "notFound": "Задача #{number} не найдена"
@@ -535,5 +535,11 @@
   "arm": {
     "delete": "Удалить?",
     "unlink": "Убрать?"
+  },
+  "trash": {
+    "deleted": "Задача #{number} в корзине",
+    "deletedUntitled": "Задача «{title}» в корзине",
+    "restored": "Задача #{number} возвращена",
+    "restoredUntitled": "Задача «{title}» возвращена"
   }
 }

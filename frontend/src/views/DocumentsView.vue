@@ -34,6 +34,8 @@ import DocLinks from '@/components/documents/DocLinks.vue'
 import DocTemplates from '@/components/documents/DocTemplates.vue'
 import DocToc from '@/components/documents/DocToc.vue'
 import DocTree from '@/components/documents/DocTree.vue'
+import DocTrash from '@/components/documents/DocTrash.vue'
+import { useUndoStore } from '@/stores/undo'
 import ActionMenu from '@/components/kit/ActionMenu.vue'
 import { fileToTemplate } from '@/utils/docImport'
 import {
@@ -960,9 +962,9 @@ async function rename() {
 }
 
 // The document's «⋯» menu (v2, #3106): nested document, the children, save as
-// template, export — and deletion as the menu's two-step item instead of a
-// dialog: a document is deleted for good (no trash yet — #3006), so the first
-// press arms it and names the cost, the second deletes.
+// template, export — and «Удалить», which sends the document (with its nested
+// ones) to the trash at once and offers the undo in a toast (#3006): the trash
+// keeps it 30 days, «Корзина» at the foot of the tree brings it back.
 const actionsOpen = ref(false)
 const actionsAnchor = ref(null)
 const removing = ref(false)
@@ -999,12 +1001,6 @@ const docActions = computed(() => {
     label: t('documents.view.action.remove'),
     icon: TrashOutline,
     danger: true,
-    confirm: {
-      title: t('documents.view.remove.title'),
-      sub: childCount.value
-        ? t('documents.view.remove.withChildren', { count: childCount.value })
-        : t('documents.view.remove.single'),
-    },
   }
   if (removing.value) remove.busy = true
   else if (removeFailed.value)
@@ -1021,12 +1017,25 @@ async function onDocAction(key) {
   else if (key === 'remove') await remove()
 }
 
+const undo = useUndoStore()
 async function remove() {
   if (!selected.value?.id) return
+  const doc = { id: selected.value.id, title: selected.value.title || t('documents.view.untitled') }
   removing.value = true
   removeFailed.value = ''
   try {
-    await docsApi.remove(selected.value.id, childCount.value > 0)
+    await docsApi.remove(doc.id, childCount.value > 0)
+    undo.push({
+      icon: 'trash',
+      text: () => t('documents.trash.deleted', { title: doc.title }),
+      doneText: () => t('documents.trash.restored', { title: doc.title }),
+      undo: async () => {
+        await docsApi.untrash(doc.id)
+        await loadList()
+        trashToken.value++
+      },
+    })
+    trashToken.value++
     actionsOpen.value = false
     cancelSave()
     closeRoom()
@@ -1193,6 +1202,20 @@ function toggleTree() {
 watch(showTree, (on) => {
   if (on) treeFloating.value = false
 })
+// The documents' trash (#3006): /documents?trash=1 — from the tree's «Корзина»
+// row, or the grid head's button where there is no tree (a phone).
+const trashOpen = computed(() => route.query.trash === '1' && !route.params.slug)
+const trashToken = ref(0)
+async function openTrash() {
+  treeFloating.value = false
+  if (selected.value) await backToGrid()
+  if (trashOpen.value) return closeTrash()
+  router.push({ path: '/documents', query: { trash: '1' } })
+}
+function closeTrash() {
+  router.replace('/documents')
+}
+
 async function openFromTree(doc) {
   treeFloating.value = false
   if (doc?.id === selected.value?.id) return
@@ -1428,15 +1451,25 @@ watch(
       :ws-id="wsStore.currentId || ''"
       :ws-name="wsLabel"
       :templates-count="tplLoaded ? galleryCards.length : 0"
+      :trash-active="trashOpen"
       @open="openFromTree"
       @create="createFromTree"
       @templates="openTemplates"
       @close="treeFloating = false"
+      @trash="openTrash"
     />
 
     <div class="docs-main">
+      <!-- The trash (#3006): deleted documents with «Вернуть» / «Удалить навсегда». -->
+      <doc-trash
+        v-if="!selected && trashOpen"
+        :ws-id="wsStore.currentId || ''"
+        :reload-token="trashToken"
+        @restored="loadList"
+        @close="closeTrash"
+      />
       <!-- Grid: documents as tiles with a preview, no editing surface. -->
-      <template v-if="!selected">
+      <template v-else-if="!selected">
         <div class="dhead">
           <button
             v-if="!showTree && !narrow"
@@ -1491,6 +1524,16 @@ watch(
               :accept="importAccept()"
               @change="onImportPicked"
             />
+            <button
+              v-if="narrow"
+              type="button"
+              class="dh-btn"
+              data-testid="doc-trash-open"
+              :title="$t('documents.tree.trash')"
+              @click="openTrash"
+            >
+              <n-icon :component="TrashOutline" :size="15" />
+            </button>
             <button type="button" class="dh-btn" data-testid="doc-templates" @click="openTemplates">
               <n-icon :component="GridOutline" :size="15" />
               <span class="dh-btn-l">{{ $t('documents.view.fromTemplate') }}</span>

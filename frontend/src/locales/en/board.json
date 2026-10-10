@@ -150,6 +150,7 @@
     "tags": "Tags",
     "milestones": "Milestones",
     "archive": "Archive",
+    "trash": "Trash",
     "menu": "Board menu",
     "more": "Board actions"
   },
@@ -436,5 +437,18 @@
     "title": "No tasks on the board yet",
     "text": "The columns are set up — add the first task.",
     "create": "Create a task"
+  },
+  "trash": {
+    "title": "Trash",
+    "count": "{n} task · kept for 30 days | {n} tasks · kept for 30 days",
+    "keep": "Deleted tasks are kept for {days} days",
+    "by": "deleted by {name}",
+    "left": "{n} day left | {n} days left",
+    "subtasks": "{n} subtask | {n} subtasks",
+    "restore": "Restore",
+    "purge": "Delete forever",
+    "purgeArmed": "Delete forever?",
+    "emptyTitle": "The trash is empty",
+    "emptyText": "Tasks deleted from this board stay here for {days} days and can be restored."
   }
 }

@@ -121,13 +121,13 @@ describe('KanbanBoard wiring for the customize drawer', () => {
   it('hands the panel its archive flag', () => {
     const panel = kanban.slice(kanban.indexOf('<BoardCustomizePanel'))
     expect(panel.slice(0, panel.indexOf('</BoardCustomizePanel>'))).toContain(
-      ':readonly="archivedMode"',
+      ':readonly="readOnly"',
     )
   })
 
   // The name input commits on blur, so the call itself has to refuse too.
   it('refuses a board write from the archive', () => {
     const fn = kanban.slice(kanban.indexOf('async function updateBoard('))
-    expect(fn.slice(0, fn.indexOf('\n}'))).toContain('archivedMode.value')
+    expect(fn.slice(0, fn.indexOf('\n}'))).toContain('readOnly.value')
   })
 })

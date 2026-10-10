@@ -414,6 +414,8 @@ export const workspaces = {
   groups: (id) => api.get(`/workspaces/${id}/groups`),
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),
   projects: (id) => api.get(`/workspaces/${id}/projects`),
+  // «Архив проектов» (#3005): the tree above leaves archived projects out.
+  archivedProjects: (id) => api.get(`/workspaces/${id}/projects`, { params: { archived: 1 } }),
   createProject: (id, data) => api.post(`/workspaces/${id}/projects`, data),
   // Tile of the workspace on the rail (#2955): { color, icon, icon_mode }.
   setAppearance: (id, data) => api.put(`/workspaces/${id}/appearance`, data),
@@ -453,6 +455,9 @@ export const projects = {
   // Dangerous: move a project (with all boards/tasks) to another workspace.
   transfer: (id, data) => api.post(`/projects/${id}/transfer`, data),
   remove: (id) => api.delete(`/projects/${id}`),
+  // Archive (#3005): reversible, no expiry; owner/admin only.
+  archive: (id) => api.post(`/projects/${id}/archive`),
+  unarchive: (id) => api.post(`/projects/${id}/restore`),
   boards: (id) => api.get(`/projects/${id}/boards`),
   createBoard: (id, data) => api.post(`/projects/${id}/boards`, data),
   tags: (id) => sharedGet(`/projects/${id}/tags`),
@@ -510,6 +515,8 @@ export const boards = {
   tasks: (id, params) => api.get(`/boards/${id}/tasks`, params ? { params } : undefined),
   subtasks: (id) => api.get(`/boards/${id}/subtasks`),
   archive: (id) => api.get(`/boards/${id}/archive`),
+  // The board's trash (#3004): tasks deleted as entries of their own, newest first.
+  trash: (id) => api.get(`/boards/${id}/trash`),
   // Whole-board blocking dependency graph for the Gantt view (raw edge rows).
   dependencies: (id) => api.get(`/boards/${id}/dependencies`),
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
@@ -577,8 +584,13 @@ export const documents = {
   // text corrupts it in a way that only shows up when the download is opened.
   exportFile: (id, format) =>
     api.get(`/documents/${id}/export?format=${format}`, { responseType: 'blob' }),
+  // DELETE puts the document (and, recursive, its nested ones) in the trash
+  // (#3006); the trash lists, restores and purges.
   remove: (id, recursive = false) =>
     api.delete(`/documents/${id}${recursive ? '?recursive=true' : ''}`),
+  trash: (wsId) => api.get(`/workspaces/${wsId}/documents/trash`),
+  untrash: (id) => api.post(`/documents/${id}/restore`),
+  purge: (id) => api.delete(`/documents/${id}/purge`),
   // Block-anchored annotations (#2730). Roots and replies come back in one list
   // and are threaded on the client — it groups them by block to place them next
   // to the text anyway. skipLoader: the panel refetches on a socket nudge, and a
@@ -725,7 +737,12 @@ export const tasks = {
   transfer: (id, data) => api.patch(`/tasks/${id}/transfer`, data),
   archive: (id, opts) => api.patch(`/tasks/${id}/archive`, null, { params: opts }),
   restore: (id) => api.patch(`/tasks/${id}/restore`),
+  // DELETE puts the task (and its subtasks) in the board's trash (#3004);
+  // `untrash` is its undo — POST, unlike the archive's PATCH …/restore above —
+  // and `purge` deletes a trashed task for good.
   remove: (id, opts) => api.delete(`/tasks/${id}`, { params: opts }),
+  untrash: (id) => api.post(`/tasks/${id}/restore`),
+  purge: (id) => api.delete(`/tasks/${id}/purge`),
   addTag: (id, tagId) => api.post(`/tasks/${id}/tags`, { tag_id: tagId }),
   removeTag: (id, tagId) => api.delete(`/tasks/${id}/tags/${tagId}`),
   addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { user_id: userId }),

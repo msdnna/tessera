@@ -146,7 +146,15 @@ const task = ref(null)
 // client convention — so an archived task reached that way took edits for real: its
 // pills were live, its status picker moved it back onto the board, comments posted.
 // Hence the OR: the scope alone was only ever half the answer (#2932).
-const ro = computed(() => props.readonly || !!task.value?.archived_at)
+//
+// A task of an archived project (#3005) is read-only too — the server says so in
+// `project_archived` and refuses writes with 409 — but it is not in the task
+// archive: «Вернуть из архива» is offered only for the task's own archive.
+const projectArchived = computed(() => !!task.value?.project_archived)
+const ro = computed(() => props.readonly || !!task.value?.archived_at || projectArchived.value)
+const canRestore = computed(
+  () => (props.readonly || !!task.value?.archived_at) && !projectArchived.value,
+)
 const boardInfo = ref(null) // { name, projectId } for the breadcrumb
 const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
@@ -416,9 +424,7 @@ const recurSummary = computed(() =>
 )
 
 // The task's project — the header's icon and first crumb.
-const project = computed(
-  () => store.projects.find((p) => p.id === boardInfo.value?.projectId) || null,
-)
+const project = computed(() => store.projectById(boardInfo.value?.projectId))
 
 // The board keeps ONE TaskModal mounted and swaps `taskId` underneath it (a subtask
 // row, a relation, the «Родитель» link, an activity toast, ?task= in the URL), so two
@@ -869,6 +875,7 @@ async function toggleGlGroup() {
 const moreMenu = useTaskModalMenu({
   task,
   readonly: () => ro.value,
+  restorable: () => canRestore.value,
   wide: () => wide.value,
   paneHidden: () => rightHidden.value,
   togglePane: () => toggleRightPane(),
@@ -1259,9 +1266,11 @@ const propCtx = computed(() => ({
   projectId: projectId.value || boardInfo.value?.projectId || '',
   wsId: wsId.value || '',
   readonly: ro.value
-    ? task.value?.archived_at || props.readonly
-      ? t('props.readonlyArchived')
-      : t('props.readonly')
+    ? projectArchived.value
+      ? t('project.archive.readonly')
+      : task.value?.archived_at || props.readonly
+        ? t('props.readonlyArchived')
+        : t('props.readonly')
     : '',
 }))
 const propOps = {
@@ -1424,9 +1433,12 @@ useShortcuts(
         <div class="tm-body">
           <div class="tm-main">
             <div class="tm-scroll">
-              <div v-if="ro" class="tm-ro-banner">
-                <span>{{ t('task.footer.readonly') }}</span>
+              <div v-if="ro" class="tm-ro-banner" data-testid="task-ro-banner">
+                <span>{{
+                  projectArchived ? t('project.archive.readonly') : t('task.footer.readonly')
+                }}</span>
                 <button
+                  v-if="canRestore"
                   type="button"
                   class="kit-btn primary small"
                   data-testid="task-ro-restore"

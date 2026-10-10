@@ -10,9 +10,7 @@
     "delete": "Delete",
     "addSubtask": "Add a subtask",
     "archived": "Task «{title}» archived",
-    "archivedUndone": "Task «{title}» restored",
-    "deleteArmed": "Delete the task?",
-    "deleteArmedSub": "For good — along with its files"
+    "archivedUndone": "Task «{title}» restored"
   },
   "confirm": {
     "delete": "Delete permanently? This cannot be undone.",
@@ -514,7 +512,9 @@
     "milestone": "linked it to a milestone",
     "milestoneNamed": "linked it to the milestone “{name}”",
     "milestoneRemoved": "unlinked it from a milestone",
-    "milestoneRemovedNamed": "unlinked it from the milestone “{name}”"
+    "milestoneRemovedNamed": "unlinked it from the milestone “{name}”",
+    "trashed": "moved it to the trash",
+    "untrashed": "restored it from the trash"
   },
   "ref": {
     "notFound": "Task #{number} not found"
@@ -535,5 +535,11 @@
   "arm": {
     "delete": "Delete?",
     "unlink": "Remove?"
+  },
+  "trash": {
+    "deleted": "Task #{number} moved to the trash",
+    "deletedUntitled": "Task «{title}» moved to the trash",
+    "restored": "Task #{number} restored",
+    "restoredUntitled": "Task «{title}» restored"
   }
 }

@@ -38,6 +38,7 @@ import {
 } from '@/composables/useSidebarDnd'
 import SidebarNode from './SidebarNode.vue'
 import ProjectRow from './ProjectRow.vue'
+import ArchivedProjectsRow from './sidebar/ArchivedProjectsRow.vue'
 import EmptyState from './EmptyState.vue'
 import SidebarFooter from './SidebarFooter.vue'
 import SidebarRailNode from './SidebarRailNode.vue'
@@ -326,6 +327,8 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
           :text="t('shell.tree.empty')"
           size="small"
         />
+        <!-- «Архив проектов» (#3005): archived projects are out of the tree. -->
+        <ArchivedProjectsRow />
       </div>
     </n-scrollbar>
     <n-scrollbar v-else class="rail-scroll">

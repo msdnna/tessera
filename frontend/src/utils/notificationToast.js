@@ -136,14 +136,15 @@ export function buildNotificationToast(
       ]
       break
     case 'task_deleted':
-      // The task is gone for good: tasks have no trash yet — a visible stub.
+      // The task is in its board's trash (#3120): «В корзину» opens it there,
+      // the row lit, with «Вернуть» a click away.
       spec.actions = [
         {
           id: 'trash',
           label: () => t('toasts.act.trash'),
           caps: ['↵'],
           primary: true,
-          stub: 'toasts.taskTrash',
+          run: () => act.trash?.(n),
         },
       ]
       break

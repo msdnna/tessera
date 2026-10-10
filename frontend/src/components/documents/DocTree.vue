@@ -11,7 +11,7 @@
 // ← folds (or steps out to the parent), ↵ opens.
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import {
   AddOutline,
   ChevronForwardOutline,
@@ -23,7 +23,6 @@ import {
   TrashOutline,
 } from '@vicons/ionicons5'
 import { sGet, sSet } from '@/utils/serverStorage'
-import { stubTask } from '@/utils/featureStubs'
 
 const props = defineProps({
   docs: { type: Array, default: () => [] },
@@ -33,10 +32,11 @@ const props = defineProps({
   templatesCount: { type: Number, default: 0 },
   // Floating over the text (the tree did not fit beside it): a close button.
   floating: { type: Boolean, default: false },
+  // The documents' trash (#3006) is what the section shows right now.
+  trashActive: { type: Boolean, default: false },
 })
-const emit = defineEmits(['open', 'create', 'templates', 'close'])
+const emit = defineEmits(['open', 'create', 'templates', 'close', 'trash'])
 const { t } = useI18n()
-const trashTask = stubTask('documents.trash')
 
 const byParent = computed(() => {
   const m = new Map()
@@ -288,16 +288,16 @@ function onSearchKey(e) {
         <span class="dtr-name">{{ t('documents.tree.templates') }}</span>
         <span v-if="templatesCount" class="dtr-n">{{ templatesCount }}</span>
       </button>
-      <n-tooltip :delay="300" placement="right">
-        <template #trigger>
-          <span class="dtr-row stub" aria-disabled="true" data-testid="doc-tree-trash">
-            <n-icon :component="TrashOutline" :size="15" class="dtr-glyph" />
-            <span class="dtr-name">{{ t('documents.tree.trash') }}</span>
-            <span class="dtr-soon">{{ t('common.stub.badge') }}</span>
-          </span>
-        </template>
-        {{ t('common.stub.soon', { n: trashTask }) }}
-      </n-tooltip>
+      <button
+        type="button"
+        class="dtr-row"
+        :class="{ active: trashActive }"
+        data-testid="doc-tree-trash"
+        @click="emit('trash')"
+      >
+        <n-icon :component="TrashOutline" :size="15" class="dtr-glyph" />
+        <span class="dtr-name">{{ t('documents.tree.trash') }}</span>
+      </button>
     </footer>
   </aside>
 </template>
@@ -435,14 +435,6 @@ function onSearchKey(e) {
 .dtr-row.active .dtr-glyph {
   color: var(--t-primary);
 }
-.dtr-row.stub {
-  opacity: 0.55;
-  cursor: default;
-}
-.dtr-row.stub:hover {
-  background: transparent;
-  color: var(--t-text2);
-}
 .dtr-chev,
 .dtr-chev-sp {
   flex: none;
@@ -491,15 +483,6 @@ function onSearchKey(e) {
   color: var(--t-text3);
   font-weight: 500;
   font-variant-numeric: tabular-nums;
-}
-.dtr-soon {
-  flex: none;
-  padding: 1px 6px;
-  border-radius: var(--t-r-pill);
-  background: var(--t-pill);
-  color: var(--t-text3);
-  font-size: 10.5px;
-  font-weight: 650;
 }
 .dtr-foot {
   flex: none;

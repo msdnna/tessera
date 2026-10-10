@@ -30,7 +30,7 @@ import {
 import { projects as projApi, boards as boardsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { humanizeError } from '@/utils/errors'
-import { stubTask } from '@/utils/featureStubs'
+import { useProjectArchive } from '@/composables/useProjectArchive'
 import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useTourStore } from '@/stores/tour'
@@ -306,7 +306,8 @@ const projMenuItems = computed(() => [
     label: t('project.menu.archive'),
     icon: ArchiveOutline,
     keys: 'row.archive',
-    stub: stubTask('project.archive'),
+    disabled: !store.canManage,
+    disabledTitle: t('project.menu.managerOnly'),
   },
   {
     key: 'delete',
@@ -345,8 +346,10 @@ async function onProjectMenu(key, value) {
     updateField({ tree_mode: next })
   } else if (key === 'toggle-closed') {
     if (value !== showClosedSprints.value) toggleShowClosed()
-  } else if (key === 'delete') doRemove()
+  } else if (key === 'archive') archiveProject(props.project)
+  else if (key === 'delete') doRemove()
 }
+const { archiveProject } = useProjectArchive()
 
 async function openProject() {
   await ensureBoards()
