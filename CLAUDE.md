@@ -327,6 +327,12 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   `checklist:hidden`), `spotlight:<ключ>`, `hints:off:new|ctx`, `whatschanged:v2|later`;
   сброс — `DELETE /users/me/acknowledgements?key=|prefix=`. Новый якорь шага — в `MARKUP`
   `tests/dt-get-started.spec.js`; e2e-пользователи (`register()`) выключают тур и подсказки.
+- **Вход и приглашения v2 (#3035, миграция 0093):** одноразовые коды (`user_tokens.kind`
+  `verify_code`/`email_change`, `handlers/auth_codes.go`) — HMAC с солью, 15 мин, 5 попыток (счёт до
+  сравнения), пауза 60 с на адрес и 5 кодов в час; смена почты не выдаёт, занят ли адрес. Превью/отказ
+  приглашения — публичные `POST /invitations/lookup|decline`; ссылка-приглашение
+  (`workspace_invite_links`, `/join/<token>` → `/invite`) хранится хешем, URL виден один раз. Коды в
+  тестах: харнесс-мейлер `testMail` (backend), журнал `E2E_BACKEND_LOG` (`frontend/e2e/mailLog.js`).
 - **Редактор описаний/комментариев — собственный `MarkdownEditor.vue`** (textarea +
   тулбар + Написать/Просмотр + @-mentions), хранит **Markdown**. **TipTap пробовали и
   отвергли** (тема/бандл) — не возвращать без явного запроса.
