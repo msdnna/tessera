@@ -3,6 +3,7 @@ package handlers
 import (
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -269,7 +270,7 @@ func (h *API) CreateProject(c *gin.Context) {
 			return
 		}
 		if taken {
-			c.JSON(http.StatusConflict, gin.H{"error": "slug already taken"})
+			h.respondSlugTaken(c, s)
 			return
 		}
 		projectSlug = s
@@ -281,12 +282,27 @@ func (h *API) CreateProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	p, err := h.q.CreateProject(c, db.CreateProjectParams{
-		WorkspaceID: wsID, GroupID: req.GroupID, Name: req.Name,
-		Color: req.Color, Icon: req.Icon, Slug: projectSlug,
-		Position: positionBetween(&maxPos, nil),
-	})
-	if err != nil {
+	var p db.Project
+	if err := h.inTx(c, func(q *db.Queries) error {
+		var err error
+		p, err = q.CreateProject(c, db.CreateProjectParams{
+			WorkspaceID: wsID, GroupID: req.GroupID, Name: req.Name,
+			Color: req.Color, Icon: req.Icon, Slug: projectSlug,
+			Position: positionBetween(&maxPos, nil),
+		})
+		if err != nil {
+			return err
+		}
+		// A project taking an address another one left behind owns it from now
+		// on (#3012): the old links lead here, not to the one that moved away.
+		return q.DeleteProjectSlugAlias(c, projectSlug)
+	}); err != nil {
+		// Two creates racing for one address: the index arbitrates, and the
+		// loser hears what a pre-checked collision would have told it.
+		if isUniqueViolation(err) {
+			h.respondSlugTaken(c, projectSlug)
+			return
+		}
 		fail(c, err)
 		return
 	}
@@ -354,10 +370,11 @@ func (h *API) UpdateProject(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-// SetProjectSlug changes a project's URL address. Owners and admins only —
-// links already handed out stop resolving, so it isn't a per-member edit.
-// The slug is deliberately left out of UpdateProject: recolouring a project
-// shouldn't silently rewrite its URL.
+// SetProjectSlug changes a project's URL address. Owners and admins only — it
+// rewrites every link to the project, so it isn't a per-member edit. The old
+// address keeps leading here for projectSlugAliasTTL (#3012), unless another
+// project takes it first. The slug is deliberately left out of UpdateProject:
+// recolouring a project shouldn't silently rewrite its URL.
 func (h *API) SetProjectSlug(c *gin.Context) {
 	p, ok := h.loadProject(c)
 	if !ok {
@@ -383,17 +400,36 @@ func (h *API) SetProjectSlug(c *gin.Context) {
 		return
 	}
 	// Slugs are unique across the whole instance, so the holder may sit in a
-	// workspace the caller can't see — keep the message free of specifics.
+	// workspace the caller can't see — respondSlugTaken names it only to members.
 	taken, err := h.q.ProjectSlugExists(c, s)
 	if err != nil {
 		fail(c, err)
 		return
 	}
 	if taken {
-		c.JSON(http.StatusConflict, gin.H{"error": "slug already taken"})
+		h.respondSlugTaken(c, s)
 		return
 	}
-	if err := h.q.SetProjectSlug(c, db.SetProjectSlugParams{ID: p.ID, Slug: s}); err != nil {
+	if err := h.inTx(c, func(q *db.Queries) error {
+		if err := q.SetProjectSlug(c, db.SetProjectSlugParams{ID: p.ID, Slug: s}); err != nil {
+			return err
+		}
+		// The new address may be one this or another project left behind: the
+		// live slug owns it now.
+		if err := q.DeleteProjectSlugAlias(c, s); err != nil {
+			return err
+		}
+		if p.Slug == "" {
+			return nil
+		}
+		return q.UpsertProjectSlugAlias(c, db.UpsertProjectSlugAliasParams{
+			Slug: p.Slug, ProjectID: p.ID, ExpiresAt: time.Now().Add(projectSlugAliasTTL),
+		})
+	}); err != nil {
+		if isUniqueViolation(err) {
+			h.respondSlugTaken(c, s)
+			return
+		}
 		fail(c, err)
 		return
 	}

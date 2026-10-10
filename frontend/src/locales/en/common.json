@@ -218,5 +218,11 @@
   },
   "window": {
     "sections": "sections"
+  },
+  "counts": {
+    "projects": "{n} project | {n} projects",
+    "boards": "{n} board | {n} boards",
+    "tasks": "{n} task | {n} tasks",
+    "join": "{list} and {last}"
   }
 }

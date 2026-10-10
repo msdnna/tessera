@@ -4,11 +4,9 @@
 // «Свободно: x или ⌥↵» suggestion, and a quiet message.
 //
 // Controls use the `kf-input` class (kit.css) to get the v2 well.
-import { useI18n } from 'vue-i18n'
 import { NIcon } from 'naive-ui'
 import { AlertCircleOutline, LinkOutline } from '@vicons/ionicons5'
-import Kbd from '@/components/Kbd.vue'
-import { CAPS } from '@/utils/keyCaps'
+import SlugSuggest from './SlugSuggest.vue'
 import './kit.css'
 
 defineProps({
@@ -22,7 +20,6 @@ defineProps({
   message: { type: String, default: '' },
 })
 const emit = defineEmits(['suggest'])
-const { t } = useI18n()
 </script>
 
 <template>
@@ -41,14 +38,11 @@ const { t } = useI18n()
       <n-icon :component="AlertCircleOutline" :size="14" class="kf-error-icon" />
       <span>{{ error }}</span>
     </div>
-    <div v-if="error && suggestion" class="kf-suggest">
-      {{ t('common.form.free') }}
-      <button type="button" class="kf-chip" @click="emit('suggest', suggestion)">
-        {{ suggestion }}
-      </button>
-      {{ t('common.form.or') }}
-      <Kbd>{{ CAPS.altEnter }}</Kbd>
-    </div>
+    <SlugSuggest
+      v-if="error && suggestion"
+      :suggestion="suggestion"
+      @pick="emit('suggest', $event)"
+    />
     <div v-if="message && !error" class="kf-message">{{ message }}</div>
   </div>
 </template>
@@ -99,29 +93,6 @@ const { t } = useI18n()
   flex: none;
   margin-top: 1px;
   color: #e0533d;
-}
-.kf-suggest {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 12px;
-  color: var(--t-text3);
-}
-.kf-chip {
-  height: 24px;
-  padding: 0 9px;
-  border: 0;
-  border-radius: 999px;
-  background: linear-gradient(
-    to top right,
-    color-mix(in srgb, var(--t-primary) 14%, var(--t-pop)),
-    color-mix(in srgb, var(--t-primary) 24%, var(--t-pop))
-  );
-  color: var(--t-text1);
-  font: inherit;
-  font-size: 12.5px;
-  font-weight: 600;
-  cursor: pointer;
 }
 .kf-message {
   font-size: 12px;

@@ -13,9 +13,13 @@ import { projects as projApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { humanizeError } from '@/utils/errors'
 import { makeSlug } from '@/utils/slug'
+import { withProjectSlug } from '@/utils/projectRoute'
+import { slugTaken } from '@/utils/slugTaken'
+import { countsPhrase } from '@/utils/deleteCounts'
 import { stubTask } from '@/utils/featureStubs'
 import { hueGrad } from '@/utils/gradient'
 import ColorIconPicker from '../kit/ColorIconPicker.vue'
+import SlugSuggest from '../kit/SlugSuggest.vue'
 import ProjectIcon from '../ProjectIcon.vue'
 import Kbd from '../Kbd.vue'
 import '../kit/kit.css'
@@ -31,19 +35,52 @@ const route = useRoute()
 const router = useRouter()
 
 const nameEl = ref(null)
+const slugEl = ref(null)
 const name = ref('')
 const slug = ref('')
 const slugError = ref('')
+// A taken address (#3013): the free variant, and the address that failed — a
+// blur right after the 409 must not send it again.
+const slugSuggestion = ref('')
+const slugFailed = ref('')
 const busy = ref('')
 watch(
   () => props.project,
   (p) => {
     name.value = p?.name || ''
     slug.value = p?.slug || ''
-    slugError.value = ''
+    clearSlugError()
   },
   { immediate: true },
 )
+function clearSlugError() {
+  slugError.value = ''
+  slugSuggestion.value = ''
+  slugFailed.value = ''
+}
+
+// What deleting the project takes with it (#3014), named under the button.
+const counts = ref(null)
+watch(
+  () => props.project?.id,
+  async (id) => {
+    counts.value = null
+    if (!id) return
+    try {
+      const res = await projApi.counts(id)
+      if (props.project?.id === id) counts.value = res.data
+    } catch {
+      // The generic line stays — the numbers are a courtesy, not a gate.
+    }
+  },
+  { immediate: true },
+)
+const deleteHint = computed(() => {
+  const what = countsPhrase(t, counts.value)
+  return what
+    ? t('project.window.general.deleteHintCounts', { what })
+    : t('project.window.general.deleteHint')
+})
 
 // Full replace, like the sidebar's settings (handlers/projects.go UpdateProject).
 async function save(patch) {
@@ -81,25 +118,42 @@ async function commitName() {
 const slugPreview = computed(() => makeSlug(slug.value))
 async function commitSlug() {
   const next = slugPreview.value
-  if (!next || next === props.project.slug || busy.value) {
+  if (!next || next === props.project.slug || next === slugFailed.value || busy.value) {
     if (!next) slug.value = props.project.slug
     return
   }
   busy.value = 'slug'
-  slugError.value = ''
+  clearSlugError()
   try {
     const res = await projApi.setSlug(props.project.id, next)
     // An open board of this project stays reachable under the new address.
     if (route.params.projectSlug === props.project.slug) {
-      router.replace({ ...route, params: { ...route.params, projectSlug: res.data.slug } })
+      router.replace(withProjectSlug(route, res.data.slug))
     }
     await store.refresh()
     emit('changed')
   } catch (e) {
-    slugError.value = e.status === 409 ? t('project.slug.taken') : humanizeError(e)
+    const taken = slugTaken(e, t)
+    if (taken) {
+      slugError.value = taken.error
+      slugSuggestion.value = taken.suggestion
+      slugFailed.value = next
+    } else {
+      slugError.value = humanizeError(e)
+    }
   } finally {
     busy.value = ''
   }
+  // Back into the field (it was disabled while saving): ⌥↵ works from there.
+  if (slugError.value) nextTick(() => slugEl.value?.focus())
+}
+// The chip or ⌥↵ in the field: the free variant goes in, ↵ or leaving the
+// field saves it.
+function useSuggestion() {
+  if (!slugSuggestion.value) return
+  slug.value = slugSuggestion.value
+  clearSlugError()
+  nextTick(() => slugEl.value?.focus())
 }
 
 const initials = computed(() => (props.project.name || '?').trim().slice(0, 2).toUpperCase())
@@ -215,19 +269,27 @@ defineExpose({ focusFirst, escape })
         <div class="pg-slug" :class="{ error: !!slugError, ro: !store.canManage }">
           <span class="pg-slug-pre">…/project/</span>
           <input
+            ref="slugEl"
             v-model="slug"
             spellcheck="false"
             :disabled="!store.canManage || busy === 'slug'"
             :title="store.canManage ? '' : t('project.menu.managerOnly')"
             data-testid="project-slug-field"
-            @input="slugError = ''"
-            @keydown.enter.prevent="$event.target.blur()"
-            @keydown.esc.stop="((slug = project.slug), $event.target.blur())"
+            @input="clearSlugError"
+            @keydown.enter.alt.prevent="useSuggestion"
+            @keydown.enter.exact.prevent="$event.target.blur()"
+            @keydown.esc.stop="((slug = project.slug), clearSlugError(), $event.target.blur())"
             @blur="commitSlug"
           />
         </div>
-        <div v-if="slugError" class="pg-err">{{ slugError }}</div>
-        <div v-else class="pg-help">{{ t('project.slug.oldLinks', { old: project.slug }) }}</div>
+        <div v-if="slugError" class="pg-err" role="alert">{{ slugError }}</div>
+        <SlugSuggest
+          v-if="slugError && slugSuggestion"
+          class="pg-suggest"
+          :suggestion="slugSuggestion"
+          @pick="useSuggestion"
+        />
+        <div v-if="!slugError" class="pg-help">{{ t('project.slug.aliasesHint') }}</div>
       </div>
     </div>
 
@@ -299,7 +361,7 @@ defineExpose({ focusFirst, escape })
             }}
           </button>
         </div>
-        <div class="pg-help">{{ t('project.window.general.deleteHint') }}</div>
+        <div class="pg-help" data-testid="project-delete-hint">{{ deleteHint }}</div>
       </div>
     </div>
   </div>
@@ -391,6 +453,9 @@ defineExpose({ focusFirst, escape })
   margin-left: 6px;
 }
 .pg-help,
+.pg-suggest {
+  margin-top: 6px;
+}
 .pg-err {
   margin-top: 6px;
   font-size: 12.5px;

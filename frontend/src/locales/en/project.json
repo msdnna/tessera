@@ -42,12 +42,13 @@
     "current": "Current address:",
     "placeholder": "project-address",
     "next": "New address:",
-    "warning": "Links to this project's boards and tasks shared earlier {strong} Open tabs will switch to the new address.",
-    "warningStrong": "will stop working.",
     "submit": "Change the address",
-    "taken": "That address is taken — pick another one",
+    "taken": "That address is taken.",
     "changed": "The project address has been changed",
-    "oldLinks": "Links to the old address {old} will stop working; open tabs switch over by themselves."
+    "oldLinks": "Old links to {old} keep leading here for 30 days.",
+    "takenBy": "Address taken: the project “{name}” uses it.",
+    "takenInGroup": "Address taken: a project in the group “{group}” already goes by it.",
+    "aliasesHint": "Old links lead to the new address for 30 days"
   },
   "transfer": {
     "title": "Move to another workspace",
@@ -73,7 +74,8 @@
     "armedSub": "no undo",
     "armedSubBoards": "{boards} with every task · no undo",
     "boards": "{n} board | {n} boards",
-    "failed": "Couldn't delete"
+    "failed": "Couldn't delete",
+    "armedSubCounts": "{what} · no undo"
   },
   "create": {
     "title": "New project",
@@ -127,7 +129,8 @@
       "danger": "Danger zone",
       "dangerHint": "Archiving can be undone, deleting cannot",
       "deleteArmed": "Delete «{name}» for good? Press again to delete",
-      "deleteHint": "Deleting takes two steps: the project’s boards, tasks and milestones are gone for good"
+      "deleteHint": "Deleting takes two steps: the project’s boards, tasks and milestones are gone for good",
+      "deleteHintCounts": "Deleting takes two steps. Gone for good with it: {what}"
     },
     "estimation": {
       "source": "Setting",

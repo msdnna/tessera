@@ -78,6 +78,12 @@ Note · Reminder (доставка push — только через Android) · 
   `task_subscriptions` хранит лишь явный выбор (true — подписался, false — отписался).
   Новости задачи — `notifyTaskParticipants` → подписчикам; адресные уведомления (назначили,
   упомянули, удалили) от подписки не зависят.
+- Адрес проекта (`projects.slug`) уникален на инстанс; смена оставляет старый алиасом на 30 дней
+  (`project_slug_aliases`, миграция 0085, #3012). Проект по адресу — только через `projectBySlug`
+  (живой slug важнее алиаса); подменить адрес в открытом URL — `utils/projectRoute.withProjectSlug`
+  (`router.replace({ ...route, params })` vue-router молча игнорирует). 409 занятого адреса несёт
+  `suggestion` и `taken_by` (`utils/slugTaken`, `kit/SlugSuggest`); счётчики для подтверждений
+  удаления — `GET /projects|workspaces/:id/counts` (`utils/deleteCounts`).
 
 ## Конвенции (наследие budget-go — соблюдать во всей экосистеме)
 

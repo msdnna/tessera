@@ -31,6 +31,7 @@ import { projects as projApi, boards as boardsApi } from '@/api'
 import { hueGrad } from '@/utils/gradient'
 import { humanizeError } from '@/utils/errors'
 import { stubTask } from '@/utils/featureStubs'
+import { countsPhrase } from '@/utils/deleteCounts'
 import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useTourStore } from '@/stores/tour'
@@ -254,6 +255,26 @@ function openProjectMenu(at = null, arm = '') {
   projMenuArm.value = arm
   projMenuOpen.value = true
 }
+// What deleting the project takes with it (#3014) — «3 доски и 148 задач» in
+// the armed delete item. Asked each time the menu opens: the numbers move.
+const delCounts = ref(null)
+watch(projMenuOpen, async (on) => {
+  if (!on) return
+  try {
+    delCounts.value = (await projApi.counts(props.project.id)).data
+  } catch {
+    // The board-count line stays — the numbers are a courtesy, not a gate.
+  }
+})
+const deleteSub = computed(() => {
+  const what = countsPhrase(t, delCounts.value)
+  if (what) return t('project.remove.armedSubCounts', { what })
+  return boards.value.length
+    ? t('project.remove.armedSubBoards', {
+        boards: t('project.remove.boards', boards.value.length),
+      })
+    : t('project.remove.armedSub')
+})
 function onProjectCtx(e) {
   if (pressMoved()) return
   openProjectMenu({ x: e.clientX, y: e.clientY })
@@ -318,11 +339,7 @@ const projMenuItems = computed(() => [
     disabledTitle: t('project.menu.managerOnly'),
     confirm: {
       title: t('project.remove.armed', { name: props.project.name }),
-      sub: boards.value.length
-        ? t('project.remove.armedSubBoards', {
-            boards: t('project.remove.boards', boards.value.length),
-          })
-        : t('project.remove.armedSub'),
+      sub: deleteSub.value,
     },
     busy: deleting.value,
     failed: deleteFailed.value

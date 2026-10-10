@@ -10,8 +10,10 @@ import { useMessage } from '@/composables/useMessage'
 import PopoverForm from '@/components/kit/PopoverForm.vue'
 import FormField from '@/components/kit/FormField.vue'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { workspaces as wsApi } from '@/api'
 import { workspaceName } from '@/utils/defaultNames'
 import { humanizeError } from '@/utils/errors'
+import { countsPhrase } from '@/utils/deleteCounts'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -30,14 +32,32 @@ const typed = ref('')
 const busy = ref(false)
 const error = ref('')
 const name = computed(() => workspaceName(props.workspace))
+// What goes with the space (#3014): «4 проекта, 23 доски и 612 задач будут
+// удалены». Until the numbers arrive — or if they don't — the generic line.
+const counts = ref(null)
 watch(
   () => props.show,
-  (on) => {
+  async (on) => {
     if (!on) return
     typed.value = ''
     error.value = ''
+    counts.value = null
+    const id = props.workspace?.id
+    if (!id) return
+    try {
+      const res = await wsApi.counts(id)
+      if (props.show && props.workspace?.id === id) counts.value = res.data
+    } catch {
+      // Not a gate: typing the name is.
+    }
   },
 )
+const subtitle = computed(() => {
+  const what = countsPhrase(t, counts.value)
+  return what
+    ? t('shell.workspaceForm.deleteSubCounts', { what })
+    : t('shell.workspaceForm.deleteSub')
+})
 const matches = computed(() => typed.value.trim() === name.value)
 
 async function submit() {
@@ -65,7 +85,7 @@ async function submit() {
     :offset="offset"
     :width="340"
     :title="t('shell.workspaceForm.deleteTitle', { name })"
-    :subtitle="t('shell.workspaceForm.deleteSub')"
+    :subtitle="subtitle"
     :primary="t('shell.workspaceForm.deleteForever')"
     :busy-label="t('common.menu.deleting')"
     :busy="busy"

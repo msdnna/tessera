@@ -8,6 +8,7 @@ package db
 import (
 	"context"
 	"encoding/json"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -80,12 +81,56 @@ func (q *Queries) DeleteProject(ctx context.Context, id uuid.UUID) error {
 	return err
 }
 
+const deleteProjectSlugAlias = `-- name: DeleteProjectSlugAlias :exec
+DELETE FROM project_slug_aliases WHERE slug = $1
+`
+
+// DeleteProjectSlugAlias drops the alias on an address a project has just
+// taken: the live slug shadows it anyway, and a stale row would make the
+// address lead elsewhere again the day its new holder moves on.
+func (q *Queries) DeleteProjectSlugAlias(ctx context.Context, slug string) error {
+	_, err := q.db.Exec(ctx, deleteProjectSlugAlias, slug)
+	return err
+}
+
 const getProject = `-- name: GetProject :one
 SELECT id, workspace_id, group_id, name, color, position, created_at, updated_at, icon, slug, estimation, icon_mode, tree_mode FROM projects WHERE id = $1
 `
 
 func (q *Queries) GetProject(ctx context.Context, id uuid.UUID) (Project, error) {
 	row := q.db.QueryRow(ctx, getProject, id)
+	var i Project
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.GroupID,
+		&i.Name,
+		&i.Color,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Icon,
+		&i.Slug,
+		&i.Estimation,
+		&i.IconMode,
+		&i.TreeMode,
+	)
+	return i, err
+}
+
+const getProjectByAlias = `-- name: GetProjectByAlias :one
+
+SELECT p.id, p.workspace_id, p.group_id, p.name, p.color, p.position, p.created_at, p.updated_at, p.icon, p.slug, p.estimation, p.icon_mode, p.tree_mode FROM projects p
+JOIN project_slug_aliases a ON a.project_id = p.id
+WHERE a.slug = $1::text AND a.expires_at > now()
+`
+
+// ── Old project addresses (#3012) ─────────────────────────────
+// GetProjectByAlias resolves a project's former address while it still leads
+// somewhere. Callers try GetProjectBySlug first: a live project's slug always
+// wins over an alias.
+func (q *Queries) GetProjectByAlias(ctx context.Context, slug string) (Project, error) {
+	row := q.db.QueryRow(ctx, getProjectByAlias, slug)
 	var i Project
 	err := row.Scan(
 		&i.ID,
@@ -215,6 +260,31 @@ func (q *Queries) MoveProject(ctx context.Context, arg MoveProjectParams) (Proje
 	return i, err
 }
 
+const projectFootprint = `-- name: ProjectFootprint :one
+
+SELECT
+    (SELECT count(*) FROM boards b
+      WHERE b.project_id = $1::uuid AND b.deleted_at IS NULL)::bigint AS boards,
+    (SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id
+      WHERE b.project_id = $1::uuid AND b.deleted_at IS NULL)::bigint AS tasks
+`
+
+type ProjectFootprintRow struct {
+	Boards int64 `json:"boards"`
+	Tasks  int64 `json:"tasks"`
+}
+
+// ── Counts for the delete confirmations (#3014) ───────────────
+// What a delete takes with it, as its confirmation names it: the boards still
+// on the tree (one in the trash is already gone for the reader) and every task
+// on them — subtasks and archived ones too, since the cascade takes those.
+func (q *Queries) ProjectFootprint(ctx context.Context, projectID uuid.UUID) (ProjectFootprintRow, error) {
+	row := q.db.QueryRow(ctx, projectFootprint, projectID)
+	var i ProjectFootprintRow
+	err := row.Scan(&i.Boards, &i.Tasks)
+	return i, err
+}
+
 const projectSlugExists = `-- name: ProjectSlugExists :one
 SELECT EXISTS(SELECT 1 FROM projects WHERE slug = $1)
 `
@@ -253,6 +323,18 @@ func (q *Queries) ProjectsMissingSlug(ctx context.Context) ([]ProjectsMissingSlu
 		return nil, err
 	}
 	return items, nil
+}
+
+const purgeExpiredProjectSlugAliases = `-- name: PurgeExpiredProjectSlugAliases :execrows
+DELETE FROM project_slug_aliases WHERE expires_at <= now()
+`
+
+func (q *Queries) PurgeExpiredProjectSlugAliases(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, purgeExpiredProjectSlugAliases)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const rebalanceProjectPositions = `-- name: RebalanceProjectPositions :exec
@@ -436,5 +518,48 @@ func (q *Queries) UpdateProject(ctx context.Context, arg UpdateProjectParams) (P
 		&i.IconMode,
 		&i.TreeMode,
 	)
+	return i, err
+}
+
+const upsertProjectSlugAlias = `-- name: UpsertProjectSlugAlias :exec
+INSERT INTO project_slug_aliases (slug, project_id, expires_at)
+VALUES ($1, $2, $3)
+ON CONFLICT (slug) DO UPDATE
+SET project_id = EXCLUDED.project_id, expires_at = EXCLUDED.expires_at, created_at = now()
+`
+
+type UpsertProjectSlugAliasParams struct {
+	Slug      string    `json:"slug"`
+	ProjectID uuid.UUID `json:"project_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+}
+
+// UpsertProjectSlugAlias records the address a project is leaving. A slug the
+// project (or another one) left before is re-pointed and its clock restarted.
+func (q *Queries) UpsertProjectSlugAlias(ctx context.Context, arg UpsertProjectSlugAliasParams) error {
+	_, err := q.db.Exec(ctx, upsertProjectSlugAlias, arg.Slug, arg.ProjectID, arg.ExpiresAt)
+	return err
+}
+
+const workspaceFootprint = `-- name: WorkspaceFootprint :one
+SELECT
+    (SELECT count(*) FROM projects p
+      WHERE p.workspace_id = $1::uuid)::bigint AS projects,
+    (SELECT count(*) FROM boards b JOIN projects p ON p.id = b.project_id
+      WHERE p.workspace_id = $1::uuid AND b.deleted_at IS NULL)::bigint AS boards,
+    (SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id JOIN projects p ON p.id = b.project_id
+      WHERE p.workspace_id = $1::uuid AND b.deleted_at IS NULL)::bigint AS tasks
+`
+
+type WorkspaceFootprintRow struct {
+	Projects int64 `json:"projects"`
+	Boards   int64 `json:"boards"`
+	Tasks    int64 `json:"tasks"`
+}
+
+func (q *Queries) WorkspaceFootprint(ctx context.Context, workspaceID uuid.UUID) (WorkspaceFootprintRow, error) {
+	row := q.db.QueryRow(ctx, workspaceFootprint, workspaceID)
+	var i WorkspaceFootprintRow
+	err := row.Scan(&i.Projects, &i.Boards, &i.Tasks)
 	return i, err
 }

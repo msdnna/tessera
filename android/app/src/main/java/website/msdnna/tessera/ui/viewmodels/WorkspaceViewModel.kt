@@ -11,6 +11,7 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.Board
+import website.msdnna.tessera.data.model.DeleteCounts
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.Workspace
@@ -241,6 +242,15 @@ class WorkspaceViewModel(
         _state.update { it.copy(showClosedStages = next) }
         viewModelScope.launch { prefs.setShowClosedStages(next) }
     }
+
+    /** What deleting the project / workspace takes with it, for the confirmation
+     *  dialog (#3014). Null when the numbers didn't come — the dialog keeps its
+     *  generic message; the numbers are a courtesy, typing the name is the gate. */
+    suspend fun projectCounts(projectId: String): DeleteCounts? =
+        runCatching { repo.projectCounts(projectId) }.getOrNull()
+
+    suspend fun workspaceCounts(workspaceId: String): DeleteCounts? =
+        runCatching { repo.workspaceCounts(workspaceId) }.getOrNull()
 
     fun deleteProject(projectId: String) = launchCatching {
         repo.deleteProject(projectId)

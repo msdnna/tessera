@@ -93,3 +93,51 @@ WHERE tasks.id = ordered.id;
 
 -- name: DeleteProject :exec
 DELETE FROM projects WHERE id = $1;
+
+-- ── Old project addresses (#3012) ─────────────────────────────
+
+-- GetProjectByAlias resolves a project's former address while it still leads
+-- somewhere. Callers try GetProjectBySlug first: a live project's slug always
+-- wins over an alias.
+-- name: GetProjectByAlias :one
+SELECT p.* FROM projects p
+JOIN project_slug_aliases a ON a.project_id = p.id
+WHERE a.slug = sqlc.arg(slug)::text AND a.expires_at > now();
+
+-- UpsertProjectSlugAlias records the address a project is leaving. A slug the
+-- project (or another one) left before is re-pointed and its clock restarted.
+-- name: UpsertProjectSlugAlias :exec
+INSERT INTO project_slug_aliases (slug, project_id, expires_at)
+VALUES ($1, $2, $3)
+ON CONFLICT (slug) DO UPDATE
+SET project_id = EXCLUDED.project_id, expires_at = EXCLUDED.expires_at, created_at = now();
+
+-- DeleteProjectSlugAlias drops the alias on an address a project has just
+-- taken: the live slug shadows it anyway, and a stale row would make the
+-- address lead elsewhere again the day its new holder moves on.
+-- name: DeleteProjectSlugAlias :exec
+DELETE FROM project_slug_aliases WHERE slug = $1;
+
+-- name: PurgeExpiredProjectSlugAliases :execrows
+DELETE FROM project_slug_aliases WHERE expires_at <= now();
+
+-- ── Counts for the delete confirmations (#3014) ───────────────
+-- What a delete takes with it, as its confirmation names it: the boards still
+-- on the tree (one in the trash is already gone for the reader) and every task
+-- on them — subtasks and archived ones too, since the cascade takes those.
+
+-- name: ProjectFootprint :one
+SELECT
+    (SELECT count(*) FROM boards b
+      WHERE b.project_id = sqlc.arg(project_id)::uuid AND b.deleted_at IS NULL)::bigint AS boards,
+    (SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id
+      WHERE b.project_id = sqlc.arg(project_id)::uuid AND b.deleted_at IS NULL)::bigint AS tasks;
+
+-- name: WorkspaceFootprint :one
+SELECT
+    (SELECT count(*) FROM projects p
+      WHERE p.workspace_id = sqlc.arg(workspace_id)::uuid)::bigint AS projects,
+    (SELECT count(*) FROM boards b JOIN projects p ON p.id = b.project_id
+      WHERE p.workspace_id = sqlc.arg(workspace_id)::uuid AND b.deleted_at IS NULL)::bigint AS boards,
+    (SELECT count(*) FROM tasks t JOIN boards b ON b.id = t.board_id JOIN projects p ON p.id = b.project_id
+      WHERE p.workspace_id = sqlc.arg(workspace_id)::uuid AND b.deleted_at IS NULL)::bigint AS tasks;

@@ -67,6 +67,15 @@ data class Project(
     @SerializedName("estimation") val estimation: EstimationConfig? = null,
 )
 
+/** What deleting a project or a workspace takes with it (#3014) — the answer of
+ *  `GET /projects/{id}/counts` (boards, tasks) and `GET /workspaces/{id}/counts`
+ *  (projects too). Live boards only; every task on them, subtasks and archived. */
+data class DeleteCounts(
+    @SerializedName("projects") val projects: Int = 0,
+    @SerializedName("boards") val boards: Int = 0,
+    @SerializedName("tasks") val tasks: Int = 0,
+)
+
 /** A board within a project. Mirrors sqlc `Board`. */
 data class Board(
     @SerializedName("id") val id: String = "",

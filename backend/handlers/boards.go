@@ -218,10 +218,19 @@ func (h *API) ListBoards(c *gin.Context) {
 	c.JSON(http.StatusOK, boards)
 }
 
+// boardResolveView is a resolved board plus its project's current address. The
+// address in the request may be a former one (#3012); the client rewrites its
+// URL to this one.
+type boardResolveView struct {
+	boardScopeView
+	ProjectSlug string `json:"project_slug"`
+}
+
 // ResolveBoardBySlug resolves a /project/<projectSlug>/board/<boardSlug> pair to
-// its board (board slugs are unique only within a project).
+// its board (board slugs are unique only within a project). The project part
+// may be an address the project left less than 30 days ago.
 func (h *API) ResolveBoardBySlug(c *gin.Context) {
-	proj, err := h.q.GetProjectBySlug(c, c.Query("project"))
+	proj, _, err := h.projectBySlug(c, c.Query("project"))
 	if notFound(c, err) {
 		return
 	}
@@ -240,7 +249,10 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID})
+	c.JSON(http.StatusOK, boardResolveView{
+		boardScopeView: boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID},
+		ProjectSlug:    proj.Slug,
+	})
 }
 
 // resolveBoardParam resolves a board route's :id segment — a UUID or a

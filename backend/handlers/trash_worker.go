@@ -72,4 +72,7 @@ func (h *API) purgeTrashBefore(ctx context.Context, cutoff time.Time) {
 	if _, err := h.q.PurgeDeletedColumns(ctx, cutoff); err != nil {
 		slog.Warn("trash purge: columns", "err", err)
 	}
+	// Former project addresses past their 30 days (#3012) — on their own clock,
+	// not the trash cutoff: expires_at is stamped when the address is left.
+	h.PurgeExpiredSlugAliases(ctx)
 }

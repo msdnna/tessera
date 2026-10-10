@@ -176,6 +176,10 @@ interface ApiService {
     @DELETE("workspaces/{id}")
     suspend fun deleteWorkspace(@Path("id") id: String)
 
+    /** What deleting the workspace takes with it — for the confirmation (#3014). */
+    @GET("workspaces/{id}/counts")
+    suspend fun workspaceCounts(@Path("id") id: String): website.msdnna.tessera.data.model.DeleteCounts
+
     // ── Project groups ──────────────────────────────────────────────────────
     @GET("workspaces/{id}/groups")
     suspend fun groups(@Path("id") workspaceId: String): List<ProjectGroup>?
@@ -213,6 +217,10 @@ interface ApiService {
 
     @DELETE("projects/{id}")
     suspend fun deleteProject(@Path("id") projectId: String)
+
+    /** What deleting the project takes with it — for the confirmation (#3014). */
+    @GET("projects/{id}/counts")
+    suspend fun projectCounts(@Path("id") projectId: String): website.msdnna.tessera.data.model.DeleteCounts
 
     @POST("projects/{id}/transfer")
     suspend fun transferProject(

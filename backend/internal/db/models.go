@@ -557,6 +557,13 @@ type ProjectGroup struct {
 	IconMode    string     `json:"icon_mode"`
 }
 
+type ProjectSlugAlias struct {
+	Slug      string    `json:"slug"`
+	ProjectID uuid.UUID `json:"project_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type RefreshToken struct {
 	ID        uuid.UUID  `json:"id"`
 	UserID    uuid.UUID  `json:"user_id"`
