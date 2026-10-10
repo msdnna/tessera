@@ -326,6 +326,9 @@ func msgConferenceInvited(actor, title, confID string, scheduledAt *time.Time) n
 	p := withCtx(event(evConfInvited, nil), "title", title)
 	p["actor"] = actor
 	p["conference_id"] = confID
+	// The whole title, whatever its length (`title` is only inlined when short):
+	// the feed names the meeting under the sentence (#3051).
+	p["name"] = strings.TrimSpace(title)
 	if scheduledAt != nil {
 		p["scheduled_at"] = scheduledAt.UTC().Format(time.RFC3339)
 	}

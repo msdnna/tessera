@@ -190,6 +190,11 @@ func TestMsgConferenceInvited(t *testing.T) {
 	if p["title"] != "Летучка" {
 		t.Fatalf("title = %v, want the conference title", p["title"])
 	}
+	// The whole title rides under `name` whatever its length (#3051).
+	long := decode(t, msgConferenceInvited("Алиса", "Синк по синхронизации GitLab", "c-1", nil))
+	if long["name"] != "Синк по синхронизации GitLab" || long["title"] != nil {
+		t.Fatalf("long title: name = %v, title = %v", long["name"], long["title"])
+	}
 	if _, ok := p["task_number"]; ok {
 		t.Fatalf("an invitation is about no task, got task_number %v", p["task_number"])
 	}

@@ -9,6 +9,10 @@ import { api, newCredentials, register, seedBoard } from '../api.js'
 //   - the page of all notifications with server filters and paging (#3049);
 //   - «Только срочное и упоминания» in the quiet hours (#3050).
 
+// Each test signs its own reader in; the fixture's seed session would race it
+// (two logins, two refresh cookies — the bell then reads the seed user's feed).
+test.use({ signedIn: false })
+
 async function pair(label) {
   const runId = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`
   const meCreds = newCredentials(runId, `-${label}-me`)
@@ -76,6 +80,8 @@ test('уведомления v2: RSVP в ленте, упоминание в д�
   await signIn(page, meCreds)
   await page.goto('/')
   await expect(page.getByTestId('sidebar')).toBeVisible()
+  // The bell's count says the feed has loaded.
+  await expect(page.getByTestId('notifications-unread')).toBeVisible()
   await page.getByTestId('notifications-bell').click()
   const feed = page.getByTestId('notifications-feed')
   await expect(feed).toBeVisible()
@@ -85,8 +91,13 @@ test('уведомления v2: RSVP в ленте, упоминание в д�
   await expect(rsvp).toHaveAttribute('data-rsvp', 'pending')
   await rsvp.getByTestId('notification-accept').click()
   await expect(rsvp).toHaveAttribute('data-rsvp', 'accepted')
-  const list = await api.get(`/workspaces/${s.ws.id}/conferences`, me.token)
-  expect(list.find((c) => c.id === conf.id).my_rsvp).toBe('accepted')
+  // The row answers before the server does; the server catches up.
+  await expect
+    .poll(async () => {
+      const list = await api.get(`/workspaces/${s.ws.id}/conferences`, me.token)
+      return list.find((c) => c.id === conf.id).my_rsvp
+    })
+    .toBe('accepted')
 
   // «Все уведомления →» leads to the page.
   await page.getByTestId('notifications-all').click()

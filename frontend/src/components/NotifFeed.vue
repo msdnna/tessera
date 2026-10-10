@@ -81,7 +81,8 @@ const conflicts = useConflictsStore()
 
 // The page of all notifications reads its own rows from the server.
 const pager = props.all ? useNotificationPages() : null
-const filters = props.all ? PAGE_FILTERS : NOTIFICATION_FILTERS
+// «Непрочитанные» on the wide page only: a phone's row fits four tabs (MGNotif).
+const filters = computed(() => (props.all && !props.page ? PAGE_FILTERS : NOTIFICATION_FILTERS))
 
 // ── the filter and the groups ─────────────────────────────────────────
 const filter = ref('all')
@@ -148,23 +149,29 @@ function chipOf(n) {
   // The quote is the comment cut for one line (#3117); the excerpt is only the
   // short inline context and is absent for a longer comment.
   if (p.quote || p.excerpt) return { quote: p.quote || p.excerpt }
-  // A deleted task (#3114) has no row to join: the number and title come from
-  // the payload alone, and the row opens nothing (notificationRoute → null).
   // A closed stage (#3048) names itself in the sentence; the chip says where.
   if (p.event === 'milestone_closed')
-    return { stage: true, title: t('notifications.pop.stageOf', { project: p.project || '' }) }
-  if (
-    p.title &&
-    p.event !== 'task_due_soon' &&
-    p.event !== 'conference_invited' &&
-    p.event !== 'conference_starting'
-  )
     return {
-      title: p.title,
-      ref: n.task_number ?? p.task_number,
-      gone: p.event === 'task_deleted',
+      icon: TrailSignOutline,
+      title: t('notifications.pop.stageOf', { project: p.project || '' }),
     }
-  return null
+  // An invitation names the meeting under the sentence (#3051): `name` is the
+  // whole title, `title` only a short one (older rows).
+  if (p.event === 'conference_invited') {
+    const name = p.name || p.title
+    return name ? { icon: VideocamOutline, title: name } : null
+  }
+  if (p.event === 'task_due_soon' || p.event === 'conference_starting') return null
+  // A task: the whole title the list joins in, else the payload's short one. A
+  // deleted task (#3114) has no row to join: the number and title come from the
+  // payload alone, and the row opens nothing (notificationRoute → null).
+  const title = n.task_title || p.title
+  if (!title) return null
+  return {
+    title,
+    ref: n.task_number ?? p.task_number,
+    gone: p.event === 'task_deleted',
+  }
 }
 // A row without a person carries the system's glyph in its own tone.
 const SYSTEM = {
@@ -251,12 +258,31 @@ watch(sentinel, (el) => {
   if (!el || !pager || typeof IntersectionObserver === 'undefined') return
   // The viewport as the root: whichever box scrolls (the list, or the page
   // around it), an end clipped out of view does not intersect.
-  io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && pager.loadMore(), {
-    rootMargin: '200px',
-  })
+  // The callback is late by a frame, and a page may have landed meanwhile and
+  // pushed the end down: the geometry is asked again at that moment, so a
+  // stale «intersecting» does not pull a page nobody scrolled to.
+  const near = () => el.getBoundingClientRect().top < window.innerHeight + 200
+  io = new IntersectionObserver(
+    (es) => {
+      if (es.some((e) => e.isIntersecting) && pager.items.value.length && near()) pager.loadMore()
+    },
+    { rootMargin: '200px' },
+  )
   io.observe(el)
 })
 onBeforeUnmount(() => io?.disconnect())
+// A page that leaves the end in view (a tall window, short rows) gets no new
+// intersection to report: the next page is asked for right after it renders.
+if (pager)
+  watch(
+    () => pager.items.value.length,
+    async () => {
+      await nextTick()
+      const r = sentinel.value?.getBoundingClientRect()
+      // height 0: not laid out at all (hidden, or no layout engine).
+      if (r && r.height > 0 && !pager.done.value && r.top < window.innerHeight) pager.loadMore()
+    },
+  )
 function openSettings() {
   emit('close')
   router.push({ path: '/settings', query: { s: 'notifications' } })
@@ -495,10 +521,7 @@ function onKey(e) {
                 {{ t('notifications.pop.quote', { text: chipOf(n).quote }) }}
               </div>
               <span v-else-if="chipOf(n)" class="np-chip" :class="{ gone: chipOf(n).gone }">
-                <n-icon
-                  :component="chipOf(n).stage ? TrailSignOutline : DocumentTextOutline"
-                  :size="12"
-                />
+                <n-icon :component="chipOf(n).icon || DocumentTextOutline" :size="12" />
                 <span v-if="chipOf(n).ref" class="np-chip-ref">#{{ chipOf(n).ref }}</span>
                 <span class="np-chip-t">{{ chipOf(n).title }}</span>
               </span>

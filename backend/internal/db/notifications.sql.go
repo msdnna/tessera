@@ -91,6 +91,8 @@ SELECT
     n.id, n.user_id, n.workspace_id, n.task_id, n.actor_id, n.kind, n.text, n.read_at, n.created_at, n.payload,
     t.number   AS task_number,
     t.board_id AS task_board_id,
+    -- The whole title, for the row's chip (the payload inlines only a short one).
+    t.title    AS task_title,
     -- The reader's answer to a conference invitation (#3051) — see
     -- ListNotificationsPage.
     cp.rsvp    AS rsvp
@@ -117,6 +119,7 @@ type ListNotificationsRow struct {
 	Payload     json.RawMessage `json:"payload"`
 	TaskNumber  *int64          `json:"task_number"`
 	TaskBoardID *uuid.UUID      `json:"task_board_id"`
+	TaskTitle   *string         `json:"task_title"`
 	Rsvp        *string         `json:"rsvp"`
 }
 
@@ -144,6 +147,7 @@ func (q *Queries) ListNotifications(ctx context.Context, userID uuid.UUID) ([]Li
 			&i.Payload,
 			&i.TaskNumber,
 			&i.TaskBoardID,
+			&i.TaskTitle,
 			&i.Rsvp,
 		); err != nil {
 			return nil, err
@@ -161,6 +165,8 @@ SELECT
     n.id, n.user_id, n.workspace_id, n.task_id, n.actor_id, n.kind, n.text, n.read_at, n.created_at, n.payload,
     t.number   AS task_number,
     t.board_id AS task_board_id,
+    -- The whole title, for the row's chip (the payload inlines only a short one).
+    t.title    AS task_title,
     cp.rsvp    AS rsvp
 FROM notifications n
 LEFT JOIN boards nb ON nb.id = (SELECT board_id FROM tasks WHERE id = n.task_id) AND nb.deleted_at IS NULL
@@ -202,6 +208,7 @@ type ListNotificationsPageRow struct {
 	Payload     json.RawMessage `json:"payload"`
 	TaskNumber  *int64          `json:"task_number"`
 	TaskBoardID *uuid.UUID      `json:"task_board_id"`
+	TaskTitle   *string         `json:"task_title"`
 	Rsvp        *string         `json:"rsvp"`
 }
 
@@ -247,6 +254,7 @@ func (q *Queries) ListNotificationsPage(ctx context.Context, arg ListNotificatio
 			&i.Payload,
 			&i.TaskNumber,
 			&i.TaskBoardID,
+			&i.TaskTitle,
 			&i.Rsvp,
 		); err != nil {
 			return nil, err

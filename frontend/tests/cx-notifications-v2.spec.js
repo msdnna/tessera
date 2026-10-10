@@ -229,6 +229,29 @@ describe('«Принять / Отклонить» in the feed (#3051)', () => {
     expect(store.items[0].read_at).toBeNull()
   })
 
+  it('names the meeting under the sentence, the whole title', async () => {
+    const long = 'Синк по синхронизации GitLab'
+    await mountFeed({}, [
+      invite({ payload: { ...invite().payload, title: undefined, name: long } }),
+    ])
+    expect(wrapper.get('[data-row="c1"] .np-chip').text()).toContain(long)
+    expect(wrapper.get('[data-row="c1"] .np-text').text()).not.toContain(long)
+  })
+
+  it('keeps an answer given while a load was in flight', async () => {
+    const store = useNotificationsStore()
+    store.items = [invite()]
+    let answer
+    api.list.mockImplementationOnce(() => new Promise((r) => (answer = r)))
+    const loading = store.load()
+    await store.rsvp(store.items[0], 'accepted')
+    // The answer's snapshot predates the click: the row still says «pending».
+    answer({ data: [invite()] })
+    await loading
+    expect(store.items[0].rsvp).toBe('accepted')
+    expect(store.items[0].read_at).not.toBeNull()
+  })
+
   it('draws nothing to answer when the call is gone', async () => {
     await mountFeed({}, [invite({ rsvp: null })])
     expect(wrapper.find('[data-testid="notification-rsvp"]').exists()).toBe(false)

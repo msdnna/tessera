@@ -10,6 +10,8 @@ SELECT
     n.*,
     t.number   AS task_number,
     t.board_id AS task_board_id,
+    -- The whole title, for the row's chip (the payload inlines only a short one).
+    t.title    AS task_title,
     -- The reader's answer to a conference invitation (#3051) — see
     -- ListNotificationsPage.
     cp.rsvp    AS rsvp
@@ -39,6 +41,8 @@ SELECT
     n.*,
     t.number   AS task_number,
     t.board_id AS task_board_id,
+    -- The whole title, for the row's chip (the payload inlines only a short one).
+    t.title    AS task_title,
     cp.rsvp    AS rsvp
 FROM notifications n
 LEFT JOIN boards nb ON nb.id = (SELECT board_id FROM tasks WHERE id = n.task_id) AND nb.deleted_at IS NULL
