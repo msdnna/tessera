@@ -24,9 +24,9 @@ func (q *Queries) ArchiveTask(ctx context.Context, id uuid.UUID) error {
 
 const archiveTaskCascade = `-- name: ArchiveTaskCascade :exec
 WITH RECURSIVE down AS (
-    SELECT t.id FROM tasks t WHERE t.id = $1
+    SELECT t.id FROM tasks t WHERE t.id = $1 AND t.deleted_at IS NULL
     UNION
-    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id WHERE t.deleted_at IS NULL
 )
 UPDATE tasks SET archived_at = now(), updated_at = now()
 WHERE id IN (SELECT id FROM down) AND archived_at IS NULL
@@ -69,7 +69,7 @@ INSERT INTO tasks (
     board_id, column_id, parent_id, title, description, priority, due_date, start_date, estimate, position, created_by, number
 )
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by
 `
 
 type CreateTaskParams struct {
@@ -127,6 +127,8 @@ func (q *Queries) CreateTask(ctx context.Context, arg CreateTaskParams) (Task, e
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -176,12 +178,12 @@ UPDATE tasks t
 SET parent_id = NULL,
     position = (
         SELECT coalesce(max(p.position), 0) FROM tasks p
-        WHERE p.column_id = t.column_id AND p.parent_id IS NULL
+        WHERE p.column_id = t.column_id AND p.parent_id IS NULL AND p.deleted_at IS NULL
     ) + 65536 * ord.rn,
     updated_at = now()
 FROM (
     SELECT s.id, row_number() OVER (ORDER BY s.position, s.created_at, s.id) AS rn
-    FROM tasks s WHERE s.parent_id = $1
+    FROM tasks s WHERE s.parent_id = $1 AND s.deleted_at IS NULL
 ) ord
 WHERE t.id = ord.id
 RETURNING t.id
@@ -228,9 +230,14 @@ func (q *Queries) DetachChildren(ctx context.Context, parentID *uuid.UUID) ([]uu
 }
 
 const getTask = `-- name: GetTask :one
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE id = $1
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by FROM tasks WHERE id = $1 AND deleted_at IS NULL
 `
 
+// GetTask answers for live tasks only: a task in the trash (deleted_at, 0086) is
+// gone for every reader, so loadTask and every internal lookup see a 404 / no
+// row. GetTaskAny is the door for the few callers that must see the trash too —
+// restore, purge, and the GitLab sync, which keeps the link of a deleted mirror
+// and must not mistake it for an issue it has never seen.
 func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 	row := q.db.QueryRow(ctx, getTask, id)
 	var i Task
@@ -258,6 +265,45 @@ func (q *Queries) GetTask(ctx context.Context, id uuid.UUID) (Task, error) {
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
+	)
+	return i, err
+}
+
+const getTaskAny = `-- name: GetTaskAny :one
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by FROM tasks WHERE id = $1
+`
+
+func (q *Queries) GetTaskAny(ctx context.Context, id uuid.UUID) (Task, error) {
+	row := q.db.QueryRow(ctx, getTaskAny, id)
+	var i Task
+	err := row.Scan(
+		&i.ID,
+		&i.BoardID,
+		&i.ColumnID,
+		&i.ParentID,
+		&i.Title,
+		&i.Description,
+		&i.Priority,
+		&i.DueDate,
+		&i.Position,
+		&i.CreatedBy,
+		&i.CompletedAt,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ArchivedAt,
+		&i.Number,
+		&i.DueLeadMinutes,
+		&i.DueRepeatMinutes,
+		&i.DueNotifyEnabled,
+		&i.Recurrence,
+		&i.EisenhowerQuadrant,
+		&i.StartDate,
+		&i.Estimate,
+		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -289,7 +335,7 @@ func (q *Queries) LiftSubtasksFromColumn(ctx context.Context, arg LiftSubtasksFr
 
 const listBoardArchivedWithMeta = `-- name: ListBoardArchivedWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id, t.deleted_at, t.deleted_by,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids
 FROM tasks t
@@ -297,9 +343,10 @@ LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 WHERE t.board_id = $1
   AND t.archived_at IS NOT NULL
+  AND t.deleted_at IS NULL
   AND (
     t.parent_id IS NULL
-    OR NOT EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NOT NULL)
+    OR NOT EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NOT NULL AND p.deleted_at IS NULL)
   )
 GROUP BY t.id
 ORDER BY t.archived_at DESC
@@ -329,6 +376,8 @@ type ListBoardArchivedWithMetaRow struct {
 	StartDate          *time.Time       `json:"start_date"`
 	Estimate           *float64         `json:"estimate"`
 	MilestoneID        *uuid.UUID       `json:"milestone_id"`
+	DeletedAt          *time.Time       `json:"deleted_at"`
+	DeletedBy          *uuid.UUID       `json:"deleted_by"`
 	TagIds             []uuid.UUID      `json:"tag_ids"`
 	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
 }
@@ -369,6 +418,8 @@ func (q *Queries) ListBoardArchivedWithMeta(ctx context.Context, boardID uuid.UU
 			&i.StartDate,
 			&i.Estimate,
 			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
 			&i.TagIds,
 			&i.AssigneeIds,
 		); err != nil {
@@ -384,7 +435,7 @@ func (q *Queries) ListBoardArchivedWithMeta(ctx context.Context, boardID uuid.UU
 
 const listBoardSubtasksWithMeta = `-- name: ListBoardSubtasksWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id, t.deleted_at, t.deleted_by,
     tg.tag_ids,
     asg.assignee_ids,
     ga.gitlab_assignee_logins
@@ -401,12 +452,12 @@ LEFT JOIN LATERAL (
     SELECT COALESCE(array_agg(DISTINCT tga.gl_username), '{}')::text[] AS gitlab_assignee_logins
     FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
 ) ga ON true
-WHERE t.board_id = $1 AND t.archived_at IS NULL
+WHERE t.board_id = $1 AND t.archived_at IS NULL AND t.deleted_at IS NULL
   -- Only rows the board can actually place under a card: the parent has to be
   -- active too, or the subtask is drawn nowhere. The mirror of the predicate in
   -- ListBoardTasksWithMeta, and the reason the two never overlap — an active
   -- child of an archived parent is served there as a card, exactly once.
-  AND EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NULL)
+  AND EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NULL AND p.deleted_at IS NULL)
 ORDER BY t.position, t.created_at, t.id
 `
 
@@ -434,6 +485,8 @@ type ListBoardSubtasksWithMetaRow struct {
 	StartDate            *time.Time       `json:"start_date"`
 	Estimate             *float64         `json:"estimate"`
 	MilestoneID          *uuid.UUID       `json:"milestone_id"`
+	DeletedAt            *time.Time       `json:"deleted_at"`
+	DeletedBy            *uuid.UUID       `json:"deleted_by"`
 	TagIds               []uuid.UUID      `json:"tag_ids"`
 	AssigneeIds          []uuid.UUID      `json:"assignee_ids"`
 	GitlabAssigneeLogins []string         `json:"gitlab_assignee_logins"`
@@ -479,6 +532,8 @@ func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UU
 			&i.StartDate,
 			&i.Estimate,
 			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
 			&i.TagIds,
 			&i.AssigneeIds,
 			&i.GitlabAssigneeLogins,
@@ -495,7 +550,7 @@ func (q *Queries) ListBoardSubtasksWithMeta(ctx context.Context, boardID uuid.UU
 
 const listBoardTasksWithMeta = `-- name: ListBoardTasksWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id, t.deleted_at, t.deleted_by,
     tg.tag_ids,
     asg.assignee_ids,
     ga.gitlab_assignees,
@@ -522,6 +577,8 @@ LEFT JOIN LATERAL (
 ) ga ON true
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = $1
+  -- The trash (0086) is a screen of its own (ListBoardTrashWithMeta).
+  AND t.deleted_at IS NULL
   -- Active board (archived_at IS NULL) or the read-only archive view (IS NOT NULL).
   AND (($2::boolean AND t.archived_at IS NOT NULL) OR (NOT $2::boolean AND t.archived_at IS NULL))
   -- Top-level *for this view*: no parent that the same view would also draw.
@@ -538,6 +595,7 @@ WHERE t.board_id = $1
   AND NOT EXISTS (
     SELECT 1 FROM tasks p
     WHERE p.id = t.parent_id
+      AND p.deleted_at IS NULL
       AND (($2::boolean AND p.archived_at IS NOT NULL) OR (NOT $2::boolean AND p.archived_at IS NULL))
   )
   AND (
@@ -579,6 +637,8 @@ type ListBoardTasksWithMetaRow struct {
 	StartDate             *time.Time       `json:"start_date"`
 	Estimate              *float64         `json:"estimate"`
 	MilestoneID           *uuid.UUID       `json:"milestone_id"`
+	DeletedAt             *time.Time       `json:"deleted_at"`
+	DeletedBy             *uuid.UUID       `json:"deleted_by"`
 	TagIds                []uuid.UUID      `json:"tag_ids"`
 	AssigneeIds           []uuid.UUID      `json:"assignee_ids"`
 	GitlabAssignees       []string         `json:"gitlab_assignees"`
@@ -644,6 +704,8 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, arg ListBoardTasks
 			&i.StartDate,
 			&i.Estimate,
 			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
 			&i.TagIds,
 			&i.AssigneeIds,
 			&i.GitlabAssignees,
@@ -664,13 +726,120 @@ func (q *Queries) ListBoardTasksWithMeta(ctx context.Context, arg ListBoardTasks
 	return items, nil
 }
 
+const listBoardTrashWithMeta = `-- name: ListBoardTrashWithMeta :many
+SELECT
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id, t.deleted_at, t.deleted_by,
+    COALESCE(u.name, '')::text AS deleted_by_name,
+    COALESCE((SELECT array_agg(DISTINCT tt.tag_id) FROM task_tags tt WHERE tt.task_id = t.id), '{}')::uuid[] AS tag_ids,
+    COALESCE((SELECT array_agg(DISTINCT ta.user_id) FROM task_assignees ta WHERE ta.task_id = t.id), '{}')::uuid[] AS assignee_ids,
+    (SELECT count(*) FROM tasks s WHERE s.parent_id = t.id AND s.deleted_at = t.deleted_at)::bigint AS subtask_count
+FROM tasks t
+LEFT JOIN users u ON u.id = t.deleted_by
+WHERE t.board_id = $1
+  AND t.deleted_at IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.deleted_at = t.deleted_at
+  )
+ORDER BY t.deleted_at DESC, t.number DESC
+`
+
+type ListBoardTrashWithMetaRow struct {
+	ID                 uuid.UUID        `json:"id"`
+	BoardID            uuid.UUID        `json:"board_id"`
+	ColumnID           uuid.UUID        `json:"column_id"`
+	ParentID           *uuid.UUID       `json:"parent_id"`
+	Title              string           `json:"title"`
+	Description        string           `json:"description"`
+	Priority           int32            `json:"priority"`
+	DueDate            *time.Time       `json:"due_date"`
+	Position           float64          `json:"position"`
+	CreatedBy          *uuid.UUID       `json:"created_by"`
+	CompletedAt        *time.Time       `json:"completed_at"`
+	CreatedAt          time.Time        `json:"created_at"`
+	UpdatedAt          time.Time        `json:"updated_at"`
+	ArchivedAt         *time.Time       `json:"archived_at"`
+	Number             *int64           `json:"number"`
+	DueLeadMinutes     *int32           `json:"due_lead_minutes"`
+	DueRepeatMinutes   *int32           `json:"due_repeat_minutes"`
+	DueNotifyEnabled   *bool            `json:"due_notify_enabled"`
+	Recurrence         *json.RawMessage `json:"recurrence"`
+	EisenhowerQuadrant *int16           `json:"eisenhower_quadrant"`
+	StartDate          *time.Time       `json:"start_date"`
+	Estimate           *float64         `json:"estimate"`
+	MilestoneID        *uuid.UUID       `json:"milestone_id"`
+	DeletedAt          *time.Time       `json:"deleted_at"`
+	DeletedBy          *uuid.UUID       `json:"deleted_by"`
+	DeletedByName      string           `json:"deleted_by_name"`
+	TagIds             []uuid.UUID      `json:"tag_ids"`
+	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
+	SubtaskCount       int64            `json:"subtask_count"`
+}
+
+// ListBoardTrashWithMeta is the board's trash (0086): every task that went there
+// as an entry of its own — a root deleted with its subtree, or a subtask deleted
+// on its own. Subtasks that went with their root (same deleted_at stamp, see
+// SoftDeleteTaskSubtree) are not listed: they come back with it. Newest first;
+// deleted_by_name says who threw it away.
+func (q *Queries) ListBoardTrashWithMeta(ctx context.Context, boardID uuid.UUID) ([]ListBoardTrashWithMetaRow, error) {
+	rows, err := q.db.Query(ctx, listBoardTrashWithMeta, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListBoardTrashWithMetaRow
+	for rows.Next() {
+		var i ListBoardTrashWithMetaRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.ColumnID,
+			&i.ParentID,
+			&i.Title,
+			&i.Description,
+			&i.Priority,
+			&i.DueDate,
+			&i.Position,
+			&i.CreatedBy,
+			&i.CompletedAt,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.ArchivedAt,
+			&i.Number,
+			&i.DueLeadMinutes,
+			&i.DueRepeatMinutes,
+			&i.DueNotifyEnabled,
+			&i.Recurrence,
+			&i.EisenhowerQuadrant,
+			&i.StartDate,
+			&i.Estimate,
+			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
+			&i.DeletedByName,
+			&i.TagIds,
+			&i.AssigneeIds,
+			&i.SubtaskCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listScheduleRecurDue = `-- name: ListScheduleRecurDue :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by FROM tasks
 WHERE archived_at IS NULL
+  AND deleted_at IS NULL
   AND due_date IS NOT NULL
   AND due_date <= now()
   AND recurrence->>'trigger' = 'schedule'
-  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = tasks.board_id AND b.deleted_at IS NULL)
+  -- An archived project (0086) is read-only: its series wait for the restore.
+  AND EXISTS (SELECT 1 FROM boards b JOIN projects p ON p.id = b.project_id
+              WHERE b.id = tasks.board_id AND b.deleted_at IS NULL AND p.archived_at IS NULL)
 ORDER BY due_date
 `
 
@@ -725,6 +894,8 @@ func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
 			&i.StartDate,
 			&i.Estimate,
 			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -737,7 +908,7 @@ func (q *Queries) ListScheduleRecurDue(ctx context.Context) ([]Task, error) {
 }
 
 const listSubtasks = `-- name: ListSubtasks :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE parent_id = $1 ORDER BY position, created_at, id
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by FROM tasks WHERE parent_id = $1 AND deleted_at IS NULL ORDER BY position, created_at, id
 `
 
 func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task, error) {
@@ -773,6 +944,8 @@ func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task
 			&i.StartDate,
 			&i.Estimate,
 			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -786,7 +959,7 @@ func (q *Queries) ListSubtasks(ctx context.Context, parentID *uuid.UUID) ([]Task
 
 const listSubtasksWithMeta = `-- name: ListSubtasksWithMeta :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id, t.deleted_at, t.deleted_by,
     COALESCE(array_agg(DISTINCT tt.tag_id) FILTER (WHERE tt.tag_id IS NOT NULL), '{}')::uuid[] AS tag_ids,
     COALESCE(array_agg(DISTINCT ta.user_id) FILTER (WHERE ta.user_id IS NOT NULL), '{}')::uuid[] AS assignee_ids,
     gl.gl_iid,
@@ -796,7 +969,7 @@ FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
-WHERE t.parent_id = $1
+WHERE t.parent_id = $1 AND t.deleted_at IS NULL
 GROUP BY t.id, gl.task_id
 ORDER BY t.position, t.created_at, t.id
 `
@@ -825,6 +998,8 @@ type ListSubtasksWithMetaRow struct {
 	StartDate          *time.Time       `json:"start_date"`
 	Estimate           *float64         `json:"estimate"`
 	MilestoneID        *uuid.UUID       `json:"milestone_id"`
+	DeletedAt          *time.Time       `json:"deleted_at"`
+	DeletedBy          *uuid.UUID       `json:"deleted_by"`
 	TagIds             []uuid.UUID      `json:"tag_ids"`
 	AssigneeIds        []uuid.UUID      `json:"assignee_ids"`
 	GlIid              *int64           `json:"gl_iid"`
@@ -874,6 +1049,8 @@ func (q *Queries) ListSubtasksWithMeta(ctx context.Context, parentID *uuid.UUID)
 			&i.StartDate,
 			&i.Estimate,
 			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
 			&i.TagIds,
 			&i.AssigneeIds,
 			&i.GlIid,
@@ -891,7 +1068,7 @@ func (q *Queries) ListSubtasksWithMeta(ctx context.Context, parentID *uuid.UUID)
 }
 
 const listTasksByBoard = `-- name: ListTasksByBoard :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position, created_at, id
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by FROM tasks WHERE board_id = $1 AND parent_id IS NULL AND deleted_at IS NULL ORDER BY position, created_at, id
 `
 
 func (q *Queries) ListTasksByBoard(ctx context.Context, boardID uuid.UUID) ([]Task, error) {
@@ -927,6 +1104,8 @@ func (q *Queries) ListTasksByBoard(ctx context.Context, boardID uuid.UUID) ([]Ta
 			&i.StartDate,
 			&i.Estimate,
 			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
 		); err != nil {
 			return nil, err
 		}
@@ -940,7 +1119,7 @@ func (q *Queries) ListTasksByBoard(ctx context.Context, boardID uuid.UUID) ([]Ta
 
 const maxTaskPositionInColumn = `-- name: MaxTaskPositionInColumn :one
 SELECT coalesce(max(position), 0)::double precision
-FROM tasks WHERE column_id = $1 AND parent_id IS NULL
+FROM tasks WHERE column_id = $1 AND parent_id IS NULL AND deleted_at IS NULL
 `
 
 func (q *Queries) MaxTaskPositionInColumn(ctx context.Context, columnID uuid.UUID) (float64, error) {
@@ -992,7 +1171,7 @@ const moveTask = `-- name: MoveTask :one
 UPDATE tasks
 SET column_id = $2, position = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by
 `
 
 type MoveTaskParams struct {
@@ -1028,8 +1207,42 @@ func (q *Queries) MoveTask(ctx context.Context, arg MoveTaskParams) (Task, error
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
+}
+
+const purgeDeletedTasks = `-- name: PurgeDeletedTasks :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.deleted_at IS NOT NULL AND t.deleted_at < $1::timestamptz
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+DELETE FROM tasks WHERE tasks.id IN (SELECT id FROM down) RETURNING tasks.id
+`
+
+// PurgeDeletedTasks finishes what the trash left pending: tasks that stayed
+// deleted past the cutoff are removed for good (subtasks by the parent_id
+// cascade; the recursion names them so their upload folders can be swept).
+func (q *Queries) PurgeDeletedTasks(ctx context.Context, cutoff time.Time) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, purgeDeletedTasks, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const rebalanceColumnTaskPositions = `-- name: RebalanceColumnTaskPositions :exec
@@ -1037,7 +1250,7 @@ UPDATE tasks t
 SET position = ordered.rn * $1::double precision, updated_at = now()
 FROM (
     SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
-    FROM tasks WHERE column_id = $2::uuid AND parent_id IS NULL
+    FROM tasks WHERE column_id = $2::uuid AND parent_id IS NULL AND deleted_at IS NULL
 ) ordered
 WHERE t.id = ordered.id
 `
@@ -1064,7 +1277,7 @@ UPDATE tasks t
 SET position = ordered.rn * $1::double precision, updated_at = now()
 FROM (
     SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
-    FROM tasks WHERE parent_id = $2::uuid
+    FROM tasks WHERE parent_id = $2::uuid AND deleted_at IS NULL
 ) ordered
 WHERE t.id = ordered.id
 `
@@ -1200,10 +1413,10 @@ func (q *Queries) ReopenTaskLeavingDone(ctx context.Context, arg ReopenTaskLeavi
 const restoreTask = `-- name: RestoreTask :exec
 WITH RECURSIVE down AS (
     SELECT t.id, t.archived_at, t.archived_at AS root_archived_at
-    FROM tasks t WHERE t.id = $1
+    FROM tasks t WHERE t.id = $1 AND t.deleted_at IS NULL
     UNION
     SELECT t.id, t.archived_at, down.root_archived_at
-    FROM tasks t JOIN down ON t.parent_id = down.id
+    FROM tasks t JOIN down ON t.parent_id = down.id WHERE t.deleted_at IS NULL
 ), taken AS (
     SELECT down.id FROM down WHERE down.archived_at = down.root_archived_at
 )
@@ -1243,6 +1456,54 @@ func (q *Queries) RestoreTaskIfArchived(ctx context.Context, id uuid.UUID) error
 	return err
 }
 
+const restoreTaskSubtree = `-- name: RestoreTaskSubtree :many
+WITH RECURSIVE down AS (
+    SELECT t.id, t.deleted_at, t.deleted_at AS root_deleted_at
+    FROM tasks t WHERE t.id = $1 AND t.deleted_at IS NOT NULL
+    UNION
+    SELECT t.id, t.deleted_at, down.root_deleted_at
+    FROM tasks t JOIN down ON t.parent_id = down.id
+), taken AS (
+    SELECT down.id FROM down WHERE down.deleted_at = down.root_deleted_at
+)
+UPDATE tasks SET deleted_at = NULL, deleted_by = NULL, updated_at = now(),
+    parent_id = CASE WHEN tasks.id = $1 AND $2::boolean THEN NULL ELSE tasks.parent_id END,
+    position = CASE WHEN tasks.id = $1 AND $2::boolean THEN $3::double precision ELSE tasks.position END
+WHERE tasks.id IN (SELECT taken.id FROM taken)
+RETURNING tasks.id
+`
+
+type RestoreTaskSubtreeParams struct {
+	ID       uuid.UUID `json:"id"`
+	Detach   bool      `json:"detach"`
+	Position float64   `json:"position"`
+}
+
+// RestoreTaskSubtree takes a task out of the trash with the subtasks that went
+// in with it (same stamp — the RestoreTask trick above). A root whose parent is
+// still in the trash comes back to the top level of its column: the parent is
+// gone for every reader, and a subtask under it would be drawn nowhere. The
+// caller passes that decision as detach (and the end-of-column position).
+func (q *Queries) RestoreTaskSubtree(ctx context.Context, arg RestoreTaskSubtreeParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, restoreTaskSubtree, arg.ID, arg.Detach, arg.Position)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setTaskColumnCompleted = `-- name: SetTaskColumnCompleted :exec
 UPDATE tasks SET column_id = $2, completed_at = $3, updated_at = now() WHERE id = $1
 `
@@ -1278,7 +1539,7 @@ const setTaskDueNotify = `-- name: SetTaskDueNotify :one
 UPDATE tasks
 SET due_lead_minutes = $2, due_repeat_minutes = $3, due_notify_enabled = $4, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by
 `
 
 type SetTaskDueNotifyParams struct {
@@ -1322,6 +1583,8 @@ func (q *Queries) SetTaskDueNotify(ctx context.Context, arg SetTaskDueNotifyPara
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -1330,7 +1593,7 @@ const setTaskEisenhower = `-- name: SetTaskEisenhower :one
 UPDATE tasks
 SET eisenhower_quadrant = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by
 `
 
 type SetTaskEisenhowerParams struct {
@@ -1367,6 +1630,8 @@ func (q *Queries) SetTaskEisenhower(ctx context.Context, arg SetTaskEisenhowerPa
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -1381,7 +1646,7 @@ SET parent_id = $2, board_id = $3, column_id = $4, position = $5,
         THEN tasks.milestone_id ELSE NULL END,
     updated_at = now()
 WHERE tasks.id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by
 `
 
 type SetTaskParentParams struct {
@@ -1438,6 +1703,8 @@ func (q *Queries) SetTaskParent(ctx context.Context, arg SetTaskParentParams) (T
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -1506,6 +1773,47 @@ type ShiftSubtaskWindowParams struct {
 func (q *Queries) ShiftSubtaskWindow(ctx context.Context, arg ShiftSubtaskWindowParams) error {
 	_, err := q.db.Exec(ctx, shiftSubtaskWindow, arg.Zone, arg.ShiftSeconds, arg.ParentID)
 	return err
+}
+
+const softDeleteTaskSubtree = `-- name: SoftDeleteTaskSubtree :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = $2 AND t.deleted_at IS NULL
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id WHERE t.deleted_at IS NULL
+)
+UPDATE tasks SET deleted_at = now(), deleted_by = $1::uuid, updated_at = now()
+WHERE id IN (SELECT id FROM down)
+RETURNING id
+`
+
+type SoftDeleteTaskSubtreeParams struct {
+	DeletedBy *uuid.UUID `json:"deleted_by"`
+	ID        uuid.UUID  `json:"id"`
+}
+
+// SoftDeleteTaskSubtree puts a task and every live descendant in the trash with
+// ONE stamp (now() is the transaction timestamp) — what RestoreTaskSubtree reads
+// to give back exactly this delete. A subtask already in the trash keeps the
+// older stamp it went in with: it is an entry of its own there. Returns the ids
+// it took (the realtime event and the uploads purge later need no walk).
+func (q *Queries) SoftDeleteTaskSubtree(ctx context.Context, arg SoftDeleteTaskSubtreeParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, softDeleteTaskSubtree, arg.DeletedBy, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const taskAncestorIDs = `-- name: TaskAncestorIDs :many
@@ -1677,10 +1985,10 @@ func (q *Queries) TaskIDsOnBoard(ctx context.Context, boardID uuid.UUID) ([]uuid
 
 const taskSubtreeParticipants = `-- name: TaskSubtreeParticipants :many
 WITH RECURSIVE down AS (
-    SELECT t.id, 0 AS depth FROM tasks t WHERE t.id = $1
+    SELECT t.id, 0 AS depth FROM tasks t WHERE t.id = $1 AND t.deleted_at IS NULL
     UNION ALL
     SELECT t.id, down.depth + 1 FROM tasks t JOIN down ON t.parent_id = down.id
-    WHERE down.depth < 64
+    WHERE down.depth < 64 AND t.deleted_at IS NULL
 ),
 people AS (
     SELECT ta.user_id, d.id AS task_id, d.depth
@@ -1752,7 +2060,7 @@ SET board_id = $2, column_id = $3, parent_id = NULL, position = $4,
         THEN tasks.milestone_id ELSE NULL END,
     updated_at = now()
 WHERE tasks.id = $1
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by
 `
 
 type TransferTaskParams struct {
@@ -1803,6 +2111,8 @@ func (q *Queries) TransferTask(ctx context.Context, arg TransferTaskParams) (Tas
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -1815,7 +2125,7 @@ WHERE id = $1
   AND ($10::timestamptz IS NULL
        OR date_trunc('milliseconds', updated_at)
           = date_trunc('milliseconds', $10::timestamptz))
-RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id
+RETURNING id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by
 `
 
 type UpdateTaskParams struct {
@@ -1876,6 +2186,8 @@ func (q *Queries) UpdateTask(ctx context.Context, arg UpdateTaskParams) (Task, e
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }

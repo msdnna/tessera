@@ -10,9 +10,7 @@
     "delete": "Удалить",
     "addSubtask": "Создать подзадачу",
     "archived": "Задача «{title}» в архиве",
-    "archivedUndone": "Задача «{title}» возвращена",
-    "deleteArmed": "Точно удалить задачу?",
-    "deleteArmedSub": "Без возврата — вместе с её файлами"
+    "archivedUndone": "Задача «{title}» возвращена"
   },
   "confirm": {
     "delete": "Удалить безвозвратно? Это действие необратимо.",
@@ -518,7 +516,9 @@
     "codeOpenedOn": "открыт {ref} в {branch}",
     "codeOpened": "открыт {ref}",
     "codeMerged": "смержен {ref}",
-    "codeClosed": "закрыт {ref}"
+    "codeClosed": "закрыт {ref}",
+    "trashed": "удалил(а) в корзину",
+    "untrashed": "вернул(а) из корзины"
   },
   "ref": {
     "notFound": "Задача #{number} не найдена"
@@ -564,5 +564,11 @@
       "canceled": "пайплайн отменён",
       "manual": "пайплайн ждёт запуска"
     }
+  },
+  "trash": {
+    "deleted": "Задача #{number} в корзине",
+    "deletedUntitled": "Задача «{title}» в корзине",
+    "restored": "Задача #{number} возвращена",
+    "restoredUntitled": "Задача «{title}» возвращена"
   }
 }

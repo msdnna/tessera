@@ -108,7 +108,7 @@ describe('the board binds it on the card list (#2932)', () => {
 
   it('keeps the archive guard and the touch settings it already had', () => {
     // `:sort` governs re-ordering only; the archive must stay undraggable outright.
-    expect(cardList).toContain(':disabled="archivedMode"')
+    expect(cardList).toContain(':disabled="readOnly"')
     expect(cardList).toContain(':touch-start-threshold="6"')
   })
 

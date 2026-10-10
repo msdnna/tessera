@@ -176,6 +176,15 @@ const src = (p) => readFileSync(resolve(process.cwd(), p), 'utf8')
 const kanban = src('src/components/KanbanBoard.vue')
 
 describe('KanbanBoard hands every layout its archive flag', () => {
+  // The flag every layout takes covers the archive scope AND an archived
+  // project (#3005) — both are look-but-don't-touch.
+  it('readOnly is the archive scope or an archived project', () => {
+    expect(kanban).toContain(
+      'const readOnly = computed(() => archivedMode.value || projectArchived.value)',
+    )
+    expect(kanban).toContain('wsStore.archivedProjects.some((p) => p.id === id)')
+  })
+
   for (const tag of [
     'BoardListView',
     'BoardCalendarView',
@@ -183,11 +192,11 @@ describe('KanbanBoard hands every layout its archive flag', () => {
     'BoardGanttView',
     'BoardMatrixView',
   ]) {
-    it(`gives ${tag} :readonly="archivedMode"`, () => {
+    it(`gives ${tag} :readonly="readOnly"`, () => {
       const at = kanban.indexOf(`<${tag}`)
       expect(at, `${tag} is gone from the board`).toBeGreaterThan(-1)
       const view = kanban.slice(at)
-      expect(view.slice(0, view.indexOf('/>'))).toContain(':readonly="archivedMode"')
+      expect(view.slice(0, view.indexOf('/>'))).toContain(':readonly="readOnly"')
     })
   }
 })

@@ -42,6 +42,9 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useVisualViewport } from '@/composables/useVisualViewport'
 import { useInboxActions } from '@/composables/useInboxActions'
 import { notificationRoute } from '@/utils/notificationRoute'
+import { boards as boardsApi, projects as projApi } from '@/api'
+import { humanizeError } from '@/utils/errors'
+import { useMessage } from '@/composables/useMessage'
 import { phoneOrder } from '@/utils/toastModel'
 import { copyText } from '@/utils/clipboard'
 
@@ -58,6 +61,7 @@ const dialogs = useWsDialogsStore()
 const inboxAct = useInboxActions()
 const { isMobile } = useResponsive()
 const { keyboardOpen } = useVisualViewport()
+const message = useMessage()
 
 // ── what the buttons do ──────────────────────────────────────────────────
 function openNotification(n) {
@@ -91,6 +95,28 @@ function reminderRecord(n) {
 }
 const snooze = ref(null) // { toastId, el, rec }
 
+// «В корзину» on the toast about a deleted task (#3120): the board the task
+// stood on, with its trash panel open and the task's row lit. The notification
+// carries the board (msgDeleted's payload) but no slugs — the board and its
+// project are read for them.
+async function openTrash(n) {
+  notes.markRead(n.id)
+  const boardId = n.payload?.board_id
+  if (!boardId) return
+  try {
+    if (n.workspace_id && n.workspace_id !== ws.currentId) await ws.selectWorkspace(n.workspace_id)
+    const { data: board } = await boardsApi.get(boardId)
+    const project = ws.projectById(board.project_id) || (await projApi.get(board.project_id)).data
+    const number = n.payload?.task_number ?? null
+    router.push({
+      path: `/project/${project.slug}/board/${board.slug}`,
+      query: { trash: '1', ...(number != null ? { hl: String(number) } : {}) },
+    })
+  } catch (e) {
+    message.error(humanizeError(e))
+  }
+}
+
 store.bind({
   open: openNotification,
   reply(n) {
@@ -98,6 +124,7 @@ store.bind({
     focusWhenReady('.tm-composer textarea')
   },
   joinCall: openNotification,
+  trash: openTrash,
   snooze(n, el) {
     const x = store.top.find((y) => y.notificationId === n.id)
     if (!n.payload?.reminder_id) return

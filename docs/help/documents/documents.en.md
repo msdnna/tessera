@@ -3,7 +3,7 @@ title: Documents
 category: Documents
 order: 40
 keywords: documents, editor, docx, word, odt, import, export, pdf, versions, history, approval, sign, comments, discussion, templates, table of contents, nested
-updated: 2026-10-08
+updated: 2026-10-10
 ---
 
 **Documents** is a collaborative editor for everything that outgrows a task description: requirements, meeting minutes, policies, how-tos. Unlike a task description, a document stands on its own — it has versions, a table of contents, per-paragraph discussion and an approval route. The section is young and still developing — details do change over time.
@@ -16,7 +16,7 @@ The section opens from **Documents** in the sidebar or with `G` then `D`.
 
 On the left is the workspace's **document tree**, on the right — the document cards or the open document. A document can have **nested documents**: such a document has an arrow in the tree that folds and unfolds its branch, and a folded branch shows the number of nested documents on the right. That makes the section behave like a small wiki rather than a flat folder of files. The tree remembers which branches are open; the path to the open document is always unfolded.
 
-The tree's head has a **search** by title (it shows the matches together with their parents) and **+** — a new document. At the bottom are **Templates** (opens the template gallery) and **Trash**, marked “soon”: for now deleting a document is final.
+The tree's head has a **search** by title (it shows the matches together with their parents) and **+** — a new document. At the bottom are **Templates** (opens the template gallery) and **Trash** — the deleted documents (more below).
 
 From the keyboard in the tree: `↑` `↓` move between rows, `→` unfolds a branch or steps into its first child, `←` folds it or steps back to the parent, `↵` opens the document.
 
@@ -28,7 +28,13 @@ On a narrow screen the tree gives way to the text: the button on the left of the
 
 Above an open document is its **path** (“Documents › section › document”; the first item takes you back to the cards), and on the right — who else is in the document, the save state and the tools: **discussion**, **table of contents**, **version history**, **links and approval** and the **“⋯”** menu.
 
-The “⋯” menu holds **Nested document** (creates a child), **Show nested (N)** (opens the branch as cards), **Save as template**, **export** in the available formats and **Delete document**. Deleting takes two presses: the first arms it and states the cost honestly (if there are children — that the document **will be deleted together with its nested documents**, and how many), the second deletes.
+The “⋯” menu holds **Nested document** (creates a child), **Show nested (N)** (opens the branch as cards), **Save as template**, **export** in the available formats and **Delete document**. The document goes to the trash at once — with its nested documents — and a message with an **Undo** button (<kbd>Ctrl</kbd> <kbd>Z</kbd>) appears at the bottom.
+
+### The documents trash
+
+**Trash** at the bottom of the tree (on a phone — the trash button in the section's head) lists the documents deleted in the last **30 days**: who deleted each, when, how many days it has left and how many nested documents went with it. **Restore** puts a document back where it was in the tree (at the root, if its parent is in the trash too), **Delete forever** — in two presses — erases it with its images. After 30 days the trash deletes documents by itself.
+
+While a document is in the trash it is out of the tree, search and the tasks' Documents section, but **its links to tasks are kept** — they come back with the document.
 
 ## The editor
 

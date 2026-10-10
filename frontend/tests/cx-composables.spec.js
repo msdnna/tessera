@@ -406,13 +406,15 @@ describe('useTaskMenu', () => {
 
   // «Удалить» is a two-step row (#3112): the menu arms it, the second press is
   // the select that reaches here.
-  it('delete is a two-step row; its select calls the api', async () => {
+  // The delete is reversible since the trash (#3004): one press, no arming —
+  // the undo is in the toast.
+  it('delete is one press; its select calls the api', async () => {
     const onChanged = vi.fn()
     const { open, select, options } = useTaskMenu({ onChanged })
     open({ clientX: 0, clientY: 0 }, { id: 't5', title: 'Y' })
     const del = options.value.find((o) => o.key === 'delete')
     expect(del.danger).toBe(true)
-    expect(del.confirm.title).toBeTruthy()
+    expect(del.confirm).toBeUndefined()
     await select('delete')
     expect(tasksApi.remove).toHaveBeenCalledWith('t5')
     expect(onChanged).toHaveBeenCalled()

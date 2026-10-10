@@ -8,12 +8,12 @@ SELECT * FROM tags WHERE project_id = $1 ORDER BY name;
 
 -- ListTagsWithCounts is ListTags with the number of live tasks wearing each tag
 -- — the «Задачи» column of the project window's tag table (#2990). Archived
--- tasks and tasks of deleted boards are not counted, like everywhere else a
+-- tasks, tasks in the trash and tasks of deleted boards are not counted, like everywhere else a
 -- figure is shown.
 -- name: ListTagsWithCounts :many
 SELECT g.*,
        (SELECT COUNT(*) FROM task_tags tt
-        JOIN tasks t ON t.id = tt.task_id AND t.archived_at IS NULL
+        JOIN tasks t ON t.id = tt.task_id AND t.archived_at IS NULL AND t.deleted_at IS NULL
         JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
         WHERE tt.tag_id = g.id) AS task_count
 FROM tags g

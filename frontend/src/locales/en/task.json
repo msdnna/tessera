@@ -10,9 +10,7 @@
     "delete": "Delete",
     "addSubtask": "Add a subtask",
     "archived": "Task «{title}» archived",
-    "archivedUndone": "Task «{title}» restored",
-    "deleteArmed": "Delete the task?",
-    "deleteArmedSub": "For good — along with its files"
+    "archivedUndone": "Task «{title}» restored"
   },
   "confirm": {
     "delete": "Delete permanently? This cannot be undone.",
@@ -518,7 +516,9 @@
     "codeOpenedOn": "opened {ref} on {branch}",
     "codeOpened": "opened {ref}",
     "codeMerged": "merged {ref}",
-    "codeClosed": "closed {ref}"
+    "codeClosed": "closed {ref}",
+    "trashed": "moved it to the trash",
+    "untrashed": "restored it from the trash"
   },
   "ref": {
     "notFound": "Task #{number} not found"
@@ -564,5 +564,11 @@
       "canceled": "pipeline canceled",
       "manual": "pipeline awaiting start"
     }
+  },
+  "trash": {
+    "deleted": "Task #{number} moved to the trash",
+    "deletedUntitled": "Task «{title}» moved to the trash",
+    "restored": "Task #{number} restored",
+    "restoredUntitled": "Task «{title}» restored"
   }
 }

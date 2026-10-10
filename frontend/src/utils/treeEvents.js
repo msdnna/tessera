@@ -28,6 +28,9 @@ const TREE_EVENTS = new Set([
   'project.updated',
   'project.deleted',
   'project.moved',
+  // The archive (#3005): the project leaves the tree for «Архив проектов» and back.
+  'project.archived',
+  'project.restored',
 ])
 
 // Should this event make the layout re-read the sidebar tree?

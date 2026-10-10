@@ -61,7 +61,7 @@ describe('collapsed column strip — drag handle (#2932)', () => {
     // Status grouping only (tag/milestone lanes have no stored column order) and
     // never in the archive, which is read-only.
     expect(board).toContain(
-      "const canReorderColumns = computed(() => groupMode.value === 'status' && !archivedMode.value)",
+      "const canReorderColumns = computed(() => groupMode.value === 'status' && !readOnly.value)",
     )
   })
 

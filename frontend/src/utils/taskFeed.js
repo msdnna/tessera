@@ -109,6 +109,11 @@ export function eventText(e) {
       return t('task.journal.archived')
     case 'restored':
       return t('task.journal.restored')
+    // The trash (#3004) — not the archive: a delete and its undo.
+    case 'trashed':
+      return t('task.journal.trashed')
+    case 'untrashed':
+      return t('task.journal.untrashed')
     case 'comment':
       return t('task.journal.comment')
     case 'relation':

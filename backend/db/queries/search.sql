@@ -36,7 +36,9 @@ JOIN board_columns bc ON bc.id = t.column_id
 LEFT JOIN milestones m ON m.id = t.milestone_id
 WHERE p.workspace_id = @workspace_id
   AND b.deleted_at IS NULL
+  AND p.archived_at IS NULL
   AND t.archived_at IS NULL
+  AND t.deleted_at IS NULL
   AND (t.title ILIKE '%' || @term || '%' OR t.description ILIKE '%' || @term || '%'
        OR t.number = @number::bigint)
 ORDER BY (t.number = @number::bigint) DESC, t.number DESC
@@ -50,6 +52,7 @@ FROM boards b
 JOIN projects p ON p.id = b.project_id
 WHERE p.workspace_id = @workspace_id
   AND b.deleted_at IS NULL
+  AND p.archived_at IS NULL
   AND (b.name ILIKE '%' || @term || '%' OR p.name ILIKE '%' || @term || '%')
 ORDER BY (b.name ILIKE '%' || @term || '%') DESC, p.name, b.position
 LIMIT 10;
@@ -70,6 +73,7 @@ LIMIT 26;
 SELECT id, title, slug
 FROM documents
 WHERE workspace_id = $1
+  AND deleted_at IS NULL
   AND title ILIKE '%' || $2 || '%'
 ORDER BY updated_at DESC
 LIMIT 26;
@@ -88,4 +92,5 @@ JOIN projects p ON p.id = b.project_id
 JOIN board_columns bc ON bc.id = t.column_id
 WHERE t.id = ANY(@ids::uuid[])
   AND p.workspace_id = @workspace_id
-  AND b.deleted_at IS NULL;
+  AND b.deleted_at IS NULL
+  AND t.deleted_at IS NULL;

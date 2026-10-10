@@ -17,6 +17,11 @@ const (
 	// recycle bin anyone browses.
 	trashRetention = 24 * time.Hour
 
+	// taskTrashRetention is how long a task or a document stays in its trash
+	// (0086). Unlike a board, these are browsed: the board's «Корзина» and the
+	// documents tree list them with «Вернуть» for the whole period.
+	taskTrashRetention = 30 * 24 * time.Hour
+
 	// trashPurgeEvery matches the interval published in backgroundWorkers.
 	trashPurgeEvery = 10 * time.Minute
 
@@ -25,7 +30,8 @@ const (
 )
 
 // RunTrashWorker finishes the deletes the soft-delete left pending: boards and
-// columns that stayed deleted past trashRetention are removed for good.
+// columns that stayed deleted past trashRetention, tasks and documents past
+// taskTrashRetention, are removed for good.
 func (h *API) RunTrashWorker(ctx context.Context) {
 	ticker := time.NewTicker(trashPurgeEvery)
 	defer ticker.Stop()
@@ -45,10 +51,13 @@ func (h *API) RunTrashWorker(ctx context.Context) {
 // PurgeTrash runs one pass. Exported for the jobs screen's "run now" and for
 // the integration tests, which call it with the clock already past the cutoff.
 func (h *API) PurgeTrash(ctx context.Context) {
-	h.purgeTrashBefore(ctx, time.Now().Add(-trashRetention))
+	now := time.Now()
+	h.purgeTrashBefore(ctx, now.Add(-trashRetention), now.Add(-taskTrashRetention))
 }
 
-func (h *API) purgeTrashBefore(ctx context.Context, cutoff time.Time) {
+// purgeTrashBefore takes two cutoffs: containers (boards, columns) are kept a
+// day, browsable items (tasks, documents) a month.
+func (h *API) purgeTrashBefore(ctx context.Context, cutoff, itemCutoff time.Time) {
 	ctx, cancel := context.WithTimeout(ctx, trashPurgeOpTimeout)
 	defer cancel()
 	// A board takes its cards through the cascade, so their upload folders are
@@ -75,4 +84,12 @@ func (h *API) purgeTrashBefore(ctx context.Context, cutoff time.Time) {
 	// Former project addresses past their 30 days (#3012) — on their own clock,
 	// not the trash cutoff: expires_at is stamped when the address is left.
 	h.PurgeExpiredSlugAliases(ctx)
+	// Tasks in the trash (0086) go with their subtasks and their upload folders,
+	// the way «Удалить навсегда» (PurgeDeletedTask) takes them.
+	if goneTasks, err := h.q.PurgeDeletedTasks(ctx, itemCutoff); err != nil {
+		slog.Warn("trash purge: tasks", "err", err)
+	} else {
+		h.purgeTaskUploads(goneTasks)
+	}
+	h.purgeDeletedDocuments(ctx, itemCutoff)
 }

@@ -48,7 +48,9 @@ const show = computed({
   },
 })
 
-const project = computed(() => ws.projects.find((p) => p.id === win.projectId) || null)
+// Archived projects (#3005) are out of the tree but still open here — the
+// window is where «Восстановить» lives.
+const project = computed(() => ws.projectById(win.projectId))
 // The project vanished (deleted here or elsewhere) — nothing left to set up.
 watch(
   () => !!win.projectId && !project.value && ws.projects.length > 0,

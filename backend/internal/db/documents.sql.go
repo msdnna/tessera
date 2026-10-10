@@ -42,7 +42,7 @@ func (q *Queries) CountDocumentAssetRefs(ctx context.Context, needle string) (in
 }
 
 const countDocumentChildren = `-- name: CountDocumentChildren :one
-SELECT count(*) FROM documents WHERE parent_id = $1
+SELECT count(*) FROM documents WHERE parent_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) CountDocumentChildren(ctx context.Context, parentID *uuid.UUID) (int64, error) {
@@ -55,7 +55,7 @@ func (q *Queries) CountDocumentChildren(ctx context.Context, parentID *uuid.UUID
 const createDocument = `-- name: CreateDocument :one
 INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview)
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by
 `
 
 type CreateDocumentParams struct {
@@ -105,6 +105,8 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -335,9 +337,12 @@ func (q *Queries) DocumentsMissingSlug(ctx context.Context) ([]DocumentsMissingS
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview FROM documents WHERE id = $1
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by FROM documents WHERE id = $1 AND deleted_at IS NULL
 `
 
+// GetDocument answers for live documents only: one in the trash (0086) is gone
+// for every reader — its comments, versions, approvals and live room included.
+// GetDocumentAny is for the trash's own restore and purge.
 func (q *Queries) GetDocument(ctx context.Context, id uuid.UUID) (Document, error) {
 	row := q.db.QueryRow(ctx, getDocument, id)
 	var i Document
@@ -355,12 +360,41 @@ func (q *Queries) GetDocument(ctx context.Context, id uuid.UUID) (Document, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+	)
+	return i, err
+}
+
+const getDocumentAny = `-- name: GetDocumentAny :one
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by FROM documents WHERE id = $1
+`
+
+func (q *Queries) GetDocumentAny(ctx context.Context, id uuid.UUID) (Document, error) {
+	row := q.db.QueryRow(ctx, getDocumentAny, id)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ParentID,
+		&i.ProjectID,
+		&i.AuthorID,
+		&i.Title,
+		&i.Slug,
+		&i.Icon,
+		&i.Content,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
 
 const getDocumentBySlug = `-- name: GetDocumentBySlug :one
-SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview FROM documents WHERE workspace_id = $1 AND slug = $2
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by FROM documents WHERE workspace_id = $1 AND slug = $2 AND deleted_at IS NULL
 `
 
 type GetDocumentBySlugParams struct {
@@ -385,14 +419,87 @@ func (q *Queries) GetDocumentBySlug(ctx context.Context, arg GetDocumentBySlugPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
+}
+
+const listDeletedDocuments = `-- name: ListDeletedDocuments :many
+SELECT d.id, d.workspace_id, d.project_id, d.parent_id, d.author_id, d.title, d.slug, d.icon,
+       d.preview, d.position, d.created_at, d.updated_at, d.deleted_at,
+       COALESCE(u.name, '')::text AS deleted_by_name,
+       (SELECT count(*) FROM documents s WHERE s.parent_id = d.id AND s.deleted_at = d.deleted_at)::bigint AS child_count
+FROM documents d
+LEFT JOIN users u ON u.id = d.deleted_by
+WHERE d.workspace_id = $1
+  AND d.deleted_at IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM documents p WHERE p.id = d.parent_id AND p.deleted_at = d.deleted_at)
+ORDER BY d.deleted_at DESC, d.title
+`
+
+type ListDeletedDocumentsRow struct {
+	ID            uuid.UUID  `json:"id"`
+	WorkspaceID   uuid.UUID  `json:"workspace_id"`
+	ProjectID     *uuid.UUID `json:"project_id"`
+	ParentID      *uuid.UUID `json:"parent_id"`
+	AuthorID      *uuid.UUID `json:"author_id"`
+	Title         string     `json:"title"`
+	Slug          string     `json:"slug"`
+	Icon          string     `json:"icon"`
+	Preview       string     `json:"preview"`
+	Position      float64    `json:"position"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DeletedAt     *time.Time `json:"deleted_at"`
+	DeletedByName string     `json:"deleted_by_name"`
+	ChildCount    int64      `json:"child_count"`
+}
+
+// ListDeletedDocuments is the documents' «Корзина» (0086): every document that
+// went there as an entry of its own — a root deleted with its subtree, or a
+// nested one deleted alone. Documents that went with their root (same stamp)
+// come back with it and are not listed. Newest first.
+func (q *Queries) ListDeletedDocuments(ctx context.Context, workspaceID uuid.UUID) ([]ListDeletedDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, listDeletedDocuments, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDeletedDocumentsRow
+	for rows.Next() {
+		var i ListDeletedDocumentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProjectID,
+			&i.ParentID,
+			&i.AuthorID,
+			&i.Title,
+			&i.Slug,
+			&i.Icon,
+			&i.Preview,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.DeletedByName,
+			&i.ChildCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listDocuments = `-- name: ListDocuments :many
 SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
-WHERE workspace_id = $1
+WHERE workspace_id = $1 AND deleted_at IS NULL
 ORDER BY position, created_at
 `
 
@@ -452,7 +559,7 @@ func (q *Queries) ListDocuments(ctx context.Context, workspaceID uuid.UUID) ([]L
 const listDocumentsByProject = `-- name: ListDocumentsByProject :many
 SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
-WHERE workspace_id = $1 AND project_id = $2
+WHERE workspace_id = $1 AND project_id = $2 AND deleted_at IS NULL
 ORDER BY position, created_at
 `
 
@@ -541,6 +648,39 @@ func (q *Queries) ProjectDocumentSlugs(ctx context.Context, projectID *uuid.UUID
 	return items, nil
 }
 
+const purgeDeletedDocuments = `-- name: PurgeDeletedDocuments :many
+WITH RECURSIVE down AS (
+    SELECT a.id FROM documents a WHERE a.deleted_at IS NOT NULL AND a.deleted_at < $1::timestamptz
+    UNION
+    SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id
+)
+DELETE FROM documents WHERE documents.id IN (SELECT id FROM down) RETURNING documents.id
+`
+
+// PurgeDeletedDocuments removes for good the documents that stayed in the trash
+// past the cutoff, with everything nested below them — one statement, so the
+// parent_id RESTRICT is checked against the end state (DeleteDocumentSubtree).
+// Returns the ids for the image sweep.
+func (q *Queries) PurgeDeletedDocuments(ctx context.Context, cutoff time.Time) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, purgeDeletedDocuments, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reassignProjectDocumentsWorkspace = `-- name: ReassignProjectDocumentsWorkspace :exec
 UPDATE documents SET workspace_id = $2 WHERE project_id = $1
 `
@@ -560,11 +700,56 @@ func (q *Queries) ReassignProjectDocumentsWorkspace(ctx context.Context, arg Rea
 	return err
 }
 
+const restoreDocumentSubtree = `-- name: RestoreDocumentSubtree :many
+WITH RECURSIVE down AS (
+    SELECT a.id, a.deleted_at, a.deleted_at AS root_deleted_at
+    FROM documents a WHERE a.id = $1 AND a.deleted_at IS NOT NULL
+    UNION
+    SELECT d.id, d.deleted_at, down.root_deleted_at
+    FROM documents d JOIN down ON d.parent_id = down.id
+), taken AS (
+    SELECT down.id FROM down WHERE down.deleted_at = down.root_deleted_at
+)
+UPDATE documents SET deleted_at = NULL, deleted_by = NULL,
+    parent_id = CASE WHEN documents.id = $1 AND $2::boolean THEN NULL ELSE documents.parent_id END
+WHERE documents.id IN (SELECT taken.id FROM taken)
+RETURNING documents.id
+`
+
+type RestoreDocumentSubtreeParams struct {
+	ID     uuid.UUID `json:"id"`
+	Detach bool      `json:"detach"`
+}
+
+// RestoreDocumentSubtree takes a document out of the trash with what went in
+// with it. A root whose parent is still in the trash comes back at the top
+// level (detach): under a parent nobody can see it would sit nowhere in the tree.
+// updated_at is left alone — it is the content's optimistic-concurrency token.
+func (q *Queries) RestoreDocumentSubtree(ctx context.Context, arg RestoreDocumentSubtreeParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, restoreDocumentSubtree, arg.ID, arg.Detach)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const setDocumentContent = `-- name: SetDocumentContent :one
 UPDATE documents
 SET content = $2, preview = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by
 `
 
 type SetDocumentContentParams struct {
@@ -596,6 +781,8 @@ func (q *Queries) SetDocumentContent(ctx context.Context, arg SetDocumentContent
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -614,11 +801,51 @@ func (q *Queries) SetDocumentSlug(ctx context.Context, arg SetDocumentSlugParams
 	return err
 }
 
+const softDeleteDocumentSubtree = `-- name: SoftDeleteDocumentSubtree :many
+WITH RECURSIVE down AS (
+    SELECT a.id FROM documents a WHERE a.id = $2 AND a.deleted_at IS NULL
+    UNION
+    SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id WHERE d.deleted_at IS NULL
+)
+UPDATE documents SET deleted_at = now(), deleted_by = $1::uuid
+WHERE id IN (SELECT id FROM down)
+RETURNING id
+`
+
+type SoftDeleteDocumentSubtreeParams struct {
+	DeletedBy *uuid.UUID `json:"deleted_by"`
+	ID        uuid.UUID  `json:"id"`
+}
+
+// SoftDeleteDocumentSubtree puts a document and every live document nested
+// below it in the trash with one stamp — the RestoreTask trick: the restore
+// gives back exactly what went in together. Returns the ids taken (their live
+// rooms are dropped).
+func (q *Queries) SoftDeleteDocumentSubtree(ctx context.Context, arg SoftDeleteDocumentSubtreeParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, softDeleteDocumentSubtree, arg.DeletedBy, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateDocumentContent = `-- name: UpdateDocumentContent :one
 UPDATE documents
 SET content = $2, preview = $3, updated_at = now()
 WHERE id = $1 AND updated_at = $4
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by
 `
 
 type UpdateDocumentContentParams struct {
@@ -655,6 +882,8 @@ func (q *Queries) UpdateDocumentContent(ctx context.Context, arg UpdateDocumentC
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -663,7 +892,7 @@ const updateDocumentMeta = `-- name: UpdateDocumentMeta :one
 UPDATE documents
 SET title = $2, icon = $3, parent_id = $4, project_id = $5, position = $6, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by
 `
 
 type UpdateDocumentMetaParams struct {
@@ -699,6 +928,8 @@ func (q *Queries) UpdateDocumentMeta(ctx context.Context, arg UpdateDocumentMeta
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }

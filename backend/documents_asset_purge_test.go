@@ -109,7 +109,7 @@ func TestDeletingADocumentTakesItsImagesWithIt(t *testing.T) {
 	neighbour := mkDocument(t, owner, ws, "Соседний документ")
 	putDocImages(t, owner, neighbour, "neighbour.png")
 
-	owner.expect(t, owner.del("/documents/"+doc), http.StatusNoContent)
+	deleteForGood(t, owner, "documents", doc, "")
 
 	// The document is gone from the API...
 	if got := owner.get("/documents/" + doc); got.Status != http.StatusNotFound {
@@ -147,7 +147,7 @@ func TestDeletingADocumentKeepsImagesATemplateStillUses(t *testing.T) {
 	made := owner.expect(t, owner.post("/workspaces/"+ws+"/documents",
 		map[string]any{"title": "Протокол от 13.09", "template_id": tpl["id"]}), http.StatusCreated)
 
-	owner.expect(t, owner.del("/documents/"+source), http.StatusNoContent)
+	deleteForGood(t, owner, "documents", source, "")
 
 	if n, ok := countFiles(t, docAssetDir(source)); !ok || n != 1 {
 		t.Fatalf("images a template still embeds were swept: %d file(s) left (exists=%v)", n, ok)
@@ -179,7 +179,7 @@ func TestDeletingADocumentSubtreeTakesEveryChildsImages(t *testing.T) {
 		t.Fatalf("nested document images did not land: %d (exists=%v)", n, ok)
 	}
 
-	owner.expect(t, owner.del("/documents/"+parent+"?recursive=true"), http.StatusNoContent)
+	deleteForGood(t, owner, "documents", parent, "?recursive=true")
 
 	if n, ok := countFiles(t, docAssetDir(parent)); ok {
 		t.Fatalf("parent kept %d image file(s) after the subtree delete", n)
@@ -200,7 +200,7 @@ func TestDeletingADocumentWithoutImagesIsFine(t *testing.T) {
 	doc := mkDocument(t, owner, ws, "Документ без картинок")
 	saveDocContent(t, owner, doc, docJSON("только текст"))
 
-	owner.expect(t, owner.del("/documents/"+doc), http.StatusNoContent)
+	deleteForGood(t, owner, "documents", doc, "")
 
 	if n, ok := countFiles(t, docAssetDir(doc)); ok {
 		t.Fatalf("directory appeared for a document with no images: %d entr(ies)", n)

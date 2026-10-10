@@ -3,6 +3,7 @@ title: The task window
 category: Tasks
 order: 30
 keywords: task, window, modal, estimate, milestone, priority, due, recurrence, assignees, status, parent, tabs, link, side panel, development, merge request, pipeline, gitlab
+keywords: task, window, modal, estimate, milestone, priority, due, recurrence, assignees, status, parent, tabs, link, side panel
 updated: 2026-10-10
 ---
 
@@ -100,7 +101,7 @@ At the foot of the properties panel is the **Following** row: who gets notified 
 
 ## The bottom of the window
 
-At the bottom: **Archive** and **Delete**. The difference matters: [the archive](/help/archive) keeps the task whole and lets you bring it back, deleting is irreversible.
+At the bottom: **Archive** and **Delete**. The difference matters: [the archive](/help/archive) keeps a finished task for as long as you like, while deleting sends it to the [board's trash](/help/trash) for 30 days — right after the delete, Undo in the message at the bottom brings it back.
 
 If the task has subtasks, archiving asks what to do with them: archive them along with the parent, or detach them and leave them on the board.
 

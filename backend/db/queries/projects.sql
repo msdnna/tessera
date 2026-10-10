@@ -6,7 +6,29 @@ RETURNING *;
 -- ListProjects: created_at/id break position ties — see ListColumns
 -- (boards.sql); the sidebar orders itself by the same midpoint scheme.
 -- name: ListProjects :many
-SELECT * FROM projects WHERE workspace_id = $1 ORDER BY position, created_at, id;
+-- The sidebar tree: archived projects (0086) are out of it — they open from the
+-- «Архив проектов» list (ListArchivedProjects) only.
+SELECT * FROM projects WHERE workspace_id = $1 AND archived_at IS NULL ORDER BY position, created_at, id;
+
+-- name: ListArchivedProjects :many
+SELECT * FROM projects WHERE workspace_id = $1 AND archived_at IS NOT NULL ORDER BY archived_at DESC, name;
+
+-- name: ArchiveProject :one
+UPDATE projects SET archived_at = now(), updated_at = now()
+WHERE id = $1 AND archived_at IS NULL
+RETURNING *;
+
+-- name: UnarchiveProject :one
+UPDATE projects SET archived_at = NULL, updated_at = now()
+WHERE id = $1 AND archived_at IS NOT NULL
+RETURNING *;
+
+-- ProjectArchivedForBoard tells a write on a board (or a task on it) whether the
+-- board's project is in the archive (0086) — read-only there.
+-- name: ProjectArchivedForBoard :one
+SELECT (p.archived_at IS NOT NULL)::boolean
+FROM boards b JOIN projects p ON p.id = b.project_id
+WHERE b.id = $1;
 
 -- name: GetProject :one
 SELECT * FROM projects WHERE id = $1;

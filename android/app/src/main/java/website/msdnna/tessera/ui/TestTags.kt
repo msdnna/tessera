@@ -730,4 +730,11 @@ object TestTags {
 
     /** «Обучение» in the sidebar footer — the guide's only entry point. */
     const val TOUR_START = "tour-start"
+
+    // ── task trash (#3004) ──────────────────────────────────────────────────
+    //
+    // The undo toast after «Удалить» and its «Вернуть».
+
+    const val TRASH_UNDO = "trash-undo"
+    const val TRASH_UNDO_BUTTON = "trash-undo-button"
 }

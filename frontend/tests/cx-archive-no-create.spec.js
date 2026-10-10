@@ -107,7 +107,7 @@ describe('KanbanBoard wiring for the archive view', () => {
     const flag = kanban.match(/const showAddColumn = computed\(\(\) => ([^)]*)\)/)
     expect(flag, 'showAddColumn is gone').toBeTruthy()
     expect(flag[1]).toContain("groupMode.value === 'status'")
-    expect(flag[1]).toContain('!archivedMode.value')
+    expect(flag[1]).toContain('!readOnly.value')
 
     const tile = kanban.match(
       /v-if="([^"]*)"\s*\n?\s*class="add-col"|v-if="([^"]*)" class="add-col"/,
@@ -125,6 +125,6 @@ describe('KanbanBoard wiring for the archive view', () => {
 
   it('hands the matrix its archive flag', () => {
     const view = kanban.slice(kanban.indexOf('<BoardMatrixView'))
-    expect(view.slice(0, view.indexOf('/>'))).toContain(':readonly="archivedMode"')
+    expect(view.slice(0, view.indexOf('/>'))).toContain(':readonly="readOnly"')
   })
 })

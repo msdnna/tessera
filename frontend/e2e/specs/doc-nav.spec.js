@@ -70,7 +70,7 @@ test('документ: браузерное «назад» тоже возвр�
 // back to the list through the crumbs, the panels' toggles, and the «⋯» menu
 // that holds nested document, templates, export and deletion. Deletion is the
 // menu's two-step item: the first press arms it, it is not a dialog.
-test('документ: управление — в шапке документа, удаление двухшаговым пунктом «⋯»', async ({
+test('документ: управление — в шапке документа, удаление из «⋯» сразу и с отменой', async ({
   page,
   seed,
 }) => {
@@ -86,14 +86,13 @@ test('документ: управление — в шапке документ�
   await head.getByTestId('doc-actions').click()
   await expect(page.getByTestId('doc-action-nested')).toBeVisible()
   await expect(page.getByTestId('doc-action-export-html')).toBeVisible()
-  await page.getByTestId('doc-action-remove').click()
-  // Armed, not gone: the document is still open until the second press.
-  await expect(page.getByTestId('doc-action-remove-armed')).toBeVisible()
-  await expect(page.locator('.ProseMirror')).toBeVisible()
+  // One press since the trash (#3006): the document goes at once, and the undo
+  // is in the toast at the bottom.
   const deleted = page.waitForResponse(
     (r) => /\/documents\/[^/]+$/.test(r.url()) && r.request().method() === 'DELETE',
   )
-  await page.getByTestId('doc-action-remove-armed').click()
+  await page.getByTestId('doc-action-remove').click()
   expect((await deleted).status()).toBeLessThan(300)
   await expect(page).toHaveURL(/\/documents$/)
+  await expect(page.getByTestId('undo-toast')).toBeVisible()
 })

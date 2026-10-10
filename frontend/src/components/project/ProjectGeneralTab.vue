@@ -8,7 +8,12 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import { NIcon, NSelect } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
-import { ArchiveOutline, TrashOutline, ReturnDownBackOutline } from '@vicons/ionicons5'
+import {
+  ArchiveOutline,
+  ArrowUndoOutline,
+  TrashOutline,
+  ReturnDownBackOutline,
+} from '@vicons/ionicons5'
 import { projects as projApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { humanizeError } from '@/utils/errors'
@@ -16,12 +21,13 @@ import { makeSlug } from '@/utils/slug'
 import { withProjectSlug } from '@/utils/projectRoute'
 import { slugTaken } from '@/utils/slugTaken'
 import { countsPhrase } from '@/utils/deleteCounts'
-import { stubTask } from '@/utils/featureStubs'
+import { useProjectArchive } from '@/composables/useProjectArchive'
 import { hueGrad } from '@/utils/gradient'
 import ColorIconPicker from '../kit/ColorIconPicker.vue'
 import SlugSuggest from '../kit/SlugSuggest.vue'
 import ProjectIcon from '../ProjectIcon.vue'
 import Kbd from '../Kbd.vue'
+import ShortcutKeys from '../ShortcutKeys.vue'
 import '../kit/kit.css'
 
 const props = defineProps({
@@ -189,7 +195,20 @@ function pickGroup(id) {
   if (id && id !== props.project.group_id) save({ group_id: id })
 }
 
-const archiveStub = stubTask('project.archive')
+// The archive (#3005) is reversible, so it happens at once with an undo toast;
+// an archived project shows «Восстановить» in its place.
+const { archiveProject, restoreProject } = useProjectArchive()
+const isArchived = computed(() => !!props.project.archived_at)
+async function onArchive() {
+  if (!store.canManage || busy.value) return
+  busy.value = 'archive'
+  try {
+    if (isArchived.value) await restoreProject(props.project)
+    else await archiveProject(props.project)
+  } finally {
+    busy.value = ''
+  }
+}
 
 // Deleting is irreversible: the button arms first («Точно удалить?»), the
 // second press deletes. It disarms by itself after a few seconds.
@@ -337,12 +356,14 @@ defineExpose({ focusFirst, escape })
           <button
             type="button"
             class="pg-btn"
-            disabled
-            :title="t('common.stub.soon', { n: archiveStub })"
+            :disabled="!store.canManage || busy === 'archive'"
+            :title="store.canManage ? '' : t('project.menu.managerOnly')"
+            data-testid="project-archive"
+            @click="onArchive"
           >
-            <n-icon :component="ArchiveOutline" :size="15" />
-            {{ t('project.menu.archive') }}
-            <span class="pg-soon">{{ t('common.stub.badge') }}</span>
+            <n-icon :component="isArchived ? ArrowUndoOutline : ArchiveOutline" :size="15" />
+            {{ isArchived ? t('project.archive.restore') : t('project.menu.archive') }}
+            <ShortcutKeys v-if="!isArchived" id="row.archive" />
           </button>
           <button
             type="button"
@@ -520,10 +541,6 @@ defineExpose({ focusFirst, escape })
 .pg-btn.armed {
   background: color-mix(in srgb, var(--t-error) 18%, var(--t-ctl));
   color: var(--t-error);
-}
-.pg-soon {
-  font-size: 11px;
-  color: var(--t-text3);
 }
 @media (max-width: 768px) {
   .pg-row {

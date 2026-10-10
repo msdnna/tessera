@@ -361,11 +361,6 @@
       "children": "Show nested ({count})",
       "remove": "Delete the document"
     },
-    "remove": {
-      "title": "Delete the document?",
-      "withChildren": "The document will be deleted together with its nested ones ({count}).",
-      "single": "The document will be deleted."
-    },
     "toast": {
       "restoredFromHistory": "The document was restored from history",
       "blockLocked": "{name} is editing this block",
@@ -539,5 +534,18 @@
     "tooLarge": "The file is larger than {limit}",
     "noDocument": "The server returned no document",
     "exportName": "Document"
+  },
+  "trash": {
+    "count": "{n} document · kept for 30 days | {n} documents · kept for 30 days",
+    "keep": "Deleted documents are kept for {days} days",
+    "by": "deleted by {name}",
+    "left": "{n} day left | {n} days left",
+    "restore": "Restore",
+    "purge": "Delete forever",
+    "purgeArmed": "Delete forever?",
+    "emptyTitle": "The trash is empty",
+    "emptyText": "Deleted documents stay here for {days} days and come back with their task links.",
+    "deleted": "Document «{title}» moved to the trash",
+    "restored": "Document «{title}» restored"
   }
 }

@@ -31,7 +31,7 @@ const board = useBoardViewStore()
 const ws = useWorkspacesStore()
 
 const onBoard = computed(() => board.active && /\/board\//.test(route.path))
-const project = computed(() => ws.projects.find((p) => p.id === board.projectId) || null)
+const project = computed(() => ws.projectById(board.projectId))
 const initials = computed(() => (project.value?.name || '?').trim().slice(0, 2).toUpperCase())
 // The project's badge as the tree draws it: a tinted box, or the glyph alone.
 const bare = computed(

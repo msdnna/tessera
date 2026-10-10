@@ -260,6 +260,14 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   воркер `trash_purge` удаляет окончательно через сутки. Удалённая доска невидима всем
   читателям — новый запрос по задачам нескольких досок обязан фильтровать
   `b.deleted_at IS NULL`; колонка при удалении отдаёт задачи соседу (`column_deletion_moves`).
+- **Корзина задач/документов и архив проектов (#3001, миграция 0086):** `tasks.deleted_at` /
+  `documents.deleted_at` — `DELETE` кладёт поддерево в корзину одной отметкой, `POST …/restore`
+  возвращает (НЕ путать с `PATCH /tasks/:id/restore` архива), `DELETE …/purge` — навсегда,
+  `trash_purge` — через 30 дней. Задача в корзине невидима всем: **новый запрос по `tasks`/
+  `documents` обязан фильтровать `deleted_at IS NULL`** (храповик `handlers/trash_ratchet_test.go`;
+  намеренно слепые — в его списке с причиной); `GetTask`/`GetDocument` уже фильтруют, сырьё —
+  `…Any`. `projects.archived_at`: вне дерева/поиска/«Моих задач»/сканеров, запись → 409
+  `{archived}` (гейт в `loadTask` для не-GET + `requireProjectWritable`), web `readOnly` доски.
 - **«Вид доски» и представления (#2970, миграция 0079):** настройки доски — `kit/DockPanel`
   (pop) справа внутри доски во всех 6 видах (⇧V), на телефоне — нижний лист. Представления:
   `board_views.scope` user|board (у общих `user_id` NULL, автор в `created_by`, правят

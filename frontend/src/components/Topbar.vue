@@ -37,7 +37,7 @@ const projectWindow = useProjectWindowStore()
 const onBoard = () => board.active
 // v2 (#2954): on a board the header's left side names where you are — project ›
 // board. The view switch moved down into the board's sub-toolbar.
-const project = computed(() => ws.projects.find((p) => p.id === board.projectId) || null)
+const project = computed(() => ws.projectById(board.projectId))
 const crumbProject = computed(() => project.value?.name || '')
 const crumbBoard = computed(() => board.board?.name || '')
 // Both crumbs are doors (#3112): the project opens its «Проект» window, the

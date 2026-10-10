@@ -16,7 +16,7 @@ import (
 
 const listWorkspaceTasks = `-- name: ListWorkspaceTasks :many
 SELECT
-    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id,
+    t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id, t.deleted_at, t.deleted_by,
     b.name AS board_name,
     p.name AS project_name,
     p.color AS project_color,
@@ -33,8 +33,11 @@ LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 WHERE p.workspace_id = $1
     AND b.deleted_at IS NULL
+    -- An archived project (0086) is out of «Мои задачи» and every cross-project list.
+    AND p.archived_at IS NULL
     AND ($2::bool OR t.parent_id IS NULL)
     AND t.archived_at IS NULL
+    AND t.deleted_at IS NULL
 GROUP BY t.id, b.name, p.name, p.color, c.name, c.name_key, c.color
 ORDER BY t.due_date NULLS LAST, t.created_at DESC
 `
@@ -68,6 +71,8 @@ type ListWorkspaceTasksRow struct {
 	StartDate          *time.Time       `json:"start_date"`
 	Estimate           *float64         `json:"estimate"`
 	MilestoneID        *uuid.UUID       `json:"milestone_id"`
+	DeletedAt          *time.Time       `json:"deleted_at"`
+	DeletedBy          *uuid.UUID       `json:"deleted_by"`
 	BoardName          string           `json:"board_name"`
 	ProjectName        string           `json:"project_name"`
 	ProjectColor       string           `json:"project_color"`
@@ -115,6 +120,8 @@ func (q *Queries) ListWorkspaceTasks(ctx context.Context, arg ListWorkspaceTasks
 			&i.StartDate,
 			&i.Estimate,
 			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
 			&i.BoardName,
 			&i.ProjectName,
 			&i.ProjectColor,
@@ -148,8 +155,10 @@ WITH scoped AS (
     JOIN projects p ON p.id = b.project_id
     WHERE p.workspace_id = $7
         AND b.deleted_at IS NULL
+        AND p.archived_at IS NULL
         AND t.parent_id IS NULL
         AND t.archived_at IS NULL
+        AND t.deleted_at IS NULL
 )
 SELECT
     count(*) AS total,

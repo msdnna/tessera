@@ -186,5 +186,16 @@
     "deletedMany": "Tags deleted: {n}",
     "restoredOne": "Tag «{name}» restored",
     "restoredMany": "Tags restored: {n}"
+  },
+  "archive": {
+    "done": "Project «{name}» archived",
+    "undone": "Project «{name}» is back",
+    "restored": "Project «{name}» restored",
+    "restore": "Restore",
+    "open": "Open · view only",
+    "list": "Archived projects",
+    "readonly": "The project is archived — view only",
+    "chip": "Archived project",
+    "chipTitle": "The project is archived: its boards and tasks are view only"
   }
 }

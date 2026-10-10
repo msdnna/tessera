@@ -63,9 +63,19 @@ func (q *Queries) GetNotificationPrefs(ctx context.Context, userID uuid.UUID) (N
 }
 
 const listDueReminders = `-- name: ListDueReminders :many
-SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders WHERE NOT done AND notified_at IS NULL AND remind_at <= now()
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders r
+WHERE NOT r.done AND r.notified_at IS NULL AND r.remind_at <= now()
+  AND (r.task_id IS NULL OR EXISTS (
+        SELECT 1 FROM tasks t
+        JOIN boards b ON b.id = t.board_id
+        JOIN projects p ON p.id = b.project_id
+        WHERE t.id = r.task_id AND t.deleted_at IS NULL
+          AND b.deleted_at IS NULL AND p.archived_at IS NULL))
 `
 
+// A reminder pinned to a task fires only while the task is reachable: not in
+// the trash (0086), not on a deleted board (0078), not in an archived project.
+// A task brought back lets the overdue reminder fire on the next pass.
 func (q *Queries) ListDueReminders(ctx context.Context) ([]Reminder, error) {
 	rows, err := q.db.Query(ctx, listDueReminders)
 	if err != nil {
@@ -100,13 +110,17 @@ func (q *Queries) ListDueReminders(ctx context.Context) ([]Reminder, error) {
 }
 
 const listDueTasksForScan = `-- name: ListDueTasksForScan :many
-SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id FROM tasks
+SELECT id, board_id, column_id, parent_id, title, description, priority, due_date, position, created_by, completed_at, created_at, updated_at, archived_at, number, due_lead_minutes, due_repeat_minutes, due_notify_enabled, recurrence, eisenhower_quadrant, start_date, estimate, milestone_id, deleted_at, deleted_by FROM tasks
 WHERE due_date IS NOT NULL
   AND completed_at IS NULL
   AND archived_at IS NULL
+  AND deleted_at IS NULL
   AND due_date <= now() + interval '31 days'
   AND due_date >= now() - interval '7 days'
-  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = tasks.board_id AND b.deleted_at IS NULL)
+  -- Live board of a live project: a deleted board (0078) and an archived
+  -- project (0086) are out of every scanner.
+  AND EXISTS (SELECT 1 FROM boards b JOIN projects p ON p.id = b.project_id
+              WHERE b.id = tasks.board_id AND b.deleted_at IS NULL AND p.archived_at IS NULL)
 `
 
 // ListDueTasksForScan returns incomplete, non-archived tasks with a due date in a
@@ -145,6 +159,8 @@ func (q *Queries) ListDueTasksForScan(ctx context.Context) ([]Task, error) {
 			&i.StartDate,
 			&i.Estimate,
 			&i.MilestoneID,
+			&i.DeletedAt,
+			&i.DeletedBy,
 		); err != nil {
 			return nil, err
 		}

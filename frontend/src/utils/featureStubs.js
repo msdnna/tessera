@@ -7,11 +7,9 @@
 // its key, wiring the control and deleting the entry; an empty registry is the
 // goal.
 //
-// Use: `stubTask('project.archive')` → 3005, and `isStub(key)` to branch.
+// Use: `stubTask('project.slugSuggest')` → 3013, and `isStub(key)` to branch.
 
 export const FEATURE_STUBS = {
-  // Project archive: menu item «Архивировать» (E) — #3005.
-  'project.archive': 3005,
   // Editing, closing and reopening a GitLab-sourced stage with the change
   // written back to GitLab (#3010) — until then such a stage is read-only here.
   'stage.gitlabWrite': 3010,
@@ -32,18 +30,14 @@ export const FEATURE_STUBS = {
   'admin.roles': 3063,
   'admin.userSpaces': 3078,
   'admin.csv': 3080,
-  // Documents (#3106): the trash (#3006), a document's stage (#3044), template
-  // categories (#3045).
-  'documents.trash': 3006,
+  // Documents (#3106): a document's stage (#3044), template categories (#3045).
   'documents.milestone': 3044,
   'documents.templateCategories': 3045,
   // Notifications (#3107): «Принять / Отклонить» a meeting invitation right in
   // the feed (#3051), the page of all notifications with paging (#3049).
   'notifications.rsvp': 3051,
   'notifications.all': 3049,
-  // Toasts (#3117): «В корзину» on the toast about a deleted task — tasks have
-  // no trash yet (#3120); «Звук» in the toast settings (#3121).
-  'toasts.taskTrash': 3120,
+  // Toasts (#3117): «Звук» in the toast settings (#3121).
   'toasts.sound': 3121,
   // Conferences (#3107): reactions in a call (#3054), a meeting's repeat and
   // length (#3052), tying it to a stage (#3053).

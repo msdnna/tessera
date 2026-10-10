@@ -847,6 +847,11 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 	if b, berr := h.q.GetBoardAny(ctx, integ.BoardID); berr == nil && b.DeletedAt != nil {
 		return 0, 0, errors.New("integration board is deleted")
 	}
+	// The same for a binding in an archived project (0086): read-only until the
+	// project is restored.
+	if archived, aerr := h.q.ProjectArchivedForBoard(ctx, integ.BoardID); aerr == nil && archived {
+		return 0, 0, errors.New("integration project is archived")
+	}
 
 	client, assignUser, cerr := h.syncClient(ctx, cred)
 	if cerr != nil {
@@ -1633,10 +1638,16 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		return uuid.Nil, false, false
 	default:
 		// Snapshot the pre-update task so the journal can diff what changed.
-		old, _ := h.q.GetTask(ctx, link.TaskID)
-		// A mirror standing on a soft-deleted board (0078) is in the trash: leave
-		// it there. Updating it would route it through its labels back onto a live
-		// board — out from under both the restore and the purge.
+		// GetTaskAny: a mirror in the task trash (0086) still has its link, and
+		// must be recognised as already imported rather than read as missing.
+		old, _ := h.q.GetTaskAny(ctx, link.TaskID)
+		// A mirror in the trash — its own (0086) or its board's (0078) — stays
+		// there. Updating it would route it through its labels back onto a live
+		// board, out from under both the restore and the purge; the link stays,
+		// so the issue is never imported anew either.
+		if old.DeletedAt != nil {
+			return link.TaskID, false, true
+		}
 		if ob, berr := h.q.GetBoardAny(ctx, old.BoardID); berr == nil && ob.DeletedAt != nil {
 			return link.TaskID, false, true
 		}

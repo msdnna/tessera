@@ -134,11 +134,11 @@ func (q *Queries) DeleteTaskRelation(ctx context.Context, id uuid.UUID) error {
 }
 
 const getTaskByNumber = `-- name: GetTaskByNumber :one
-SELECT t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id
+SELECT t.id, t.board_id, t.column_id, t.parent_id, t.title, t.description, t.priority, t.due_date, t.position, t.created_by, t.completed_at, t.created_at, t.updated_at, t.archived_at, t.number, t.due_lead_minutes, t.due_repeat_minutes, t.due_notify_enabled, t.recurrence, t.eisenhower_quadrant, t.start_date, t.estimate, t.milestone_id, t.deleted_at, t.deleted_by
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
-WHERE p.workspace_id = $1 AND t.number = $2 AND b.deleted_at IS NULL
+WHERE p.workspace_id = $1 AND t.number = $2 AND b.deleted_at IS NULL AND t.deleted_at IS NULL
 `
 
 type GetTaskByNumberParams struct {
@@ -173,6 +173,8 @@ func (q *Queries) GetTaskByNumber(ctx context.Context, arg GetTaskByNumberParams
 		&i.StartDate,
 		&i.Estimate,
 		&i.MilestoneID,
+		&i.DeletedAt,
+		&i.DeletedBy,
 	)
 	return i, err
 }
@@ -201,6 +203,7 @@ FROM task_relations r
 JOIN tasks t  ON t.id  = r.task_id
 JOIN tasks rt ON rt.id = r.related_task_id
 WHERE t.board_id = $1 AND rt.board_id = $1
+  AND t.deleted_at IS NULL AND rt.deleted_at IS NULL
   AND r.kind IN ('blocks', 'blocked_by')
 `
 
@@ -276,7 +279,7 @@ SELECT
     bc.name_key            AS related_column_name_key,
     COALESCE(bc.position = (SELECT MIN(fc.position) FROM board_columns fc WHERE fc.board_id = t.board_id AND fc.deleted_at IS NULL), false)::boolean AS related_column_first
 FROM deduped d
-JOIN tasks t ON t.id = d.related_task_id
+JOIN tasks t ON t.id = d.related_task_id AND t.deleted_at IS NULL
 JOIN boards rb ON rb.id = t.board_id AND rb.deleted_at IS NULL
 LEFT JOIN board_columns bc ON bc.id = t.column_id
 ORDER BY d.created_at

@@ -22,6 +22,9 @@ import (
 type boardScopeView struct {
 	db.Board
 	WorkspaceID uuid.UUID `json:"workspace_id"`
+	// ProjectArchived: the board's project is in the archive (0086) — the client
+	// opens the board read-only, the server refuses writes with 409.
+	ProjectArchived bool `json:"project_archived"`
 }
 
 // CreateBoard adds a board to a project.
@@ -39,6 +42,10 @@ func (h *API) CreateBoard(c *gin.Context) {
 		return
 	}
 	if !h.requireMember(c, p.WorkspaceID) {
+		return
+	}
+	if p.ArchivedAt != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": errProjectArchived, "archived": true})
 		return
 	}
 	var req struct {
@@ -250,7 +257,7 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, boardResolveView{
-		boardScopeView: boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID},
+		boardScopeView: boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID, ProjectArchived: proj.ArchivedAt != nil},
 		ProjectSlug:    proj.Slug,
 	})
 }
@@ -305,7 +312,8 @@ func (h *API) GetBoard(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID})
+	archived, _ := h.q.ProjectArchivedForBoard(c, b.ID)
+	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID, ProjectArchived: archived})
 }
 
 // UpdateBoard renames a board.
@@ -322,7 +330,7 @@ func (h *API) UpdateBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	b, err := h.q.GetBoard(c, id)
@@ -392,7 +400,7 @@ func (h *API) DeleteBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	if _, err := h.q.SoftDeleteBoard(c, id); notFound(c, err) {
@@ -451,7 +459,7 @@ func (h *API) SetDoneColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	var req struct {
@@ -494,7 +502,7 @@ func (h *API) CreateColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, boardID) {
 		return
 	}
 	var req struct {
@@ -560,7 +568,7 @@ func (h *API) UpdateColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -602,7 +610,7 @@ func (h *API) MoveColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -678,7 +686,7 @@ func (h *API) DeleteColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -784,7 +792,7 @@ func (h *API) RestoreColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	var (

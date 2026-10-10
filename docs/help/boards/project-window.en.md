@@ -29,6 +29,7 @@ At the bottom left are links to the workspace windows that also concern the proj
 - **Icon and colour** — the same ones the sidebar, breadcrumbs and the rail show.
 - **Group** — which project group it sits in in the tree.
 - **Danger zone.** «Archive» is not available yet. **«Delete project»** takes two steps: the first press asks «Delete for good?», the second deletes it with all its boards, tasks and milestones. The note under the button says how many boards and tasks go with the project.
+- **Danger zone.** **«Archive»** (<kbd>E</kbd>) moves the project to the [archived projects](/help/project-archive) — at once, with an undo in the message; an archived project shows **«Restore»** in its place. **«Delete project»** takes two steps: the first press asks «Delete for good?», the second deletes it with all its boards, tasks and milestones.
 
 ## Tags
 
