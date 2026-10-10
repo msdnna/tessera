@@ -17,7 +17,8 @@
     "integration_sync_ok": "{label}: +{created} new, ~{updated} updated, in {took}",
     "integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
     "integration_sync_failed": "{label}: sync failed — {reason} (after {took})",
-    "conference_invited": "{actor} invited you to a conference{ctx}"
+    "conference_invited": "{actor} invited you to a conference{ctx}",
+    "conference_mention": "{actor} mentioned you in a call chat{ctx}"
   },
   "field": {
     "title": "title",

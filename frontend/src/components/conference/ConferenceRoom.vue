@@ -48,6 +48,7 @@ import {
   PersonOutline,
   ContractOutline as MinimizeOutline,
   ChevronForwardOutline,
+  TrailSignOutline,
 } from '@vicons/ionicons5'
 import { conferences as confApi } from '@/api'
 import { mediaSupported, CONNECTING, ERROR, UNAVAILABLE } from '@/composables/useConfTransport'
@@ -80,6 +81,9 @@ const props = defineProps({
   // now lives only in this rail, so without listing them here an invitation would
   // show nowhere. [{ user_id, user_name, role }]
   invited: { type: Array, default: () => [] },
+  // The stage the meeting is tied to (#3053): { title, href } — the bar says
+  // «привязано к [Спринт 42]», a link to the stage page.
+  stage: { type: Object, default: null },
 })
 // `hangup` asks the parent to leave the roster too; the parent flipping `active`
 // is what actually drops the media session, through the watcher below. One
@@ -529,6 +533,20 @@ function onInviteShow(show) {
               named: { count: room.participants.value.length },
             })
           }}
+          <template v-if="stage">
+            · {{ $t('conferences.plan.linked') }}
+            <router-link
+              v-if="stage.href"
+              class="bar-stage"
+              :to="stage.href"
+              data-testid="conference-bar-stage"
+            >
+              <n-icon :component="TrailSignOutline" :size="12" />{{ stage.title }}
+            </router-link>
+            <span v-else class="bar-stage">
+              <n-icon :component="TrailSignOutline" :size="12" />{{ stage.title }}
+            </span>
+          </template>
         </span>
         <span class="bar-spacer" />
         <div class="seg" role="group" :aria-label="$t('conferences.call.layout')">
@@ -1069,8 +1087,28 @@ function onInviteShow(show) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   font-size: 12.5px;
   color: var(--t-text2);
+  white-space: nowrap;
+}
+/* «привязано к [Спринт 42]» (#3053): the mockup's pill with the trail sign. */
+.bar-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  min-width: 0;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+a.bar-stage:hover {
+  color: var(--t-text1);
 }
 .bar-spacer {
   flex: 1;

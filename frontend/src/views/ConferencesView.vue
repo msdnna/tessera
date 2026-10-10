@@ -14,7 +14,7 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NDatePicker, NPopconfirm, NSpin, NTooltip } from 'naive-ui'
+import { NIcon, NDatePicker, NPopconfirm, NSelect, NSpin, NTooltip } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
   VideocamOutline,
@@ -30,6 +30,7 @@ import {
   TrashOutline,
   RepeatOutline,
   TrailSignOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
 import { conferences as confApi, workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -43,7 +44,17 @@ import { hueGrad, tagPillBg } from '@/utils/gradient'
 import { canModerateConference } from '@/utils/confLobby'
 import { groupConferences, nearestScheduled } from '@/utils/confList'
 import { leaveCallView } from '@/utils/confNav'
-import { stubTask } from '@/utils/featureStubs'
+import {
+  DURATIONS,
+  DEFAULT_DURATION,
+  durationLabel,
+  planAt,
+  planBody,
+  recurrenceLabel,
+  recurrenceMenuItems,
+  stageHref,
+  stageMenuItems,
+} from '@/utils/confPlan'
 import { copyText } from '@/utils/clipboard'
 import EmptyState from '@/components/EmptyState.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
@@ -271,25 +282,85 @@ async function inviteOne(userId) {
 // becomes 30 is how people find out about a retention policy by losing a file.
 const RECORDING_TTL_DEFAULT = 30
 const scheduleBtn = ref(null)
-const dlg = ref({
-  show: false,
-  saving: false,
-  title: '',
-  description: '',
-  at: null,
-  ttl: RECORDING_TTL_DEFAULT,
-})
-
-function openDialog() {
-  dlg.value = {
-    show: true,
+// One form for both: «Запланировать» (editId '') and «Изменить» from a row's
+// menu (#3034) — the plan is the same fields either way. `anchor` is where the
+// form floats: the header button, or the row's «⋯».
+function blankDialog() {
+  return {
+    show: false,
     saving: false,
+    editId: '',
+    taskId: null,
+    anchor: null,
     title: '',
     description: '',
     at: null,
     ttl: RECORDING_TTL_DEFAULT,
+    // The meeting's length (#3052): the mockup's 30 minutes unless said otherwise.
+    duration: DEFAULT_DURATION,
+    recurrence: '',
+    milestoneId: null,
   }
 }
+const dlg = ref(blankDialog())
+
+function openDialog() {
+  dlg.value = { ...blankDialog(), show: true }
+  loadStages()
+}
+
+function openEdit(c, anchor) {
+  dlg.value = {
+    ...blankDialog(),
+    show: true,
+    editId: c.id,
+    // The PATCH is a full replace of task_id: carried over, or the edit would
+    // unpin the task the meeting is about.
+    taskId: c.task_id || null,
+    anchor,
+    title: c.title || '',
+    description: c.description || '',
+    at: c.scheduled_at ? Date.parse(c.scheduled_at) : null,
+    ttl: c.recording_ttl_days ?? RECORDING_TTL_DEFAULT,
+    duration: c.duration_minutes || null,
+    recurrence: c.recurrence || '',
+    milestoneId: c.milestone_id || null,
+  }
+  loadStages()
+}
+
+// The workspace's stages for «К этапу» (#3053), fetched when the form opens.
+const stages = ref([])
+async function loadStages() {
+  if (!ws.currentId) return
+  try {
+    const { data } = await wsApi.milestones(ws.currentId)
+    stages.value = data || []
+  } catch {
+    // Non-fatal: the menu then says there are no stages.
+    stages.value = []
+  }
+}
+const stageBtn = ref(null)
+const repeatBtn = ref(null)
+const stageMenu = ref(false)
+const repeatMenu = ref(false)
+const stageItems = computed(() => stageMenuItems(stages.value, dlg.value.milestoneId, t))
+const repeatItems = computed(() => recurrenceMenuItems(dlg.value.recurrence, t))
+const dlgStageTitle = computed(
+  () => stages.value.find((m) => m.id === dlg.value.milestoneId)?.title || '',
+)
+function pickStage(key) {
+  dlg.value.milestoneId = key || null
+  stageMenu.value = false
+}
+function pickRepeat(key) {
+  dlg.value.recurrence = key === 'none' ? '' : key
+  repeatMenu.value = false
+}
+const durationOptions = computed(() =>
+  DURATIONS.map((n) => ({ value: n, label: durationLabel(n, t) })),
+)
 
 async function submit() {
   const title = dlg.value.title.trim()
@@ -298,16 +369,27 @@ async function submit() {
     return
   }
   dlg.value.saving = true
+  const d = dlg.value
+  const body = {
+    title,
+    description: d.description.trim(),
+    scheduled_at: d.at ? new Date(d.at).toISOString() : null,
+    // A cleared field (v-model.number answers '') falls back to the server's
+    // own default rather than being sent as 0 — «хранить вечно» is a decision,
+    // not something an empty box should make on the user's behalf.
+    recording_ttl_days: Number.isFinite(d.ttl) ? d.ttl : RECORDING_TTL_DEFAULT,
+    ...planBody(d),
+  }
   try {
-    const { data } = await confApi.create(ws.currentId, {
-      title,
-      description: dlg.value.description.trim(),
-      scheduled_at: dlg.value.at ? new Date(dlg.value.at).toISOString() : null,
-      // A cleared field (v-model.number answers '') falls back to the server's
-      // own default rather than being sent as 0 — «хранить вечно» is a decision,
-      // not something an empty box should make on the user's behalf.
-      recording_ttl_days: Number.isFinite(dlg.value.ttl) ? dlg.value.ttl : RECORDING_TTL_DEFAULT,
-    })
+    if (d.editId) {
+      await confApi.update(d.editId, { ...body, task_id: d.taskId })
+      dlg.value.show = false
+      message.success(t('conferences.edit.saved'))
+      await load()
+      if (openId.value === d.editId) loadDetail(d.editId)
+      return
+    }
+    const { data } = await confApi.create(ws.currentId, body)
     dlg.value.show = false
     message.success(t('conferences.create.created'))
     await load()
@@ -427,14 +509,19 @@ function runningFor(c) {
     ? t('conferences.list.runningMin', { n: mins })
     : t('conferences.list.runningH', { h: Math.floor(mins / 60), m: mins % 60 })
 }
-// The time column of a row: the planned time, the day a finished one ended, a
-// dash for a plan without a time.
+// The time column of a row: the planned time (the next occurrence of a repeat,
+// #3052), the day a finished one ended, a dash for a plan without a time.
 function rowTime(c) {
   if (c.status === 'ended')
     return c.ended_at ? formatDate(c.ended_at, { day: 'numeric', month: 'short' }) : '—'
-  if (c.scheduled_at) return formatTime(c.scheduled_at)
+  if (planAt(c)) return formatTime(planAt(c))
   return '—'
 }
+const dur = (c) => (c.status === 'ended' ? '' : durationLabel(c.duration_minutes, t))
+const repeatOf = (c) => (c.recurrence ? recurrenceLabel(c.recurrence, t) : '')
+// Who may change a meeting's plan from the list: its author or a workspace
+// manager (a host is only known inside the call; the server has the last word).
+const canEditRow = (c) => !!c && (c.created_by === me.value || ws.canManage)
 
 // The row's «⋯»: copy the link, delete (irreversible → a two-step item).
 const menu = ref({ show: false, conf: null, anchor: null })
@@ -442,6 +529,16 @@ function openMenu(c, e) {
   menu.value = { show: true, conf: c, anchor: e.currentTarget }
 }
 const menuItems = computed(() => [
+  ...(canEditRow(menu.value.conf)
+    ? [
+        {
+          key: 'edit',
+          label: t('conferences.edit.action'),
+          icon: CreateOutline,
+          testid: 'conference-edit',
+        },
+      ]
+    : []),
   { key: 'link', label: t('conferences.list.copyLink'), icon: LinkOutline },
   { gap: true },
   {
@@ -457,6 +554,7 @@ function onMenu(key) {
   menu.value.show = false
   if (!c) return
   if (key === 'link') copyLink(c)
+  else if (key === 'edit') openEdit(c, menu.value.anchor)
   else if (key === 'delete') remove(c)
 }
 async function copyLink(c) {
@@ -513,8 +611,11 @@ function minimize() {
   if (detail.value) leaveCallView(router, detail.value.conference.id)
 }
 
-const recurrenceTask = stubTask('meet.recurrence')
-const stageTask = stubTask('meet.stage')
+// The stage pill of the call (#3053): its title and the stage page.
+const callStage = computed(() => {
+  const c = detail.value?.conference
+  return c?.milestone_title ? { title: c.milestone_title, href: stageHref(c) } : null
+})
 
 useShortcuts({
   'meet.schedule': () => ws.currentId && !openId.value && openDialog(),
@@ -688,6 +789,14 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               </div>
               <div class="live-title">{{ c.title }}</div>
               <div class="meta">
+                <router-link
+                  v-if="c.milestone_title && stageHref(c)"
+                  class="stage-pill"
+                  :to="stageHref(c)"
+                  @click.stop
+                >
+                  <n-icon :component="TrailSignOutline" :size="12" />{{ c.milestone_title }}
+                </router-link>
                 <span>{{ timeLine(c) }}</span>
                 <span>{{
                   $t('conferences.row.participantCount', { count: c.participant_count })
@@ -720,6 +829,9 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
             >
               <div class="when" :class="{ next: nearest && nearest.id === c.id }">
                 <span class="when-t">{{ rowTime(c) }}</span>
+                <span v-if="dur(c)" class="when-d" data-testid="conference-row-duration">{{
+                  dur(c)
+                }}</span>
               </div>
               <div class="row-body">
                 <div class="row-title">
@@ -734,6 +846,18 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
                 </div>
                 <div class="meta">
                   <span v-if="c.status === 'ended'">{{ timeLine(c) }}</span>
+                  <span v-if="repeatOf(c)" data-testid="conference-row-repeat">
+                    <n-icon :component="RepeatOutline" :size="12" />{{ repeatOf(c) }}
+                  </span>
+                  <router-link
+                    v-if="c.milestone_title && stageHref(c)"
+                    class="stage-pill"
+                    :to="stageHref(c)"
+                    data-testid="conference-row-stage"
+                    @click.stop
+                  >
+                    <n-icon :component="TrailSignOutline" :size="12" />{{ c.milestone_title }}
+                  </router-link>
                   <span>
                     <n-icon :component="PeopleOutline" :size="12" />
                     {{ $t('conferences.row.participantCount', { count: c.participant_count }) }}
@@ -908,7 +1032,19 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               <div class="meta">
                 <span>
                   <n-icon :component="TimeOutline" :size="12" />{{ timeLine(detail.conference) }}
+                  <template v-if="dur(detail.conference)">· {{ dur(detail.conference) }}</template>
                 </span>
+                <span v-if="repeatOf(detail.conference)">
+                  <n-icon :component="RepeatOutline" :size="12" />{{ repeatOf(detail.conference) }}
+                </span>
+                <router-link
+                  v-if="callStage && callStage.href"
+                  class="stage-pill"
+                  :to="callStage.href"
+                  data-testid="conference-lobby-stage"
+                >
+                  <n-icon :component="TrailSignOutline" :size="12" />{{ callStage.title }}
+                </router-link>
                 <span>{{
                   $t('conferences.row.participantCount', {
                     count: detail.participants.length,
@@ -947,6 +1083,7 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               :can-invite="canInvite"
               :invitable="invitable"
               :invited="invited"
+              :stage="callStage"
               @hangup="leave"
               @invite="inviteOne"
               @minimize="minimize"
@@ -969,13 +1106,13 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
          #2969 / #2983) — it replaced the modal. -->
     <PopoverForm
       v-model:show="dlg.show"
-      :anchor="() => scheduleBtn || null"
+      :anchor="() => dlg.anchor || scheduleBtn || null"
       placement="bottom-end"
       :offset="{ x: 0, y: 6 }"
       :width="400"
-      :title="$t('conferences.create.title')"
-      :subtitle="$t('conferences.create.subtitle')"
-      :primary="$t('conferences.create.submit')"
+      :title="dlg.editId ? $t('conferences.edit.title') : $t('conferences.create.title')"
+      :subtitle="dlg.editId ? $t('conferences.edit.subtitle') : $t('conferences.create.subtitle')"
+      :primary="dlg.editId ? $t('conferences.edit.submit') : $t('conferences.create.submit')"
       :busy-label="$t('common.form.saving')"
       :busy="dlg.saving"
       :disabled="!dlg.title.trim()"
@@ -992,14 +1129,27 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
         />
       </FormField>
       <FormField :label="$t('conferences.create.at')" :message="$t('conferences.create.atHint')">
-        <n-date-picker
-          v-model:value="dlg.at"
-          type="datetime"
-          clearable
-          :first-day-of-week="firstDayOfWeek"
-          :format="dateTimePattern"
-          :placeholder="$t('conferences.create.at')"
-        />
+        <!-- «Когда»: the start and, beside it, how long it runs (#3052). -->
+        <div class="when-row">
+          <n-date-picker
+            v-model:value="dlg.at"
+            class="when-at"
+            type="datetime"
+            clearable
+            :first-day-of-week="firstDayOfWeek"
+            :format="dateTimePattern"
+            :placeholder="$t('conferences.create.at')"
+          />
+          <n-select
+            v-model:value="dlg.duration"
+            class="when-len"
+            :options="durationOptions"
+            :placeholder="$t('conferences.plan.duration')"
+            :aria-label="$t('conferences.plan.duration')"
+            clearable
+            data-testid="conference-duration"
+          />
+        </div>
       </FormField>
       <FormField>
         <textarea
@@ -1021,26 +1171,59 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
           data-testid="conference-ttl"
         />
       </FormField>
-      <!-- A stage and a repeat are #3053 / #3052: visible, inactive. -->
-      <div class="form-stubs">
-        <n-tooltip :delay="300">
-          <template #trigger>
-            <span class="form-stub" data-testid="conference-stage-stub">
-              <n-icon :component="TrailSignOutline" :size="13" />
-              {{ $t('conferences.create.stage') }}
-            </span>
-          </template>
-          {{ $t('common.stub.soon', { n: stageTask }) }}
-        </n-tooltip>
-        <n-tooltip :delay="300">
-          <template #trigger>
-            <span class="form-stub" data-testid="conference-repeat-stub">
-              <n-icon :component="RepeatOutline" :size="13" />
-              {{ $t('conferences.create.repeat') }}
-            </span>
-          </template>
-          {{ $t('common.stub.soon', { n: recurrenceTask }) }}
-        </n-tooltip>
+      <!-- The mockup's last line (#3053 / #3052): «К этапу [Спринт 43]» and
+           «не повторять», each a menu — in place, inside the form: a menu
+           teleported to <body> would read as a click outside and close it. -->
+      <div class="form-plan">
+        <button
+          ref="stageBtn"
+          type="button"
+          class="plan-btn"
+          data-testid="conference-stage"
+          @click="stageMenu = !stageMenu"
+        >
+          <n-icon :component="LinkOutline" :size="13" />
+          {{ $t('conferences.plan.stage') }}
+          <span v-if="dlgStageTitle" class="stage-pill">
+            <n-icon :component="TrailSignOutline" :size="12" />{{ dlgStageTitle }}
+          </span>
+          <span v-else class="plan-none">{{ $t('conferences.plan.noStage') }}</span>
+        </button>
+        <span class="grow" />
+        <button
+          ref="repeatBtn"
+          type="button"
+          class="plan-btn"
+          :disabled="!dlg.at"
+          :title="!dlg.at ? $t('conferences.create.atHint') : ''"
+          data-testid="conference-repeat"
+          @click="repeatMenu = !repeatMenu"
+        >
+          <n-icon :component="RepeatOutline" :size="13" />
+          {{ recurrenceLabel(dlg.at ? dlg.recurrence : '', $t) }}
+        </button>
+        <ActionMenu
+          v-model:show="stageMenu"
+          in-place
+          :anchor="() => stageBtn"
+          placement="bottom-start"
+          :width="260"
+          :header="$t('conferences.plan.stageTitle')"
+          :items="stageItems"
+          testid="conference-stage-menu"
+          @select="pickStage"
+        />
+        <ActionMenu
+          v-model:show="repeatMenu"
+          in-place
+          :anchor="() => repeatBtn"
+          placement="bottom-end"
+          :width="220"
+          :header="$t('conferences.plan.repeatTitle')"
+          :items="repeatItems"
+          testid="conference-repeat-menu"
+          @select="pickRepeat"
+        />
       </div>
     </PopoverForm>
   </div>
@@ -1430,19 +1613,83 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   color: var(--t-text2);
   white-space: pre-wrap;
 }
-.form-stubs {
+.when-row {
   display: flex;
-  gap: 14px;
+  gap: 8px;
+}
+.when-at {
+  flex: 1;
+  min-width: 0;
+}
+.when-len {
+  flex: none;
+  width: 116px;
+}
+/* «К этапу [пилл]» · «не повторять» — the mockup's quiet last line. */
+.form-plan {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding-top: 2px;
 }
-.form-stub {
+.plan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.plan-btn:hover:not(:disabled) {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.plan-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.plan-btn:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+.plan-btn :deep(.n-icon) {
+  color: var(--t-text3);
+}
+.plan-none {
+  color: var(--t-text3);
+}
+/* The stage pill (#3053): the mockup's pill chip with the trail sign. */
+.stage-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12.5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.stage-pill:hover {
+  color: var(--t-text1);
+  background: color-mix(in srgb, var(--t-pill) 70%, var(--t-hover));
+}
+.meta .stage-pill {
+  height: 20px;
+}
+.when-d {
+  display: block;
+  font-size: 11.5px;
   color: var(--t-text3);
-  opacity: 0.75;
-  cursor: default;
 }
 /* No keyboard on a touch screen — no key caps either. */
 @media (hover: none) and (pointer: coarse) {

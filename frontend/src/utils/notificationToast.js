@@ -24,6 +24,7 @@ const BADGE = {
   task_comment: ['ChatbubbleEllipsesOutline', 'acc'],
   task_thread_reply: ['ChatbubbleEllipsesOutline', 'acc'],
   task_mention: ['AtOutline', 'acc'],
+  conference_mention: ['AtOutline', 'acc'],
   conference_invited: ['VideocamOutline', 'gr'],
 }
 
@@ -53,7 +54,12 @@ export function chipStatus(n) {
 export function chipOf(n) {
   const p = n.payload || {}
   const ev = notificationEvent(n)
-  if (ev === 'conference_invited' || ev === 'reminder' || ev.startsWith('integration_sync'))
+  if (
+    ev === 'conference_invited' ||
+    ev === 'conference_mention' ||
+    ev === 'reminder' ||
+    ev.startsWith('integration_sync')
+  )
     return null
   const title = n.task_title || p.title || ''
   const ref = n.task_number ?? p.task_number ?? null
@@ -146,6 +152,10 @@ export function buildNotificationToast(
           stub: 'toasts.taskTrash',
         },
       ]
+      break
+    case 'conference_mention':
+      // A mention in a call's chat (#3055) opens the call, whose chat has it.
+      spec.actions = [open]
       break
     case 'conference_invited':
       spec.actions = [

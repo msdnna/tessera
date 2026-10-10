@@ -49,8 +49,7 @@
     "required": "Enter a title",
     "created": "Conference scheduled",
     "subtitle": "The link is ready at once; invite people from the room",
-    "stage": "To a stage",
-    "repeat": "Does not repeat"
+    "stage": "To a stage"
   },
   "invite": {
     "button": "Invite",
@@ -211,5 +210,32 @@
     "layout": "Layout",
     "grid": "Grid",
     "speaker": "Speaker"
+  },
+  "plan": {
+    "repeat": {
+      "none": "Does not repeat",
+      "daily": "Every day",
+      "weekdays": "Every weekday",
+      "weekly": "Every week",
+      "biweekly": "Every 2 weeks",
+      "monthly": "Every month"
+    },
+    "min": "{n} min",
+    "h": "{h} h",
+    "hm": "{h} h {m} min",
+    "duration": "Duration",
+    "stage": "Stage",
+    "noStage": "No stage",
+    "noStages": "There are no open stages in this workspace",
+    "linked": "linked to",
+    "stageTitle": "Meeting stage",
+    "repeatTitle": "Repeat"
+  },
+  "edit": {
+    "action": "Edit",
+    "title": "Edit meeting",
+    "subtitle": "Everyone in the meeting will see the changes",
+    "submit": "Save",
+    "saved": "Meeting saved"
   }
 }

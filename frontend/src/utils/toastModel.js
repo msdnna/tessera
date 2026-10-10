@@ -136,6 +136,7 @@ export function notificationCategory(n) {
       return 'assign'
     case 'task_mention':
     case 'task_thread_reply':
+    case 'conference_mention':
       return 'mentions'
     case 'task_comment':
       return 'comments'
@@ -163,7 +164,8 @@ export function notificationKind(n) {
   if (ev === 'conference_invited') return 'call'
   if (ev === 'reminder') return 'reminder'
   if (ev.startsWith('integration_sync')) return 'system'
-  if (ev === 'task_mention' || ev === 'task_thread_reply') return 'mention'
+  if (ev === 'task_mention' || ev === 'task_thread_reply' || ev === 'conference_mention')
+    return 'mention'
   if (ev === 'task_assigned') return 'assign'
   return 'me'
 }

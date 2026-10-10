@@ -103,6 +103,9 @@ function parts(n) {
 function chipOf(n) {
   const p = n.payload || {}
   if (p.excerpt) return { quote: p.excerpt }
+  // A mention in a call's chat (#3055) quotes the line; the call is in the
+  // sentence.
+  if (p.event === 'conference_mention') return p.quote ? { quote: p.quote } : null
   // A deleted task (#3114) has no row to join: the number and title come from
   // the payload alone, and the row opens nothing (notificationRoute → null).
   if (p.title && p.event !== 'task_due_soon' && p.event !== 'conference_invited')

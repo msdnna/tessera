@@ -3,6 +3,10 @@
 // planned ones by their day (soonest first), ones without a time together,
 // finished ones last (latest first). Pure; the component hands in the
 // formatters so labels follow the reader's language and time zone.
+//
+// A repeating meeting (#3052) is filed by its next occurrence (`next_at`, which
+// the server computes), so it never falls into «Прошли, но не начались».
+import { planAt } from '@/utils/confPlan'
 
 // One day's label: «Сегодня, вт 21 окт.», «Завтра, ср 22 окт.», «пт 24 окт.».
 export function dayLabel(d, f, now = new Date()) {
@@ -28,10 +32,10 @@ export function nearestScheduled(list, now = new Date()) {
   const from = now.getTime() - 15 * 60000
   let best = null
   for (const c of list) {
-    if (c.status !== 'scheduled' || !c.scheduled_at) continue
-    const at = Date.parse(c.scheduled_at)
+    if (c.status !== 'scheduled' || !planAt(c)) continue
+    const at = Date.parse(planAt(c))
     if (at < from) continue
-    if (!best || at < Date.parse(best.scheduled_at)) best = c
+    if (!best || at < Date.parse(planAt(best))) best = c
   }
   return best
 }
@@ -39,9 +43,9 @@ export function nearestScheduled(list, now = new Date()) {
 export function groupConferences(list, f, { now = new Date(), t } = {}) {
   const live = list.filter((c) => c.status === 'live')
   const planned = list
-    .filter((c) => c.status === 'scheduled' && c.scheduled_at)
-    .sort((a, b) => Date.parse(a.scheduled_at) - Date.parse(b.scheduled_at))
-  const untimed = list.filter((c) => c.status === 'scheduled' && !c.scheduled_at)
+    .filter((c) => c.status === 'scheduled' && planAt(c))
+    .sort((a, b) => Date.parse(planAt(a)) - Date.parse(planAt(b)))
+  const untimed = list.filter((c) => c.status === 'scheduled' && !planAt(c))
   const ended = list
     .filter((c) => c.status === 'ended')
     .sort((a, b) => Date.parse(b.ended_at || 0) - Date.parse(a.ended_at || 0))
@@ -52,12 +56,12 @@ export function groupConferences(list, f, { now = new Date(), t } = {}) {
   const todayKey = Date.UTC(today.year, today.month, today.day)
   const past = []
   for (const c of planned) {
-    const pp = f.parts(new Date(c.scheduled_at))
+    const pp = f.parts(new Date(planAt(c)))
     if (Date.UTC(pp.year, pp.month, pp.day) < todayKey) {
       past.push(c)
       continue
     }
-    const d = new Date(c.scheduled_at)
+    const d = new Date(planAt(c))
     const p = f.parts(d)
     const key = `d-${p.year}-${p.month}-${p.day}`
     let g = groups.find((x) => x.key === key)

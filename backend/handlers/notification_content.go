@@ -318,7 +318,7 @@ func msgConferenceMention(actor, title, confID, body string) notifyMsg {
 	p["conference_id"] = confID
 	withQuote(p, body)
 	return notifyMsg{
-		text:    fmt.Sprintf("%s упомянул(а) вас в чате конференции%s", actor, shortCtx(title)),
+		text:    fmt.Sprintf("%s упомянул(а) вас в чате встречи%s", actor, shortCtx(title)),
 		payload: p,
 	}
 }
