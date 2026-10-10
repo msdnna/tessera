@@ -871,6 +871,8 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 	// so a link between two issues of this run resolves on the first pass.
 	h.syncRelations(ctx, integ, client, syncedIIDs, j)
 	r.markSynced(ctx, issues, childrenOf)
+	// Stage writes that failed earlier go out again now that GitLab answered (#3010).
+	h.retryMilestonePushes(ctx, integ)
 
 	// One board-level reload signal (no per-task toasts) so open boards refresh once.
 	if created+updated > 0 {

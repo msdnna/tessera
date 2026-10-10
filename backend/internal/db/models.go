@@ -302,15 +302,20 @@ type GitlabLink struct {
 }
 
 type GitlabMilestoneLink struct {
-	MilestoneID   uuid.UUID `json:"milestone_id"`
-	IntegrationID uuid.UUID `json:"integration_id"`
-	GlGlobalID    string    `json:"gl_global_id"`
-	GlIid         *int64    `json:"gl_iid"`
-	GlNumericID   int64     `json:"gl_numeric_id"`
-	GlWebUrl      string    `json:"gl_web_url"`
-	GlState       string    `json:"gl_state"`
-	TitleHash     string    `json:"title_hash"`
-	LastSyncedAt  time.Time `json:"last_synced_at"`
+	MilestoneID   uuid.UUID  `json:"milestone_id"`
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	GlGlobalID    string     `json:"gl_global_id"`
+	GlIid         *int64     `json:"gl_iid"`
+	GlNumericID   int64      `json:"gl_numeric_id"`
+	GlWebUrl      string     `json:"gl_web_url"`
+	GlState       string     `json:"gl_state"`
+	TitleHash     string     `json:"title_hash"`
+	LastSyncedAt  time.Time  `json:"last_synced_at"`
+	GlSnapshot    []byte     `json:"gl_snapshot"`
+	PushError     string     `json:"push_error"`
+	PushFields    []string   `json:"push_fields"`
+	PushActorID   *uuid.UUID `json:"push_actor_id"`
+	Conflict      []byte     `json:"conflict"`
 }
 
 type GitlabProjectMember struct {
