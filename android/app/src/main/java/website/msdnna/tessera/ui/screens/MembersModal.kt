@@ -62,13 +62,16 @@ import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.MembersUiState
 import website.msdnna.tessera.ui.viewmodels.MembersViewModel
+import website.msdnna.tessera.util.ActivityBucket
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.MemberBadge
 import website.msdnna.tessera.util.MemberLock
 import website.msdnna.tessera.util.inviteExpired
 import website.msdnna.tessera.util.localDateLabel
+import website.msdnna.tessera.util.memberActivity
 import website.msdnna.tessera.util.memberRowBadge
 import website.msdnna.tessera.util.memberRowLock
+import website.msdnna.tessera.util.workspaceCaption
 
 /**
  * Подписи ролей. Это функция, а не `val` уровня файла: карта с готовым текстом
@@ -90,6 +93,12 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
     val state by vm.state.collectAsStateWithLifecycle()
 
     LaunchedEffect(workspaceId) { if (workspaceId.isNotBlank()) vm.load(workspaceId) }
+    // Left the workspace (#3063): nothing here is ours to show any more.
+    LaunchedEffect(state.left) { if (state.left) onDismiss() }
+    val res = LocalResources.current
+    val wsCaption = workspaceCaption(res, state.workspace)
+    val meIsOwner = state.members.any { it.userId == state.meId && it.role == "owner" }
+    var transferFor by remember { mutableStateOf<Member?>(null) }
 
     val clipboard = LocalClipboardManager.current
     var email by remember { mutableStateOf("") }
@@ -115,6 +124,9 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
                             canManage = state.canManage,
                             onRemove = { vm.remove(m.userId) },
                             onChangeRole = { vm.changeRole(m.userId, it) },
+                            meIsOwner = meIsOwner,
+                            onTransfer = { transferFor = m },
+                            onLeave = { vm.leave() },
                         )
                     }
                 }
@@ -137,6 +149,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
                 }
 
                 else -> MembersManagement(
+                    onDecide = { id, ok -> vm.decideAccess(id, ok) },
                     state = state,
                     email = email,
                     onEmailChange = { email = it },
@@ -161,6 +174,57 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
             }
         }
     }
+    transferFor?.let { m ->
+        TransferOwnerDialog(
+            member = m,
+            wsCaption = wsCaption,
+            onConfirm = {
+                transferFor = null
+                vm.transferOwner(m.userId)
+            },
+            onDismiss = { transferFor = null },
+        )
+    }
+}
+
+/**
+ * «Передать владение» (#3072): the workspace's name typed in before the button
+ * wakes up — the same guard against a slip as on the web. The server's owner
+ * check is the real one.
+ */
+@Composable
+private fun TransferOwnerDialog(member: Member, wsCaption: String, onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    val c = Tessera.colors
+    var typed by remember { mutableStateOf("") }
+    Dialog(onDismissRequest = onDismiss) {
+        Column(
+            Modifier.popupAppear(TransformOrigin.Center).fillMaxWidth().clip(RoundedCornerShape(RadiusLg))
+                .background(c.surface).padding(20.dp),
+        ) {
+            Text(
+                stringResource(R.string.members_transfer_title, member.name.ifBlank { member.email }),
+                color = c.text1,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Spacer(Modifier.height(6.dp))
+            Text(stringResource(R.string.members_transfer_sub), color = c.text2, fontSize = 13.sp)
+            Spacer(Modifier.height(12.dp))
+            Text(stringResource(R.string.members_transfer_type), color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            Spacer(Modifier.height(6.dp))
+            TTextField(value = typed, onValueChange = { typed = it }, placeholder = wsCaption)
+            Spacer(Modifier.height(14.dp))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Secondary, onClick = onDismiss)
+                Spacer(Modifier.width(8.dp))
+                TButton(
+                    stringResource(R.string.members_transfer_go),
+                    enabled = wsCaption.isNotBlank() && typed.trim() == wsCaption.trim(),
+                    onClick = onConfirm,
+                )
+            }
+        }
+    }
 }
 
 /**
@@ -172,6 +236,7 @@ fun MembersModal(workspaceId: String, onDismiss: () -> Unit) {
  */
 @Composable
 private fun MembersManagement(
+    onDecide: (String, Boolean) -> Unit,
     state: MembersUiState,
     email: String,
     onEmailChange: (String) -> Unit,
@@ -183,6 +248,27 @@ private fun MembersManagement(
 ) {
     val c = Tessera.colors
     Column {
+        // Access requests (#3077): people who opened a link to this space and
+        // asked in. «Впустить» — a member; the role can be changed after.
+        if (state.accessRequests.isNotEmpty()) {
+            Spacer(Modifier.height(14.dp))
+            Text(stringResource(R.string.members_requests), color = c.text3, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+            state.accessRequests.forEach { r ->
+                Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Column(Modifier.weight(1f)) {
+                        Text(r.userName.ifBlank { r.userEmail }, color = c.text1, fontSize = 13.sp, maxLines = 1)
+                        val sub = listOfNotNull(
+                            r.userEmail.takeIf { it.isNotBlank() },
+                            r.message.takeIf { it.isNotBlank() }?.let { "«$it»" },
+                        ).joinToString(" · ")
+                        if (sub.isNotBlank()) Text(sub, color = c.text3, fontSize = 11.sp, maxLines = 2)
+                    }
+                    TButton(stringResource(R.string.members_request_approve), onClick = { onDecide(r.id, true) })
+                    Spacer(Modifier.width(4.dp))
+                    IonIconButton(Ion.CLOSE, onClick = { onDecide(r.id, false) }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
+                }
+            }
+        }
         // Pending invitations (by email; invitee may not have an account yet).
         if (state.invitations.isNotEmpty()) {
             Spacer(Modifier.height(14.dp))
@@ -282,9 +368,13 @@ private fun MemberRow(
     canManage: Boolean,
     onRemove: () -> Unit,
     onChangeRole: (String) -> Unit,
+    meIsOwner: Boolean = false,
+    onTransfer: () -> Unit = {},
+    onLeave: () -> Unit = {},
 ) {
     val c = Tessera.colors
     var confirm by remember { mutableStateOf(false) }
+    var confirmLeave by remember { mutableStateOf(false) }
     var roleMenu by remember { mutableStateOf(false) }
     val roles = roleLabels()
     val lock = memberRowLock(member, meId, canManage)
@@ -302,6 +392,7 @@ private fun MemberRow(
         Column(Modifier.weight(1f)) {
             Text(member.name.ifBlank { "—" }, color = c.text1, fontSize = 14.sp, maxLines = 1)
             if (member.email.isNotBlank()) Text(member.email, color = c.text3, fontSize = 12.sp, maxLines = 1)
+            ActivityLine(member)
         }
         // A locked row is a plain badge: the workspace owner's role is immutable,
         // the viewer's own row would be a self-demotion, and for someone who
@@ -333,7 +424,31 @@ private fun MemberRow(
                         roleMenu = false
                         if (member.role != "admin") onChangeRole("admin")
                     })
+                    // «Передать владение…» — the owner's alone (#3072).
+                    if (meIsOwner) {
+                        TMenuItem(stringResource(R.string.members_transfer), onClick = {
+                            roleMenu = false
+                            onTransfer()
+                        })
+                    }
                 }
+            }
+        }
+        // The viewer's own row (not the owner's): leave the workspace (#3063).
+        if (member.userId == meId && member.role != "owner") {
+            Spacer(Modifier.width(6.dp))
+            Box {
+                IonIconButton(Ion.LOGOUT, onClick = { confirmLeave = true }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
+                TConfirmPopover(
+                    expanded = confirmLeave,
+                    message = stringResource(R.string.members_leave_confirm),
+                    confirmText = stringResource(R.string.members_leave),
+                    onConfirm = {
+                        confirmLeave = false
+                        onLeave()
+                    },
+                    onDismiss = { confirmLeave = false },
+                )
             }
         }
         if (lock == MemberLock.NONE) {
@@ -354,6 +469,30 @@ private fun MemberRow(
         }
     }
 }
+
+/** «сейчас» / «12 мин назад» / «вчера» under the email, green dot when online (#3073). */
+@Composable
+private fun ActivityLine(member: Member) {
+    val c = Tessera.colors
+    val a = memberActivity(member.lastSeenAt, member.lastActiveAt)
+    val text = when (a.bucket) {
+        ActivityBucket.NEVER -> return
+        ActivityBucket.NOW -> stringResource(R.string.members_activity_now)
+        ActivityBucket.MIN -> stringResource(R.string.members_activity_min, a.n)
+        ActivityBucket.HOURS -> stringResource(R.string.members_activity_hours, a.n)
+        ActivityBucket.YESTERDAY -> stringResource(R.string.members_activity_yesterday)
+        ActivityBucket.DAYS, ActivityBucket.LONG_AGO -> stringResource(R.string.members_activity_days, a.n)
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        if (a.online) {
+            Box(Modifier.width(6.dp).height(6.dp).clip(RoundedCornerShape(3.dp)).background(accentGradient(TesseraOnline)))
+            Spacer(Modifier.width(5.dp))
+        }
+        Text(text, color = c.text3, fontSize = 11.sp, maxLines = 1)
+    }
+}
+
+private val TesseraOnline = androidx.compose.ui.graphics.Color(0xFF18A058)
 
 @Composable
 private fun RoleChip(label: String, active: Boolean, onClick: () -> Unit) {

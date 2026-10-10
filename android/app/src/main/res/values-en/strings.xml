@@ -1139,6 +1139,20 @@
     <string name="members_role_admin">Admin</string>
     <string name="members_role_member">Member</string>
     <string name="members_you">This is you</string>
+    <string name="members_transfer">Hand over ownership…</string>
+    <string name="members_transfer_title">Hand over ownership — %1$s</string>
+    <string name="members_transfer_sub">The new owner gets the whole workspace; you stay in it as an admin. Only they can hand it back.</string>
+    <string name="members_transfer_type">Type the workspace name</string>
+    <string name="members_transfer_go">Hand over ownership</string>
+    <string name="members_leave">Leave</string>
+    <string name="members_leave_confirm">Leave the workspace?</string>
+    <string name="members_requests">Asking for access</string>
+    <string name="members_request_approve">Let in</string>
+    <string name="members_activity_now">now</string>
+    <string name="members_activity_min">%1$d min ago</string>
+    <string name="members_activity_hours">%1$d h ago</string>
+    <string name="members_activity_yesterday">yesterday</string>
+    <string name="members_activity_days">%1$d d ago</string>
     <string name="members_read_only">Read-only list: the workspace owner or an admin changes who is here.</string>
 
     <!-- Admin: account list -->

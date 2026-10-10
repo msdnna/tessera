@@ -456,6 +456,29 @@ interface ApiService {
     @DELETE("workspaces/{id}/members/{userId}")
     suspend fun removeMember(@Path("id") workspaceId: String, @Path("userId") userId: String)
 
+    // ── members v2 (#3063): ownership, leaving, access requests ──
+    @POST("workspaces/{id}/owner")
+    suspend fun transferOwner(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.TransferOwnerRequest,
+    )
+
+    @POST("workspaces/{id}/leave")
+    suspend fun leaveWorkspace(@Path("id") workspaceId: String)
+
+    @GET("workspaces/{id}/access-requests")
+    suspend fun accessRequests(@Path("id") workspaceId: String): List<website.msdnna.tessera.data.model.AccessRequest>?
+
+    @POST("workspaces/{id}/access-requests/{reqId}/approve")
+    suspend fun approveAccess(
+        @Path("id") workspaceId: String,
+        @Path("reqId") reqId: String,
+        @Body body: RoleUpdate,
+    )
+
+    @POST("workspaces/{id}/access-requests/{reqId}/decline")
+    suspend fun declineAccess(@Path("id") workspaceId: String, @Path("reqId") reqId: String)
+
     // ── invitations (U2) ──
     @GET("workspaces/{id}/invitations")
     suspend fun invitations(@Path("id") workspaceId: String): List<Invitation>?
