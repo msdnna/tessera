@@ -79,6 +79,12 @@ const (
 // keep the routing kind "mention" (one switch, «Меня упомянули в задаче,
 // документе, чате встречи»), and differ only in the event.
 const (
+	evMilestoneClosed = "milestone_closed"
+	evConfStarting    = "conference_starting"
+	evSyncConflict    = "integration_conflict"
+	evDocMention      = "document_mention"
+	evConfMention     = "conference_mention"
+
 	kindMilestoneClosed     = "milestone_closed"
 	kindConferenceSoon      = "conference_soon"
 	kindIntegrationConflict = "integration_conflict"
@@ -175,6 +181,8 @@ var fieldWords = map[string]string{
 	"estimate":    "оценка",
 	"completed":   "выполнена",
 	"reopened":    "возвращена в работу",
+	// A sync conflict (#3048) names the issue's state among its fields.
+	"state": "статус",
 }
 
 func msgMoved(actor string, number *int64, column string, columnKey *string) notifyMsg {

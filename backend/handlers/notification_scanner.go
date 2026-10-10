@@ -51,6 +51,7 @@ func (h *API) ScanNotificationsOnce(ctx context.Context) bool {
 	return h.withAdvisoryLock(ctx, NotifyScanLock, func() {
 		h.scanDueTasks(ctx)
 		h.scanReminders(ctx)
+		h.scanConferencesSoon(ctx)
 	})
 }
 

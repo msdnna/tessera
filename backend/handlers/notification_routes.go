@@ -430,6 +430,7 @@ var timedKinds = map[string]bool{
 	kindReminder:         true,
 	kindDueSoon:          true,
 	kindConferenceInvite: true,
+	kindConferenceSoon:   true,
 }
 
 // digestMinutesFor is the digest window that applies to one notification: the

@@ -50,6 +50,9 @@ func (h *API) CreateDocumentComment(c *gin.Context) {
 		BlockID  string     `json:"block_id"`
 		ParentID *uuid.UUID `json:"parent_id"`
 		Quote    string     `json:"quote"`
+		// The members the comment mentions (#3048), resolved by the client from
+		// the names it drew — the same contract as a task comment's.
+		Mentions []uuid.UUID `json:"mentions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -93,13 +96,14 @@ func (h *API) CreateDocumentComment(c *gin.Context) {
 		return
 	}
 	h.notifyDocComments(doc.ID)
+	h.notifyMentionsOf(c, doc.WorkspaceID, req.Mentions, msgDocMention(h.actorName(c), doc, req.Body))
 	c.JSON(http.StatusCreated, cm)
 }
 
 // UpdateDocumentComment edits the body of one's own comment (same rule as task
 // comments: membership lets you read and reply, not rewrite what someone said).
 func (h *API) UpdateDocumentComment(c *gin.Context) {
-	cm, _, ok := h.loadDocumentComment(c)
+	cm, doc, ok := h.loadDocumentComment(c)
 	if !ok {
 		return
 	}
@@ -109,6 +113,8 @@ func (h *API) UpdateDocumentComment(c *gin.Context) {
 	}
 	var req struct {
 		Body string `json:"body" binding:"required"`
+		// Only the people this edit ADDED (#3048) — see UpdateComment.
+		Mentions []uuid.UUID `json:"mentions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -122,6 +128,7 @@ func (h *API) UpdateDocumentComment(c *gin.Context) {
 		return
 	}
 	h.notifyDocComments(cm.DocumentID)
+	h.notifyMentionsOf(c, doc.WorkspaceID, req.Mentions, msgDocMention(h.actorName(c), doc, req.Body))
 	c.JSON(http.StatusOK, updated)
 }
 

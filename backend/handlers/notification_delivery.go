@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -841,9 +842,25 @@ func conferenceOf(n db.Notification) string {
 func (h *API) notifyLink(n db.Notification) string { return notifyLink(h.publicURL, n) }
 
 func notifyLink(publicURL string, n db.Notification) string {
-	confID := conferenceOf(n)
-	if confID == "" || publicURL == "" {
+	if publicURL == "" {
 		return publicURL
 	}
-	return strings.TrimRight(publicURL, "/") + "/conferences/" + confID
+	base := strings.TrimRight(publicURL, "/")
+	if confID := conferenceOf(n); confID != "" {
+		return base + "/conferences/" + confID
+	}
+	// The v2 notifications about something that is not a task (#3048) open it:
+	// a document someone mentioned the reader in, a stage that was closed.
+	var p map[string]any
+	if json.Unmarshal(n.Payload, &p) == nil {
+		if slug, _ := p["document_slug"].(string); slug != "" {
+			return base + "/documents/" + url.PathEscape(slug)
+		}
+		project, _ := p["project_slug"].(string)
+		stage, _ := p["milestone_id"].(string)
+		if project != "" && stage != "" {
+			return base + "/project/" + url.PathEscape(project) + "/stage/" + stage
+		}
+	}
+	return publicURL
 }

@@ -221,6 +221,8 @@ func (h *API) drainWritebacks(ctx context.Context) {
 				h.broadcast(res.wsID, "gitlab.conflict", map[string]any{
 					"task_id": w.TaskID, "change_kind": w.ChangeKind, "fields": res.fields,
 				})
+				// The person whose change is parked is told it waits for them (#3048).
+				h.notifyWritebackConflict(ctx, w, res.wsID, res.fields)
 			}
 			continue
 		}

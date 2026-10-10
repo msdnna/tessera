@@ -139,7 +139,7 @@ func (h *API) UpdateMilestone(c *gin.Context) {
 	if !ok {
 		return
 	}
-	_, wsID, ok := h.milestoneWorkspace(c, id)
+	before, wsID, ok := h.milestoneWorkspace(c, id)
 	if !ok {
 		return
 	}
@@ -161,6 +161,7 @@ func (h *API) UpdateMilestone(c *gin.Context) {
 		return
 	}
 	h.broadcastAs(c, wsID, "milestone.updated", m)
+	h.notifyMilestoneClosed(c, before, m, wsID)
 	c.JSON(http.StatusOK, m)
 }
 

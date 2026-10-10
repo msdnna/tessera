@@ -214,7 +214,7 @@ func (h *API) PostConferenceMessage(c *gin.Context) {
 	if h.refuseKicked(c, conf.ID, uid) {
 		return
 	}
-	body, files, ok := h.readChatSubmission(c)
+	body, files, mentions, ok := h.readChatSubmission(c)
 	if !ok {
 		return
 	}
@@ -275,6 +275,7 @@ func (h *API) PostConferenceMessage(c *gin.Context) {
 	}
 	// The nudge carries no payload — see the note at the top of this file.
 	h.notifyConfRoom(conf.ID, confroom.TypeChat)
+	h.notifyMentionsOf(c, conf.WorkspaceID, mentions, msgConfMention(h.actorName(c), conf, body))
 	c.JSON(http.StatusCreated, out)
 }
 
@@ -286,45 +287,57 @@ type storedChatFile struct {
 	size        int64
 }
 
-// readChatSubmission pulls the body and any files out of either encoding,
+// readChatSubmission pulls the body, any files and the mentioned members
+// (#3048 — a `mentions` field, repeated in a form) out of either encoding,
 // writing the response and returning false when the submission is not usable.
-func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeader, bool) {
+func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeader, []uuid.UUID, bool) {
 	var body string
 	var files []*multipart.FileHeader
+	var mentions []uuid.UUID
 	if strings.HasPrefix(c.ContentType(), "multipart/form-data") {
 		form, err := c.MultipartForm()
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid form"})
-			return "", nil, false
+			return "", nil, nil, false
 		}
 		if v := form.Value["body"]; len(v) > 0 {
 			body = v[0]
 		}
 		files = form.File["files"]
+		for _, s := range form.Value["mentions"] {
+			id, perr := uuid.Parse(s)
+			if perr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mention"})
+				return "", nil, nil, false
+			}
+			mentions = append(mentions, id)
+		}
 	} else {
 		var req struct {
-			Body string `json:"body"`
+			Body     string      `json:"body"`
+			Mentions []uuid.UUID `json:"mentions"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return "", nil, false
+			return "", nil, nil, false
 		}
 		body = req.Body
+		mentions = req.Mentions
 	}
 	body = strings.TrimSpace(body)
 	// An empty message with no files is not a message. Allowing it would put
 	// blank rows in the rail every time somebody leans on Enter.
 	if body == "" && len(files) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "message must have text or a file"})
-		return "", nil, false
+		return "", nil, nil, false
 	}
 	if utf8.RuneCountInString(body) > maxChatBody {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("message is longer than %d characters", maxChatBody)})
-		return "", nil, false
+		return "", nil, nil, false
 	}
 	if len(files) > maxChatFiles {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("at most %d files per message", maxChatFiles)})
-		return "", nil, false
+		return "", nil, nil, false
 	}
 	// The aggregate ceiling, checked before storeChatFiles so an over-full batch
 	// costs no disk. Phrased with the number so the clients can format it in the
@@ -338,9 +351,9 @@ func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeade
 	if total > MaxChatTotalBytes {
 		c.JSON(http.StatusRequestEntityTooLarge,
 			gin.H{"error": fmt.Sprintf("attachments exceed %d bytes", MaxChatTotalBytes)})
-		return "", nil, false
+		return "", nil, nil, false
 	}
-	return body, files, true
+	return body, files, mentions, true
 }
 
 // chatDir is where one conference's chat uploads live. Per conference and used
