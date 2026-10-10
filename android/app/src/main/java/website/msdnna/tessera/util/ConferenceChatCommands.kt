@@ -13,7 +13,7 @@ package website.msdnna.tessera.util
 data class ChatMember(val userId: String, val name: String, val email: String = "")
 
 /** The command's names: Russian, English and their one-letter shorthands. */
-val CONF_TASK_COMMANDS = listOf("задача", "task", "з", "t")
+val CONF_TASK_COMMANDS = listOf("задача", "task", "з", "t") // i18n-data: typing keys in both alphabets
 
 /** The open «/» query while the draft is still the command's name, or null. */
 fun chatSlashQuery(draft: String): String? = Regex("^/(\\S*)$").find(draft)?.groupValues?.get(1)
