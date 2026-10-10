@@ -46,6 +46,20 @@ const (
 	// A shared «Входящие» note names the reader (#3040). It points at a note,
 	// not a task: the note's id travels in the payload (see msgNoteMention).
 	evNoteMention = "note_mention"
+	// Members (#3063): the workspace was handed to the reader; someone asks to
+	// be let in (to the workspace's managers); the reader's own request was
+	// approved or declined.
+	evOwnerTransferred = "workspace_owner_transferred"
+	evAccessRequested  = "access_requested"
+	evAccessApproved   = "access_approved"
+	evAccessDeclined   = "access_declined"
+)
+
+// The routing kinds of the members notifications (#3063). Like the conference
+// invitation they point at no task.
+const (
+	kindOwnership     = "workspace_owner"
+	kindAccessRequest = "access_request"
 )
 
 // kindConferenceInvite is the routing kind of a conference invitation. Unlike
@@ -416,4 +430,54 @@ func msgSyncDone(s syncCounts, partial bool) notifyMsg {
 	p["updated"] = s.updated
 	p["seconds"] = s.seconds
 	return notifyMsg{text: text, payload: p}
+}
+
+// msgOwnershipTransferred tells the new owner the workspace is theirs. The name
+// key travels too: a personal workspace's caption is drawn from it.
+func msgOwnershipTransferred(actor, wsName string, nameKey *string) notifyMsg {
+	p := event(evOwnerTransferred, nil)
+	p["actor"] = actor
+	p["workspace"] = wsName
+	if nameKey != nil {
+		p["workspace_key"] = *nameKey
+	}
+	return notifyMsg{
+		text:    fmt.Sprintf("%s передал вам владение пространством «%s»", actor, wsName),
+		payload: p,
+	}
+}
+
+// msgAccessRequested tells a manager someone asks to be let in.
+func msgAccessRequested(actor, requestID string) notifyMsg {
+	p := event(evAccessRequested, nil)
+	p["actor"] = actor
+	p["request_id"] = requestID
+	return notifyMsg{
+		text:    fmt.Sprintf("%s просит доступ к пространству", actor),
+		payload: p,
+	}
+}
+
+// msgAccessApproved tells the requester they are in.
+func msgAccessApproved(actor, wsName string, nameKey *string, wsID string) notifyMsg {
+	p := event(evAccessApproved, nil)
+	p["actor"] = actor
+	p["workspace"] = wsName
+	p["workspace_id"] = wsID
+	if nameKey != nil {
+		p["workspace_key"] = *nameKey
+	}
+	return notifyMsg{
+		text:    fmt.Sprintf("%s открыл вам доступ к пространству «%s»", actor, wsName),
+		payload: p,
+	}
+}
+
+// msgAccessDeclined names neither the workspace nor who declined: a refusal is
+// not a way to learn who runs a workspace one is not in.
+func msgAccessDeclined() notifyMsg {
+	return notifyMsg{
+		text:    "Запрос доступа отклонён",
+		payload: event(evAccessDeclined, nil),
+	}
 }

@@ -19,7 +19,7 @@
 //
 // Navigation items (`items`):
 //   { key, label, icon, count, tone: 'danger', testid }  a section
-//   { key, label, icon, stub: 3063 }                     not built yet («Скоро · #N»)
+//   { key, label, icon, stub: 3075 }                     not built yet («Скоро · #N»)
 //   { key, label, icon, count, out: true, onClick }      a door to another window
 //   { heading: 'Тип' }                                    a group title
 //   any of them with `desktop: true` is left out of the phone's pill row.

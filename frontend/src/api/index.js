@@ -435,6 +435,17 @@ export const workspaces = {
   inviteLink: (id) => api.get(`/workspaces/${id}/invite-link`),
   createInviteLink: (id, data) => api.post(`/workspaces/${id}/invite-link`, data),
   revokeInviteLink: (id) => api.delete(`/workspaces/${id}/invite-link`),
+  // Members v2 (#3063): hand the workspace to a member (owner only), leave it
+  // (everyone but the owner), the managers' queue of access requests, and the
+  // member groups («Фронтенд», «Бэкенд»…) — names for sets of members.
+  transferOwner: (id, userId) => api.post(`/workspaces/${id}/owner`, { user_id: userId }),
+  leave: (id) => api.post(`/workspaces/${id}/leave`),
+  accessRequests: (id) => api.get(`/workspaces/${id}/access-requests`),
+  approveAccess: (id, reqId, role = 'member') =>
+    api.post(`/workspaces/${id}/access-requests/${reqId}/approve`, { role }),
+  declineAccess: (id, reqId) => api.post(`/workspaces/${id}/access-requests/${reqId}/decline`),
+  memberGroups: (id) => sharedGet(`/workspaces/${id}/member-groups`),
+  createMemberGroup: (id, data) => api.post(`/workspaces/${id}/member-groups`, data),
   groups: (id) => api.get(`/workspaces/${id}/groups`),
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),
   projects: (id) => api.get(`/workspaces/${id}/projects`),
@@ -528,6 +539,19 @@ export const groups = {
   update: (id, data) => api.patch(`/groups/${id}`, data),
   move: (id, data) => api.patch(`/groups/${id}/move`, data),
   remove: (id) => api.delete(`/groups/${id}`),
+}
+
+// Member groups (#3074) — not the project groups above. { name?, color?, member_ids? }
+export const memberGroups = {
+  update: (id, data) => api.patch(`/member-groups/${id}`, data),
+  remove: (id) => api.delete(`/member-groups/${id}`),
+}
+
+// A request to be let into a workspace one is not in (#3077): by the workspace's
+// own link ({ workspace_id }) or a board's ({ project_slug, board_slug } /
+// { board_id }). The answer is { status: 'pending' } and nothing about the space.
+export const accessRequests = {
+  create: (data) => api.post('/access-requests', data),
 }
 
 export const boards = {

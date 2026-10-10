@@ -36,6 +36,9 @@ vi.mock('@/api', () => ({
     createInvitation: vi.fn(),
     removeMember: vi.fn(),
     updateMemberRole: vi.fn(),
+    // Members v2 (#3063): the access requests and groups the window also reads.
+    accessRequests: () => Promise.resolve({ data: [] }),
+    memberGroups: () => Promise.resolve({ data: [] }),
     deleteInvitation: vi.fn(),
   },
 }))
@@ -101,8 +104,13 @@ describe('MembersModal глазами рядового участника', () =
     const w = await open('member')
     for (const row of w.findAll('.member')) {
       expect(row.find('[data-testid="member-role"]').exists()).toBe(false)
-      expect(row.findAll('button').length).toBe(0)
+      // Только «⋯» своей строки — «Покинуть пространство» (#3063).
+      const other = row
+        .findAll('button')
+        .filter((b) => b.attributes('data-testid') !== 'member-menu')
+      expect(other.length).toBe(0)
     }
+    expect(w.findAll('[data-testid="member-menu"]').length).toBe(1)
   })
 
   it('прячет форму приглашения целиком', async () => {

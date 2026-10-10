@@ -30,6 +30,10 @@ const BADGE = {
   milestone_closed: ['TrailSignOutline', 'acc'],
   document_mention: ['AtOutline', 'acc'],
   conference_mention: ['AtOutline', 'acc'],
+  // Members (#3063).
+  workspace_owner_transferred: ['ShieldCheckmarkOutline', 'acc'],
+  access_requested: ['HandRightOutline', 'or'],
+  access_approved: ['EnterOutline', 'gr'],
 }
 
 // A notification without a person leads with a tile instead.
@@ -41,6 +45,8 @@ const TILE = {
   integration_sync_failed: ['GitMergeOutline', 'red'],
   integration_conflict: ['GitMergeOutline', 'or'],
   conference_starting: ['VideocamOutline', 'gr'],
+  // A declined access request names nobody (#3063).
+  access_declined: ['LockClosedOutline', 'neu'],
 }
 
 // The chip's status glyph: the column the task stands in, as the board draws
@@ -67,7 +73,9 @@ export function chipOf(n) {
     ev === 'document_mention' ||
     ev === 'conference_mention' ||
     ev === 'reminder' ||
-    ev.startsWith('integration_sync')
+    ev.startsWith('integration_sync') ||
+    ev.startsWith('access_') ||
+    ev === 'workspace_owner_transferred'
   )
     return null
   const title = n.task_title || p.title || ''

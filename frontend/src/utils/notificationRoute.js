@@ -21,6 +21,9 @@
 // page takes the stage's id in place of its slug; the project slug is the one
 // the stage was closed under — a later rename lands on the 404 of the stage
 // page, which leads back).
+//   - the members notifications (#3063) point at a workspace: an approved access
+//     request opens the space it let you into, a transfer and a new request
+//     open the «Участники» window (`?members=` — AppLayout opens it).
 export function notificationRoute(n) {
   const p = n?.payload || {}
   const confId = p.conference_id
@@ -30,6 +33,10 @@ export function notificationRoute(n) {
   if (p.document_slug) return `/documents/${encodeURIComponent(p.document_slug)}`
   if (p.milestone_id && p.project_slug)
     return `/project/${encodeURIComponent(p.project_slug)}/stage/${p.milestone_id}`
+  const ev = n?.payload?.event
+  if (ev === 'access_approved' && n.payload.workspace_id) return `/space/${n.payload.workspace_id}`
+  if ((ev === 'access_requested' || ev === 'workspace_owner_transferred') && n.workspace_id)
+    return { path: '/', query: { members: n.workspace_id } }
   if (n?.task_id && n?.task_board_id) return `/board/${n.task_board_id}?task=${n.task_id}`
   return null
 }

@@ -23,7 +23,11 @@
     "conference_starting": "Meeting “{title}” starts in {minutes} min",
     "integration_conflict": "{label} · sync conflict on #{ref} ({fields}): changed on both sides",
     "document_mention": "{actor} mentioned you in document “{name}”{ctx}",
-    "conference_mention": "{actor} mentioned you in the chat of “{name}”{ctx}"
+    "conference_mention": "{actor} mentioned you in the chat of “{name}”{ctx}",
+    "workspace_owner_transferred": "{actor} handed you the workspace “{workspace}”",
+    "access_requested": "{actor} asks for access to the workspace",
+    "access_approved": "{actor} let you into the workspace “{workspace}”",
+    "access_declined": "Your access request was declined"
   },
   "field": {
     "title": "title",
@@ -53,7 +57,9 @@
     "conference_invite": "Conference invitation",
     "milestone_closed": "Stage closed",
     "conference_soon": "Meeting starting soon",
-    "integration_conflict": "Sync conflict"
+    "integration_conflict": "Sync conflict",
+    "workspace_owner": "Workspace handed over",
+    "access_request": "Access request"
   },
   "duration": {
     "instant": "less than a second",

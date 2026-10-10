@@ -46,6 +46,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useInboxStore } from '@/stores/inbox'
 import { useFavoritesStore } from '@/stores/favorites'
+import { useMembersStore } from '@/stores/members'
 import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useCodeLinksStore } from '@/stores/codeLinks'
@@ -80,6 +81,7 @@ const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const inbox = useInboxStore()
 const favorites = useFavoritesStore()
+const membersStore = useMembersStore()
 const toasts = useToastsStore()
 const conflicts = useConflictsStore()
 const codeLinks = useCodeLinksStore()
@@ -176,6 +178,8 @@ useRealtime(
     // Favourite boards (#3115): the reader's own `favorites.changed` from another
     // tab, and the board/project events that rename or drop a starred board.
     favorites.onEvent(ev)
+    // Roster, access requests and member groups changed elsewhere (#3063).
+    membersStore.onSocket(ev)
     // The «Начало работы» checklist counts what the user did themselves (#3102).
     onboarding.onSocket(ev, authStore.user?.id)
     conflicts.onEvent(ev)
@@ -430,6 +434,20 @@ watch(
 watch(
   () => wsDialogs.current,
   (v) => v === 'gitlab' && onboarding.note('gitlab.opened'),
+)
+// `?members=<workspace id>` — a members notification (#3063: a transfer, an
+// access request) opens the «Участники» window of that workspace.
+watch(
+  () => route.query.members,
+  async (id) => {
+    if (!id) return
+    const query = { ...route.query }
+    delete query.members
+    await router.replace({ ...route, query })
+    await ws.ensureWorkspace(String(id))
+    wsDialogs.open('members')
+  },
+  { immediate: true },
 )
 // `?tour=<chapter>|start` — ⌘K «Обучение», links from the help articles.
 const { launch: launchTour } = useTourLauncher()

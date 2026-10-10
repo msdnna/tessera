@@ -9,8 +9,10 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
+import website.msdnna.tessera.data.model.AccessRequest
 import website.msdnna.tessera.data.model.Invitation
 import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.Workspace
 import website.msdnna.tessera.data.repository.WorkspaceRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.canManageMembers
@@ -28,6 +30,12 @@ data class MembersUiState(
     val meId: String = "",
     /** Whether the viewer passes `requireManager` here — see [canManageMembers]. */
     val canManage: Boolean = false,
+    /** The workspace itself — its name is what a transfer is confirmed with (#3072). */
+    val workspace: Workspace? = null,
+    /** Pending access requests (#3077), managers only. */
+    val accessRequests: List<AccessRequest> = emptyList(),
+    /** The viewer left the workspace — the dialog closes. */
+    val left: Boolean = false,
 )
 
 /** Workspace members modal: list members, invite (instant add or email link), remove. */
@@ -69,6 +77,9 @@ class MembersViewModel(
                 invitations = emptyList(),
                 lastInviteLink = "",
                 canManage = false,
+                workspace = null,
+                accessRequests = emptyList(),
+                left = false,
             )
         }
         viewModelScope.launch {
@@ -83,12 +94,17 @@ class MembersViewModel(
             _state.update {
                 it.copy(loading = false, meId = meId, members = members, canManage = canManage)
             }
+            val ws = runCatching { repo.workspace(workspaceId) }.getOrNull()
+            if (stale(workspaceId)) return@launch
+            _state.update { it.copy(workspace = ws) }
             if (!canManage) return@launch
             val invitations = runCatching { repo.invitations(workspaceId) }
+            val requests = runCatching { repo.accessRequests(workspaceId) }
             if (stale(workspaceId)) return@launch
             invitations
                 .onSuccess { invs -> _state.update { it.copy(invitations = invs) } }
                 .onFailure { e -> _state.update { it.copy(error = errorMessage(e)) } }
+            requests.onSuccess { reqs -> _state.update { it.copy(accessRequests = reqs) } }
         }
     }
 
@@ -183,6 +199,27 @@ class MembersViewModel(
         repo.deleteInvitation(workspaceId, invId)
         val invitations = repo.invitations(workspaceId)
         _state.update { it.copy(invitations = invitations) }
+    }
+
+    /** Hand the workspace to [userId] (#3072): the owner only — the server checks. */
+    fun transferOwner(userId: String) = launchCatching {
+        repo.transferOwner(workspaceId, userId)
+        val members = repo.members(workspaceId)
+        _state.update { it.copy(members = members, canManage = canManageMembers(members, it.meId)) }
+    }
+
+    /** Leave the workspace (#3063) — refused to the owner by the server too. */
+    fun leave() = launchCatching {
+        repo.leave(workspaceId)
+        _state.update { it.copy(left = true) }
+    }
+
+    /** Let an access request's author in as a member, or decline it (#3077). */
+    fun decideAccess(reqId: String, approve: Boolean) = launchCatching {
+        if (approve) repo.approveAccess(workspaceId, reqId) else repo.declineAccess(workspaceId, reqId)
+        val requests = repo.accessRequests(workspaceId)
+        val members = repo.members(workspaceId)
+        _state.update { it.copy(accessRequests = requests, members = members) }
     }
 
     fun clearError() = _state.update { it.copy(error = null) }

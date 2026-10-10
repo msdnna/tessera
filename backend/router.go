@@ -433,6 +433,18 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/workspaces/:id/members", rh.AddMember)
 			protected.PATCH("/workspaces/:id/members/:userId", rh.UpdateMemberRole)
 			protected.DELETE("/workspaces/:id/members/:userId", rh.RemoveMember)
+			// Members v2 (#3063): ownership transfer (owner only), leaving (all but
+			// the owner), access requests and member groups.
+			protected.POST("/workspaces/:id/owner", rh.TransferOwnership)
+			protected.POST("/workspaces/:id/leave", rh.LeaveWorkspace)
+			protected.POST("/access-requests", rh.RequestAccess)
+			protected.GET("/workspaces/:id/access-requests", rh.ListAccessRequests)
+			protected.POST("/workspaces/:id/access-requests/:reqId/approve", rh.ApproveAccessRequest)
+			protected.POST("/workspaces/:id/access-requests/:reqId/decline", rh.DeclineAccessRequest)
+			protected.GET("/workspaces/:id/member-groups", rh.ListMemberGroups)
+			protected.POST("/workspaces/:id/member-groups", rh.CreateMemberGroup)
+			protected.PATCH("/member-groups/:id", rh.UpdateMemberGroup)
+			protected.DELETE("/member-groups/:id", rh.DeleteMemberGroup)
 
 			// Workspace invitations (invite-by-email; invitee may be unregistered).
 			protected.POST("/workspaces/:id/invitations", rh.CreateInvitation)

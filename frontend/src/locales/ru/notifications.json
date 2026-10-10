@@ -23,7 +23,11 @@
     "conference_starting": "Через {minutes} мин начнётся встреча «{title}»",
     "integration_conflict": "{label} · конфликт синхронизации в #{ref} ({fields}): изменено в обоих местах",
     "document_mention": "{actor} упомянул(а) вас в документе «{name}»{ctx}",
-    "conference_mention": "{actor} упомянул(а) вас в чате встречи «{name}»{ctx}"
+    "conference_mention": "{actor} упомянул(а) вас в чате встречи «{name}»{ctx}",
+    "workspace_owner_transferred": "{actor} передал(а) вам владение пространством «{workspace}»",
+    "access_requested": "{actor} просит доступ к пространству",
+    "access_approved": "{actor} открыл(а) вам доступ к пространству «{workspace}»",
+    "access_declined": "Запрос доступа отклонён"
   },
   "field": {
     "title": "название",
@@ -53,7 +57,9 @@
     "conference_invite": "Приглашение в конференцию",
     "milestone_closed": "Этап закрыт",
     "conference_soon": "Скоро встреча",
-    "integration_conflict": "Конфликт синхронизации"
+    "integration_conflict": "Конфликт синхронизации",
+    "workspace_owner": "Передано владение пространством",
+    "access_request": "Запрос доступа"
   },
   "duration": {
     "instant": "меньше секунды",

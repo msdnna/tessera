@@ -1255,6 +1255,20 @@
     <string name="members_role_admin">Админ</string>
     <string name="members_role_member">Участник</string>
     <string name="members_you">Это вы</string>
+    <string name="members_transfer">Передать владение…</string>
+    <string name="members_transfer_title">Передать владение — %1$s</string>
+    <string name="members_transfer_sub">Новый владелец получит всё пространство, вы останетесь в нём админом. Вернуть владение сможет только он.</string>
+    <string name="members_transfer_type">Введите название пространства</string>
+    <string name="members_transfer_go">Передать владение</string>
+    <string name="members_leave">Покинуть</string>
+    <string name="members_leave_confirm">Покинуть пространство?</string>
+    <string name="members_requests">Просят доступ</string>
+    <string name="members_request_approve">Впустить</string>
+    <string name="members_activity_now">сейчас</string>
+    <string name="members_activity_min">%1$d мин назад</string>
+    <string name="members_activity_hours">%1$d ч назад</string>
+    <string name="members_activity_yesterday">вчера</string>
+    <string name="members_activity_days">%1$d дн. назад</string>
     <string name="members_read_only">Список только для чтения: менять состав может владелец или админ пространства.</string>
 
     <!-- Администрирование: список аккаунтов -->

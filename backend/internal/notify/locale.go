@@ -91,6 +91,11 @@ var bundles = map[string]bundle{
 			"integration_conflict": "{label} · конфликт синхронизации в #{ref} ({fields}): изменено в обоих местах",
 			"document_mention":     "{actor} упомянул(а) вас в документе «{name}»{ctx}",
 			"conference_mention":   "{actor} упомянул(а) вас в чате встречи «{name}»{ctx}",
+			// Members (#3063).
+			"workspace_owner_transferred": "{actor} передал(а) вам владение пространством «{workspace}»",
+			"access_requested":            "{actor} просит доступ к пространству",
+			"access_approved":             "{actor} открыл(а) вам доступ к пространству «{workspace}»",
+			"access_declined":             "Запрос доступа отклонён",
 		},
 		fields: map[string]string{
 			"title":       "название",
@@ -129,6 +134,8 @@ var bundles = map[string]bundle{
 			"milestone_closed":     "Этап закрыт",
 			"conference_soon":      "Скоро встреча",
 			"integration_conflict": "Конфликт синхронизации",
+			"workspace_owner":      "Передано владение пространством",
+			"access_request":       "Запрос доступа",
 			// Not a stored notification: the subject of the probe a user sends to
 			// check a channel they just set up.
 			"test": "Проверка канала",
@@ -175,6 +182,11 @@ var bundles = map[string]bundle{
 			"integration_conflict": "{label} · sync conflict on #{ref} ({fields}): changed on both sides",
 			"document_mention":     "{actor} mentioned you in document “{name}”{ctx}",
 			"conference_mention":   "{actor} mentioned you in the chat of “{name}”{ctx}",
+			// Members (#3063).
+			"workspace_owner_transferred": "{actor} handed you the workspace “{workspace}”",
+			"access_requested":            "{actor} asks for access to the workspace",
+			"access_approved":             "{actor} let you into the workspace “{workspace}”",
+			"access_declined":             "Your access request was declined",
 		},
 		fields: map[string]string{
 			"title":       "title",
@@ -214,6 +226,8 @@ var bundles = map[string]bundle{
 			"conference_soon":      "Meeting starting soon",
 			"integration_conflict": "Sync conflict",
 			"test":                 "Channel test",
+			"workspace_owner":      "Workspace handed over",
+			"access_request":       "Access request",
 		},
 		fallbackKind: "Notification",
 		listSep:      ", ",
@@ -329,6 +343,9 @@ func Sentence(payload map[string]any, lang, fallback string) string {
 		"{column}", DefaultName(str(payload["column_key"]), str(payload["column"]), lang),
 		"{title}", str(payload["title"]),
 		"{label}", str(payload["label"]),
+		// The members notifications (#3063) name a workspace; a personal one is
+		// captioned from its key.
+		"{workspace}", DefaultName(str(payload["workspace_key"]), str(payload["workspace"]), lang),
 		"{reason}", reason,
 		"{created}", strconv.Itoa(num(payload["created"])),
 		"{updated}", strconv.Itoa(num(payload["updated"])),

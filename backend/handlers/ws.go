@@ -98,6 +98,10 @@ func (h *WSHandler) Connect(c *gin.Context) {
 		return
 	}
 
+	// "Was in the app" (#3073): opening the app connects the socket, a token
+	// refresh is not guaranteed in the first minutes. Throttled in the UPDATE.
+	soft(c, "touch last_seen_at", h.q.TouchUserSeen(c, uid))
+
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return // Upgrade already wrote an error response.

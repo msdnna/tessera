@@ -410,12 +410,27 @@ type GitlabWriteback struct {
 	ActorUserID   *uuid.UUID `json:"actor_user_id"`
 }
 
-type Membership struct {
+type MemberGroup struct {
 	ID          uuid.UUID `json:"id"`
 	WorkspaceID uuid.UUID `json:"workspace_id"`
-	UserID      uuid.UUID `json:"user_id"`
-	Role        string    `json:"role"`
+	Name        string    `json:"name"`
+	Color       string    `json:"color"`
 	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type MemberGroupMember struct {
+	GroupID uuid.UUID `json:"group_id"`
+	UserID  uuid.UUID `json:"user_id"`
+}
+
+type Membership struct {
+	ID           uuid.UUID  `json:"id"`
+	WorkspaceID  uuid.UUID  `json:"workspace_id"`
+	UserID       uuid.UUID  `json:"user_id"`
+	Role         string     `json:"role"`
+	CreatedAt    time.Time  `json:"created_at"`
+	LastActiveAt *time.Time `json:"last_active_at"`
 }
 
 type Milestone struct {
@@ -762,22 +777,23 @@ type TaskTag struct {
 }
 
 type User struct {
-	ID            uuid.UUID `json:"id"`
-	Email         string    `json:"email"`
-	Name          string    `json:"name"`
-	PasswordHash  string    `json:"password_hash"`
-	IsAdmin       bool      `json:"is_admin"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	Provider      string    `json:"provider"`
-	Active        bool      `json:"active"`
-	EmailVerified bool      `json:"email_verified"`
-	LastName      string    `json:"last_name"`
-	FirstName     string    `json:"first_name"`
-	MiddleName    string    `json:"middle_name"`
-	Bio           string    `json:"bio"`
-	Company       string    `json:"company"`
-	JobTitle      string    `json:"job_title"`
+	ID            uuid.UUID  `json:"id"`
+	Email         string     `json:"email"`
+	Name          string     `json:"name"`
+	PasswordHash  string     `json:"password_hash"`
+	IsAdmin       bool       `json:"is_admin"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	Provider      string     `json:"provider"`
+	Active        bool       `json:"active"`
+	EmailVerified bool       `json:"email_verified"`
+	LastName      string     `json:"last_name"`
+	FirstName     string     `json:"first_name"`
+	MiddleName    string     `json:"middle_name"`
+	Bio           string     `json:"bio"`
+	Company       string     `json:"company"`
+	JobTitle      string     `json:"job_title"`
+	LastSeenAt    *time.Time `json:"last_seen_at"`
 }
 
 type UserAcknowledgement struct {
@@ -831,6 +847,18 @@ type Workspace struct {
 	Color       string           `json:"color"`
 	Icon        string           `json:"icon"`
 	IconMode    string           `json:"icon_mode"`
+}
+
+type WorkspaceAccessRequest struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	BoardID     *uuid.UUID `json:"board_id"`
+	Message     string     `json:"message"`
+	Status      string     `json:"status"`
+	DecidedBy   *uuid.UUID `json:"decided_by"`
+	DecidedAt   *time.Time `json:"decided_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type WorkspaceCommand struct {

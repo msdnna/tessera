@@ -123,4 +123,16 @@ class WorkspaceRepository {
     suspend fun createInvitation(workspaceId: String, email: String, role: String) =
         api.createInvitation(workspaceId, website.msdnna.tessera.data.model.InviteRequest(email.trim(), role))
     suspend fun deleteInvitation(workspaceId: String, invId: String) = api.deleteInvitation(workspaceId, invId)
+
+    // Members v2 (#3063).
+    suspend fun workspace(workspaceId: String): website.msdnna.tessera.data.model.Workspace? =
+        api.workspaces().orEmpty().firstOrNull { it.id == workspaceId }
+    suspend fun transferOwner(workspaceId: String, userId: String) =
+        api.transferOwner(workspaceId, website.msdnna.tessera.data.model.TransferOwnerRequest(userId))
+    suspend fun leave(workspaceId: String) = api.leaveWorkspace(workspaceId)
+    suspend fun accessRequests(workspaceId: String): List<website.msdnna.tessera.data.model.AccessRequest> =
+        api.accessRequests(workspaceId).orEmpty()
+    suspend fun approveAccess(workspaceId: String, reqId: String) =
+        api.approveAccess(workspaceId, reqId, website.msdnna.tessera.data.model.RoleUpdate("member"))
+    suspend fun declineAccess(workspaceId: String, reqId: String) = api.declineAccess(workspaceId, reqId)
 }

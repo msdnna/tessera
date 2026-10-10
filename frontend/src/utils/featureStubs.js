@@ -15,20 +15,11 @@ export const FEATURE_STUBS = {
   'inbox.offline': 3031,
   // Settings (#3106): two-factor sign-in (#3081).
   'settings.twoFactor': 3081,
-  // Administration (#3106): invitations across workspaces (#3079), roles and
-  // permissions (#3063), a user's workspaces and last sign-in (#3078), CSV
-  // export of users (#3080).
   'admin.invites': 3079,
-  'admin.roles': 3063,
+  'admin.roles': 3076,
   'admin.userSpaces': 3078,
   'admin.csv': 3080,
   'toasts.sound': 3121,
-  // Conferences (#3034): «Расшифровка» and «Итоги» of a recording need an
-  // external speech-to-text / LLM service — #3125.
-  'meet.transcript': 3125,
-  // Large windows (#2975, package F). Members: roles and permissions, owner
-  // transfer, groups, guests (#3063).
-  'members.roles': 3063,
   // GitLab: several projects on one board, OAuth connection, the token's
   // expiry (#3065); label → stage rules, rule switches and counters, the
   // conflict policy, «Отложить» in the resolver (#3066); import and export

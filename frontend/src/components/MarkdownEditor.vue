@@ -63,6 +63,7 @@ import { formatFileSize } from '@/utils/docPdf'
 import { CAPS } from '@/utils/keyCaps'
 import { useResponsive } from '@/composables/useResponsive'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useMembersStore } from '@/stores/members'
 import RichContent from './RichContent.vue'
 import Kbd from './Kbd.vue'
 import ShortcutKeys from './ShortcutKeys.vue'
@@ -1130,17 +1131,40 @@ watch(
 onBeforeUnmount(() => clearTimeout(taskTimer))
 
 const ROLE_KEYS = { assignee: 'assignee', author: 'author', commenter: 'commenter' }
+// Member groups of the open workspace (#3074) for the @-popup — loaded the
+// first time a mention query opens. Read lazily like `#` above: an editor
+// mounted without Pinia simply offers no groups.
+function membersStoreOrNull() {
+  try {
+    return useMembersStore()
+  } catch {
+    return null
+  }
+}
+const mentionGroups = computed(() => membersStoreOrNull()?.groupsFor(currentWs()) || [])
+watch(
+  () => mq.value?.kind === 'mention',
+  (on) => on && membersStoreOrNull()?.loadGroups(currentWs()),
+)
 const sugList = computed(() => {
   const q = mq.value
   if (!q) return []
   if (q.kind === 'mention')
-    return mentionRows(props.mentionItems, q.query, props.taskPeople, {
-      inTask: t('documents.editor.suggest.inTask'),
-      members: t('documents.editor.suggest.members'),
-      gitlab: 'GitLab',
-      gitlabAside: 'GitLab',
-      role: (r) => (ROLE_KEYS[r] ? t(`documents.editor.suggest.role.${r}`) : ''),
-    })
+    return mentionRows(
+      props.mentionItems,
+      q.query,
+      props.taskPeople,
+      {
+        inTask: t('documents.editor.suggest.inTask'),
+        members: t('documents.editor.suggest.members'),
+        gitlab: 'GitLab',
+        gitlabAside: 'GitLab',
+        role: (r) => (ROLE_KEYS[r] ? t(`documents.editor.suggest.role.${r}`) : ''),
+        groups: t('documents.editor.suggest.groups'),
+        groupCount: (n) => t('documents.editor.suggest.groupCount', n),
+      },
+      mentionGroups.value,
+    )
   if (q.kind === 'task') return taskRows(taskHits.value, props.attachTaskId)
   return commandRows(props.commandItems, q.query, {
     group: (g) => t(`documents.editor.suggest.group.${g}`),
@@ -1267,7 +1291,9 @@ function pickSuggest(row) {
       ? commandInsertText(row.item)
       : kind === 'task'
         ? `#${row.number} `
-        : `@${row.item.label} `
+        : row.item.group
+          ? `${row.item.labels.map((l) => `@${l}`).join(' ')} `
+          : `@${row.item.label} `
   const start = mq.value.start
   const caret = start + insert.length
   mq.value = null
