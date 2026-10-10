@@ -649,6 +649,9 @@ object TestTags {
     const val DOCUMENT_TEMPLATES_SEARCH = "document-templates-search"
     const val DOCUMENT_TEMPLATES_EMPTY = "document-templates-empty"
     const val DOCUMENT_TEMPLATES_UPLOAD = "document-templates-upload"
+    fun documentTemplateSource(source: String) = "document-templates-source-$source"
+    const val DOCUMENT_PIN_STAGE = "document-pin-stage"
+    const val DOCUMENT_PIN_MEETING = "document-pin-meeting"
     const val DOCUMENT_TEMPLATE_REMOVE_CONFIRM = "document-template-remove-confirm"
 
     /** What the picker will take — the line that changes when the sidecar is

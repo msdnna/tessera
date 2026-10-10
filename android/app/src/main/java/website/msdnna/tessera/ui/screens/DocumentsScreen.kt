@@ -64,6 +64,7 @@ import website.msdnna.tessera.ui.screens.documents.DocExitGate
 import website.msdnna.tessera.ui.screens.documents.DocExportMenu
 import website.msdnna.tessera.ui.screens.documents.DocHistorySheet
 import website.msdnna.tessera.ui.screens.documents.DocLinksSheet
+import website.msdnna.tessera.ui.screens.documents.DocPinsRow
 import website.msdnna.tessera.ui.screens.documents.DocTemplatesSheet
 import website.msdnna.tessera.ui.screens.documents.DocTocPanel
 import website.msdnna.tessera.ui.screens.documents.DocumentComposer
@@ -78,6 +79,7 @@ import website.msdnna.tessera.util.DOC_IMPORT_MIME_TYPES
 import website.msdnna.tessera.util.DocBlock
 import website.msdnna.tessera.util.DocBuiltinTemplate
 import website.msdnna.tessera.util.DocPage
+import website.msdnna.tessera.util.DocPins
 import website.msdnna.tessera.util.DocSaveStatus
 import website.msdnna.tessera.util.DocTemplateCard
 import website.msdnna.tessera.util.Ion
@@ -364,6 +366,7 @@ fun DocumentsScreen(
             DocumentReader(
                 blocks = state.blocks,
                 page = state.page,
+                pins = state.pins,
                 loading = state.opening,
                 tocOpen = tocOpen,
                 onTocDismiss = { tocOpen = false },
@@ -458,6 +461,7 @@ fun DocumentsScreen(
         if (state.templates.sheetOpen) {
             DocTemplatesSheet(
                 cards = docTemplateGallery(state.templates.saved, builtinTemplateCards()),
+                userId = me?.id.orEmpty(),
                 loading = state.templates.loading,
                 importing = state.templates.importing,
                 busy = state.templates.busy,
@@ -548,18 +552,27 @@ private fun builtinTitle(tpl: DocBuiltinTemplate): Int = when (tpl) {
     DocBuiltinTemplate.MEETING -> R.string.docs_template_meeting_title
     DocBuiltinTemplate.SPEC -> R.string.docs_template_spec_title
     DocBuiltinTemplate.RETRO -> R.string.docs_template_retro_title
+    DocBuiltinTemplate.SPRINT_PLAN -> R.string.docs_template_sprint_plan_title
+    DocBuiltinTemplate.POSTMORTEM -> R.string.docs_template_postmortem_title
+    DocBuiltinTemplate.ADR -> R.string.docs_template_adr_title
 }
 
 private fun builtinDescription(tpl: DocBuiltinTemplate): Int = when (tpl) {
     DocBuiltinTemplate.MEETING -> R.string.docs_template_meeting_description
     DocBuiltinTemplate.SPEC -> R.string.docs_template_spec_description
     DocBuiltinTemplate.RETRO -> R.string.docs_template_retro_description
+    DocBuiltinTemplate.SPRINT_PLAN -> R.string.docs_template_sprint_plan_description
+    DocBuiltinTemplate.POSTMORTEM -> R.string.docs_template_postmortem_description
+    DocBuiltinTemplate.ADR -> R.string.docs_template_adr_description
 }
 
 private fun builtinBody(tpl: DocBuiltinTemplate): Int = when (tpl) {
     DocBuiltinTemplate.MEETING -> R.string.docs_template_meeting_body
     DocBuiltinTemplate.SPEC -> R.string.docs_template_spec_body
     DocBuiltinTemplate.RETRO -> R.string.docs_template_retro_body
+    DocBuiltinTemplate.SPRINT_PLAN -> R.string.docs_template_sprint_plan_body
+    DocBuiltinTemplate.POSTMORTEM -> R.string.docs_template_postmortem_body
+    DocBuiltinTemplate.ADR -> R.string.docs_template_adr_body
 }
 
 /**
@@ -607,6 +620,7 @@ private fun pickedFileName(ctx: android.content.Context, uri: android.net.Uri): 
 private fun DocumentReader(
     blocks: List<DocBlock>,
     page: DocPage,
+    pins: DocPins,
     loading: Boolean,
     tocOpen: Boolean,
     onTocDismiss: () -> Unit,
@@ -620,6 +634,8 @@ private fun DocumentReader(
     val pages = remember(blocks, page) { docSectionPages(blocks, page) }
 
     Column(Modifier.fillMaxSize().background(c.surface).testTag(TestTags.DOCUMENT_READER)) {
+        // The head's chips (#3044, #3046): what the document belongs to.
+        if (!loading && !pins.isEmpty) DocPinsRow(pins)
         when {
             loading -> Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { TesseraLoader() }
 

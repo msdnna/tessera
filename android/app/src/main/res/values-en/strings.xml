@@ -972,15 +972,30 @@
     <string name="docs_export_share">Share “%1$s”</string>
     <string name="docs_export_unavailable">The converter is unavailable — try HTML</string>
     <!-- Built-in templates. The bodies are Markdown, parsed by DocMarkdown.kt -->
-    <string name="docs_template_meeting_title">Meeting notes</string>
-    <string name="docs_template_meeting_description">Attendees, agenda, decisions and follow-up tasks</string>
-    <string name="docs_template_meeting_body"># Meeting notes\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1. \n2. \n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due\n\n## Follow-up tasks\n\n- [ ] \n</string>
+    <string name="docs_template_meeting_title">Meeting agenda</string>
+    <string name="docs_template_meeting_description">Attendees, questions, decisions — tied to a meeting</string>
+    <string name="docs_template_meeting_body"># Meeting agenda\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1. \n2. \n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due\n\n## Follow-up tasks\n\n- [ ] \n</string>
     <string name="docs_template_spec_title">Specification</string>
     <string name="docs_template_spec_description">The problem, the scope, acceptance criteria and risks</string>
     <string name="docs_template_spec_body"># Specification\n\n## The problem\n\n## In scope\n\n- \n\n## Out of scope\n\n- \n\n## Acceptance criteria\n\n- [ ] \n\n## Risks and open questions\n\n| Question | Owner |\n|---|---|\n|  |  |\n</string>
     <string name="docs_template_retro_title">Retrospective</string>
     <string name="docs_template_retro_description">What went well, what got in the way, what we change</string>
     <string name="docs_template_retro_body"># Retrospective\n\n**Period:**\n\n## What went well\n\n- \n\n## What got in the way\n\n- \n\n## What we change\n\n- [ ] Action — owner\n</string>
+    <string name="docs_template_sprint_plan_title">Sprint planning</string>
+    <string name="docs_template_sprint_plan_description">Goal, scope, team capacity and risks</string>
+    <string name="docs_template_sprint_plan_body"># Sprint planning\n\n**Dates:**\n**Sprint goal:**\n\n## Scope\n\n- [ ] \n\n## Team capacity\n\n| Member | Availability |\n|---|---|\n|  |  |\n\n## Risks and dependencies\n\n- \n</string>
+    <string name="docs_template_postmortem_title">Postmortem</string>
+    <string name="docs_template_postmortem_description">Timeline, cause, impact, follow-ups</string>
+    <string name="docs_template_postmortem_body"># Postmortem\n\n**Incident:**\n**When:**\n**Impact:**\n\n## Timeline\n\n- \n\n## Root cause\n\n## What helped, what got in the way\n\n- \n\n## Follow-ups\n\n- [ ] Action — owner, due\n</string>
+    <string name="docs_template_adr_title">ADR</string>
+    <string name="docs_template_adr_description">Architecture decision: context, options, choice</string>
+    <string name="docs_template_adr_body"># ADR: \n\n**Status:** proposed\n**Date:**\n\n## Context\n\n## Options\n\n1. \n2. \n\n## Decision\n\n## Consequences\n\n- \n</string>
+    <string name="docs_templates_source_all">All</string>
+    <string name="docs_templates_source_mine">My templates</string>
+    <string name="docs_templates_category_sprint">Sprint</string>
+    <string name="docs_templates_category_product">Product</string>
+    <string name="docs_templates_category_engineering">Engineering</string>
+    <string name="docs_templates_category_meetings">Meetings</string>
 
     <!-- Conferences (#2896) -->
     <string name="conf_schedule">Schedule</string>
@@ -1587,6 +1602,14 @@
     <string name="default_column_in_progress">In progress</string>
     <string name="default_column_review">In review</string>
     <string name="default_column_done">Done</string>
+    <string name="default_column_backlog">Sprint backlog</string>
+    <string name="default_column_new">New</string>
+    <string name="default_column_confirmed">Confirmed</string>
+    <string name="default_column_verify">Verifying</string>
+    <string name="default_column_closed">Closed</string>
+    <string name="default_column_ideas">Ideas</string>
+    <string name="default_column_planned">Planned</string>
+    <string name="default_column_shipped">Shipped</string>
 
     <!-- Names of the seven accent schemes of the design language -->
     <string name="accent_purple">Purple</string>
