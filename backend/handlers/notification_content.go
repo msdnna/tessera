@@ -42,6 +42,9 @@ const (
 	evSyncPartial = "integration_sync_partial"
 	evSyncFailed  = "integration_sync_failed"
 	evConfInvited = "conference_invited"
+	// A shared «Входящие» note names the reader (#3040). It points at a note,
+	// not a task: the note's id travels in the payload (see msgNoteMention).
+	evNoteMention = "note_mention"
 )
 
 // kindConferenceInvite is the routing kind of a conference invitation. Unlike

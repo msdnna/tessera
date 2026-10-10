@@ -13,8 +13,8 @@ import (
 )
 
 const inboxTaskChips = `-- name: InboxTaskChips :many
-SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title,
-       t.completed_at, t.due_date, t.column_id, b.name AS board_name,
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, p.id AS project_id,
+       t.number, t.title, t.completed_at, t.due_date, t.column_id, b.name AS board_name,
        bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
@@ -36,6 +36,7 @@ type InboxTaskChipsRow struct {
 	BoardID       uuid.UUID  `json:"board_id"`
 	BoardSlug     string     `json:"board_slug"`
 	ProjectSlug   string     `json:"project_slug"`
+	ProjectID     uuid.UUID  `json:"project_id"`
 	Number        *int64     `json:"number"`
 	Title         string     `json:"title"`
 	CompletedAt   *time.Time `json:"completed_at"`
@@ -65,6 +66,7 @@ func (q *Queries) InboxTaskChips(ctx context.Context, arg InboxTaskChipsParams) 
 			&i.BoardID,
 			&i.BoardSlug,
 			&i.ProjectSlug,
+			&i.ProjectID,
 			&i.Number,
 			&i.Title,
 			&i.CompletedAt,
@@ -233,8 +235,8 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Sea
 const searchTasks = `-- name: SearchTasks :many
 
 
-SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at,
-       t.priority, t.column_id, b.name AS board_name, p.name AS project_name,
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, p.id AS project_id,
+       t.number, t.title, t.parent_id, t.completed_at, t.priority, t.column_id, b.name AS board_name, p.name AS project_name,
        bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color,
        m.title AS milestone_title
 FROM tasks t
@@ -264,6 +266,7 @@ type SearchTasksRow struct {
 	BoardID        uuid.UUID  `json:"board_id"`
 	BoardSlug      string     `json:"board_slug"`
 	ProjectSlug    string     `json:"project_slug"`
+	ProjectID      uuid.UUID  `json:"project_id"`
 	Number         *int64     `json:"number"`
 	Title          string     `json:"title"`
 	ParentID       *uuid.UUID `json:"parent_id"`
@@ -316,6 +319,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Sea
 			&i.BoardID,
 			&i.BoardSlug,
 			&i.ProjectSlug,
+			&i.ProjectID,
 			&i.Number,
 			&i.Title,
 			&i.ParentID,

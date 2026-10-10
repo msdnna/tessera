@@ -10,9 +10,6 @@
 // Use: `stubTask('project.slugSuggest')` → 3013, and `isStub(key)` to branch.
 
 export const FEATURE_STUBS = {
-  // «Входящие» (#2972): #tags and @mentions of a record are read by the capture
-  // but not stored yet — #3040.
-  'inbox.tags': 3040,
   // Capture without a connection: keep the record on the device and send it
   // later — #3031.
   'inbox.offline': 3031,

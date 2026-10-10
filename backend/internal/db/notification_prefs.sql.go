@@ -63,7 +63,7 @@ func (q *Queries) GetNotificationPrefs(ctx context.Context, userID uuid.UUID) (N
 }
 
 const listDueReminders = `-- name: ListDueReminders :many
-SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders r
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id, tags, mentions FROM reminders r
 WHERE NOT r.done AND r.notified_at IS NULL AND r.remind_at <= now()
   AND (r.task_id IS NULL OR EXISTS (
         SELECT 1 FROM tasks t
@@ -98,6 +98,8 @@ func (q *Queries) ListDueReminders(ctx context.Context) ([]Reminder, error) {
 			&i.DoneAt,
 			&i.SnoozedFrom,
 			&i.WorkspaceID,
+			&i.Tags,
+			&i.Mentions,
 		); err != nil {
 			return nil, err
 		}

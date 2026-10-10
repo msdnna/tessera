@@ -259,6 +259,12 @@ describe('notificationRoute', () => {
     ).toBe('/conferences/c-1')
   })
 
+  it('opens the «Входящие» panel on the note for a note mention (#3040)', () => {
+    expect(
+      notificationRoute({ kind: 'mention', payload: { event: 'note_mention', note_id: 'n-1' } }),
+    ).toBe('?inbox=notes&note=n-1')
+  })
+
   it('opens the board with the task query for a task notification', () => {
     expect(notificationRoute({ task_id: 't-1', task_board_id: 'b-1' })).toBe('/board/b-1?task=t-1')
   })

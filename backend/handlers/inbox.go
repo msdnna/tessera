@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -38,6 +39,9 @@ type inboxNote struct {
 //
 // A record's `task` is null when it has none, or when the task is no longer in
 // this workspace (transferred) or sits on a deleted board.
+//
+// `?tag=name` keeps only the records wearing that tag (#3040), compared the way
+// tag names are compared everywhere — trimmed, case-insensitive, «#» optional.
 func (h *API) Inbox(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok || !h.requireMember(c, wsID) {
@@ -53,6 +57,10 @@ func (h *API) Inbox(c *gin.Context) {
 	if err != nil {
 		fail(c, err)
 		return
+	}
+	if tag := strings.ToLower(strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(c.Query("tag")), "#"))); tag != "" {
+		rs = keepTagged(rs, func(r db.Reminder) []string { return r.Tags }, tag)
+		ns = keepTagged(ns, func(n db.Note) []string { return n.Tags }, tag)
 	}
 	seen := map[uuid.UUID]bool{}
 	var ids []uuid.UUID
@@ -94,4 +102,18 @@ func (h *API) Inbox(c *gin.Context) {
 		outN = append(outN, inboxNote{Note: n, Task: chip(n.TaskID)})
 	}
 	c.JSON(http.StatusOK, gin.H{"reminders": outR, "notes": outN})
+}
+
+// keepTagged keeps the records one of whose tags is `tag` (already lowercased).
+func keepTagged[T any](list []T, tagsOf func(T) []string, tag string) []T {
+	out := list[:0]
+	for _, r := range list {
+		for _, name := range tagsOf(r) {
+			if strings.ToLower(strings.TrimSpace(name)) == tag {
+				out = append(out, r)
+				break
+			}
+		}
+	}
+	return out
 }

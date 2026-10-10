@@ -24,7 +24,8 @@
     "saving": "Saving…",
     "saved": "Saved to the Inbox.",
     "openPanel": "Open · G I",
-    "offline": "Keep on this device"
+    "offline": "Keep on this device",
+    "freeTag": "The record's own label — the project has no such tag"
   },
   "panel": {
     "add": "Record",
@@ -53,7 +54,9 @@
     "hintHide": "hide",
     "resize": "Panel width",
     "firedN": "{n} went off",
-    "notesN": "{n} note | {n} notes"
+    "notesN": "{n} note | {n} notes",
+    "byTag": "By tag",
+    "tagClear": "Show all records"
   },
   "item": {
     "since": "from {time}",
@@ -63,7 +66,10 @@
     "snoozedTip": "Snoozed, was due at {time}",
     "collapse": "collapse, saved",
     "actionFailed": "That didn't work — try again",
-    "retry": "retry"
+    "retry": "retry",
+    "tagFilter": "Records tagged #{tag}",
+    "tagsLabel": "Tags",
+    "tagsPlaceholder": "#tag #tag"
   },
   "action": {
     "open": "open",
@@ -75,7 +81,7 @@
     "link": "to a task",
     "unlink": "Unlink from the task",
     "visibility": "Shared with the workspace",
-    "tags": "Tags and mentions",
+    "tags": "Tags",
     "delete": "Delete",
     "menu": "Actions"
   },

@@ -7,8 +7,10 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.data.model.Member
 import website.msdnna.tessera.data.model.Note
 import website.msdnna.tessera.data.repository.NoteRepository
+import website.msdnna.tessera.data.repository.WorkspaceRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.errorMessage
 
@@ -19,6 +21,8 @@ data class NotesUiState(
     val selectedId: String? = null,
     // True when the right pane is a brand-new (unsaved) note.
     val composingNew: Boolean = false,
+    // The workspace's roster — a note's mentions are drawn by name (#3040).
+    val members: List<Member> = emptyList(),
 ) {
     val selected: Note? get() = list.find { it.id == selectedId }
 }
@@ -26,6 +30,7 @@ data class NotesUiState(
 /** Two-pane notes (web `NotesView`): a list + an editor, saving on demand. */
 class NotesViewModel(
     private val repo: NoteRepository = NoteRepository(),
+    private val wsRepo: WorkspaceRepository = WorkspaceRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(NotesUiState())
     val state: StateFlow<NotesUiState> = _state.asStateFlow()
@@ -39,6 +44,9 @@ class NotesViewModel(
             val list = repo.list(workspaceId)
             val select = preselectId?.takeIf { id -> list.any { it.id == id } }
             _state.update { it.copy(loading = false, list = list, selectedId = select) }
+            // Names for the mentions; without the roster the row just omits them.
+            val members = runCatching { wsRepo.members(workspaceId) }.getOrNull()
+            if (members != null) _state.update { it.copy(members = members) }
         }
     }
 

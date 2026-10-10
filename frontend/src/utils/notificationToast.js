@@ -24,6 +24,7 @@ const BADGE = {
   task_comment: ['ChatbubbleEllipsesOutline', 'acc'],
   task_thread_reply: ['ChatbubbleEllipsesOutline', 'acc'],
   task_mention: ['AtOutline', 'acc'],
+  note_mention: ['AtOutline', 'acc'],
   conference_invited: ['VideocamOutline', 'gr'],
 }
 

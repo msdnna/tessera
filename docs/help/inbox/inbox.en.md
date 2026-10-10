@@ -3,8 +3,8 @@ title: Inbox
 category: Inbox
 order: 50
 platforms: web
-keywords: inbox, notes, reminders, remind, snooze, capture, record, G I, N M, N R, private notes, done
-updated: 2026-10-08
+keywords: inbox, notes, reminders, remind, snooze, capture, record, G I, N M, N R, private notes, done, tags, labels, mentions, mention
+updated: 2026-10-10
 ---
 
 The Inbox holds your quick records: notes and reminders in one feed. You can record something from anywhere without leaving the board, and the feed opens as a panel on the right, so it doesn't take you off the screen either. There are no separate Notes and Reminders sections any more — their old addresses open this panel.
@@ -27,7 +27,18 @@ Under the line you see what came out: the date and time chip, the task and the t
 
 ![The record field by the “＋” button: the line read as a reminder tied to a task](../assets/inbox-capture-light.png)
 
-The line already understands `#tag` and `@person`, but saving them with the record is not there yet — coming soon.
+## Tags and mentions
+
+A `#tag` in the line becomes a tag of the record. When the record is tied to a task, its tags are the tags of the task's project: a tag the project already has shows in its colour (and is spelled the way the project spells it). Any other is a grey label of the record itself — it does not add a tag to the project. A record without a task only has such labels.
+
+An `@name` mentions a member of the workspace: the start of a first or last name, the e-mail login or the GitLab login will do. A chip with the full name appears under the line; if nobody (or more than one person) matches, the word stays in the title as typed. In the record's text (Shift+↵) the same `@` suggestions as in comments work, and the people mentioned there are saved too.
+
+Who gets notified:
+
+- someone mentioned in a **shared** note (one the workspace sees) gets “mentioned you in a note” — clicking it opens that note in the Inbox; when you make a private note shared, everyone it mentions is notified;
+- in a **private** note and in a reminder a mention is just a reference to a person: only you see them, so nobody gets anything.
+
+In the feed, tags and mentions show as pills under the record. Clicking a tag keeps only the records wearing it — “By tag #tag ×” appears on top, and the cross brings everything back. To change the tags, pick **Tags** in the record's menu: the record opens with a “#tag #tag” field.
 
 ## The feed
 

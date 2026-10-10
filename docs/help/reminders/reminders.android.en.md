@@ -3,7 +3,7 @@ title: Reminders
 category: Reminders
 order: 55
 keywords: reminders, remind, notifications, push, due date, alarm, android, permissions, app
-updated: 2026-08-24
+updated: 2026-10-10
 ---
 
 A reminder is a one-off note about a time: some text plus the moment when you need to be reminded of it. The section opens from the **Reminders** item in the side menu (the “☰” button at the left of the top bar).
@@ -17,6 +17,8 @@ A reminder is a one-off note about a time: some text plus the moment when you ne
 In the row at the top: the text in the “What should we remind you about?” field, the time in the date picker, then **Add**. Without the text or the time a reminder won't be created — the app will ask you to fill in both fields.
 
 A reminder that has fired is marked with a checkmark on the left: it stays in the list as done, and you can clear the mark with the same tap. An unwanted one is removed with the trash icon on the right.
+
+Tags a reminder got on the web in the Inbox (`#tag`) show as a line under its time.
 
 ## Getting the signal on time
 

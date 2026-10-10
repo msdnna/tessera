@@ -135,6 +135,7 @@ export function notificationCategory(n) {
     case 'task_unassigned':
       return 'assign'
     case 'task_mention':
+    case 'note_mention':
     case 'task_thread_reply':
       return 'mentions'
     case 'task_comment':
@@ -163,7 +164,8 @@ export function notificationKind(n) {
   if (ev === 'conference_invited') return 'call'
   if (ev === 'reminder') return 'reminder'
   if (ev.startsWith('integration_sync')) return 'system'
-  if (ev === 'task_mention' || ev === 'task_thread_reply') return 'mention'
+  // A shared «Входящие» note naming the reader (#3040) is a mention too.
+  if (ev === 'task_mention' || ev === 'note_mention' || ev === 'task_thread_reply') return 'mention'
   if (ev === 'task_assigned') return 'assign'
   return 'me'
 }

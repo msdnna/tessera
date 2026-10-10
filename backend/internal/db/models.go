@@ -415,17 +415,19 @@ type Milestone struct {
 }
 
 type Note struct {
-	ID          uuid.UUID  `json:"id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	ProjectID   *uuid.UUID `json:"project_id"`
-	AuthorID    *uuid.UUID `json:"author_id"`
-	Title       string     `json:"title"`
-	Body        string     `json:"body"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Slug        string     `json:"slug"`
-	TaskID      *uuid.UUID `json:"task_id"`
-	Visibility  string     `json:"visibility"`
+	ID          uuid.UUID   `json:"id"`
+	WorkspaceID uuid.UUID   `json:"workspace_id"`
+	ProjectID   *uuid.UUID  `json:"project_id"`
+	AuthorID    *uuid.UUID  `json:"author_id"`
+	Title       string      `json:"title"`
+	Body        string      `json:"body"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	Slug        string      `json:"slug"`
+	TaskID      *uuid.UUID  `json:"task_id"`
+	Visibility  string      `json:"visibility"`
+	Tags        []string    `json:"tags"`
+	Mentions    []uuid.UUID `json:"mentions"`
 }
 
 type Notification struct {
@@ -582,18 +584,20 @@ type RefreshToken struct {
 }
 
 type Reminder struct {
-	ID          uuid.UUID  `json:"id"`
-	UserID      uuid.UUID  `json:"user_id"`
-	TaskID      *uuid.UUID `json:"task_id"`
-	RemindAt    time.Time  `json:"remind_at"`
-	Message     string     `json:"message"`
-	Done        bool       `json:"done"`
-	CreatedAt   time.Time  `json:"created_at"`
-	NotifiedAt  *time.Time `json:"notified_at"`
-	Body        string     `json:"body"`
-	DoneAt      *time.Time `json:"done_at"`
-	SnoozedFrom *time.Time `json:"snoozed_from"`
-	WorkspaceID *uuid.UUID `json:"workspace_id"`
+	ID          uuid.UUID   `json:"id"`
+	UserID      uuid.UUID   `json:"user_id"`
+	TaskID      *uuid.UUID  `json:"task_id"`
+	RemindAt    time.Time   `json:"remind_at"`
+	Message     string      `json:"message"`
+	Done        bool        `json:"done"`
+	CreatedAt   time.Time   `json:"created_at"`
+	NotifiedAt  *time.Time  `json:"notified_at"`
+	Body        string      `json:"body"`
+	DoneAt      *time.Time  `json:"done_at"`
+	SnoozedFrom *time.Time  `json:"snoozed_from"`
+	WorkspaceID *uuid.UUID  `json:"workspace_id"`
+	Tags        []string    `json:"tags"`
+	Mentions    []uuid.UUID `json:"mentions"`
 }
 
 type Tag struct {
