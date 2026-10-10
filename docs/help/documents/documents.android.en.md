@@ -30,7 +30,7 @@ The panels that sit beside the text on a wide screen open as **bottom sheets** o
 
 ## PDF, import and export
 
-A PDF reads in place — page by page, with its name and size. **“Upload a file”** by the list: `.md` and `.json` the phone parses itself, office formats go to the server converter (if it is deployed), and a PDF is stored as an attached file and opens even without the converter. Next to it is a gallery of **templates**: your workspace's saved templates plus three built-in ones (meeting minutes, a specification, a retrospective). **Export** hands the document to the system “Share”; HTML is always offered, the rest when the converter is available.
+A PDF reads in place — page by page, with its name and size. **“Upload a file”** by the list: `.md` and `.json` the phone parses itself, office formats go to the server converter (if it is deployed), and a PDF is stored as an attached file and opens even without the converter. Next to it is a gallery of **templates**: your workspace's saved templates plus six built-in ones (meeting agenda, specification, retrospective, sprint planning, postmortem, ADR), filtered by a row of categories (All · Sprint · Product · Engineering · Meetings · My templates). Above the text are chips of the stage and the meeting the document is tied to; they are tied in the browser. **Export** hands the document to the system “Share”; HTML is always offered, the rest when the converter is available.
 
 ## A document or a note
 

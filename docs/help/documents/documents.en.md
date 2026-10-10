@@ -28,7 +28,9 @@ On a narrow screen the tree gives way to the text: the button on the left of the
 
 Above an open document is its **path** (“Documents › section › document”; the first item takes you back to the cards), and on the right — who else is in the document, the save state and the tools: **discussion**, **table of contents**, **version history**, **links and approval** and the **“⋯”** menu.
 
-The “⋯” menu holds **Nested document** (creates a child), **Show nested (N)** (opens the branch as cards), **Save as template**, **export** in the available formats and **Delete document**. Deleting takes two presses: the first arms it and states the cost honestly (if there are children — that the document **will be deleted together with its nested documents**, and how many), the second deletes.
+Under the title — when the document was changed and two chips. **Stage**: a click lists the open stages of the workspace (by project) and ties the document to a sprint; a tied chip offers **Open the stage page**, **Change the stage** and **Untie from the stage**, and the stage page gathers such documents in a **Documents** card. **Meeting** — the chip shows when the document is a meeting's agenda: from it the meeting is opened, changed or untied.
+
+The “⋯” menu holds **Nested document** (creates a child), **Show nested (N)** (opens the branch as cards), **Tie to a meeting**, **Save as template** (a submenu — which gallery category to file it under), **export** in the available formats and **Delete document**. Deleting takes two presses: the first arms it and states the cost honestly (if there are children — that the document **will be deleted together with its nested documents**, and how many), the second deletes.
 
 ## The editor
 
@@ -98,8 +100,10 @@ Unsaved edits are written out before the export runs, so the file always matches
 
 ## Templates
 
-**From a template** (or Templates at the bottom of the tree) opens the **New document** window: sources on the left — **All**, **Built-in**, **My templates** — and cards with previews on the right. The first card is **Blank document**. A click selects a card, a double click or **Create ↵** creates the document, the arrows move the selection, `/` searches. Template categories are marked “soon” for now. Three are built in: **meeting minutes** (attendees, agenda, decisions, follow-up tasks), **a specification** (statement, scope, acceptance criteria, risks) and **a retrospective** (what worked, what got in the way, what we change).
+**From a template** (or Templates at the bottom of the tree) opens the **New document** window: categories with counts on the left — **All**, **Sprint**, **Product**, **Engineering**, **Meetings** and **My templates** (the ones you saved) — and cards with previews on the right. The first card is **Blank document**. A click selects a card, a double click or **Create ↵** creates the document, the arrows move the selection, `/` searches. Six are built in: **a meeting agenda** (attendees, questions, decisions, follow-up tasks), **a specification** (statement, scope, acceptance criteria, risks), **a retrospective** and **sprint planning**, **a postmortem** (timeline, cause, impact, follow-ups) and **an ADR** (architecture decision: context, options, choice).
 
-Your own templates come from two places: **Save as template** in the document's “⋯” menu turns the current document into a blueprint, and the **Upload** button at the bottom of the templates window takes a file. Built-in templates are marked as such and cannot be deleted; deleting one of your own — the trash button on its card, two presses — leaves the **documents already created from it** where they are.
+The **meeting agenda** (and any template of your own under Meetings) shows a **Meeting** picker at the bottom of the window, with the nearest running or planned meeting already chosen. The document is created tied to it and named after it, and the meeting's row in the conferences list gets an agenda chip. An agenda can be started from the meeting's side too — **Create an agenda** in the row's “⋯” menu.
+
+Your own templates come from two places: **Save as template** in the document's “⋯” menu turns the current document into a blueprint, and the **Upload** button at the bottom of the templates window takes a file — it lands in the category open at the moment. The folder button on your template's card changes its category. Built-in templates are marked as such and cannot be deleted; deleting one of your own — the trash button on its card, two presses — leaves the **documents already created from it** where they are.
 
 ![The New document window: sources on the left, template cards with previews](../assets/documents-templates-light.png)
