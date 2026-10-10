@@ -124,19 +124,21 @@ type ConferenceRecording struct {
 }
 
 type Document struct {
-	ID          uuid.UUID  `json:"id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	ParentID    *uuid.UUID `json:"parent_id"`
-	ProjectID   *uuid.UUID `json:"project_id"`
-	AuthorID    *uuid.UUID `json:"author_id"`
-	Title       string     `json:"title"`
-	Slug        string     `json:"slug"`
-	Icon        string     `json:"icon"`
-	Content     []byte     `json:"content"`
-	Position    float64    `json:"position"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Preview     string     `json:"preview"`
+	ID           uuid.UUID  `json:"id"`
+	WorkspaceID  uuid.UUID  `json:"workspace_id"`
+	ParentID     *uuid.UUID `json:"parent_id"`
+	ProjectID    *uuid.UUID `json:"project_id"`
+	AuthorID     *uuid.UUID `json:"author_id"`
+	Title        string     `json:"title"`
+	Slug         string     `json:"slug"`
+	Icon         string     `json:"icon"`
+	Content      []byte     `json:"content"`
+	Position     float64    `json:"position"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	Preview      string     `json:"preview"`
+	MilestoneID  *uuid.UUID `json:"milestone_id"`
+	ConferenceID *uuid.UUID `json:"conference_id"`
 }
 
 type DocumentApproval struct {
@@ -198,6 +200,7 @@ type DocumentTemplate struct {
 	Preview     string     `json:"preview"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	Category    string     `json:"category"`
 }
 
 type DocumentVersion struct {

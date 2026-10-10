@@ -667,6 +667,22 @@ func (h *API) TransferProject(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// The eighth and ninth are a document's stage and meeting (#3044, #3046).
+	// The stage travels when it is this project's and the document does not (or
+	// the reverse); a meeting never travels at all. Either pin left across the
+	// boundary would put one team's stage or meeting title in the other's
+	// document head, and a stranger's document on the stage page. Unpinned; the
+	// document, the stage and the meeting all stay.
+	unpinnedDocStages, err := qtx.ClearDocumentMilestonesAcrossWorkspaces(c, p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	unpinnedDocMeetings, err := qtx.ClearDocumentConferencesAcrossWorkspaces(c, p.ID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	// The seventh is the open approval route on a document that travels, and it is
 	// the one with nothing to sever: both of its ends move together. What breaks is
 	// the rule CreateDocumentApproval enforces at the door — every approver must be
@@ -713,7 +729,9 @@ func (h *API) TransferProject(c *gin.Context) {
 		"unlinked_relations": unlinked, "unpinned_milestones": unpinned,
 		"unlinked_documents": unlinkedDocs, "detached_documents": detachedDocs,
 		"stripped_tags": strippedTags, "unpinned_conferences": unpinnedConfs,
-		"cancelled_approvals": cancelledApprovals,
+		"cancelled_approvals":        cancelledApprovals,
+		"unpinned_document_stages":   unpinnedDocStages,
+		"unpinned_document_meetings": unpinnedDocMeetings,
 	})
 }
 

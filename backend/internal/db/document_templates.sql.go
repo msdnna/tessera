@@ -24,9 +24,9 @@ func (q *Queries) CountDocumentTemplates(ctx context.Context, workspaceID uuid.U
 }
 
 const createDocumentTemplate = `-- name: CreateDocumentTemplate :one
-INSERT INTO document_templates (workspace_id, author_id, title, description, icon, content, preview)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, author_id, title, description, icon, content, preview, created_at, updated_at
+INSERT INTO document_templates (workspace_id, author_id, title, description, icon, content, preview, category)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+RETURNING id, workspace_id, author_id, title, description, icon, content, preview, created_at, updated_at, category
 `
 
 type CreateDocumentTemplateParams struct {
@@ -37,6 +37,7 @@ type CreateDocumentTemplateParams struct {
 	Icon        string     `json:"icon"`
 	Content     []byte     `json:"content"`
 	Preview     string     `json:"preview"`
+	Category    string     `json:"category"`
 }
 
 func (q *Queries) CreateDocumentTemplate(ctx context.Context, arg CreateDocumentTemplateParams) (DocumentTemplate, error) {
@@ -48,6 +49,7 @@ func (q *Queries) CreateDocumentTemplate(ctx context.Context, arg CreateDocument
 		arg.Icon,
 		arg.Content,
 		arg.Preview,
+		arg.Category,
 	)
 	var i DocumentTemplate
 	err := row.Scan(
@@ -61,6 +63,7 @@ func (q *Queries) CreateDocumentTemplate(ctx context.Context, arg CreateDocument
 		&i.Preview,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
 	)
 	return i, err
 }
@@ -75,7 +78,7 @@ func (q *Queries) DeleteDocumentTemplate(ctx context.Context, id uuid.UUID) erro
 }
 
 const getDocumentTemplate = `-- name: GetDocumentTemplate :one
-SELECT id, workspace_id, author_id, title, description, icon, content, preview, created_at, updated_at FROM document_templates WHERE id = $1
+SELECT id, workspace_id, author_id, title, description, icon, content, preview, created_at, updated_at, category FROM document_templates WHERE id = $1
 `
 
 func (q *Queries) GetDocumentTemplate(ctx context.Context, id uuid.UUID) (DocumentTemplate, error) {
@@ -92,13 +95,14 @@ func (q *Queries) GetDocumentTemplate(ctx context.Context, id uuid.UUID) (Docume
 		&i.Preview,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
 	)
 	return i, err
 }
 
 const listDocumentTemplates = `-- name: ListDocumentTemplates :many
 SELECT t.id, t.workspace_id, t.author_id, t.title, t.description, t.icon, t.preview,
-       t.created_at, t.updated_at,
+       t.category, t.created_at, t.updated_at,
        u.name AS author_name
 FROM document_templates t
 LEFT JOIN users u ON u.id = t.author_id
@@ -114,6 +118,7 @@ type ListDocumentTemplatesRow struct {
 	Description string     `json:"description"`
 	Icon        string     `json:"icon"`
 	Preview     string     `json:"preview"`
+	Category    string     `json:"category"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	AuthorName  *string    `json:"author_name"`
@@ -140,6 +145,7 @@ func (q *Queries) ListDocumentTemplates(ctx context.Context, workspaceID uuid.UU
 			&i.Description,
 			&i.Icon,
 			&i.Preview,
+			&i.Category,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.AuthorName,
@@ -156,9 +162,9 @@ func (q *Queries) ListDocumentTemplates(ctx context.Context, workspaceID uuid.UU
 
 const updateDocumentTemplateMeta = `-- name: UpdateDocumentTemplateMeta :one
 UPDATE document_templates
-SET title = $2, description = $3, icon = $4, updated_at = now()
+SET title = $2, description = $3, icon = $4, category = $5, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, author_id, title, description, icon, content, preview, created_at, updated_at
+RETURNING id, workspace_id, author_id, title, description, icon, content, preview, created_at, updated_at, category
 `
 
 type UpdateDocumentTemplateMetaParams struct {
@@ -166,6 +172,7 @@ type UpdateDocumentTemplateMetaParams struct {
 	Title       string    `json:"title"`
 	Description string    `json:"description"`
 	Icon        string    `json:"icon"`
+	Category    string    `json:"category"`
 }
 
 func (q *Queries) UpdateDocumentTemplateMeta(ctx context.Context, arg UpdateDocumentTemplateMetaParams) (DocumentTemplate, error) {
@@ -174,6 +181,7 @@ func (q *Queries) UpdateDocumentTemplateMeta(ctx context.Context, arg UpdateDocu
 		arg.Title,
 		arg.Description,
 		arg.Icon,
+		arg.Category,
 	)
 	var i DocumentTemplate
 	err := row.Scan(
@@ -187,6 +195,7 @@ func (q *Queries) UpdateDocumentTemplateMeta(ctx context.Context, arg UpdateDocu
 		&i.Preview,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.Category,
 	)
 	return i, err
 }

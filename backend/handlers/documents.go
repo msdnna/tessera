@@ -40,6 +40,9 @@ func (h *API) CreateDocument(c *gin.Context) {
 		ParentID   *uuid.UUID `json:"parent_id"`
 		ProjectID  *uuid.UUID `json:"project_id"`
 		TemplateID *uuid.UUID `json:"template_id"`
+		// The stage (#3044) and the meeting (#3046) the document starts pinned to.
+		MilestoneID  *uuid.UUID `json:"milestone_id"`
+		ConferenceID *uuid.UUID `json:"conference_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -55,6 +58,12 @@ func (h *API) CreateDocument(c *gin.Context) {
 	if req.ProjectID != nil && !h.projectInWorkspace(c, *req.ProjectID, wsID) {
 		return
 	}
+	if req.MilestoneID != nil && !h.milestoneInWorkspace(c, *req.MilestoneID, wsID) {
+		return
+	}
+	if req.ConferenceID != nil && !h.conferenceInWorkspace(c, *req.ConferenceID, wsID) {
+		return
+	}
 	seed, ok := h.seedFromTemplate(c, wsID, req.TemplateID)
 	if !ok {
 		return
@@ -66,16 +75,18 @@ func (h *API) CreateDocument(c *gin.Context) {
 	}
 	uid := middleware.CurrentUser(c)
 	doc, err := h.q.CreateDocument(c, db.CreateDocumentParams{
-		WorkspaceID: wsID,
-		ProjectID:   req.ProjectID,
-		ParentID:    req.ParentID,
-		AuthorID:    &uid,
-		Title:       req.Title,
-		Slug:        h.uniqueDocumentSlug(c, wsID, req.Title),
-		Icon:        req.Icon,
-		Position:    h.nextDocumentPosition(c, wsID, req.ParentID),
-		Content:     seed.content,
-		Preview:     seed.preview,
+		WorkspaceID:  wsID,
+		ProjectID:    req.ProjectID,
+		ParentID:     req.ParentID,
+		AuthorID:     &uid,
+		Title:        req.Title,
+		Slug:         h.uniqueDocumentSlug(c, wsID, req.Title),
+		Icon:         req.Icon,
+		Position:     h.nextDocumentPosition(c, wsID, req.ParentID),
+		Content:      seed.content,
+		Preview:      seed.preview,
+		MilestoneID:  req.MilestoneID,
+		ConferenceID: req.ConferenceID,
 	})
 	if err != nil {
 		fail(c, err)
@@ -424,5 +435,9 @@ func documentMeta(d db.Document) gin.H {
 		"icon":         d.Icon,
 		"position":     d.Position,
 		"updated_at":   d.UpdatedAt,
+		// The head's chips (#3044, #3046): an open document follows a re-pin made
+		// in another tab without reloading its body.
+		"milestone_id":  d.MilestoneID,
+		"conference_id": d.ConferenceID,
 	}
 }

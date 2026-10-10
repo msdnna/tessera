@@ -3,6 +3,15 @@ INSERT INTO tags (workspace_id, project_id, name, color)
 VALUES ($1, $2, $3, $4)
 RETURNING *;
 
+-- SeedTag adds a tag a board template brings (#3047) unless the project already
+-- has one so named — then it answers no row and the existing tag, its colour and
+-- its tasks stay as they are. A hand-made tag, so source stays 'user'.
+-- name: SeedTag :one
+INSERT INTO tags (workspace_id, project_id, name, color)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (project_id, name) DO NOTHING
+RETURNING *;
+
 -- name: ListTags :many
 SELECT * FROM tags WHERE project_id = $1 ORDER BY name;
 

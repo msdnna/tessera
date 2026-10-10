@@ -609,6 +609,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/documents/:id/content", rh.UpdateDocumentContent)
 			protected.POST("/documents/:id/assets", rh.UploadDocumentAsset)
 			protected.POST("/documents/:id/pdf", rh.UploadDocumentPdf)
+			// A document's stage and meeting (#3044, #3046) — the head's chips.
+			protected.PUT("/documents/:id/milestone", rh.SetDocumentMilestone)
+			protected.PUT("/documents/:id/conference", rh.SetDocumentConference)
+			protected.GET("/milestones/:id/documents", rh.ListMilestoneDocuments)
+			protected.GET("/workspaces/:id/conference-documents", rh.ListConferenceDocuments)
 			// Office import/export through the LibreOffice sidecar (#2733). The
 			// status route is cheap on purpose: the client asks it once and hides
 			// the import button on an install with no converter, instead of

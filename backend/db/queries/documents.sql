@@ -16,8 +16,11 @@ SELECT id FROM documents WHERE workspace_id = $1;
 -- has no "empty" state anyone could roll back to, and the version journal (D6)
 -- would otherwise record one.
 -- name: CreateDocument :one
-INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+--
+-- milestone_id and conference_id (#3044, #3046) are taken at birth so that
+-- «Повестка встречи» from the gallery is created already pinned to its meeting.
+INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview, milestone_id, conference_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- ListDocuments returns the workspace's documents as a flat list; the tree is
@@ -193,3 +196,68 @@ WHERE d.parent_id IS NOT NULL
       )
   AND d.workspace_id IS DISTINCT FROM
       (SELECT p.workspace_id FROM documents p WHERE p.id = d.parent_id);
+
+-- SetDocumentMilestone / SetDocumentConference pin a document to a stage (#3044)
+-- or to a meeting (#3046). Neither touches updated_at: it is the
+-- optimistic-concurrency token UpdateDocumentContent checks, and a chip in the
+-- head changing must not answer 409 to the next save of whoever is typing.
+-- name: SetDocumentMilestone :one
+UPDATE documents SET milestone_id = $2 WHERE id = $1 RETURNING *;
+
+-- name: SetDocumentConference :one
+UPDATE documents SET conference_id = $2 WHERE id = $1 RETURNING *;
+
+-- DocumentMilestoneRef is what the head's stage chip draws and links to: the
+-- stage, its state, and the project its page lives under.
+-- name: DocumentMilestoneRef :one
+SELECT m.id, m.title, m.slug, m.state, m.start_date, m.due_date, m.closed_at,
+       p.id AS project_id, p.name AS project_name, p.slug AS project_slug,
+       p.workspace_id
+FROM milestones m
+JOIN projects p ON p.id = m.project_id
+WHERE m.id = $1;
+
+-- ListMilestoneDocuments — the documents of a stage, for its page (#3044). The
+-- workspace filter is a backstop: the pin is checked at the door and severed on a
+-- transfer, and a list naming another team's document is the leak both exist for.
+-- name: ListMilestoneDocuments :many
+SELECT id, title, slug, icon, preview, updated_at
+FROM documents
+WHERE milestone_id = $1 AND workspace_id = $2
+ORDER BY updated_at DESC
+LIMIT 50;
+
+-- ListWorkspaceConferenceDocuments — every document pinned to a meeting of the
+-- workspace, in one read for the meetings list (an agenda chip per row) rather
+-- than a request per row.
+-- name: ListWorkspaceConferenceDocuments :many
+SELECT d.id, d.conference_id, d.title, d.slug, d.icon, d.created_at
+FROM documents d
+JOIN conferences c ON c.id = d.conference_id
+WHERE d.workspace_id = $1 AND c.workspace_id = $1
+ORDER BY d.created_at;
+
+-- ClearDocumentMilestonesAcrossWorkspaces and ClearDocumentConferencesAcrossWorkspaces
+-- unpin what a project transfer carried across the boundary: the project's
+-- documents travel, its stages travel, a meeting never does. A pin left
+-- straddling it would hand the arriving team a stage or a meeting title of a
+-- workspace they cannot see (and the stage page would list a stranger's document).
+-- name: ClearDocumentMilestonesAcrossWorkspaces :execrows
+UPDATE documents d
+SET milestone_id = NULL
+WHERE d.milestone_id IS NOT NULL
+  AND (
+        d.project_id = sqlc.arg(project_id)::uuid
+     OR d.milestone_id IN (SELECT m.id FROM milestones m WHERE m.project_id = sqlc.arg(project_id)::uuid)
+      )
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT p.workspace_id FROM milestones m JOIN projects p ON p.id = m.project_id
+       WHERE m.id = d.milestone_id);
+
+-- name: ClearDocumentConferencesAcrossWorkspaces :execrows
+UPDATE documents d
+SET conference_id = NULL
+WHERE d.conference_id IS NOT NULL
+  AND d.project_id = sqlc.arg(project_id)::uuid
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT c.workspace_id FROM conferences c WHERE c.id = d.conference_id);
