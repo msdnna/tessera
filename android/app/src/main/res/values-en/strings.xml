@@ -155,6 +155,10 @@
 
     <!-- Sidebar: project tree -->
     <string name="sidebar_projects_header">PROJECTS</string>
+    <string name="sidebar_favorites_header">FAVOURITES</string>
+    <string name="sidebar_favorite_up">Move up</string>
+    <string name="sidebar_favorite_down">Move down</string>
+    <string name="sidebar_favorite_remove">Remove from favourites</string>
     <string name="sidebar_add_project">Project</string>
     <string name="sidebar_add_group">Group</string>
     <string name="sidebar_group_name_hint">Group name</string>
@@ -1528,6 +1532,8 @@
     <!-- App shell: top bar, board menu, Back-to-exit -->
     <string name="main_boards_of_project">PROJECT BOARDS</string>
     <string name="main_board_menu_archive">Board archive</string>
+    <string name="main_board_menu_favorite">Add to favourites</string>
+    <string name="main_board_menu_unfavorite">Remove from favourites</string>
     <string name="main_provider_soon">%1$s · soon</string>
     <string name="main_back_again_to_exit">Press Back again to exit</string>
 

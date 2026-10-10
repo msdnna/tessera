@@ -708,6 +708,12 @@ object TestTags {
      *  that needs anything in the sidebar starts here. */
     const val TOP_MENU = "top-menu"
 
+    /** Favourite boards (#3115): the sidebar section, one of its rows (suffixed
+     *  with the board id), and the board menu's star row. */
+    const val SIDEBAR_FAVORITES = "sidebar-favorites"
+    const val FAVORITE_ROW = "favorite-row"
+    const val BOARD_MENU_FAVORITE = "board-action-favorite"
+
     /** The version line in the sidebar footer — a button opening the full
      *  changelog (#2858), and the build stamp only that mode renders (#2859). */
     const val SIDEBAR_VERSION = "sidebar-version"

@@ -32,8 +32,12 @@ data class WorkspaceUiState(
     val expandedGroups: Set<String> = emptySet(),
     /** Project ids whose stages tree shows closed milestones (persisted). */
     val showClosedStages: Set<String> = emptySet(),
+    /** The reader's favourite boards in this workspace, in their order (#3115). */
+    val favorites: List<website.msdnna.tessera.data.model.BoardFavorite> = emptyList(),
 ) {
     val current: Workspace? get() = workspaces.find { it.id == currentId }
+
+    fun isFavorite(boardId: String?): Boolean = boardId != null && favorites.any { it.boardId == boardId }
 
     fun childGroups(parentId: String?): List<ProjectGroup> =
         groups.filter { (it.parentId) == parentId }.sortedBy { it.position }
@@ -106,10 +110,13 @@ class WorkspaceViewModel(
 
     fun selectWorkspace(id: String) = launchCatching {
         prefs.setCurrentWorkspaceId(id)
-        _state.update { it.copy(currentId = id, boardsByProject = emptyMap(), milestonesByProject = emptyMap()) }
+        _state.update {
+            it.copy(currentId = id, boardsByProject = emptyMap(), milestonesByProject = emptyMap(), favorites = emptyList())
+        }
         val groups = repo.groups(id)
         val projects = repo.projects(id)
         _state.update { it.copy(groups = groups, projects = projects) }
+        loadFavorites(id)
         // Preload children for any project restored as expanded (lazy: boards always,
         // milestones when its tree shows stages).
         _state.value.expandedProjects
@@ -123,6 +130,44 @@ class WorkspaceViewModel(
         val groups = repo.groups(id)
         val projects = repo.projects(id)
         _state.update { it.copy(groups = groups, projects = projects) }
+        loadFavorites(id)
+    }
+
+    // ── favourite boards (#3115) ────────────────────────────────────────────
+    // Best-effort: a failed read leaves the section as it was rather than
+    // putting an error over the whole tree.
+    private suspend fun loadFavorites(workspaceId: String) {
+        val list = runCatching { repo.favorites(workspaceId) }.getOrNull() ?: return
+        if (_state.value.currentId == workspaceId) _state.update { it.copy(favorites = list) }
+    }
+
+    /** Stars / unstars a board (the board screen's menu row). */
+    fun toggleFavorite(board: Board) = launchCatching {
+        val ws = _state.value.currentId
+        if (_state.value.isFavorite(board.id)) {
+            _state.update { s -> s.copy(favorites = s.favorites.filterNot { it.boardId == board.id }) }
+            runCatching { repo.removeFavorite(board.id) }.onFailure { loadFavorites(ws) }.getOrThrow()
+        } else {
+            val row = repo.addFavorite(board.id)
+            _state.update { s -> s.copy(favorites = s.favorites.filterNot { it.boardId == board.id } + row) }
+        }
+    }
+
+    /** «Убрать из избранного» in the sidebar row's menu. */
+    fun removeFavorite(boardId: String) = launchCatching {
+        val ws = _state.value.currentId
+        _state.update { s -> s.copy(favorites = s.favorites.filterNot { it.boardId == boardId }) }
+        runCatching { repo.removeFavorite(boardId) }.onFailure { loadFavorites(ws) }.getOrThrow()
+    }
+
+    /** «Выше» / «Ниже» in the row's menu: one place up (-1) or down (+1). */
+    fun stepFavorite(boardId: String, delta: Int) = launchCatching {
+        val ws = _state.value.currentId
+        val moved = website.msdnna.tessera.util.Favorites.step(_state.value.favorites, boardId, delta)
+            ?: return@launchCatching
+        _state.update { it.copy(favorites = moved.list) }
+        runCatching { repo.moveFavorite(boardId, moved.beforeId, moved.afterId) }
+            .onFailure { loadFavorites(ws) }.getOrThrow()
     }
 
     fun toggleProject(projectId: String) {
@@ -312,6 +357,7 @@ class WorkspaceViewModel(
     fun renameBoard(projectId: String, boardId: String, name: String) = launchCatching {
         repo.renameBoard(boardId, name)
         loadBoards(projectId)
+        refreshFavoriteRow(boardId)
     }
 
     /** Updates a board's name + icon/colour/mode, then refreshes the sidebar tree.
@@ -327,12 +373,19 @@ class WorkspaceViewModel(
     ) = launchCatching {
         val updated = repo.updateBoardMeta(boardId, name, icon, color, iconMode)
         loadBoards(projectId)
+        refreshFavoriteRow(boardId)
         onUpdated(updated)
     }
 
     fun deleteBoard(projectId: String, boardId: String) = launchCatching {
         repo.deleteBoard(boardId)
         loadBoards(projectId)
+        refreshFavoriteRow(boardId)
+    }
+
+    /** A starred board renamed, recoloured or deleted here → re-read the section. */
+    private suspend fun refreshFavoriteRow(boardId: String) {
+        if (_state.value.isFavorite(boardId)) loadFavorites(_state.value.currentId)
     }
 
     fun clearError() = _state.update { it.copy(error = null) }

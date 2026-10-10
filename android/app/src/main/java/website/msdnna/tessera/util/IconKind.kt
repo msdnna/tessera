@@ -116,6 +116,9 @@ object Ion {
     const val CART = "cart"
     const val HEART = "heart"
     const val STAR = "star"
+
+    /** The filled star of a favourite board (#3115); [STAR] is the outline. */
+    const val STAR_FILLED = "star_filled"
     const val FLAG = "flag"
     const val CONSTRUCT = "construct"
     const val BOOK = "book"

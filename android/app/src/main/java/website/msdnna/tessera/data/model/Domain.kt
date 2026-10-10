@@ -80,6 +80,31 @@ data class Board(
     @SerializedName("icon_mode") val iconMode: String = "badge",
 )
 
+/** One of the reader's favourite boards (#3115): the board, what its sidebar row
+ *  draws and where it sits in the list (`GET /workspaces/:id/favorites`). */
+data class BoardFavorite(
+    @SerializedName("board_id") val boardId: String = "",
+    @SerializedName("position") val position: Double = 0.0,
+    @SerializedName("name") val name: String = "",
+    @SerializedName("slug") val slug: String = "",
+    @SerializedName("icon") val icon: String = "",
+    @SerializedName("color") val color: String = "",
+    @SerializedName("icon_mode") val iconMode: String = "badge",
+    @SerializedName("project_id") val projectId: String = "",
+    @SerializedName("project_name") val projectName: String = "",
+) {
+    /** The board to open from the row. */
+    fun toBoard(): Board = Board(
+        id = boardId, projectId = projectId, name = name, icon = icon, color = color, iconMode = iconMode,
+    )
+}
+
+/** Neighbours of a moved favourite — the board ids above and below its new place. */
+data class FavoriteMoveRequest(
+    @SerializedName("before_id") val beforeId: String? = null,
+    @SerializedName("after_id") val afterId: String? = null,
+)
+
 /** Board update: [name] required; icon/colour/mode are tri-state — a null field is
  *  omitted by Gson so the server keeps its current value (backend UpdateBoard). */
 data class UpdateBoardRequest(
