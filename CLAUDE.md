@@ -275,7 +275,13 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   `milestone`/`milestone_removed` (несут `milestone_id`, при переносе `from_id`), поэтому
   **любой новый путь смены `milestone_id` обязан журналить** (`journalMilestoneActor`). На доске
   — селектор этапа в подбаре (⇧E) и полоса этапа (⇧H), выбор и свёрнутость — localStorage на
-  доску. GitLab-этапы read-only до #3010. Навигация из окна-оверлея — после отмотки его
+  доску. GitLab-этап (#3010, миграция 0087) правится, только пока привязка пишет в GitLab
+  (`gl_writable` = binding + write-back, иначе `409 gitlab_readonly`): `PATCH /milestones/:id`
+  пишет в веху синхронно и отвечает `gl_sync`; сверка трёхсторонняя по
+  `gitlab_milestone_links.gl_snapshot` и в push, и в pull (`gitlab_milestone_sync.go`) —
+  отказ GitLab = `push_error` («не синхронизировано · повторить», синк повторяет сам),
+  правка с обеих сторон = `conflict` в окне конфликтов (`?include=milestones`, entity
+  `milestone`), ответ записи на web — через `useStageSync`. Навигация из окна-оверлея — после отмотки его
   history-записи (`ProjectWindow.navigate`), иначе `back()` из `useOverlayBack` отменит push.
 - **«Входящие» (#2972, миграция 0081):** заметки и напоминания — одна лента в `kit/DockPanel`
   (variant sidebar) справа под шапкой (`components/inbox/*`, стор `stores/inbox` — лента
