@@ -1026,7 +1026,7 @@ const docActions = computed(() => {
     label: t('documents.view.saveTemplate'),
     icon: BookmarkOutline,
     children: TEMPLATE_CATEGORIES.map((c) => ({
-      key: `saveTemplate:${c}`,
+      key: `saveTemplate:${c || 'none'}`,
       label: t(`documents.templates.category.${c || 'none'}`),
     })),
   })
@@ -1062,7 +1062,8 @@ async function onDocAction(key) {
   if (key === 'nested') createNested()
   else if (key === 'children') drillInto(selected.value)
   else if (key === 'meeting') pinsRef.value?.openMeeting(actionsAnchor.value)
-  else if (key.startsWith('saveTemplate:')) saveAsTemplate(key.slice('saveTemplate:'.length))
+  else if (key.startsWith('saveTemplate:'))
+    saveAsTemplate(key === 'saveTemplate:none' ? '' : key.slice('saveTemplate:'.length))
   else if (key.startsWith('export-')) exportAs(key.slice('export-'.length))
   else if (key === 'remove') await remove()
 }
