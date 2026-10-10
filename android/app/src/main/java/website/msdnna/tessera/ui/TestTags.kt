@@ -725,4 +725,12 @@ object TestTags {
 
     /** «Обучение» in the sidebar footer — the guide's only entry point. */
     const val TOUR_START = "tour-start"
+
+    // ── milestones: GitLab write-back (#3010) ─────────────────────────────
+
+    /** «Не синхронизировано с GitLab» under a manager row. */
+    const val MILESTONE_UNSYNCED = "milestone-unsynced"
+
+    /** Its «Повторить». */
+    const val MILESTONE_RETRY = "milestone-retry"
 }

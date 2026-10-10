@@ -36,6 +36,9 @@ class MilestoneRepository {
 
     suspend fun delete(milestoneId: String) = api.deleteMilestone(milestoneId)
 
+    /** Re-send a refused GitLab write; the answer carries `gl_sync`. */
+    suspend fun retryGitlab(milestoneId: String): Milestone = api.retryMilestoneGitlab(milestoneId)
+
     /** Assign (non-null) or clear (null) a task's milestone. */
     suspend fun setTask(taskId: String, milestoneId: String?) {
         if (milestoneId == null) api.clearTaskMilestone(taskId)

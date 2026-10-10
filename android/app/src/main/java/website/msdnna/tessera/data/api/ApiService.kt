@@ -374,6 +374,12 @@ interface ApiService {
     @DELETE("milestones/{id}")
     suspend fun deleteMilestone(@Path("id") milestoneId: String)
 
+    /** Re-send a stage write GitLab refused («повторить», #3010). */
+    @POST("milestones/{id}/gitlab/sync")
+    suspend fun retryMilestoneGitlab(
+        @Path("id") milestoneId: String,
+    ): website.msdnna.tessera.data.model.Milestone
+
     @POST("tasks/{id}/milestone")
     suspend fun setTaskMilestone(
         @Path("id") taskId: String,
