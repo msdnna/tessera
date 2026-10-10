@@ -522,6 +522,17 @@ export const boards = {
   deleteView: (viewId) => api.delete(`/views/${viewId}`),
 }
 
+// Favourite boards (#3115): the reader's own starred boards, per workspace.
+// skipLoader — the star and the sidebar section are quiet, instant actions.
+export const favorites = {
+  list: (wsId) => api.get(`/workspaces/${wsId}/favorites`, { skipLoader: true }),
+  add: (boardId) => api.put(`/boards/${boardId}/favorite`, null, { skipLoader: true }),
+  remove: (boardId) => api.delete(`/boards/${boardId}/favorite`, { skipLoader: true }),
+  // { before_id?, after_id? } — the neighbours' board ids.
+  move: (boardId, data) =>
+    api.patch(`/boards/${boardId}/favorite/move`, data, { skipLoader: true }),
+}
+
 export const notes = {
   list: (wsId) => api.get(`/workspaces/${wsId}/notes`),
   create: (wsId, data) => api.post(`/workspaces/${wsId}/notes`, data),

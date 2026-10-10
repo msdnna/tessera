@@ -430,7 +430,8 @@
   "crumbs": {
     "projectSettings": "Project settings",
     "boards": "Project boards",
-    "favorite": "Add to favourites"
+    "favorite": "Add to favourites",
+    "unfavorite": "Remove from favourites"
   },
   "empty": {
     "title": "No tasks on the board yet",

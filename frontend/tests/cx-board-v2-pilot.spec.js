@@ -2,7 +2,7 @@
 // on it; the crumbs are doors; the task menu archives at once with an undo and
 // deletes in two steps.
 import { describe, it, expect, beforeEach, vi } from 'vitest'
-import { mount } from '@vue/test-utils'
+import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
 import { nextTick } from 'vue'
 import { seedBoardStore } from './helpers/boardStore'
@@ -19,7 +19,15 @@ vi.mock('@/api', () => ({
     move: vi.fn(() => Promise.resolve({ data: {} })),
   },
   projects: { boards: vi.fn(() => Promise.resolve({ data: [] })) },
+  favorites: {
+    list: vi.fn(() => Promise.resolve({ data: [] })),
+    add: (...a) => favAdd(...a),
+    remove: (...a) => favRemove(...a),
+    move: vi.fn(() => Promise.resolve({ data: {} })),
+  },
 }))
+const favAdd = vi.fn((id) => Promise.resolve({ data: { board_id: id, name: 'Спринт' } }))
+const favRemove = vi.fn(() => Promise.resolve({ data: null }))
 const push = vi.fn()
 vi.mock('vue-router', () => ({
   useRoute: () => ({ path: '/project/web/board/sprint', params: {}, query: {} }),
@@ -112,9 +120,20 @@ describe('the board crumbs', () => {
     w.unmount()
   })
 
-  it('draws the favourite star as a stub', () => {
+  // #3115: the star is real now — it stars the open board and takes it off.
+  it('the favourite star toggles the open board', async () => {
     const w = mountTopbar()
-    expect(w.find('[data-testid="crumb-favorite"]').attributes('aria-disabled')).toBe('true')
+    const star = () => w.find('[data-testid="crumb-favorite"]')
+    expect(star().attributes('aria-pressed')).toBe('false')
+    await star().trigger('click')
+    await flushPromises()
+    expect(favAdd).toHaveBeenCalledWith('b1')
+    expect(star().attributes('aria-pressed')).toBe('true')
+    expect(star().classes()).toContain('on')
+    await star().trigger('click')
+    await flushPromises()
+    expect(favRemove).toHaveBeenCalledWith('b1')
+    expect(star().attributes('aria-pressed')).toBe('false')
     w.unmount()
   })
 })

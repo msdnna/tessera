@@ -37,6 +37,7 @@ import {
   onDragEnd,
 } from '@/composables/useSidebarDnd'
 import SidebarNode from './SidebarNode.vue'
+import FavoritesSection from './sidebar/FavoritesSection.vue'
 import ProjectRow from './ProjectRow.vue'
 import EmptyState from './EmptyState.vue'
 import SidebarFooter from './SidebarFooter.vue'
@@ -120,11 +121,17 @@ function onHeadKey(e) {
     'row.menu': () => addBtn.value?.$el?.click(),
   })
 }
+// G S lands on the open board's row — in the tree, else in «Избранное» (#3115)
+// — or on the first row: a favourite when there are any, the tree's otherwise.
 function focusTree() {
   const root = treeBox.value
   if (!root) return
+  const side = root.closest('.sidebar') || root
   const target =
-    root.querySelector('.board-row.active[data-tree-row]') || root.querySelector('[data-tree-row]')
+    root.querySelector('.board-row.active[data-tree-row]') ||
+    side.querySelector('.fav-row.active[data-tree-row]') ||
+    side.querySelector('.fav-row[data-tree-row]') ||
+    root.querySelector('[data-tree-row]')
   target?.focus()
   target?.scrollIntoView?.({ block: 'nearest' })
 }
@@ -245,6 +252,9 @@ const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
     </nav>
 
     <div v-if="collapsed" class="rail-sep" />
+
+    <!-- «Избранное» (#3115): the reader's starred boards, over «Проекты». -->
+    <FavoritesSection v-if="!collapsed" />
 
     <div
       v-if="!collapsed"

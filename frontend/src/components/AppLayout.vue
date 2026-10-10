@@ -44,6 +44,7 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useInboxStore } from '@/stores/inbox'
+import { useFavoritesStore } from '@/stores/favorites'
 import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useWhatsNewStore } from '@/stores/whatsNew'
@@ -76,6 +77,7 @@ const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const inbox = useInboxStore()
+const favorites = useFavoritesStore()
 const toasts = useToastsStore()
 const conflicts = useConflictsStore()
 const whatsNew = useWhatsNewStore()
@@ -168,6 +170,9 @@ useRealtime(
     // …and the same record as a toast «про меня» (#3117).
     toasts.onSocket(ev, authStore.user?.id)
     inbox.onEvent(ev)
+    // Favourite boards (#3115): the reader's own `favorites.changed` from another
+    // tab, and the board/project events that rename or drop a starred board.
+    favorites.onEvent(ev)
     // The «Начало работы» checklist counts what the user did themselves (#3102).
     onboarding.onSocket(ev, authStore.user?.id)
     conflicts.onEvent(ev)
@@ -204,6 +209,7 @@ useRealtime(
     resyncShell({ workspaces: ws, notifications: notes, conflicts })
     // The «Входящие» feed is socket-fed as well (#2972).
     inbox.load()
+    favorites.load()
   },
 )
 
@@ -351,6 +357,12 @@ watch(
 watch(
   () => ws.currentId,
   (id) => id && inbox.load(id),
+  { immediate: true },
+)
+// Favourite boards (#3115): the sidebar section, the crumbs' star, the palette.
+watch(
+  () => ws.currentId,
+  (id) => id && favorites.load(id),
   { immediate: true },
 )
 const inboxClock = setInterval(() => inbox.tick(), 30000)

@@ -587,7 +587,12 @@ const enterLabel = (row) => {
                     class="cp-avatar"
                   />
                   <span v-else-if="row.dot" class="cp-dot" :style="{ background: row.dot }" />
-                  <n-icon v-else-if="row.icon" :component="row.icon" :size="16" />
+                  <n-icon
+                    v-else-if="row.icon"
+                    :component="row.icon"
+                    :size="16"
+                    :class="{ 'grad-icon': row.grad }"
+                  />
                 </span>
                 <span class="cp-text">
                   <span class="cp-title">

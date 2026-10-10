@@ -7,6 +7,8 @@ import { useBoardViewStore } from '@/stores/boardView'
 import { useHelpStore } from '@/stores/help'
 import { usePaletteStore } from '@/stores/palette'
 import { useInboxStore } from '@/stores/inbox'
+import { useFavoritesStore } from '@/stores/favorites'
+import { favoriteFirst } from '@/utils/favorites'
 import { workspaceName } from '@/utils/defaultNames'
 import { CATALOG } from '@/shortcuts/catalog'
 import { isLive, runShortcut } from '@/shortcuts/dispatcher'
@@ -42,6 +44,7 @@ export function usePaletteResults() {
   const help = useHelpStore()
   const palette = usePaletteStore()
   const inbox = useInboxStore()
+  const favorites = useFavoritesStore()
   const route = useRoute()
 
   // Where a palette form would create its thing — said under the command, as
@@ -197,16 +200,34 @@ export function usePaletteResults() {
     }))
   })
 
+  // Favourite boards (#3115): their own group while nothing is typed, and on
+  // top of the found boards once something is — with the filled star.
+  const favoriteRows = computed(() =>
+    favorites.items.map((f) => ({
+      key: `fav:${f.board_id}`,
+      icon: ICONS.Star,
+      grad: true,
+      title: f.name,
+      sub: `${t('shell.palette.board')} · ${f.project_name}`,
+      run: (ctx) => go(`/project/${f.project_slug}/board/${f.slug}`, ctx),
+    })),
+  )
+
   const boardRows = computed(() => {
     const term = parsed.value.term
-    const boards = found.value.boards.map((b) => ({
-      key: `board:${b.id}`,
-      icon: ICONS.GridOutline,
-      title: b.name,
-      hl: term,
-      sub: `${t('shell.palette.board')} · ${b.project_name}`,
-      run: (ctx) => go(`/project/${b.project_slug}/board/${b.slug}`, ctx),
-    }))
+    const byFavorite = favoriteFirst(found.value.boards, favorites.isFavorite)
+    const boards = byFavorite.map((b) => {
+      const fav = favorites.isFavorite(b.id)
+      return {
+        key: `board:${b.id}`,
+        icon: fav ? ICONS.Star : ICONS.GridOutline,
+        grad: fav,
+        title: b.name,
+        hl: term,
+        sub: `${t('shell.palette.board')} · ${b.project_name}`,
+        run: (ctx) => go(`/project/${b.project_slug}/board/${b.slug}`, ctx),
+      }
+    })
     // Open milestones first; rank() keeps that order among equal scores.
     const ordered = [...milestones.value].sort(
       (a, b) => (a.state === 'closed') - (b.state === 'closed'),
@@ -299,6 +320,8 @@ export function usePaletteResults() {
           'recent',
           palette.recent.map((r) => taskRow(r, null)),
         )
+      if (all || section === 'boards')
+        add('favorites', favoriteRows.value, all ? LIMITS.boards : FULL)
       if (all || section === 'commands') add('commands', commandRows.value, all ? 6 : FULL)
       if (section === 'people') add('people', peopleRows.value, FULL)
       if (section === 'boards') add('boards', boardRows.value, FULL)

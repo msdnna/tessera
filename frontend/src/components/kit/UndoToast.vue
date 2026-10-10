@@ -14,6 +14,7 @@ import {
   CheckmarkOutline,
   CloseOutline,
   MoonOutline,
+  StarOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
 import Kbd from '@/components/Kbd.vue'
@@ -23,7 +24,7 @@ import { CAPS } from '@/utils/keyCaps'
 
 defineProps({
   caption: { type: String, default: '' },
-  // 'trash' | 'archive' | 'check' (completed, #2997) | 'moon' (snoozed, #2997)
+  // 'trash' | 'archive' | 'check' (completed, #2997) | 'moon' (snoozed, #2997) | 'star' (unstarred, #3115)
   icon: { type: String, default: 'trash' },
   status: { type: String, default: 'live' },
   // Time left, 0..1 — the 3px bar along the bottom edge.
@@ -41,6 +42,7 @@ const ICONS = {
   archive: ArchiveOutline,
   check: CheckmarkDoneOutline,
   moon: MoonOutline,
+  star: StarOutline,
 }
 </script>
 
