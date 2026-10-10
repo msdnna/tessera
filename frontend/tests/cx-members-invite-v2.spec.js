@@ -24,6 +24,9 @@ const ws = vi.hoisted(() => ({
   removeMember: vi.fn(),
   updateMemberRole: vi.fn(),
   deleteInvitation: vi.fn(),
+  // Members v2 (#3063) reads these on open too: an empty queue, no groups.
+  accessRequests: vi.fn(() => Promise.resolve({ data: [] })),
+  memberGroups: vi.fn(() => Promise.resolve({ data: [] })),
 }))
 vi.mock('@/api', () => ({ workspaces: ws }))
 

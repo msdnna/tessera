@@ -77,7 +77,7 @@ test('приглашение: превью без сессии и «Отклон
     { email, role: 'member' },
     seed.token,
   )
-  const token = new URL(inv.link, "http://e2e.local").searchParams.get('token')
+  const token = new URL(inv.link, 'http://e2e.local').searchParams.get('token')
   await page.goto(`/invite?token=${token}`)
 
   const card = page.getByTestId('invite-preview')
@@ -103,7 +103,7 @@ test('приглашение: свой аккаунт принимает из п
     { email: creds.email, role: 'member' },
     seed.token,
   )
-  const token = new URL(inv.link, "http://e2e.local").searchParams.get('token')
+  const token = new URL(inv.link, 'http://e2e.local').searchParams.get('token')
   await signIn(page, creds)
   await page.goto(`/invite?token=${token}`)
   await expect(page.getByTestId('invite-email')).toContainText(creds.email)

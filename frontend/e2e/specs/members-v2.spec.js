@@ -24,7 +24,7 @@ async function mate(seed, wsId, suffix) {
 test('группы, роли и передача владения', async ({ page, seed, backend }) => {
   const fresh = await backend.freshBoard('members-v2')
   const wsId = fresh.ws.id
-  const m = await mate(seed, wsId, '-mate')
+  const m = await mate(seed, wsId, '-members-mate')
   await openBoard(page, fresh.board.id)
   await openMembers(page)
 
