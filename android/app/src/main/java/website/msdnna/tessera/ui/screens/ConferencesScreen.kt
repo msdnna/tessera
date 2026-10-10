@@ -44,6 +44,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Conference
 import website.msdnna.tessera.data.model.ConferenceStatus
+import website.msdnna.tessera.data.model.WorkspaceMilestone
 import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -66,11 +67,14 @@ import website.msdnna.tessera.ui.theme.TesseraDanger
 import website.msdnna.tessera.ui.theme.TesseraLive
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.ConferencesViewModel
+import website.msdnna.tessera.util.CONF_DEFAULT_DURATION
 import website.msdnna.tessera.util.ConfTimeKind
+import website.msdnna.tessera.util.ConferencePlan
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.RECORDING_TTL_DEFAULT
 import website.msdnna.tessera.util.TtlInput
 import website.msdnna.tessera.util.conferenceDraft
+import website.msdnna.tessera.util.conferencePlan
 import website.msdnna.tessera.util.conferenceTimeLine
 import website.msdnna.tessera.util.localDateTimeLabel
 import website.msdnna.tessera.util.parseTtlDays
@@ -177,7 +181,8 @@ fun ConferencesScreen(
             ScheduleConferenceDialog(
                 saving = state.saving,
                 error = state.createError?.resolve(),
-                onSubmit = { title, description, at, ttl -> vm.create(title, description, at, ttl) },
+                milestones = state.milestones,
+                onSubmit = { title, description, at, ttl, plan -> vm.create(title, description, at, ttl, plan) },
                 onDismiss = { vm.cancelCompose() },
             )
         }
@@ -240,6 +245,8 @@ internal fun ConferenceRow(
             Spacer(Modifier.height(4.dp))
             Text(timeLineText(conference), color = c.text3, fontSize = 12.sp, maxLines = 1)
             Spacer(Modifier.height(2.dp))
+            // Length, repeat and stage (#3034), when the meeting has any.
+            ConferencePlanLine(conference, Modifier.padding(bottom = 2.dp))
             val invited = stringResource(R.string.conf_row_invited, conference.participantCount)
             // «В комнате: 0» is noise on a call nobody is in — the pill says so already.
             val inRoom = stringResource(R.string.conf_row_in_room, conference.activeCount)
@@ -333,8 +340,15 @@ internal fun ConferenceStatusPill(status: String) {
 internal fun ScheduleConferenceDialog(
     saving: Boolean,
     error: String?,
-    onSubmit: (title: String, description: String, scheduledAtIso: String?, ttlDays: Int) -> Unit,
+    onSubmit: (
+        title: String,
+        description: String,
+        scheduledAtIso: String?,
+        ttlDays: Int,
+        plan: ConferencePlan,
+    ) -> Unit,
     onDismiss: () -> Unit,
+    milestones: List<WorkspaceMilestone> = emptyList(),
 ) {
     val c = Tessera.colors
     var title by remember { mutableStateOf("") }
@@ -342,6 +356,10 @@ internal fun ScheduleConferenceDialog(
     var at by remember { mutableStateOf<String?>(null) }
     var ttlText by remember { mutableStateOf(RECORDING_TTL_DEFAULT.toString()) }
     var showPicker by remember { mutableStateOf(false) }
+    // The plan (#3034): 30 minutes by default, no repeat, no stage.
+    var duration by remember { mutableStateOf<Int?>(CONF_DEFAULT_DURATION) }
+    var recurrence by remember { mutableStateOf("") }
+    var milestoneId by remember { mutableStateOf<String?>(null) }
 
     val ttl = parseTtlDays(ttlText)
     // The same read decides both whether the button is live and what it sends,
@@ -412,6 +430,18 @@ internal fun ScheduleConferenceDialog(
             Text(stringResource(R.string.conf_create_at_hint), color = c.text3, fontSize = 12.sp)
 
             Spacer(Modifier.height(12.dp))
+            ConferencePlanPickers(
+                duration = duration,
+                onDuration = { duration = it },
+                recurrence = recurrence,
+                onRecurrence = { recurrence = it },
+                repeatEnabled = at != null,
+                milestoneId = milestoneId,
+                onMilestone = { milestoneId = it },
+                milestones = milestones,
+            )
+
+            Spacer(Modifier.height(12.dp))
             TTextField(
                 value = ttlText,
                 onValueChange = { ttlText = it },
@@ -442,7 +472,13 @@ internal fun ScheduleConferenceDialog(
                     loading = saving,
                     onClick = {
                         val d = draft ?: return@TButton
-                        onSubmit(d.title, d.description, d.scheduledAtIso, d.ttlDays)
+                        onSubmit(
+                            d.title,
+                            d.description,
+                            d.scheduledAtIso,
+                            d.ttlDays,
+                            conferencePlan(d.scheduledAtIso, duration, recurrence, milestoneId),
+                        )
                     },
                     modifier = Modifier.testTag(TestTags.CONFERENCE_CREATE_SUBMIT),
                 )

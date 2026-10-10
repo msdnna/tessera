@@ -13,10 +13,15 @@ import retrofit2.HttpException
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.model.ConferenceMessage
 import website.msdnna.tessera.data.repository.ConferenceRepository
+import website.msdnna.tessera.data.repository.WorkspaceRepository
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.util.CONF_CHAT_PAGE
+import website.msdnna.tessera.util.ChatMember
 import website.msdnna.tessera.util.ConfPendingFile
 import website.msdnna.tessera.util.ConfPickRefusal
+import website.msdnna.tessera.util.chatDefaultBoard
+import website.msdnna.tessera.util.chatMentionIds
+import website.msdnna.tessera.util.chatTaskCommand
 import website.msdnna.tessera.util.confChatAccept
 import website.msdnna.tessera.util.confChatCanRemove
 import website.msdnna.tessera.util.confChatCanSend
@@ -49,10 +54,20 @@ data class ConferenceChatUiState(
      *  the whole room and cannot be taken back, so it goes through a dialog —
      *  the same treatment the roster gives a kick. */
     val removing: String = "",
+    // ── «/» and «@» (#3055) ──────────────────────────────────────────────
+    /** The workspace's members: whom «@» offers and whose names lines draw as chips. */
+    val members: List<ChatMember> = emptyList(),
+    /** The boards «/задача» can put a task on, and the one picked. */
+    val boards: List<ChatBoard> = emptyList(),
+    val boardId: String? = null,
 ) {
     val unread: Int get() = if (open) 0 else confChatUnread(messages, lastSeenId, meId)
 
-    val canSend: Boolean get() = confChatCanSend(draft, pending, sending)
+    /** The title of a «/задача …» draft (blank for the bare command), null otherwise. */
+    val taskTitle: String? get() = chatTaskCommand(draft)
+
+    val canSend: Boolean get() = taskTitle?.let { it.isNotBlank() && boardId != null && !sending }
+        ?: confChatCanSend(draft, pending, sending)
 
     fun canRemove(message: ConferenceMessage): Boolean = confChatCanRemove(message, meId, canModerate)
 }
@@ -70,6 +85,9 @@ interface ConfUploadSource {
     fun part(file: ConfPendingFile): MultipartBody.Part?
 }
 
+/** A board «/задача» may land on — its name and its project's (#3055). */
+data class ChatBoard(val id: String, val name: String, val project: String)
+
 /**
  * The in-call chat (#2896 §7, web `ConferenceChat.vue`).
  *
@@ -81,6 +99,7 @@ interface ConfUploadSource {
  */
 class ConferenceChatViewModel(
     private val repo: ConferenceRepository = ConferenceRepository(),
+    private val workspaces: WorkspaceRepository = WorkspaceRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConferenceChatUiState())
     val state: StateFlow<ConferenceChatUiState> = _state.asStateFlow()
@@ -122,6 +141,46 @@ class ConferenceChatViewModel(
         servedNudge = nudge
         viewModelScope.launch { loadTail() }
     }
+
+    private var workspaceId: String = ""
+    private var defaultBoardId: String? = null
+    private var boardsLoaded = false
+
+    /**
+     * What «@» and «/задача» need (#3055): the call's workspace, its members and
+     * the board a task lands on by default (the server's `default_board_id`).
+     * Idempotent, like [bind].
+     */
+    fun setContext(workspaceId: String, members: List<ChatMember>, defaultBoardId: String?) {
+        if (this.workspaceId != workspaceId) boardsLoaded = false
+        this.workspaceId = workspaceId
+        this.defaultBoardId = defaultBoardId
+        _state.update { it.copy(members = members) }
+    }
+
+    private fun loadBoards() {
+        if (boardsLoaded || workspaceId.isBlank()) return
+        boardsLoaded = true
+        val ws = workspaceId
+        viewModelScope.launch {
+            val boards = runCatching {
+                workspaces.projects(ws).flatMap { p ->
+                    runCatching { workspaces.boards(p.id) }.getOrDefault(emptyList())
+                        .map { ChatBoard(it.id, it.name, p.name) }
+                }
+            }.getOrDefault(emptyList())
+            if (workspaceId != ws) return@launch
+            _state.update { st ->
+                st.copy(
+                    boards = boards,
+                    boardId = st.boardId?.takeIf { id -> boards.any { it.id == id } }
+                        ?: chatDefaultBoard(boards.map { it.id }, defaultBoardId),
+                )
+            }
+        }
+    }
+
+    fun pickBoard(id: String) = _state.update { it.copy(boardId = id) }
 
     /** Opening marks everything on screen as read. */
     fun open() = _state.update { it.copy(open = true, lastSeenId = it.messages.lastOrNull()?.id.orEmpty()) }
@@ -196,7 +255,10 @@ class ConferenceChatViewModel(
 
     // ── composer ──────────────────────────────────────────────────────────
 
-    fun setDraft(text: String) = _state.update { it.copy(draft = text) }
+    fun setDraft(text: String) {
+        _state.update { it.copy(draft = text) }
+        if (chatTaskCommand(text) != null) loadBoards()
+    }
 
     fun attach(picked: List<ConfPendingFile>) = _state.update {
         val result = confChatAccept(it.pending, picked)
@@ -223,17 +285,26 @@ class ConferenceChatViewModel(
         val id = conferenceId
         val body = s.draft.trim()
         val files = s.pending
+        val task = s.taskTitle
+        val board = s.boardId
+        val mentions = chatMentionIds(body, s.members)
         _state.update { it.copy(sending = true, error = null) }
         viewModelScope.launch {
             val sent = runCatching {
-                if (files.isEmpty()) {
-                    repo.postMessage(id, body)
-                } else {
-                    val parts = files.mapNotNull { source.part(it) }
-                    // Every part failed to open — sending the caption alone would
-                    // silently drop the files the message was about.
-                    require(parts.isNotEmpty()) { "no readable attachments" }
-                    repo.postMessageWithFiles(id, body, parts)
+                when {
+                    // «/задача …» (#3055): the task and its chat line; any queued
+                    // files stay for the next message.
+                    task != null && board != null -> repo.createTask(id, task, board)
+
+                    files.isEmpty() -> repo.postMessage(id, body, mentions)
+
+                    else -> {
+                        val parts = files.mapNotNull { source.part(it) }
+                        // Every part failed to open — sending the caption alone would
+                        // silently drop the files the message was about.
+                        require(parts.isNotEmpty()) { "no readable attachments" }
+                        repo.postMessageWithFiles(id, body, parts, mentions)
+                    }
                 }
             }
             if (conferenceId != id) return@launch
@@ -244,7 +315,7 @@ class ConferenceChatViewModel(
                         st.copy(
                             sending = false,
                             draft = "",
-                            pending = emptyList(),
+                            pending = if (task != null) st.pending else emptyList(),
                             refusal = ConfPickRefusal.NONE,
                             messages = list,
                             lastSeenId = list.lastOrNull()?.id.orEmpty(),

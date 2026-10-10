@@ -366,6 +366,11 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   (`notify/locale.go`, `locales/*/notifications.json`, `NotificationText.kt`; паритет веба и бэкенда
   — храповик-тест). RSVP — `conference_participants.rsvp`, `PUT /conferences/:id/rsvp`;
   исключения тихих часов — `quietExempt`/`quietFor`, спрашивать везде, где спрашивается окно.
+- **Встречи v2 (#3034, миграция 0092):** повтор — правило на одной переиспользуемой комнате, не
+  копии: сервер отдаёт `next_at` (`internal/confsched`, время держится в `conferences.timezone`);
+  новые поля PATCH встречи трёхзначные (`optField`) — старые клиенты их не стирают. Реакции — только
+  data-канал LiveKit (тема `reaction`, палитра-белый список), не сокет комнаты. «/задача» в чате —
+  `POST /conferences/:id/tasks` (задача + строка `kind=task` одной транзакцией).
 - **Тур «Начало работы» и подсказки (#3000, #3070):** тур — главы (`data/getStarted.js`:
   «Основы» 10 шагов, главы по выбору, «Знакомство» для приглашённого, «Основы» телефона нижним
   листом, мини-тур «Что изменилось»), движок `stores/tour.js` (правила `click/count/set/appear/

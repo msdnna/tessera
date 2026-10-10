@@ -81,13 +81,41 @@ type chatAttachment struct {
 
 // chatMessage is one line of the conversation with its files already attached,
 // so the rail never has to fetch per message.
+//
+// Kind is "text" for what someone typed and "task" for the line a «/» command
+// leaves (#3055) — «создал(а) задачу #N». Task is that line's link, or nil once
+// the task is gone or out of the call's reach; Body still reads «#N title» for a
+// client that knows neither field.
 type chatMessage struct {
 	ID          uuid.UUID        `json:"id"`
 	UserID      *uuid.UUID       `json:"user_id"`
 	UserName    *string          `json:"user_name"`
 	Body        string           `json:"body"`
+	Kind        string           `json:"kind"`
+	Task        *chatTaskRef     `json:"task"`
 	CreatedAt   time.Time        `json:"created_at"`
 	Attachments []chatAttachment `json:"attachments"`
+}
+
+// chatTaskRef is what a task line needs to link to the task.
+type chatTaskRef struct {
+	ID          uuid.UUID `json:"id"`
+	Number      *int64    `json:"number"`
+	Title       string    `json:"title"`
+	BoardSlug   string    `json:"board_slug"`
+	ProjectSlug string    `json:"project_slug"`
+}
+
+// taskRefOf builds the link of a listed row, or nil when the join found nothing
+// the call may show.
+func taskRefOf(r db.ListConferenceMessagesRow) *chatTaskRef {
+	if r.TaskID == nil || r.TaskTitle == nil || r.TaskBoardSlug == nil || r.TaskProjectSlug == nil {
+		return nil
+	}
+	return &chatTaskRef{
+		ID: *r.TaskID, Number: r.TaskNumber, Title: *r.TaskTitle,
+		BoardSlug: *r.TaskBoardSlug, ProjectSlug: *r.TaskProjectSlug,
+	}
 }
 
 func viewChatAttachment(a db.ConferenceMessageAttachment) chatAttachment {
@@ -165,7 +193,8 @@ func (h *API) hydrateChatPage(c *gin.Context, rows []db.ListConferenceMessagesRo
 		ids = append(ids, r.ID)
 		msgs = append(msgs, chatMessage{
 			ID: r.ID, UserID: r.UserID, UserName: r.UserName,
-			Body: r.Body, CreatedAt: r.CreatedAt, Attachments: []chatAttachment{},
+			Body: r.Body, Kind: r.Kind, Task: taskRefOf(r),
+			CreatedAt: r.CreatedAt, Attachments: []chatAttachment{},
 		})
 	}
 	if len(ids) == 0 {
@@ -264,7 +293,7 @@ func (h *API) PostConferenceMessage(c *gin.Context) {
 	}
 
 	out := chatMessage{
-		ID: msg.ID, UserID: msg.UserID, Body: msg.Body, CreatedAt: msg.CreatedAt,
+		ID: msg.ID, UserID: msg.UserID, Body: msg.Body, Kind: msg.Kind, CreatedAt: msg.CreatedAt,
 		Attachments: make([]chatAttachment, 0, len(atts)),
 	}
 	if name := h.userName(c, uid); name != "" {
@@ -287,9 +316,13 @@ type storedChatFile struct {
 	size        int64
 }
 
-// readChatSubmission pulls the body, any files and the mentioned members
-// (#3048 — a `mentions` field, repeated in a form) out of either encoding,
-// writing the response and returning false when the submission is not usable.
+// maxChatMentions caps the people one line may ring: a pasted roster must not
+// turn one message into a notification storm.
+const maxChatMentions = 50
+
+// readChatSubmission pulls the body, any files and the @-mentioned user ids
+// (#3055) out of either encoding, writing the response and returning false when
+// the submission is not usable.
 func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeader, []uuid.UUID, bool) {
 	var body string
 	var files []*multipart.FileHeader
@@ -302,6 +335,14 @@ func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeade
 		}
 		if v := form.Value["body"]; len(v) > 0 {
 			body = v[0]
+		}
+		for _, raw := range form.Value["mentions"] {
+			id, err := uuid.Parse(raw)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mention"})
+				return "", nil, nil, false
+			}
+			mentions = append(mentions, id)
 		}
 		files = form.File["files"]
 		for _, s := range form.Value["mentions"] {
@@ -323,6 +364,10 @@ func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeade
 		}
 		body = req.Body
 		mentions = req.Mentions
+	}
+	if len(mentions) > maxChatMentions {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("at most %d mentions per message", maxChatMentions)})
+		return "", nil, nil, false
 	}
 	body = strings.TrimSpace(body)
 	// An empty message with no files is not a message. Allowing it would put

@@ -83,6 +83,10 @@ type Conference struct {
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
 	SoonNotifiedFor  *time.Time `json:"soon_notified_for"`
+	DurationMinutes  *int32     `json:"duration_minutes"`
+	Recurrence       string     `json:"recurrence"`
+	Timezone         string     `json:"timezone"`
+	MilestoneID      *uuid.UUID `json:"milestone_id"`
 }
 
 type ConferenceMessage struct {
@@ -91,6 +95,8 @@ type ConferenceMessage struct {
 	UserID       *uuid.UUID `json:"user_id"`
 	Body         string     `json:"body"`
 	CreatedAt    time.Time  `json:"created_at"`
+	Kind         string     `json:"kind"`
+	TaskID       *uuid.UUID `json:"task_id"`
 }
 
 type ConferenceMessageAttachment struct {

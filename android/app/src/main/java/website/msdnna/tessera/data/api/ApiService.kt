@@ -1152,7 +1152,16 @@ interface ApiService {
         @Path("id") conferenceId: String,
         @Part("body") body: okhttp3.RequestBody,
         @Part files: List<MultipartBody.Part>,
+        // One `mentions` part per mentioned member (#3055); empty sends none.
+        @Part("mentions") mentions: List<@JvmSuppressWildcards okhttp3.RequestBody> = emptyList(),
     ): website.msdnna.tessera.data.model.ConferenceMessage
+
+    /** «/задача» in the chat (#3055): the task and the chat line, in one request. */
+    @POST("conferences/{id}/tasks")
+    suspend fun createConferenceTask(
+        @Path("id") conferenceId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateConferenceTaskRequest,
+    ): website.msdnna.tessera.data.model.ConferenceTaskCreated
 
     @DELETE("conference-messages/{id}")
     suspend fun deleteConferenceMessage(@Path("id") messageId: String)

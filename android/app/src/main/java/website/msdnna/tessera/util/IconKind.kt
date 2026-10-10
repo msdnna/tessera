@@ -142,6 +142,14 @@ object Ion {
     const val CONTRACT = "contract"
     const val CALL = "call"
 
+    // Meetings v2 (#3034): reactions, the stage pill, a task line and «@» in the
+    // chat — the web's HappyOutline / TrailSignOutline / AddCircleOutline /
+    // AtOutline, the same ionicons-5 glyphs.
+    const val HAPPY = "happy"
+    const val TRAIL_SIGN = "trail_sign"
+    const val ADD_CIRCLE = "add_circle"
+    const val AT = "at"
+
     // Participants and moderation (#2896 §6).
     const val HAND_RIGHT = "hand_right"
     const val VOLUME_MUTE = "volume_mute"

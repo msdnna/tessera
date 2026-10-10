@@ -257,6 +257,37 @@ object TestTags {
     const val CONFERENCE_CREATE_TTL = "conference-create-ttl"
     const val CONFERENCE_CREATE_SUBMIT = "conference-create-submit"
 
+    /** The plan in the schedule dialog (#3034): length chips, «К этапу» and the
+     *  repeat, and their menus' rows — keyed by value. */
+    fun conferenceDuration(minutes: Int) = "conference-duration:$minutes"
+
+    const val CONFERENCE_PLAN_STAGE = "conference-plan-stage"
+    const val CONFERENCE_PLAN_REPEAT = "conference-plan-repeat"
+
+    fun conferenceStageOption(id: String) = "conference-stage-option:$id"
+
+    fun conferenceRepeatOption(rule: String) = "conference-repeat-option:${rule.ifBlank { "none" }}"
+
+    /** A row's (or the lobby's) plan line: length, repeat, stage. */
+    fun conferencePlan(id: String) = "conference-plan:$id"
+
+    /** Reactions in the call (#3054): the dock button, one emoji of the picker,
+     *  the bubbles over the stage. */
+    const val CONFERENCE_REACTIONS = "conference-reactions"
+
+    fun conferenceReaction(emoji: String) = "conference-reaction:$emoji"
+
+    const val CONFERENCE_REACTION_BUBBLE = "conference-reaction-bubble"
+
+    /** The chat's «/» and «@» (#3055): the suggestion list and a row of it, the
+     *  task strip, a task line and a mention chip. */
+    const val CONFERENCE_CHAT_SUGGEST = "conference-chat-suggest"
+
+    fun conferenceChatSuggestRow(key: String) = "conference-chat-suggest-row:$key"
+
+    const val CONFERENCE_CHAT_TASK_STRIP = "conference-chat-task-strip"
+    const val CONFERENCE_CHAT_TASK_LINE = "conference-chat-task-line"
+
     /** One call in the list, and its delete button — keyed by id, so a spec says
      *  «this conference» and a sorting change doesn't rewrite what it checks. */
     fun conferenceRow(id: String) = "conference-row:$id"

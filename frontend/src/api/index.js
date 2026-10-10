@@ -707,19 +707,26 @@ export const conferences = {
   // would skip or repeat a line every time somebody sends one.
   messages: (id, params) => api.get(`/conferences/${id}/messages`, { params, skipLoader: true }),
   // Text only — the common case, and it should not pay for a multipart encoder.
-  // `mentions` — the members the line @-mentions (#3048), told by the server.
+  // `mentions` are the user ids the composer resolved @-handles to (#3055): the
+  // server notifies them, as for a comment.
   postMessage: (id, body, mentions = []) =>
-    api.post(`/conferences/${id}/messages`, { body, mentions }, { skipLoader: true }),
+    api.post(`/conferences/${id}/messages`, mentions.length ? { body, mentions } : { body }, {
+      skipLoader: true,
+    }),
   // With files. FormData, so the browser sets its own multipart boundary — do
   // not add a Content-Type header here, an explicit one arrives without it and
   // the server cannot parse the form.
   postMessageWithFiles: (id, body, files, mentions = []) => {
     const fd = new FormData()
     fd.append('body', body)
+    for (const m of mentions) fd.append('mentions', m)
     for (const f of files) fd.append('files', f)
     for (const m of mentions) fd.append('mentions', m)
     return api.post(`/conferences/${id}/messages`, fd, { skipLoader: true })
   },
+  // «/» in the chat (#3055): a task on `board_id` plus the chat line that
+  // announces it, in one request. Answers { task, message }.
+  createTask: (id, data) => api.post(`/conferences/${id}/tasks`, data, { skipLoader: true }),
   removeMessage: (messageId) => api.delete(`/conference-messages/${messageId}`),
   // The bytes of one attachment, fetched with our bearer credential. Images are
   // rendered from the blob this returns rather than through an <img src> at the

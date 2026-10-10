@@ -65,7 +65,7 @@ func (q *Queries) ActiveConferenceRecording(ctx context.Context, conferenceID uu
 }
 
 const conferenceForRecording = `-- name: ConferenceForRecording :one
-SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at, c.soon_notified_for
+SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at, c.soon_notified_for, c.duration_minutes, c.recurrence, c.timezone, c.milestone_id
 FROM conference_recordings r
 JOIN conferences c ON c.id = r.conference_id
 WHERE r.id = $1
@@ -92,6 +92,10 @@ func (q *Queries) ConferenceForRecording(ctx context.Context, id uuid.UUID) (Con
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SoonNotifiedFor,
+		&i.DurationMinutes,
+		&i.Recurrence,
+		&i.Timezone,
+		&i.MilestoneID,
 	)
 	return i, err
 }

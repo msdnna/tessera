@@ -721,6 +721,9 @@ func (h *API) TransferProject(c *gin.Context) {
 		return
 	}
 	unpinnedDocMeetings, err := qtx.ClearDocumentConferencesAcrossWorkspaces(c, p.ID)
+	// …and the same for the stages that travel with the project (#3053): a
+	// meeting left behind would keep naming a stage its team can no longer open.
+	unstagedConfs, err := qtx.ClearConferenceMilestonesAcrossWorkspaces(c, p.ID)
 	if err != nil {
 		fail(c, err)
 		return
@@ -774,6 +777,7 @@ func (h *API) TransferProject(c *gin.Context) {
 		"cancelled_approvals":        cancelledApprovals,
 		"unpinned_document_stages":   unpinnedDocStages,
 		"unpinned_document_meetings": unpinnedDocMeetings,
+		"unstaged_conferences":       unstagedConfs,
 	})
 }
 

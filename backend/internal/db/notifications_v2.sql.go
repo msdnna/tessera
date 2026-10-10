@@ -13,7 +13,7 @@ import (
 )
 
 const listConferencesStartingSoon = `-- name: ListConferencesStartingSoon :many
-SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for FROM conferences
+SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for, duration_minutes, recurrence, timezone, milestone_id FROM conferences
 WHERE status = 'scheduled'
   AND scheduled_at IS NOT NULL
   AND scheduled_at > now()
@@ -49,6 +49,10 @@ func (q *Queries) ListConferencesStartingSoon(ctx context.Context, leadMinutes i
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.SoonNotifiedFor,
+			&i.DurationMinutes,
+			&i.Recurrence,
+			&i.Timezone,
+			&i.MilestoneID,
 		); err != nil {
 			return nil, err
 		}

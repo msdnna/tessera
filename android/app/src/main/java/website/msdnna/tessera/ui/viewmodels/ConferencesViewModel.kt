@@ -10,12 +10,15 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.model.Conference
+import website.msdnna.tessera.data.model.WorkspaceMilestone
 import website.msdnna.tessera.data.realtime.ConfEvent
 import website.msdnna.tessera.data.realtime.RealtimeClient
 import website.msdnna.tessera.data.realtime.RealtimeEvent
 import website.msdnna.tessera.data.realtime.classifyConfEvent
 import website.msdnna.tessera.data.repository.ConferenceRepository
+import website.msdnna.tessera.data.repository.MilestoneRepository
 import website.msdnna.tessera.ui.UiText
+import website.msdnna.tessera.util.ConferencePlan
 import website.msdnna.tessera.util.errorMessage
 
 data class ConferencesUiState(
@@ -28,6 +31,8 @@ data class ConferencesUiState(
     val composing: Boolean = false,
     val saving: Boolean = false,
     val createError: UiText? = null,
+    /** The workspace's stages for «К этапу» (#3053), fetched when the dialog opens. */
+    val milestones: List<WorkspaceMilestone> = emptyList(),
     /** The row whose delete confirmation is open, if any. */
     val pendingDelete: Conference? = null,
     /** The conference whose lobby (§3) is open over the list, if any. */
@@ -42,6 +47,7 @@ data class ConferencesUiState(
  */
 class ConferencesViewModel(
     private val repo: ConferenceRepository = ConferenceRepository(),
+    private val milestoneRepo: MilestoneRepository = MilestoneRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(ConferencesUiState())
     val state: StateFlow<ConferencesUiState> = _state.asStateFlow()
@@ -135,7 +141,16 @@ class ConferencesViewModel(
 
     // ── schedule dialog ───────────────────────────────────────────────────
 
-    fun compose() = _state.update { it.copy(composing = true, createError = null) }
+    fun compose() {
+        _state.update { it.copy(composing = true, createError = null) }
+        val ws = workspaceId
+        if (ws.isBlank()) return
+        // Non-fatal: without them the menu says there are no stages.
+        viewModelScope.launch {
+            val list = runCatching { milestoneRepo.workspaceList(ws) }.getOrDefault(emptyList())
+            if (workspaceId == ws) _state.update { it.copy(milestones = list) }
+        }
+    }
 
     fun cancelCompose() = _state.update { it.copy(composing = false, createError = null) }
 
@@ -147,7 +162,13 @@ class ConferencesViewModel(
      * (empty after trimming, or too long) is worth another try, and a dialog that
      * closed on error would throw the description away with it.
      */
-    fun create(title: String, description: String, scheduledAtIso: String?, ttlDays: Int) {
+    fun create(
+        title: String,
+        description: String,
+        scheduledAtIso: String?,
+        ttlDays: Int,
+        plan: ConferencePlan? = null,
+    ) {
         if (workspaceId.isBlank() || _state.value.saving) return
         val ws = workspaceId
         _state.update { it.copy(saving = true, createError = null) }
@@ -159,6 +180,7 @@ class ConferencesViewModel(
                     description = description,
                     scheduledAt = scheduledAtIso,
                     recordingTtlDays = ttlDays,
+                    plan = plan,
                 )
             }
             // A call scheduled in the workspace that was open a moment ago must not

@@ -23,11 +23,9 @@ export const FEATURE_STUBS = {
   'admin.userSpaces': 3078,
   'admin.csv': 3080,
   'toasts.sound': 3121,
-  // Conferences (#3107): reactions in a call (#3054), a meeting's repeat and
-  // length (#3052), tying it to a stage (#3053).
-  'meet.reactions': 3054,
-  'meet.recurrence': 3052,
-  'meet.stage': 3053,
+  // Conferences (#3034): «Расшифровка» and «Итоги» of a recording need an
+  // external speech-to-text / LLM service — #3125.
+  'meet.transcript': 3125,
   // Large windows (#2975, package F). Members: roles and permissions, owner
   // transfer, groups, guests (#3063); resend / extend an invitation and a
   // reusable invite link (#3035).

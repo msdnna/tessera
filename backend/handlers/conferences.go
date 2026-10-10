@@ -86,6 +86,7 @@ func (h *API) CreateConference(c *gin.Context) {
 		ScheduledAt      *time.Time `json:"scheduled_at"`
 		TaskID           *uuid.UUID `json:"task_id"`
 		RecordingTTLDays *int32     `json:"recording_ttl_days"`
+		conferencePlanReq
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -106,6 +107,10 @@ func (h *API) CreateConference(c *gin.Context) {
 		}
 		ttl = *req.RecordingTTLDays
 	}
+	plan, ok := h.resolvePlan(c, wsID, conferencePlan{}, req.conferencePlanReq, req.ScheduledAt)
+	if !ok {
+		return
+	}
 	uid := middleware.CurrentUser(c)
 	var conf db.Conference
 	err := h.inTx(c, func(q *db.Queries) error {
@@ -118,6 +123,10 @@ func (h *API) CreateConference(c *gin.Context) {
 			Description:      req.Description,
 			ScheduledAt:      req.ScheduledAt,
 			RecordingTtlDays: ttl,
+			DurationMinutes:  plan.duration,
+			Recurrence:       plan.recurrence,
+			Timezone:         plan.timezone,
+			MilestoneID:      plan.milestone,
 		})
 		if err != nil {
 			return err
@@ -132,7 +141,7 @@ func (h *API) CreateConference(c *gin.Context) {
 		return
 	}
 	h.broadcastAs(c, wsID, "conference.created", conf)
-	c.JSON(http.StatusCreated, conf)
+	c.JSON(http.StatusCreated, h.viewConference(c, conf))
 }
 
 // taskInWorkspace checks that a task belongs to the given workspace, writing
@@ -177,7 +186,7 @@ func (h *API) ListConferences(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, orEmpty(rows))
+	c.JSON(http.StatusOK, listItems(rows, time.Now()))
 }
 
 // GetConference returns one conference together with its participants — the
@@ -193,7 +202,7 @@ func (h *API) GetConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"conference": conf, "participants": orEmpty(parts)})
+	c.JSON(http.StatusOK, gin.H{"conference": h.viewConference(c, conf), "participants": orEmpty(parts)})
 }
 
 // ListTaskConferences returns the conferences held about a task, so the task
@@ -238,6 +247,7 @@ func (h *API) UpdateConference(c *gin.Context) {
 		ScheduledAt      *time.Time `json:"scheduled_at"`
 		TaskID           *uuid.UUID `json:"task_id"`
 		RecordingTTLDays *int32     `json:"recording_ttl_days"`
+		conferencePlanReq
 	}{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -254,6 +264,10 @@ func (h *API) UpdateConference(c *gin.Context) {
 		}
 		ttl = *req.RecordingTTLDays
 	}
+	plan, ok := h.resolvePlan(c, conf.WorkspaceID, planFrom(conf), req.conferencePlanReq, req.ScheduledAt)
+	if !ok {
+		return
+	}
 	// Одной транзакцией, потому что срок хранения — это политика конференции, а
 	// не пометка на будущих записях: вместе с полем переезжают даты удаления уже
 	// снятых (#2932). Порознь правка могла бы оставить конференцию с новым
@@ -269,6 +283,10 @@ func (h *API) UpdateConference(c *gin.Context) {
 			ScheduledAt:      req.ScheduledAt,
 			TaskID:           req.TaskID,
 			RecordingTtlDays: ttl,
+			DurationMinutes:  plan.duration,
+			Recurrence:       plan.recurrence,
+			Timezone:         plan.timezone,
+			MilestoneID:      plan.milestone,
 		})
 		if uerr != nil {
 			return uerr
@@ -285,7 +303,7 @@ func (h *API) UpdateConference(c *gin.Context) {
 		return
 	}
 	h.broadcastAs(c, conf.WorkspaceID, "conference.updated", updated)
-	c.JSON(http.StatusOK, updated)
+	c.JSON(http.StatusOK, h.viewConference(c, updated))
 }
 
 // requireConferenceManager writes a 403 unless the caller may moderate the

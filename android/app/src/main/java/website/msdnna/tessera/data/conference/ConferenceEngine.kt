@@ -12,6 +12,7 @@ import io.livekit.android.renderer.TextureViewRenderer
 import io.livekit.android.room.Room
 import io.livekit.android.room.participant.ConnectionQuality
 import io.livekit.android.room.participant.Participant
+import io.livekit.android.room.track.DataPublishReliability
 import io.livekit.android.room.track.LocalAudioTrackOptions
 import io.livekit.android.room.track.LocalVideoTrack
 import io.livekit.android.room.track.RemoteAudioTrack
@@ -31,6 +32,9 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.data.repository.ConferenceRepository
+import website.msdnna.tessera.util.CONF_REACTION_TOPIC
+import website.msdnna.tessera.util.CONF_REACTION_TTL_MS
+import website.msdnna.tessera.util.CONF_REACTION_WINDOW_MS
 import website.msdnna.tessera.util.CONF_VOLUME_DEFAULT
 import website.msdnna.tessera.util.ConfAudioRoute
 import website.msdnna.tessera.util.ConfJoinReason
@@ -38,12 +42,18 @@ import website.msdnna.tessera.util.ConfMediaGrant
 import website.msdnna.tessera.util.ConfMediaStatus
 import website.msdnna.tessera.util.ConfMediaWant
 import website.msdnna.tessera.util.ConfQuality
+import website.msdnna.tessera.util.ConfReaction
 import website.msdnna.tessera.util.ConfStagePerson
+import website.msdnna.tessera.util.addReaction
+import website.msdnna.tessera.util.canReact
 import website.msdnna.tessera.util.confClampVolume
 import website.msdnna.tessera.util.confJoinPlan
 import website.msdnna.tessera.util.confReconnectDelay
+import website.msdnna.tessera.util.decodeReaction
+import website.msdnna.tessera.util.encodeReaction
 import website.msdnna.tessera.util.needsCallService
 import website.msdnna.tessera.util.preferredAudioRoute
+import website.msdnna.tessera.util.pruneReactions
 import website.msdnna.tessera.util.publishableMedia
 import website.msdnna.tessera.util.shouldConfReconnect
 
@@ -133,6 +143,8 @@ data class ConfSession(
      * rather than kept private to the engine.
      */
     val screenShare: Boolean = false,
+    /** Reactions floating over the stage right now (#3054) — never stored. */
+    val reactions: List<ConfReaction> = emptyList(),
 ) {
     val live: Boolean get() = status == ConfMediaStatus.LIVE
 
@@ -518,6 +530,10 @@ object ConferenceEngine {
 
                     is RoomEvent.Disconnected -> onDisconnected(event)
 
+                    // Reactions (#3054). Only ours — the palette, our topic; the
+                    // rest of the data channel is somebody else's business.
+                    is RoomEvent.DataReceived -> onData(event)
+
                     is RoomEvent.FailedToConnect -> {
                         failed(event.error)
                         scheduleRetry(_session.value.conferenceId)
@@ -527,6 +543,48 @@ object ConferenceEngine {
                 }
             }
         }
+    }
+
+    private fun onData(event: RoomEvent.DataReceived) {
+        if (event.topic != null && event.topic != CONF_REACTION_TOPIC) return
+        val emoji = decodeReaction(event.data) ?: return
+        val p = event.participant ?: return
+        pushReaction(p.identity?.value.orEmpty(), p.name.orEmpty(), emoji)
+    }
+
+    private var reactionSeq = 0L
+    private var reactionSent: List<Long> = emptyList()
+
+    private fun pushReaction(identity: String, name: String, emoji: String) {
+        val now = System.currentTimeMillis()
+        val r = ConfReaction(++reactionSeq, identity, name, emoji, now, (reactionSeq % 5).toInt())
+        set { it.copy(reactions = addReaction(it.reactions, r)) }
+        // Each bubble takes itself down; a reaction outlives nothing.
+        scope.launch {
+            delay(CONF_REACTION_TTL_MS)
+            set { s -> s.copy(reactions = pruneReactions(s.reactions, System.currentTimeMillis())) }
+        }
+    }
+
+    /**
+     * Send a reaction to everyone in the call (#3054). Lossy on purpose: a
+     * reaction that arrives late is worse than one that never does. Shown on our
+     * own stage at once — the SFU does not echo data back to its sender. Returns
+     * false outside a call, for an emoji off the palette, or past the burst limit.
+     */
+    fun sendReaction(emoji: String): Boolean {
+        val local = room?.localParticipant ?: return false
+        val payload = encodeReaction(emoji) ?: return false
+        val now = System.currentTimeMillis()
+        if (!canReact(reactionSent, now)) return false
+        reactionSent = reactionSent.filter { now - it < CONF_REACTION_WINDOW_MS } + now
+        pushReaction(local.identity?.value.orEmpty(), local.name.orEmpty(), emoji)
+        scope.launch {
+            runCatching {
+                local.publishData(payload, reliability = DataPublishReliability.LOSSY, topic = CONF_REACTION_TOPIC)
+            }
+        }
+        return true
     }
 
     /**
@@ -550,6 +608,7 @@ object ConferenceEngine {
                 // The projection went with the room. Left standing it would offer
                 // «остановить показ» for a capture that no longer exists.
                 screenShare = false,
+                reactions = emptyList(),
             )
         }
         if (event.error != null) scheduleRetry(id)

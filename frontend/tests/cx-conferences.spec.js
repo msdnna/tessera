@@ -27,6 +27,7 @@ const api = {
   leave: vi.fn(),
   end: vi.fn(),
   remove: vi.fn(),
+  update: vi.fn(),
   participants: vi.fn(),
   // «Принять / Отклонить» (#3051).
   rsvp: vi.fn(),
@@ -46,6 +47,8 @@ const wsApi = {
   groups: vi.fn(() => Promise.resolve({ data: [] })),
   projects: vi.fn(() => Promise.resolve({ data: [] })),
   commands: vi.fn(() => Promise.resolve({ data: { builtin: [], custom: [] } })),
+  // «К этапу» in the schedule form (#3053).
+  milestones: vi.fn(() => Promise.resolve({ data: [] })),
 }
 // getAccessToken is what useRealtime reads on mount; null keeps the socket from
 // ever opening in jsdom (it retries on a timer, which unmount clears).
@@ -197,7 +200,65 @@ describe('scheduling', () => {
       // The retention the dialog defaults to (#2877) — sent explicitly so the
       // number the user saw is the number that applies.
       recording_ttl_days: 30,
+      // The plan (#3034): 30 minutes by default, no repeat (nothing to repeat
+      // without a start), no stage.
+      duration_minutes: 30,
+      recurrence: '',
+      timezone: '',
+      milestone_id: null,
     })
+  })
+
+  it("sends the repeat with the reader's zone and the stage", async () => {
+    api.create.mockResolvedValue({ data: conf({ id: 'new3' }) })
+    wsApi.milestones.mockResolvedValue({
+      data: [{ id: 'm43', title: 'Спринт 43', project_name: 'Web', state: 'active' }],
+    })
+    const { w } = await mountAt('/conferences')
+    w.vm.openDialog()
+    await flushPromises()
+    w.vm.dlg.title = 'Стендап'
+    w.vm.dlg.at = Date.parse('2026-10-09T08:00:00Z')
+    w.vm.dlg.duration = 15
+    w.vm.pickRepeat('weekdays')
+    w.vm.pickStage('m43')
+    await w.vm.submit()
+    const body = api.create.mock.calls[0][1]
+    expect(body).toMatchObject({
+      duration_minutes: 15,
+      recurrence: 'weekdays',
+      milestone_id: 'm43',
+      scheduled_at: '2026-10-09T08:00:00.000Z',
+    })
+    expect(body.timezone).toBeTruthy()
+  })
+
+  it('edits a meeting with the same form, keeping its task', async () => {
+    api.update.mockResolvedValue({ data: conf() })
+    const { w } = await mountAt('/conferences')
+    w.vm.openEdit(
+      conf({
+        id: 'c9',
+        task_id: 't1',
+        scheduled_at: '2026-10-09T08:00:00Z',
+        duration_minutes: 45,
+        recurrence: 'biweekly',
+        milestone_id: 'm1',
+      }),
+      null,
+    )
+    w.vm.pickRepeat('none')
+    await w.vm.submit()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.update).toHaveBeenCalledWith(
+      'c9',
+      expect.objectContaining({
+        task_id: 't1',
+        duration_minutes: 45,
+        recurrence: '',
+        milestone_id: 'm1',
+      }),
+    )
   })
 
   it('falls back to the default retention when the field is cleared', async () => {

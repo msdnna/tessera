@@ -85,6 +85,12 @@ describe('notificationText', () => {
         'Иван приглашает вас в конференцию «Летучка»',
         'Иван invited you to a conference “Летучка”',
       ],
+      // An @-mention in a call's chat (#3055): the call's name, no #ref.
+      [
+        { event: 'conference_mention', actor: 'Иван', title: 'Летучка', conference_id: 'c-1' },
+        'Иван упомянул(а) вас в чате встречи «Летучка»',
+        'Иван mentioned you in a call chat “Летучка”',
+      ],
     ]
     for (const [payload, wantRu] of cases) {
       expect(notificationText(N(payload), ru())).toBe(wantRu)

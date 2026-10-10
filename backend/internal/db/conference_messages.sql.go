@@ -13,7 +13,7 @@ import (
 )
 
 const conferenceForMessageAttachment = `-- name: ConferenceForMessageAttachment :one
-SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at, c.soon_notified_for
+SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at, c.soon_notified_for, c.duration_minutes, c.recurrence, c.timezone, c.milestone_id
 FROM conference_message_attachments a
 JOIN conference_messages m ON m.id = a.message_id
 JOIN conferences c ON c.id = m.conference_id
@@ -41,6 +41,10 @@ func (q *Queries) ConferenceForMessageAttachment(ctx context.Context, id uuid.UU
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.SoonNotifiedFor,
+		&i.DurationMinutes,
+		&i.Recurrence,
+		&i.Timezone,
+		&i.MilestoneID,
 	)
 	return i, err
 }
@@ -49,7 +53,7 @@ const createConferenceMessage = `-- name: CreateConferenceMessage :one
 
 INSERT INTO conference_messages (conference_id, user_id, body)
 VALUES ($1, $2, $3)
-RETURNING id, conference_id, user_id, body, created_at
+RETURNING id, conference_id, user_id, body, created_at, kind, task_id
 `
 
 type CreateConferenceMessageParams struct {
@@ -68,6 +72,8 @@ func (q *Queries) CreateConferenceMessage(ctx context.Context, arg CreateConfere
 		&i.UserID,
 		&i.Body,
 		&i.CreatedAt,
+		&i.Kind,
+		&i.TaskID,
 	)
 	return i, err
 }
@@ -110,6 +116,42 @@ func (q *Queries) CreateConferenceMessageAttachment(ctx context.Context, arg Cre
 	return i, err
 }
 
+const createConferenceTaskMessage = `-- name: CreateConferenceTaskMessage :one
+INSERT INTO conference_messages (conference_id, user_id, body, kind, task_id)
+VALUES ($1, $2, $3, 'task', $4)
+RETURNING id, conference_id, user_id, body, created_at, kind, task_id
+`
+
+type CreateConferenceTaskMessageParams struct {
+	ConferenceID uuid.UUID  `json:"conference_id"`
+	UserID       *uuid.UUID `json:"user_id"`
+	Body         string     `json:"body"`
+	TaskID       *uuid.UUID `json:"task_id"`
+}
+
+// CreateConferenceTaskMessage writes the line «создал(а) задачу #N» that a «/»
+// command in the chat leaves behind (#3055). The body is the task's number and
+// title, so a client that knows nothing about `kind` still shows a sensible line.
+func (q *Queries) CreateConferenceTaskMessage(ctx context.Context, arg CreateConferenceTaskMessageParams) (ConferenceMessage, error) {
+	row := q.db.QueryRow(ctx, createConferenceTaskMessage,
+		arg.ConferenceID,
+		arg.UserID,
+		arg.Body,
+		arg.TaskID,
+	)
+	var i ConferenceMessage
+	err := row.Scan(
+		&i.ID,
+		&i.ConferenceID,
+		&i.UserID,
+		&i.Body,
+		&i.CreatedAt,
+		&i.Kind,
+		&i.TaskID,
+	)
+	return i, err
+}
+
 const deleteConferenceMessage = `-- name: DeleteConferenceMessage :exec
 DELETE FROM conference_messages WHERE id = $1
 `
@@ -120,7 +162,7 @@ func (q *Queries) DeleteConferenceMessage(ctx context.Context, id uuid.UUID) err
 }
 
 const getConferenceMessage = `-- name: GetConferenceMessage :one
-SELECT id, conference_id, user_id, body, created_at FROM conference_messages WHERE id = $1
+SELECT id, conference_id, user_id, body, created_at, kind, task_id FROM conference_messages WHERE id = $1
 `
 
 func (q *Queries) GetConferenceMessage(ctx context.Context, id uuid.UUID) (ConferenceMessage, error) {
@@ -132,6 +174,8 @@ func (q *Queries) GetConferenceMessage(ctx context.Context, id uuid.UUID) (Confe
 		&i.UserID,
 		&i.Body,
 		&i.CreatedAt,
+		&i.Kind,
+		&i.TaskID,
 	)
 	return i, err
 }
@@ -219,9 +263,18 @@ func (q *Queries) ListConferenceMessageAttachmentsFor(ctx context.Context, messa
 }
 
 const listConferenceMessages = `-- name: ListConferenceMessages :many
-SELECT m.id, m.conference_id, m.user_id, m.body, m.created_at, u.name AS user_name, u.email AS user_email
+SELECT m.id, m.conference_id, m.user_id, m.body, m.created_at, m.kind, m.task_id, u.name AS user_name, u.email AS user_email,
+       t.number AS task_number, t.title AS task_title,
+       tb.slug AS task_board_slug, tp.slug AS task_project_slug
 FROM conference_messages m
 LEFT JOIN users u ON u.id = m.user_id
+LEFT JOIN conferences cf ON cf.id = m.conference_id
+LEFT JOIN tasks t ON t.id = m.task_id
+    AND EXISTS (SELECT 1 FROM boards xb JOIN projects xp ON xp.id = xb.project_id
+                 WHERE xb.id = t.board_id AND xb.deleted_at IS NULL
+                   AND xp.workspace_id = cf.workspace_id)
+LEFT JOIN boards tb ON tb.id = t.board_id
+LEFT JOIN projects tp ON tp.id = tb.project_id
 WHERE m.conference_id = $1
   AND (
     $3::timestamptz IS NULL
@@ -239,13 +292,19 @@ type ListConferenceMessagesParams struct {
 }
 
 type ListConferenceMessagesRow struct {
-	ID           uuid.UUID  `json:"id"`
-	ConferenceID uuid.UUID  `json:"conference_id"`
-	UserID       *uuid.UUID `json:"user_id"`
-	Body         string     `json:"body"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UserName     *string    `json:"user_name"`
-	UserEmail    *string    `json:"user_email"`
+	ID              uuid.UUID  `json:"id"`
+	ConferenceID    uuid.UUID  `json:"conference_id"`
+	UserID          *uuid.UUID `json:"user_id"`
+	Body            string     `json:"body"`
+	CreatedAt       time.Time  `json:"created_at"`
+	Kind            string     `json:"kind"`
+	TaskID          *uuid.UUID `json:"task_id"`
+	UserName        *string    `json:"user_name"`
+	UserEmail       *string    `json:"user_email"`
+	TaskNumber      *int64     `json:"task_number"`
+	TaskTitle       *string    `json:"task_title"`
+	TaskBoardSlug   *string    `json:"task_board_slug"`
+	TaskProjectSlug *string    `json:"task_project_slug"`
 }
 
 // ListConferenceMessages pages *backwards* from a cursor: a chat is read from
@@ -257,6 +316,12 @@ type ListConferenceMessagesRow struct {
 // in the same millisecond are ordinary in a call where everyone is typing at
 // once, and a timestamp-only cursor would either skip one of them or serve it
 // twice forever.
+//
+// A task line (#3055) carries what its link needs — number, title, the board and
+// project slugs — joined only while the task is still somewhere the call's
+// workspace can see: on a live board of a project of that workspace. A task
+// moved out with its project, or on a deleted board, leaves the line with its
+// text and no link.
 func (q *Queries) ListConferenceMessages(ctx context.Context, arg ListConferenceMessagesParams) ([]ListConferenceMessagesRow, error) {
 	rows, err := q.db.Query(ctx, listConferenceMessages,
 		arg.ConferenceID,
@@ -277,8 +342,14 @@ func (q *Queries) ListConferenceMessages(ctx context.Context, arg ListConference
 			&i.UserID,
 			&i.Body,
 			&i.CreatedAt,
+			&i.Kind,
+			&i.TaskID,
 			&i.UserName,
 			&i.UserEmail,
+			&i.TaskNumber,
+			&i.TaskTitle,
+			&i.TaskBoardSlug,
+			&i.TaskProjectSlug,
 		); err != nil {
 			return nil, err
 		}

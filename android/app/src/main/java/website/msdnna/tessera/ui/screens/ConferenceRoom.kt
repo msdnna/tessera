@@ -4,12 +4,17 @@ import android.Manifest
 import android.content.pm.PackageManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxScope
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
@@ -19,6 +24,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -30,6 +36,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -65,11 +72,15 @@ import website.msdnna.tessera.ui.theme.TesseraWarning
 import website.msdnna.tessera.ui.viewmodels.ConferenceChatViewModel
 import website.msdnna.tessera.ui.viewmodels.ConferenceRoomUiState
 import website.msdnna.tessera.ui.viewmodels.ConferenceRoomViewModel
+import website.msdnna.tessera.util.CONF_REACTIONS
+import website.msdnna.tessera.util.CONF_REACTION_TTL_MS
 import website.msdnna.tessera.util.CONF_ZOOM_NONE
+import website.msdnna.tessera.util.ChatMember
 import website.msdnna.tessera.util.ConfAudioRoute
 import website.msdnna.tessera.util.ConfBanner
 import website.msdnna.tessera.util.ConfMediaGrant
 import website.msdnna.tessera.util.ConfQuality
+import website.msdnna.tessera.util.ConfReaction
 import website.msdnna.tessera.util.ConfRecordingFailure
 import website.msdnna.tessera.util.ConfRecordingPress
 import website.msdnna.tessera.util.ConfShare
@@ -95,7 +106,14 @@ import website.msdnna.tessera.util.confZoomStep
  * menu instead of three dropdowns of hardware ids.
  */
 @Composable
-fun ConferenceRoom(conferenceId: String, title: String, onHangup: () -> Unit) {
+fun ConferenceRoom(
+    conferenceId: String,
+    title: String,
+    onHangup: () -> Unit,
+    workspaceId: String = "",
+    members: List<ChatMember> = emptyList(),
+    defaultBoardId: String? = null,
+) {
     val vm: ConferenceRoomViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
     val chatVm: ConferenceChatViewModel = viewModel()
@@ -174,6 +192,7 @@ fun ConferenceRoom(conferenceId: String, title: String, onHangup: () -> Unit) {
         chatVm.bind(conferenceId, state.room.canModerate)
     }
     LaunchedEffect(state.room.chatNudge) { chatVm.onNudge(state.room.chatNudge) }
+    LaunchedEffect(workspaceId, members, defaultBoardId) { chatVm.setContext(workspaceId, members, defaultBoardId) }
 
     Box(Modifier.fillMaxSize()) {
         ConferenceRoomBody(
@@ -199,6 +218,7 @@ fun ConferenceRoom(conferenceId: String, title: String, onHangup: () -> Unit) {
                 onHangup()
             },
             onToggleHand = { vm.toggleHand() },
+            onReact = { vm.react(it) },
             onOpenPanel = { vm.openPanel() },
             onClosePanel = { vm.closePanel() },
             onForceMute = { id, muted -> vm.forceMute(id, muted) },
@@ -245,6 +265,7 @@ internal fun ConferenceRoomBody(
     onRetry: () -> Unit,
     onHangup: () -> Unit,
     onToggleHand: () -> Unit = {},
+    onReact: (String) -> Unit = {},
     onOpenPanel: () -> Unit = {},
     onClosePanel: () -> Unit = {},
     onForceMute: (String, Boolean) -> Unit = { _, _ -> },
@@ -317,6 +338,8 @@ internal fun ConferenceRoomBody(
                         .padding(7.dp)
                         .testTag(TestTags.CONFERENCE_FULLSCREEN),
                 )
+                // Reactions (#3054): bubbles rising from the stage's bottom edge.
+                ConferenceReactionBubbles(state.session.reactions)
             }
 
             if (!state.stageOnly && layout.strip.isNotEmpty()) {
@@ -348,6 +371,7 @@ internal fun ConferenceRoomBody(
                     onCloseRoutes = onCloseRoutes,
                     onSelectRoute = onSelectRoute,
                     onToggleHand = onToggleHand,
+                    onReact = onReact,
                     onOpenPanel = onOpenPanel,
                     onHangup = onHangup,
                     chatUnread = chatUnread,
@@ -713,6 +737,7 @@ private fun ConferenceToolbar(
     onCloseRoutes: () -> Unit,
     onSelectRoute: (ConfAudioRoute) -> Unit,
     onToggleHand: () -> Unit,
+    onReact: (String) -> Unit,
     onOpenPanel: () -> Unit,
     onHangup: () -> Unit,
     chatUnread: Int,
@@ -793,6 +818,35 @@ private fun ConferenceToolbar(
             ),
             onClick = onToggleHand,
         )
+        // Reactions (#3054): a row of emoji over the button.
+        Box {
+            var picking by remember { mutableStateOf(false) }
+            RoundControl(
+                icon = Ion.HAPPY,
+                active = picking,
+                enabled = state.session.live,
+                tag = TestTags.CONFERENCE_REACTIONS,
+                description = stringResource(R.string.conf_reactions),
+                onClick = { picking = true },
+            )
+            TDropdown(expanded = picking, onDismiss = { picking = false }) {
+                Row(Modifier.padding(horizontal = 6.dp)) {
+                    CONF_REACTIONS.forEach { emoji ->
+                        Box(
+                            Modifier.size(44.dp).clip(RoundedCornerShape(10.dp))
+                                .clickableNoRipple {
+                                    onReact(emoji)
+                                    picking = false
+                                }
+                                .testTag(TestTags.conferenceReaction(emoji)),
+                            contentAlignment = Alignment.Center,
+                        ) {
+                            Text(emoji, fontSize = 22.sp)
+                        }
+                    }
+                }
+            }
+        }
         Box {
             RoundControl(
                 icon = Ion.PEOPLE,
@@ -944,3 +998,47 @@ private fun routeLabel(route: ConfAudioRoute): String = stringResource(
 )
 
 private const val RATIO_16_9 = 16f / 9f
+
+/**
+ * The reactions over the stage (#3054): each bubble rises and fades over its
+ * life, in its own lane so a burst spreads out. Transform and alpha only.
+ */
+@Composable
+private fun BoxScope.ConferenceReactionBubbles(reactions: List<ConfReaction>) {
+    if (reactions.isEmpty()) return
+    BoxWithConstraints(Modifier.matchParentSize()) {
+        val width = maxWidth
+        reactions.forEach { r ->
+            key(r.id) {
+                val rise = remember { Animatable(0f) }
+                LaunchedEffect(Unit) {
+                    rise.animateTo(1f, tween(CONF_REACTION_TTL_MS.toInt(), easing = LinearOutSlowInEasing))
+                }
+                val p = rise.value
+                Column(
+                    Modifier.align(Alignment.BottomStart)
+                        .offset(x = width * (0.06f + r.lane * 0.18f), y = (-12).dp)
+                        .graphicsLayer {
+                            translationY = -p * 160.dp.toPx()
+                            alpha = if (p < 0.75f) 1f else ((1f - p) / 0.25f).coerceIn(0f, 1f)
+                        }
+                        .testTag(TestTags.CONFERENCE_REACTION_BUBBLE),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                ) {
+                    Text(r.emoji, fontSize = 30.sp)
+                    if (r.name.isNotBlank()) {
+                        Text(
+                            r.name,
+                            color = Color.White,
+                            fontSize = 11.sp,
+                            maxLines = 1,
+                            modifier = Modifier.clip(RoundedCornerShape(999.dp))
+                                .background(Color.Black.copy(alpha = 0.45f))
+                                .padding(horizontal = 7.dp, vertical = 1.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
