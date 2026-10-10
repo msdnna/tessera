@@ -11,8 +11,15 @@
 // workspace, and the parent already listens to that stream for everything else
 // on this page.
 import { computed, ref, watch } from 'vue'
-import { NButton, NIcon, NPopconfirm, NSpin } from 'naive-ui'
-import { DownloadOutline, TrashOutline, WarningOutline } from '@vicons/ionicons5'
+import { NButton, NIcon, NPopconfirm, NSpin, NTooltip } from 'naive-ui'
+import {
+  DocumentTextOutline,
+  DownloadOutline,
+  SparklesOutline,
+  TrashOutline,
+  WarningOutline,
+} from '@vicons/ionicons5'
+import { stubTask } from '@/utils/featureStubs'
 import { conferences as confApi } from '@/api'
 import { handOffBlob } from '@/utils/blobHandoff'
 import { formatFileSize } from '@/utils/docPdf'
@@ -28,6 +35,7 @@ const props = defineProps({
 })
 
 const { formatDateTime } = useFormat()
+const transcriptTask = stubTask('meet.transcript')
 
 const rows = ref([])
 const loading = ref(false)
@@ -155,6 +163,28 @@ defineExpose({ load })
                 {{ $t('conferences.rec.expires', { when: expiryDate(r.expires_at) }) }}
               </span>
             </div>
+            <!-- «Расшифровка · Итоги» (MeetPage «Последние записи») need an
+                 external speech-to-text service — visible, inactive (#3125). -->
+            <div v-if="r.status === 'completed'" class="rec-extra">
+              <n-tooltip :delay="300">
+                <template #trigger>
+                  <span class="rec-stub" data-testid="conference-recording-transcript">
+                    <n-icon :component="DocumentTextOutline" :size="12" />
+                    {{ $t('conferences.rec.transcript') }}
+                  </span>
+                </template>
+                {{ $t('common.stub.soon', { n: transcriptTask }) }}
+              </n-tooltip>
+              <n-tooltip :delay="300">
+                <template #trigger>
+                  <span class="rec-stub">
+                    <n-icon :component="SparklesOutline" :size="12" />
+                    {{ $t('conferences.rec.summary') }}
+                  </span>
+                </template>
+                {{ $t('common.stub.soon', { n: transcriptTask }) }}
+              </n-tooltip>
+            </div>
           </div>
 
           <n-button
@@ -245,6 +275,21 @@ defineExpose({ load })
 }
 .rec-live {
   color: #e0533d;
+}
+/* «Расшифровка · Итоги» — not built yet (#3125): quiet and inactive. */
+.rec-extra {
+  display: flex;
+  gap: 10px;
+  margin-top: 3px;
+}
+.rec-stub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--t-text3);
+  opacity: 0.75;
+  cursor: default;
 }
 .rec-failed {
   color: #e0533d;

@@ -182,7 +182,9 @@
     "delete": "Delete",
     "confirmDelete": "Delete this recording? The file is erased for good.",
     "failed": "Recording failed",
-    "expires": "deleted {when}"
+    "expires": "deleted {when}",
+    "transcript": "Transcript",
+    "summary": "Summary"
   },
   "screen": {
     "share": "Share screen",
