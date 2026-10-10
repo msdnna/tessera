@@ -208,10 +208,16 @@ async function savePrefs() {
     // would be UTC there, not «по вашему часовому поясу» as the hint promises —
     // so send the browser's own zone, the one this screen renders in.
     prefs.quiet_tz = resolvedTimezone(theme.timezone) || prefs.quiet_tz
-    const res = await prefsApi.update({ ...prefs })
+    const sent = { ...prefs }
+    const res = await prefsApi.update(sent)
     toastsStore.applyServer(res.data)
     applying = true
-    Object.assign(prefs, res.data || {})
+    // A field changed while the save was in flight keeps the new value: the
+    // answer describes what was sent, and the change has its own save queued.
+    // Copying the whole answer back used to undo a click made in that window.
+    const same = (a, b) => JSON.stringify(a) === JSON.stringify(b)
+    for (const [k, v] of Object.entries(res.data || {}))
+      if (!(k in sent) || same(prefs[k], sent[k])) prefs[k] = v
     // The due picker's «По умолчанию — …» reads these (#3118).
     setNotifyDefaults(res.data || null)
     await nextTick()

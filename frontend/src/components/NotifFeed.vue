@@ -145,7 +145,9 @@ function parts(n) {
 }
 function chipOf(n) {
   const p = n.payload || {}
-  if (p.excerpt) return { quote: p.excerpt }
+  // The quote is the comment cut for one line (#3117); the excerpt is only the
+  // short inline context and is absent for a longer comment.
+  if (p.quote || p.excerpt) return { quote: p.quote || p.excerpt }
   // A deleted task (#3114) has no row to join: the number and title come from
   // the payload alone, and the row opens nothing (notificationRoute → null).
   // A closed stage (#3048) names itself in the sentence; the chip says where.
@@ -247,8 +249,9 @@ let io = null
 watch(sentinel, (el) => {
   io?.disconnect()
   if (!el || !pager || typeof IntersectionObserver === 'undefined') return
+  // The viewport as the root: whichever box scrolls (the list, or the page
+  // around it), an end clipped out of view does not intersect.
   io = new IntersectionObserver((es) => es.some((e) => e.isIntersecting) && pager.loadMore(), {
-    root: list.value,
     rootMargin: '200px',
   })
   io.observe(el)
