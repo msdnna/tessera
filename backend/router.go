@@ -686,6 +686,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/conferences/:id/leave", rh.LeaveConference)
 			protected.POST("/conferences/:id/end", rh.EndConference)
 			protected.POST("/conferences/:id/invite", rh.InviteConference)
+			protected.PUT("/conferences/:id/rsvp", rh.RespondConference)
 			protected.GET("/conferences/:id/participants", rh.ListConferenceParticipants)
 			// The one media-adjacent route: it hands out a short-lived LiveKit
 			// warrant after our own checks, and creates the SFU room

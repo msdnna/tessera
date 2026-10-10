@@ -268,6 +268,25 @@ func (q *Queries) MarkAllNotificationsRead(ctx context.Context, userID uuid.UUID
 	return err
 }
 
+const markConferenceInviteRead = `-- name: MarkConferenceInviteRead :exec
+UPDATE notifications SET read_at = now()
+WHERE user_id = $1 AND kind = 'conference_invite' AND read_at IS NULL
+  AND payload->>'conference_id' = $2::text
+`
+
+type MarkConferenceInviteReadParams struct {
+	UserID       uuid.UUID `json:"user_id"`
+	ConferenceID string    `json:"conference_id"`
+}
+
+// MarkConferenceInviteRead closes the reader's invitations to one call once
+// they answered it (#3051), wherever they answered — the feed, the meeting's
+// page or another device.
+func (q *Queries) MarkConferenceInviteRead(ctx context.Context, arg MarkConferenceInviteReadParams) error {
+	_, err := q.db.Exec(ctx, markConferenceInviteRead, arg.UserID, arg.ConferenceID)
+	return err
+}
+
 const markNotificationRead = `-- name: MarkNotificationRead :exec
 UPDATE notifications SET read_at = now() WHERE id = $1 AND user_id = $2 AND read_at IS NULL
 `

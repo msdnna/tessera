@@ -72,5 +72,13 @@ WHERE user_id = $1 AND read_at IS NULL;
 -- name: MarkNotificationRead :exec
 UPDATE notifications SET read_at = now() WHERE id = $1 AND user_id = $2 AND read_at IS NULL;
 
+-- MarkConferenceInviteRead closes the reader's invitations to one call once
+-- they answered it (#3051), wherever they answered — the feed, the meeting's
+-- page or another device.
+-- name: MarkConferenceInviteRead :exec
+UPDATE notifications SET read_at = now()
+WHERE user_id = @user_id AND kind = 'conference_invite' AND read_at IS NULL
+  AND payload->>'conference_id' = @conference_id::text;
+
 -- name: MarkAllNotificationsRead :exec
 UPDATE notifications SET read_at = now() WHERE user_id = $1 AND read_at IS NULL;

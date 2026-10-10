@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -310,10 +311,16 @@ func withQuote(p map[string]any, s string) {
 // instead of `task_number`: that id is what the bell feed, the desktop deep link
 // and the push payload all navigate by. The title rides in the same `title` key
 // as everywhere else, so the client's `{ctx}` inlining works unchanged.
-func msgConferenceInvited(actor, title, confID string) notifyMsg {
+//
+// scheduledAt (#3051) says when the meeting is, for the feed to show beside the
+// «Принять / Отклонить» buttons; absent for an ad-hoc call.
+func msgConferenceInvited(actor, title, confID string, scheduledAt *time.Time) notifyMsg {
 	p := withCtx(event(evConfInvited, nil), "title", title)
 	p["actor"] = actor
 	p["conference_id"] = confID
+	if scheduledAt != nil {
+		p["scheduled_at"] = scheduledAt.UTC().Format(time.RFC3339)
+	}
 	return notifyMsg{
 		text:    fmt.Sprintf("%s приглашает вас в конференцию%s", actor, shortCtx(title)),
 		payload: p,

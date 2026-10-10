@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"testing"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -175,8 +176,11 @@ func TestNotifyMsgEmptyJSON(t *testing.T) {
 // other than a task, so the id to open travels in the payload — and every
 // destination (the bell feed, the desktop deep link, the push) reads it there.
 func TestMsgConferenceInvited(t *testing.T) {
-	m := msgConferenceInvited("Алиса", "Летучка", "c-1")
+	m := msgConferenceInvited("Алиса", "Летучка", "c-1", nil)
 	p := decode(t, m)
+	if _, ok := p["scheduled_at"]; ok {
+		t.Fatalf("an ad-hoc call carries scheduled_at %v", p["scheduled_at"])
+	}
 	if p["event"] != evConfInvited {
 		t.Fatalf("event = %v, want %s", p["event"], evConfInvited)
 	}
@@ -192,13 +196,18 @@ func TestMsgConferenceInvited(t *testing.T) {
 	if m.text != "Алиса приглашает вас в конференцию «Летучка»" {
 		t.Fatalf("legacy text = %q", m.text)
 	}
+	// A planned meeting says when (#3051), in UTC — the client words it.
+	at := time.Date(2026, 10, 21, 15, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	if got := decode(t, msgConferenceInvited("Алиса", "Летучка", "c-1", &at))["scheduled_at"]; got != "2026-10-21T12:00:00Z" {
+		t.Fatalf("scheduled_at = %v", got)
+	}
 }
 
 // notifyLink turns that payload into the URL an email or push opens. A task
 // notification keeps landing on the app root; only the invitation deep-links,
 // because it is the one that goes stale.
 func TestNotifyLinkDeepLinksAConference(t *testing.T) {
-	invite := db.Notification{Payload: msgConferenceInvited("Алиса", "Летучка", "c-1").json()}
+	invite := db.Notification{Payload: msgConferenceInvited("Алиса", "Летучка", "c-1", nil).json()}
 	if got := notifyLink("https://app/", invite); got != "https://app/conferences/c-1" {
 		t.Fatalf("conference link = %q", got)
 	}

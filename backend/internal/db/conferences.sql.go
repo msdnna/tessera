@@ -207,13 +207,19 @@ func (q *Queries) GetConferenceParticipant(ctx context.Context, arg GetConferenc
 }
 
 const inviteConferenceParticipant = `-- name: InviteConferenceParticipant :one
-INSERT INTO conference_participants (conference_id, user_id, role)
-VALUES ($1, $2, $3)
+INSERT INTO conference_participants (conference_id, user_id, role, rsvp, rsvp_at)
+VALUES ($1, $2, $3,
+        CASE WHEN $3::text = 'host' THEN 'accepted' ELSE 'pending' END,
+        CASE WHEN $3::text = 'host' THEN now() END)
 ON CONFLICT (conference_id, user_id) DO UPDATE
 SET invited_at = now(),
     left_at = NULL,
     joined_at = CASE WHEN conference_participants.left_at IS NOT NULL
-                     THEN NULL ELSE conference_participants.joined_at END
+                     THEN NULL ELSE conference_participants.joined_at END,
+    rsvp = CASE WHEN conference_participants.rsvp = 'declined' OR conference_participants.left_at IS NOT NULL
+                THEN 'pending' ELSE conference_participants.rsvp END,
+    rsvp_at = CASE WHEN conference_participants.rsvp = 'declined' OR conference_participants.left_at IS NOT NULL
+                   THEN NULL ELSE conference_participants.rsvp_at END
 RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
@@ -235,6 +241,10 @@ type InviteConferenceParticipantParams struct {
 // and left_at NULL, and show up in neither the roster nor the invited list. Only
 // a row that had actually left is reset — someone currently in the room keeps
 // their joined_at.
+//
+// The answer to the invitation (#3051): the host answers «yes» by creating the
+// meeting; anyone else starts at 'pending'. Re-inviting someone who declined or
+// walked out asks them again — the old answer was about the old invitation.
 func (q *Queries) InviteConferenceParticipant(ctx context.Context, arg InviteConferenceParticipantParams) (ConferenceParticipant, error) {
 	row := q.db.QueryRow(ctx, inviteConferenceParticipant, arg.ConferenceID, arg.UserID, arg.Role)
 	var i ConferenceParticipant
@@ -253,10 +263,13 @@ func (q *Queries) InviteConferenceParticipant(ctx context.Context, arg InviteCon
 }
 
 const joinConferenceParticipant = `-- name: JoinConferenceParticipant :one
-INSERT INTO conference_participants (conference_id, user_id, role, joined_at)
-VALUES ($1, $2, $3, now())
+INSERT INTO conference_participants (conference_id, user_id, role, joined_at, rsvp, rsvp_at)
+VALUES ($1, $2, $3, now(), 'accepted', now())
 ON CONFLICT (conference_id, user_id) DO UPDATE
-SET joined_at = now(), left_at = NULL
+SET joined_at = now(), left_at = NULL,
+    rsvp = 'accepted',
+    rsvp_at = CASE WHEN conference_participants.rsvp = 'accepted'
+                   THEN conference_participants.rsvp_at ELSE now() END
 RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
@@ -270,6 +283,8 @@ type JoinConferenceParticipantParams struct {
 // open conference: a member of the workspace may walk into a call they were not
 // explicitly invited to, and the row is created on the spot rather than the
 // join being refused.
+//
+// Walking in is an answer too (#3051): whoever joins has accepted.
 func (q *Queries) JoinConferenceParticipant(ctx context.Context, arg JoinConferenceParticipantParams) (ConferenceParticipant, error) {
 	row := q.db.QueryRow(ctx, joinConferenceParticipant, arg.ConferenceID, arg.UserID, arg.Role)
 	var i ConferenceParticipant
@@ -375,17 +390,22 @@ SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.
        u.name AS created_by_name,
        (SELECT count(*) FROM conference_participants p WHERE p.conference_id = c.id) AS participant_count,
        (SELECT count(*) FROM conference_participants p
-         WHERE p.conference_id = c.id AND p.joined_at IS NOT NULL AND p.left_at IS NULL) AS active_count
+         WHERE p.conference_id = c.id AND p.joined_at IS NOT NULL AND p.left_at IS NULL) AS active_count,
+       -- The reader's own answer to the invitation (#3051): NULL when they are
+       -- not invited at all, so the row has nothing to answer.
+       mine.rsvp AS my_rsvp
 FROM conferences c
 LEFT JOIN users u ON u.id = c.created_by
-WHERE c.workspace_id = $1
-  AND ($2::text IS NULL OR c.status = $2::text)
+LEFT JOIN conference_participants mine ON mine.conference_id = c.id AND mine.user_id = $1::uuid
+WHERE c.workspace_id = $2
+  AND ($3::text IS NULL OR c.status = $3::text)
 ORDER BY (c.status = 'live') DESC,
          c.scheduled_at ASC NULLS LAST,
          c.created_at DESC
 `
 
 type ListConferencesParams struct {
+	Viewer      uuid.UUID `json:"viewer"`
 	WorkspaceID uuid.UUID `json:"workspace_id"`
 	Status      *string   `json:"status"`
 }
@@ -408,6 +428,7 @@ type ListConferencesRow struct {
 	CreatedByName    *string    `json:"created_by_name"`
 	ParticipantCount int64      `json:"participant_count"`
 	ActiveCount      int64      `json:"active_count"`
+	MyRsvp           *string    `json:"my_rsvp"`
 }
 
 // ListConferences returns the workspace's conferences with the two numbers the
@@ -418,7 +439,7 @@ type ListConferencesRow struct {
 // Order puts live calls first — you join the meeting that is happening, not the
 // one planned for Thursday — then the nearest scheduled, then the archive.
 func (q *Queries) ListConferences(ctx context.Context, arg ListConferencesParams) ([]ListConferencesRow, error) {
-	rows, err := q.db.Query(ctx, listConferences, arg.WorkspaceID, arg.Status)
+	rows, err := q.db.Query(ctx, listConferences, arg.Viewer, arg.WorkspaceID, arg.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -444,6 +465,7 @@ func (q *Queries) ListConferences(ctx context.Context, arg ListConferencesParams
 			&i.CreatedByName,
 			&i.ParticipantCount,
 			&i.ActiveCount,
+			&i.MyRsvp,
 		); err != nil {
 			return nil, err
 		}
@@ -557,6 +579,38 @@ type SetConferenceParticipantMutedParams struct {
 
 func (q *Queries) SetConferenceParticipantMuted(ctx context.Context, arg SetConferenceParticipantMutedParams) (ConferenceParticipant, error) {
 	row := q.db.QueryRow(ctx, setConferenceParticipantMuted, arg.ConferenceID, arg.UserID, arg.ForceMuted)
+	var i ConferenceParticipant
+	err := row.Scan(
+		&i.ConferenceID,
+		&i.UserID,
+		&i.Role,
+		&i.InvitedAt,
+		&i.JoinedAt,
+		&i.LeftAt,
+		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
+	)
+	return i, err
+}
+
+const setConferenceRsvp = `-- name: SetConferenceRsvp :one
+UPDATE conference_participants
+SET rsvp = $1, rsvp_at = now()
+WHERE conference_id = $2 AND user_id = $3
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
+`
+
+type SetConferenceRsvpParams struct {
+	Rsvp         string    `json:"rsvp"`
+	ConferenceID uuid.UUID `json:"conference_id"`
+	UserID       uuid.UUID `json:"user_id"`
+}
+
+// SetConferenceRsvp records a participant's answer to the invitation (#3051).
+// Only an existing seat answers: an invitation is what is being answered.
+func (q *Queries) SetConferenceRsvp(ctx context.Context, arg SetConferenceRsvpParams) (ConferenceParticipant, error) {
+	row := q.db.QueryRow(ctx, setConferenceRsvp, arg.Rsvp, arg.ConferenceID, arg.UserID)
 	var i ConferenceParticipant
 	err := row.Scan(
 		&i.ConferenceID,

@@ -129,6 +129,19 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 			}
 		}
 	}
+	// An invitation carries the reader's answer, as the list does (#3051), so a
+	// live row draws «Принять / Отклонить» without a reload.
+	if kind == kindConferenceInvite {
+		if id, ok := msg.payload["conference_id"].(string); ok {
+			if cid, perr := uuid.Parse(id); perr == nil {
+				if part, gerr := h.q.GetConferenceParticipant(ctx, db.GetConferenceParticipantParams{
+					ConferenceID: cid, UserID: userID,
+				}); gerr == nil {
+					obj["rsvp"] = part.Rsvp
+				}
+			}
+		}
+	}
 	// Addressed to the recipient alone: the text is theirs (for a reminder it is
 	// literally their own private message), so it must not travel to every
 	// colleague's socket with a user_id for the client to compare against.
