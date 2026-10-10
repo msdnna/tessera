@@ -27,3 +27,5 @@ On a board you can group and filter by milestones just as by tags — with the g
 ## The link with GitLab
 
 If a project is linked to GitLab, a milestone is synced with the repository milestone of the same name: a GitLab icon appears next to the name. Tapping it opens the milestone in the phone's browser. The sync is optional — milestones work fully without it.
+
+Such a milestone can be renamed, re-dated and closed right in the milestones window — the change is written to the GitLab milestone at once if the binding has write-back on; otherwise it has no edit buttons. If GitLab refuses the write, «Not synced with GitLab» and a **Retry** button appear under the milestone. If the milestone was changed in GitLab too, the conflict is resolved in the conflicts window on the web.

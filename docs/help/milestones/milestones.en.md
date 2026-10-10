@@ -64,6 +64,12 @@ The milestone is picked in the task window, in the **«Milestone»** field; you 
 
 ## GitLab
 
-If the project is linked to GitLab, a milestone is synced with the repository's milestone: name, dates, state and description (the goals) come from GitLab. Such a milestone is **read-only in Tessera for now** — editing the goals and dates and closing it with the change written back to GitLab are still in the works, the buttons say «Soon». A Tessera-native milestone can be created in GitLab with the «To GitLab» menu item.
+If the project is linked to GitLab, a milestone is synced with the repository's milestone both ways: name, dates, state and description (the goals) come from GitLab, and an edit made in Tessera goes back. A Tessera-native milestone can be created in GitLab with the «To GitLab» menu item.
+
+**Editing and closing.** The goals («Edit», **E**), the dates, the name and «Close the milestone» (**Shift+X** — on the milestone page, in the milestone strip and on its row in the «Project» window) work for a GitLab milestone too — the change is written to the GitLab milestone right away. For that the binding must have **write-back** turned on ([GitLab: sync](/help/admin-gitlab-sync)). With write-back off the milestone stays read-only: the buttons are disabled and their tooltip says why — otherwise the next sync would quietly bring GitLab's values back.
+
+**If GitLab refuses the write** (the server is down, no permission), the edit stays in Tessera and the milestone is marked: in the milestone strip the goals line gives way to **«Description not synced with GitLab · retry»**, the same shows on the goals card of the milestone page and as a red mark in the «Project» window. «Retry» sends it again; the next sync retries by itself as well. The sync does not overwrite such an edit.
+
+**If the goals were changed both in Tessera and in GitLab** since the last sync, the write does not overwrite the other text: the [«Resolve conflicts»](/help/admin-gitlab-sync) window opens, with the milestone queued next to the tasks. A version is picked the same way — «Base», «Tessera» or «GitLab», or merged by hand (**M**); «Apply and push» writes the decision to the GitLab milestone at once. Until the conflict is resolved, the milestone strip says «Conflict with GitLab · resolve».
 
 Deleting a linked milestone warns separately: **the milestone stays in GitLab**, only the link goes. How the link itself is set up is in [GitLab: sync](/help/admin-gitlab-sync).
