@@ -19,7 +19,9 @@ const (
 	resetTokenTTL  = 1 * time.Hour
 )
 
-// sendVerification issues an email-verification token and emails the link.
+// sendVerification issues an email-verification link and a one-time code
+// (#3057) and emails both: the link for whoever reads mail on another device,
+// the code for the «Проверьте почту» cells on this one.
 func (h *AuthHandler) sendVerification(c *gin.Context, user db.User) {
 	if user.EmailVerified {
 		return
@@ -33,9 +35,14 @@ func (h *AuthHandler) sendVerification(c *gin.Context, user db.User) {
 	}); err != nil {
 		return
 	}
+	code, err := h.issueCode(c, user.ID, kindVerifyCode, nil, true)
+	if err != nil {
+		soft(c, "issueCode", err)
+	}
 	link := fmt.Sprintf("%s/verify-email?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
 	subject, body := mail.Compose(mail.KindVerify, h.userLang(c, user.ID), mail.Vars{
 		Link: link, TTLHours: int(verifyTokenTTL / time.Hour),
+		Code: code, CodeMinutes: int(codeTTL / time.Minute),
 	})
 	mail.SendAsync(h.mailer, user.Email, subject, body)
 }
@@ -105,8 +112,15 @@ func (h *AuthHandler) acceptInvitationToken(c *gin.Context, user db.User, rawTok
 	if rawToken == "" {
 		return ""
 	}
-	inv, err := h.q.GetInvitationByHash(c, auth.HashRefreshToken(rawToken))
-	if err != nil || inv.AcceptedAt != nil || time.Now().After(inv.ExpiresAt) {
+	hash := auth.HashRefreshToken(rawToken)
+	inv, err := h.q.GetInvitationByHash(c, hash)
+	if err != nil {
+		// The workspace's shared link (#3062) is not addressed to anyone: the
+		// link itself is the whole credential, so it applies to whoever signs up
+		// with it, up to its limit.
+		return h.joinByLinkToken(c, user, hash)
+	}
+	if !invitationLive(inv, time.Now()) {
 		return inviteInvalid
 	}
 	if !strings.EqualFold(inv.Email, user.Email) {
@@ -147,24 +161,14 @@ func (h *AuthHandler) VerifyEmail(c *gin.Context) {
 		return
 	}
 	soft(c, "MarkUserTokenUsed", h.q.MarkUserTokenUsed(c, tok.ID))
+	// The code sent with the link has nothing left to prove.
+	soft(c, "SupersedeUserCodes", h.q.SupersedeUserCodes(c, db.SupersedeUserCodesParams{UserID: tok.UserID, Kinds: []string{kindVerifyCode}}))
 	// Mailbox ownership is proven now, so anything still addressed to it can be
 	// applied — this is how an invitee who registered without following the
 	// emailed link finally lands in the workspace.
 	if user, err := h.q.GetUserByID(c, tok.UserID); err == nil {
 		h.acceptPendingInvitations(c, user)
 	}
-	c.Status(http.StatusNoContent)
-}
-
-// ResendVerification re-sends the verification email to the current user.
-func (h *AuthHandler) ResendVerification(c *gin.Context) {
-	user, err := h.q.GetUserByID(c, middleware.CurrentUser(c))
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "user not found"})
-		return
-	}
-	soft(c, "DeleteUserTokensOfKind", h.q.DeleteUserTokensOfKind(c, db.DeleteUserTokensOfKindParams{UserID: user.ID, Kind: "verify"}))
-	h.sendVerification(c, user)
 	c.Status(http.StatusNoContent)
 }
 
@@ -192,6 +196,27 @@ func (h *AuthHandler) ForgotPassword(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, gin.H{"ok": true})
+}
+
+// CheckResetToken tells the «Новый пароль» screen whether its link still works
+// and until when (#3060: «Ссылка действует ещё 54 минуты»), without spending
+// it. The token is the credential — 256 random bits, throttled by IP like the
+// reset itself — so the answer says nothing about any account: a live link
+// gets its deadline, anything else the same refusal ResetPassword gives.
+func (h *AuthHandler) CheckResetToken(c *gin.Context) {
+	var req struct {
+		Token string `json:"token" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	tok, err := h.q.GetUserToken(c, db.GetUserTokenParams{TokenHash: auth.HashRefreshToken(req.Token), Kind: "reset"})
+	if err != nil || tok.UsedAt != nil || time.Now().After(tok.ExpiresAt) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired token"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"expires_at": tok.ExpiresAt})
 }
 
 // ResetPassword sets a new password from a reset token and revokes sessions.

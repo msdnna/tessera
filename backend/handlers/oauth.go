@@ -145,7 +145,9 @@ func (h *AuthHandler) gitlabRedirectURI(c *gin.Context) string {
 // Providers reports which external login providers are configured+enabled, so the
 // login page can show/hide the "Continue with GitLab" button. Public.
 func (h *AuthHandler) Providers(c *gin.Context) {
-	out := gin.H{"gitlab": false}
+	// `mail` — whether this server sends letters at all. Registration only
+	// leads to the «Проверьте почту» code screen when a code can arrive (#3057).
+	out := gin.H{"gitlab": false, "mail": h.mailer != nil && h.mailer.Enabled()}
 	if p, err := h.q.GetOAuthProvider(c, "gitlab"); err == nil {
 		out["gitlab"] = p.Enabled && p.ClientID != "" && p.GlBaseUrl != ""
 	}

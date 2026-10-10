@@ -41,3 +41,8 @@ UPDATE users SET active = $2, updated_at = now() WHERE id = $1;
 
 -- name: MarkEmailVerified :exec
 UPDATE users SET email_verified = true, updated_at = now() WHERE id = $1;
+
+-- name: ChangeUserEmail :one
+-- The new address was proven by a code sent to it, so it lands verified (#3058).
+UPDATE users SET email = $2, email_verified = true, updated_at = now() WHERE id = $1
+RETURNING *;

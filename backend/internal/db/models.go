@@ -743,6 +743,8 @@ type UserToken struct {
 	ExpiresAt time.Time  `json:"expires_at"`
 	UsedAt    *time.Time `json:"used_at"`
 	CreatedAt time.Time  `json:"created_at"`
+	Attempts  int32      `json:"attempts"`
+	Email     *string    `json:"email"`
 }
 
 type Workspace struct {
@@ -778,4 +780,27 @@ type WorkspaceInvitation struct {
 	ExpiresAt   time.Time  `json:"expires_at"`
 	AcceptedAt  *time.Time `json:"accepted_at"`
 	CreatedAt   time.Time  `json:"created_at"`
+	DeclinedAt  *time.Time `json:"declined_at"`
+	SentAt      time.Time  `json:"sent_at"`
+	SendCount   int32      `json:"send_count"`
+}
+
+type WorkspaceInviteLink struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	TokenHash   string     `json:"token_hash"`
+	Role        string     `json:"role"`
+	MaxUses     int32      `json:"max_uses"`
+	Uses        int32      `json:"uses"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	RevokedAt   *time.Time `json:"revoked_at"`
+	RevokedBy   *uuid.UUID `json:"revoked_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type WorkspaceInviteLinkUse struct {
+	LinkID uuid.UUID `json:"link_id"`
+	UserID uuid.UUID `json:"user_id"`
+	UsedAt time.Time `json:"used_at"`
 }
