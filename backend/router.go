@@ -504,6 +504,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/boards/:id/views", rh.SaveBoardView)
 			protected.PATCH("/views/:id", rh.UpdateBoardView)
 			protected.DELETE("/views/:id", rh.DeleteBoardView)
+			// Favourite boards (#3115): the caller's own starred boards, per workspace.
+			protected.GET("/workspaces/:id/favorites", rh.ListBoardFavorites)
+			protected.PUT("/boards/:id/favorite", rh.AddBoardFavorite)
+			protected.DELETE("/boards/:id/favorite", rh.RemoveBoardFavorite)
+			protected.PATCH("/boards/:id/favorite/move", rh.MoveBoardFavorite)
 
 			protected.PATCH("/columns/:id", rh.UpdateColumn)
 			protected.PATCH("/columns/:id/move", rh.MoveColumn)
