@@ -8,6 +8,14 @@ updated: 2026-10-07
 
 A column is a task's status. A new board starts with four columns, and the set can be changed however you like: renamed, coloured, reordered, added to and deleted.
 
+A project without boards opens an **empty project** screen with board templates — the columns, the view and the project tags are set up already:
+
+- **Sprint kanban** — “Sprint backlog” → “To do” → “In progress” → “In review” → “Done”, tags `type::feature`, `type::bug`, `type::tech-debt`;
+- **Bug tracker** — opens as a list: “New” → “Confirmed” → “In progress” → “Verifying” → “Closed”, severity tags `severity::critical` … `low`;
+- **Roadmap** — opens on the timeline: “Ideas” → “Planned” → “In progress” → “Shipped”, tags `quarter::Q1` … `Q4`.
+
+A board from a template is named after it (double-click it in the tree to rename). **Or a blank board** (<kbd>⇧</kbd> <kbd>N</kbd>) asks for a name right on the screen and makes an ordinary four-column board. Tags the project already has are not duplicated.
+
 ![A board column: the header with a counter and the settings menu](../assets/board-columns-light.png)
 
 ## The four default columns

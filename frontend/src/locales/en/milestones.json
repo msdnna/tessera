@@ -109,7 +109,8 @@
     "unassigned": "Unassigned",
     "pace": "Pace",
     "paceSub": "done per milestone",
-    "paceAvg": "Average over the previous milestones ({n}) — {avg}"
+    "paceAvg": "Average over the previous milestones ({n}) — {avg}",
+    "documents": "Documents"
   },
   "gitlab": {
     "readOnly": "A GitLab stage: its binding does not write to GitLab — edit it in GitLab or turn writing on in the GitLab window",

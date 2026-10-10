@@ -34,6 +34,15 @@ private val COLUMN_NAMES = mapOf(
     "in_progress" to R.string.default_column_in_progress,
     "review" to R.string.default_column_review,
     "done" to R.string.default_column_done,
+    // Board templates for an empty project (#3047, handlers/board_templates.go).
+    "backlog" to R.string.default_column_backlog,
+    "new" to R.string.default_column_new,
+    "confirmed" to R.string.default_column_confirmed,
+    "verify" to R.string.default_column_verify,
+    "closed" to R.string.default_column_closed,
+    "ideas" to R.string.default_column_ideas,
+    "planned" to R.string.default_column_planned,
+    "shipped" to R.string.default_column_shipped,
 )
 
 private fun caption(res: Resources, table: Map<String, Int>, key: String?, fallback: String): String {
@@ -60,7 +69,10 @@ fun columnCaption(res: Resources, nameKey: String?, name: String): String =
  * по-прежнему опознаётся по словам в имени — web `columnStatus.js` паритет.
  */
 fun isReviewColumn(nameKey: String?, name: String): Boolean =
-    if (nameKey != null) nameKey == "review" else REVIEW_RE.containsMatchIn(name)
+    if (nameKey != null) nameKey in REVIEW_KEYS else REVIEW_RE.containsMatchIn(name)
+
+/** Ключи колонок «на рассмотрении»: засеянная и «Проверка» баг-трекера (#3047). */
+private val REVIEW_KEYS = setOf("review", "verify")
 
 /**
  * Слова, по которым колонка без ключа считается «на рассмотрении».

@@ -285,9 +285,9 @@
     "use": "Create",
     "empty": "Nothing found. Save a document as a template or upload a file ({formats}).",
     "meeting": {
-      "title": "Meeting notes",
-      "description": "Attendees, agenda, decisions and follow-up tasks",
-      "body": "# Meeting notes\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1.\n2.\n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due date\n\n## Follow-up tasks\n\n- [ ]\n"
+      "title": "Meeting agenda",
+      "description": "Attendees, questions, decisions — tied to a meeting",
+      "body": "# Meeting agenda\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1.\n2.\n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due date\n\n## Follow-up tasks\n\n- [ ]\n"
     },
     "spec": {
       "title": "Technical spec",
@@ -303,15 +303,41 @@
     "into": "in “{target}”",
     "source": {
       "all": "All",
-      "builtin": "Built-in",
       "mine": "My templates"
     },
-    "categories": "Categories",
     "blank": "Blank document",
     "blankHint": "Start from a clean page",
     "hintPick": "select",
     "create": "Create",
-    "removeArmed": "Delete?"
+    "removeArmed": "Delete?",
+    "sprintPlan": {
+      "title": "Sprint planning",
+      "description": "Goal, scope, team capacity and risks",
+      "body": "# Sprint planning\n\n**Dates:**\n**Sprint goal:**\n\n## Scope\n\n- [ ]\n\n## Team capacity\n\n{'|'} Member {'|'} Availability {'|'}\n{'|'}---{'|'}---{'|'}\n{'|'}  {'|'}  {'|'}\n\n## Risks and dependencies\n\n-\n"
+    },
+    "postmortem": {
+      "title": "Postmortem",
+      "description": "Timeline, cause, impact, follow-ups",
+      "body": "# Postmortem\n\n**Incident:**\n**When:**\n**Impact:**\n\n## Timeline\n\n-\n\n## Root cause\n\n## What helped, what got in the way\n\n-\n\n## Follow-ups\n\n- [ ] Action — owner, due date\n"
+    },
+    "adr": {
+      "title": "ADR",
+      "description": "Architecture decision: context, options, choice",
+      "body": "# ADR: \n\n**Status:** proposed\n**Date:**\n\n## Context\n\n## Options\n\n1.\n2.\n\n## Decision\n\n## Consequences\n\n-\n"
+    },
+    "category": {
+      "none": "No category",
+      "sprint": "Sprint",
+      "product": "Product",
+      "engineering": "Engineering",
+      "meetings": "Meetings"
+    },
+    "setCategory": "Category",
+    "meetingPick": {
+      "label": "Meeting",
+      "none": "No meeting",
+      "hint": "The agenda will be tied to the meeting"
+    }
   },
   "view": {
     "crumbRoot": "Documents",
@@ -547,5 +573,24 @@
     "emptyText": "Deleted documents stay here for {days} days and come back with their task links.",
     "deleted": "Document «{title}» moved to the trash",
     "restored": "Document «{title}» restored"
+  },
+  "pins": {
+    "pickStage": "Tie to a stage",
+    "openStage": "Open the stage page",
+    "changeStage": "Change the stage",
+    "unpinStage": "Untie from the stage",
+    "noStages": "No open stages in the workspace’s projects",
+    "stageState": {
+      "active": "running",
+      "planned": "planned",
+      "closed": "closed"
+    },
+    "meeting": "Meeting",
+    "pickMeeting": "Tie to a meeting",
+    "pinMeeting": "Tie to a meeting",
+    "openMeeting": "Open the meeting",
+    "changeMeeting": "Change the meeting",
+    "unpinMeeting": "Untie from the meeting",
+    "noMeetings": "No running or planned meetings"
   }
 }

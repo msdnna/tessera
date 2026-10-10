@@ -1045,15 +1045,30 @@
     <string name="docs_export_share">Поделиться «%1$s»</string>
     <string name="docs_export_unavailable">Конвертер недоступен — попробуйте HTML</string>
     <!-- Встроенные шаблоны. Тела — Markdown: их разбирает DocMarkdown.kt -->
-    <string name="docs_template_meeting_title">Протокол совещания</string>
-    <string name="docs_template_meeting_description">Участники, повестка, решения и задачи по итогам</string>
-    <string name="docs_template_meeting_body"># Протокол совещания\n\n**Дата:**\n**Участники:**\n\n## Повестка\n\n1. \n2. \n\n## Обсуждение\n\n## Решения\n\n- [ ] Решение — ответственный, срок\n\n## Задачи по итогам\n\n- [ ] \n</string>
+    <string name="docs_template_meeting_title">Повестка встречи</string>
+    <string name="docs_template_meeting_description">Участники, вопросы, решения — с привязкой к встрече</string>
+    <string name="docs_template_meeting_body"># Повестка встречи\n\n**Дата:**\n**Участники:**\n\n## Вопросы\n\n1. \n2. \n\n## Обсуждение\n\n## Решения\n\n- [ ] Решение — ответственный, срок\n\n## Задачи по итогам\n\n- [ ] \n</string>
     <string name="docs_template_spec_title">Техническое задание</string>
     <string name="docs_template_spec_description">Задача, объём работ, критерии приёмки и риски</string>
     <string name="docs_template_spec_body"># Техническое задание\n\n## Постановка задачи\n\n## Что входит в объём\n\n- \n\n## Что не входит\n\n- \n\n## Критерии приёмки\n\n- [ ] \n\n## Риски и открытые вопросы\n\n| Вопрос | Кто отвечает |\n|---|---|\n|  |  |\n</string>
     <string name="docs_template_retro_title">Ретроспектива</string>
     <string name="docs_template_retro_description">Что получилось, что мешало, что меняем</string>
     <string name="docs_template_retro_body"># Ретроспектива\n\n**Период:**\n\n## Что получилось\n\n- \n\n## Что мешало\n\n- \n\n## Что меняем\n\n- [ ] Действие — ответственный\n</string>
+    <string name="docs_template_sprint_plan_title">Планирование спринта</string>
+    <string name="docs_template_sprint_plan_description">Цель, объём, ёмкость команды и риски</string>
+    <string name="docs_template_sprint_plan_body"># Планирование спринта\n\n**Даты:**\n**Цель спринта:**\n\n## Объём\n\n- [ ] \n\n## Ёмкость команды\n\n| Участник | Доступность |\n|---|---|\n|  |  |\n\n## Риски и зависимости\n\n- \n</string>
+    <string name="docs_template_postmortem_title">Постмортем</string>
+    <string name="docs_template_postmortem_description">Хронология, причина, последствия, задачи</string>
+    <string name="docs_template_postmortem_body"># Постмортем\n\n**Инцидент:**\n**Когда:**\n**Влияние:**\n\n## Хронология\n\n- \n\n## Причина\n\n## Что помогло, что помешало\n\n- \n\n## Задачи\n\n- [ ] Действие — ответственный, срок\n</string>
+    <string name="docs_template_adr_title">ADR</string>
+    <string name="docs_template_adr_description">Архитектурное решение: контекст, варианты, выбор</string>
+    <string name="docs_template_adr_body"># ADR: \n\n**Статус:** предложено\n**Дата:**\n\n## Контекст\n\n## Варианты\n\n1. \n2. \n\n## Решение\n\n## Последствия\n\n- \n</string>
+    <string name="docs_templates_source_all">Все</string>
+    <string name="docs_templates_source_mine">Мои шаблоны</string>
+    <string name="docs_templates_category_sprint">Спринт</string>
+    <string name="docs_templates_category_product">Продукт</string>
+    <string name="docs_templates_category_engineering">Инженерия</string>
+    <string name="docs_templates_category_meetings">Встречи</string>
 
     <!-- Конференции (#2896). Подписи строки: время у карточки одно, и какое
          именно — зависит от состояния встречи, см. conferenceTimeLine. -->
@@ -1701,6 +1716,14 @@
     <string name="default_column_in_progress">В процессе</string>
     <string name="default_column_review">На рассмотрении</string>
     <string name="default_column_done">Готово</string>
+    <string name="default_column_backlog">Бэклог спринта</string>
+    <string name="default_column_new">Новые</string>
+    <string name="default_column_confirmed">Подтверждены</string>
+    <string name="default_column_verify">Проверка</string>
+    <string name="default_column_closed">Закрыты</string>
+    <string name="default_column_ideas">Идеи</string>
+    <string name="default_column_planned">Запланировано</string>
+    <string name="default_column_shipped">Выпущено</string>
 
     <!-- Названия семи акцентных схем дизайн-языка (ключ схемы — в accent, не здесь) -->
     <string name="accent_purple">Фиолетовый</string>

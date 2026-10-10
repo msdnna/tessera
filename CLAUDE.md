@@ -341,6 +341,13 @@ make scan-backend    # SAST/SCA компонента (есть scan-frontend/-an
   не помещается рядом с текстом) и шапка документа `doc-head`: управление документом больше НЕ
   телепортируется в topbar, topbar называет экран (`page-crumbs`). Меню `NSelect` подняты над
   поповерами в `kit/kit.css` — селект внутри `PopoverForm` иначе рисуется под формой.
+- **Документы и шаблоны v2 (#3032, миграция 0090):** у документа `milestone_id` и `conference_id`
+  (чипы в шапке — `documents/DocPins`, `PUT /documents/:id/milestone|conference`, `updated_at` не
+  двигают; перенос проекта снимает пины через границу), у шаблона — `category` (sprint · product ·
+  engineering · meetings; «Мои» = `author_id`). Шаблоны досок пустого проекта — пресеты на сервере
+  (`handlers/board_templates.go`, `POST /projects/:id/boards {template}`), новые `name_key` колонок
+  подписываются на клиентах (`board.column.defaultName`, `default_column_*`) и в `seededColumnCaptions`;
+  `/project/<slug>` — первая доска или экран «Пустой проект» (`views/ProjectView.vue`).
 - **Экраны аккаунта, конференции, справка, колокольчик (#3107):** все экраны входа и 404 —
   `AuthLayout` (аврора «Моих задач» `HomeAurora frozen` + стеклянная карточка); корень обязан быть
   ОДНИМ элементом (`App.vue` анимирует маршрут `mode="out-in"`: фрагмент — абстрактный

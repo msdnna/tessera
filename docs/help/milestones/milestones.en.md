@@ -45,6 +45,7 @@ It opens from the milestone list, from the tree, with a click on the name in the
 - **By assignee** — done / total and the estimate per person.
 - **Pace** — what this milestone has done against the three previous closed ones, with the average and the forecast.
 - **Milestone tasks** — by status, unfinished first; a click opens the task.
+- **Documents** — the documents tied to the milestone by the chip in their head (specs, plans, the sprint's retro); the card shows when there are any.
 
 Scope and burn-up are counted from history: every time a task joins or leaves a milestone it is written to the task's history (by hand, by the GitLab sync or by a repeating task). Tasks that were in a milestone before Tessera started recording this count as in it from the day they were created.
 

@@ -566,6 +566,43 @@ func (q *Queries) RestoreTaskTag(ctx context.Context, arg RestoreTaskTagParams) 
 	return result.RowsAffected(), nil
 }
 
+const seedTag = `-- name: SeedTag :one
+INSERT INTO tags (workspace_id, project_id, name, color)
+VALUES ($1, $2, $3, $4)
+ON CONFLICT (project_id, name) DO NOTHING
+RETURNING id, workspace_id, name, color, created_at, project_id, source
+`
+
+type SeedTagParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	ProjectID   uuid.UUID `json:"project_id"`
+	Name        string    `json:"name"`
+	Color       string    `json:"color"`
+}
+
+// SeedTag adds a tag a board template brings (#3047) unless the project already
+// has one so named — then it answers no row and the existing tag, its colour and
+// its tasks stay as they are. A hand-made tag, so source stays 'user'.
+func (q *Queries) SeedTag(ctx context.Context, arg SeedTagParams) (Tag, error) {
+	row := q.db.QueryRow(ctx, seedTag,
+		arg.WorkspaceID,
+		arg.ProjectID,
+		arg.Name,
+		arg.Color,
+	)
+	var i Tag
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.Name,
+		&i.Color,
+		&i.CreatedAt,
+		&i.ProjectID,
+		&i.Source,
+	)
+	return i, err
+}
+
 const setTagColor = `-- name: SetTagColor :one
 UPDATE tags SET color = $2 WHERE id = $1 RETURNING id, workspace_id, name, color, created_at, project_id, source
 `

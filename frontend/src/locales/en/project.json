@@ -197,5 +197,23 @@
     "readonly": "The project is archived — view only",
     "chip": "Archived project",
     "chipTitle": "The project is archived: its boards and tasks are view only"
+  },
+  "emptyProject": {
+    "title": "“{name}” has no boards",
+    "text": "Start from a template — the columns and fields are set up already.",
+    "blank": "or a blank board",
+    "blankPlaceholder": "Board name",
+    "notFound": "Project not found — it may have been renamed or moved."
+  },
+  "boardTemplate": {
+    "sprint": {
+      "name": "Sprint kanban"
+    },
+    "bugs": {
+      "name": "Bug tracker"
+    },
+    "roadmap": {
+      "name": "Roadmap"
+    }
   }
 }

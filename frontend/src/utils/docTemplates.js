@@ -22,11 +22,38 @@ import { i18n } from '@/i18n'
 // Markdown table written plainly in a message compiles into plural branches and
 // t() returns just the first one — an empty line. They are escaped as {'|'} in
 // the JSON, which is why the tables there look the way they do.
+//
+// Each built-in is filed under a gallery category (#3045, mockup TemplatesWin);
+// saved templates carry theirs in document_templates.category. The agenda
+// («meeting») is the one that is created pinned to a meeting (#3046).
 export const BUILTIN_TEMPLATES = [
-  { key: 'meeting', icon: '📋' },
-  { key: 'spec', icon: '📐' },
-  { key: 'retro', icon: '🔄' },
+  { key: 'meeting', icon: '📋', category: 'meetings' },
+  { key: 'spec', icon: '📐', category: 'product' },
+  { key: 'retro', icon: '🔄', category: 'sprint' },
+  { key: 'sprintPlan', icon: '🎯', category: 'sprint' },
+  { key: 'postmortem', icon: '🩺', category: 'engineering' },
+  { key: 'adr', icon: '🧭', category: 'engineering' },
 ]
+
+// The gallery's categories in the order its column lists them, '' first for
+// «без категории» (what the save-as-template submenu offers). The set mirrors
+// the server's (handlers/document_templates.go, migration 0090).
+export const TEMPLATE_CATEGORIES = ['', 'sprint', 'product', 'engineering', 'meetings']
+
+// Is this card an agenda — the template a new document is offered a meeting
+// for? The built-in one, or any saved template filed under «Встречи».
+export function isAgendaTemplate(card) {
+  if (!card) return false
+  return card.builtin ? card.key === 'meeting' : card.category === 'meetings'
+}
+
+// Gallery counts and filtering by the column's source: 'all', a category, or
+// 'mine' (saved by the reader — author_id, not a category).
+export function inSource(card, source, userId) {
+  if (source === 'all') return true
+  if (source === 'mine') return !card.builtin && !!userId && card.author_id === userId
+  return (card.category || '') === source
+}
 
 /** The built-in's Markdown body in the current language. */
 function templateMarkdown(key) {
@@ -61,6 +88,7 @@ export function builtinCard(tpl) {
     title: i18n.global.t(`documents.templates.${tpl.key}.title`),
     description: i18n.global.t(`documents.templates.${tpl.key}.description`),
     icon: tpl.icon,
+    category: tpl.category,
     preview: '',
   }
 }

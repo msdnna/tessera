@@ -75,6 +75,12 @@ const routes = [
         path: 'project/:projectSlug/board/:boardSlug',
         component: () => import('@/views/BoardView.vue'),
       },
+      // A project's own address (#3047): its first board, or — without one —
+      // the «Пустой проект» screen with the board templates.
+      {
+        path: 'project/:projectSlug',
+        component: () => import('@/views/ProjectView.vue'),
+      },
       // The stage page (#2993): slugs like the board's — the stage slug is
       // unique within its project (milestones.slug).
       {

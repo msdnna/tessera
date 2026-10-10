@@ -30,8 +30,10 @@ import {
   TrashOutline,
   RepeatOutline,
   TrailSignOutline,
+  DocumentTextOutline,
 } from '@vicons/ionicons5'
-import { conferences as confApi, workspaces as wsApi } from '@/api'
+import { conferences as confApi, documents as docsApi, workspaces as wsApi } from '@/api'
+import { builtinCards, builtinContent } from '@/utils/docTemplates'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useConferenceSession } from '@/stores/conference'
@@ -120,6 +122,51 @@ async function load() {
   } finally {
     // Only the request that lit the spinner puts it out.
     if (mine === loadSeq) loading.value = false
+  }
+}
+
+// ── agendas (#3046) ─────────────────────────────────────────────────────
+// Documents pinned to a meeting — its agenda, its protocol — as a chip on the
+// row. One read for the whole list (conference_id → documents), refreshed when
+// the list's workspace changes and when a document moves on the socket.
+const agendas = ref({})
+let agendaSeq = 0
+async function loadAgendas() {
+  const mine = ++agendaSeq
+  const wsId = ws.currentId
+  if (!wsId) {
+    agendas.value = {}
+    return
+  }
+  try {
+    const { data } = await docsApi.byConferences(wsId)
+    if (mine !== agendaSeq) return
+    const out = {}
+    for (const d of data || []) (out[d.conference_id] ||= []).push(d)
+    agendas.value = out
+  } catch {
+    // The chips are a convenience; the list stands without them.
+  }
+}
+const agendaOf = (c) => agendas.value[c.id]?.[0] || null
+function openAgenda(doc) {
+  router.push(`/documents/${doc.slug || doc.id}`)
+}
+// «Создать повестку» from a row's «⋯»: the built-in agenda, pinned to the
+// meeting and named after it — the same document the gallery would make.
+async function createAgenda(c) {
+  const card = builtinCards().find((x) => x.key === 'meeting')
+  try {
+    const { data: doc } = await docsApi.create(ws.currentId, {
+      title: `${card.title}: ${c.title}`,
+      icon: card.icon,
+      conference_id: c.id,
+    })
+    const content = builtinContent('meeting')
+    if (content) await docsApi.updateContent(doc.id, content, doc.updated_at)
+    openAgenda(doc)
+  } catch (e) {
+    message.error(e.message)
   }
 }
 
@@ -443,6 +490,9 @@ function openMenu(c, e) {
 }
 const menuItems = computed(() => [
   { key: 'link', label: t('conferences.list.copyLink'), icon: LinkOutline },
+  menu.value.conf && agendaOf(menu.value.conf)
+    ? { key: 'agenda', label: t('conferences.agenda.open'), icon: DocumentTextOutline }
+    : { key: 'agenda-new', label: t('conferences.agenda.create'), icon: DocumentTextOutline },
   { gap: true },
   {
     key: 'delete',
@@ -457,6 +507,8 @@ function onMenu(key) {
   menu.value.show = false
   if (!c) return
   if (key === 'link') copyLink(c)
+  else if (key === 'agenda') openAgenda(agendaOf(c))
+  else if (key === 'agenda-new') createAgenda(c)
   else if (key === 'delete') remove(c)
 }
 async function copyLink(c) {
@@ -561,6 +613,7 @@ watch(
       router.push('/conferences')
     }
     load()
+    loadAgendas()
   },
 )
 
@@ -568,6 +621,8 @@ watch(
 // reload, since «идёт сейчас» is the whole reason to open this section.
 useRealtime(
   (ev) => {
+    // A document pinned to (or unpinned from) a meeting moves a row's chip.
+    if (ev.scope === ws.currentId && ev.type?.startsWith('document')) loadAgendas()
     if (ev.scope !== ws.currentId || !ev.type?.startsWith('conference')) return
     // A recording starting or finishing changes one panel, not the page: the
     // conference itself is untouched, so refetching it (and the list behind it)
@@ -610,6 +665,7 @@ onMounted(() => {
     mq.addEventListener?.('change', onMq)
   }
   load()
+  loadAgendas()
   if (openId.value) loadDetail(openId.value)
 })
 onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
@@ -695,6 +751,17 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
                 <span v-if="c.active_count">{{
                   $t('conferences.row.activeCount', { count: c.active_count })
                 }}</span>
+                <button
+                  v-if="agendaOf(c)"
+                  type="button"
+                  class="agenda-chip"
+                  :title="$t('conferences.agenda.open')"
+                  data-testid="conference-agenda"
+                  @click.stop="openAgenda(agendaOf(c))"
+                >
+                  <n-icon :component="DocumentTextOutline" :size="12" />
+                  <span class="agenda-chip-t">{{ agendaOf(c).title }}</span>
+                </button>
               </div>
             </div>
             <button
@@ -746,6 +813,17 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
                       ? $t('conferences.row.author', { name: c.created_by_name })
                       : $t('conferences.row.authorUnknown')
                   }}</span>
+                  <button
+                    v-if="agendaOf(c)"
+                    type="button"
+                    class="agenda-chip"
+                    :title="$t('conferences.agenda.open')"
+                    data-testid="conference-agenda"
+                    @click.stop="openAgenda(agendaOf(c))"
+                  >
+                    <n-icon :component="DocumentTextOutline" :size="12" />
+                    <span class="agenda-chip-t">{{ agendaOf(c).title }}</span>
+                  </button>
                 </div>
               </div>
               <button
@@ -1280,6 +1358,36 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   display: inline-flex;
   align-items: center;
   gap: 4px;
+}
+/* The meeting's agenda (задача 3046): a pill in the meta line, a door to it. */
+.agenda-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  height: 20px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-radius: var(--t-r-pill);
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.agenda-chip:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.agenda-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--t-primary);
+}
+.agenda-chip-t {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .row-icon {
   flex: none;

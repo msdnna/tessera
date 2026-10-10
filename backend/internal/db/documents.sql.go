@@ -12,6 +12,49 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearDocumentConferencesAcrossWorkspaces = `-- name: ClearDocumentConferencesAcrossWorkspaces :execrows
+UPDATE documents d
+SET conference_id = NULL
+WHERE d.conference_id IS NOT NULL
+  AND d.project_id = $1::uuid
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT c.workspace_id FROM conferences c WHERE c.id = d.conference_id)
+`
+
+func (q *Queries) ClearDocumentConferencesAcrossWorkspaces(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, clearDocumentConferencesAcrossWorkspaces, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const clearDocumentMilestonesAcrossWorkspaces = `-- name: ClearDocumentMilestonesAcrossWorkspaces :execrows
+UPDATE documents d
+SET milestone_id = NULL
+WHERE d.milestone_id IS NOT NULL
+  AND (
+        d.project_id = $1::uuid
+     OR d.milestone_id IN (SELECT m.id FROM milestones m WHERE m.project_id = $1::uuid)
+      )
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT p.workspace_id FROM milestones m JOIN projects p ON p.id = m.project_id
+       WHERE m.id = d.milestone_id)
+`
+
+// ClearDocumentMilestonesAcrossWorkspaces and ClearDocumentConferencesAcrossWorkspaces
+// unpin what a project transfer carried across the boundary: the project's
+// documents travel, its stages travel, a meeting never does. A pin left
+// straddling it would hand the arriving team a stage or a meeting title of a
+// workspace they cannot see (and the stage page would list a stranger's document).
+func (q *Queries) ClearDocumentMilestonesAcrossWorkspaces(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, clearDocumentMilestonesAcrossWorkspaces, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const countDocumentAssetRefs = `-- name: CountDocumentAssetRefs :one
 SELECT (
     (SELECT count(*) FROM documents WHERE content::text LIKE $1::text)
@@ -53,22 +96,24 @@ func (q *Queries) CountDocumentChildren(ctx context.Context, parentID *uuid.UUID
 }
 
 const createDocument = `-- name: CreateDocument :one
-INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by
+INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview, milestone_id, conference_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
 `
 
 type CreateDocumentParams struct {
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	ProjectID   *uuid.UUID `json:"project_id"`
-	ParentID    *uuid.UUID `json:"parent_id"`
-	AuthorID    *uuid.UUID `json:"author_id"`
-	Title       string     `json:"title"`
-	Slug        string     `json:"slug"`
-	Icon        string     `json:"icon"`
-	Position    float64    `json:"position"`
-	Content     []byte     `json:"content"`
-	Preview     string     `json:"preview"`
+	WorkspaceID  uuid.UUID  `json:"workspace_id"`
+	ProjectID    *uuid.UUID `json:"project_id"`
+	ParentID     *uuid.UUID `json:"parent_id"`
+	AuthorID     *uuid.UUID `json:"author_id"`
+	Title        string     `json:"title"`
+	Slug         string     `json:"slug"`
+	Icon         string     `json:"icon"`
+	Position     float64    `json:"position"`
+	Content      []byte     `json:"content"`
+	Preview      string     `json:"preview"`
+	MilestoneID  *uuid.UUID `json:"milestone_id"`
+	ConferenceID *uuid.UUID `json:"conference_id"`
 }
 
 // CreateDocument takes content and preview rather than leaving both at their
@@ -77,6 +122,9 @@ type CreateDocumentParams struct {
 // keeps the new document's history honest: a document that starts as a template
 // has no "empty" state anyone could roll back to, and the version journal (D6)
 // would otherwise record one.
+//
+// milestone_id and conference_id (#3044, #3046) are taken at birth so that
+// «Повестка встречи» from the gallery is created already pinned to its meeting.
 func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error) {
 	row := q.db.QueryRow(ctx, createDocument,
 		arg.WorkspaceID,
@@ -89,6 +137,8 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		arg.Position,
 		arg.Content,
 		arg.Preview,
+		arg.MilestoneID,
+		arg.ConferenceID,
 	)
 	var i Document
 	err := row.Scan(
@@ -107,6 +157,8 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.Preview,
 		&i.DeletedAt,
 		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
@@ -290,6 +342,50 @@ func (q *Queries) DocumentIDsInWorkspace(ctx context.Context, workspaceID uuid.U
 	return items, nil
 }
 
+const documentMilestoneRef = `-- name: DocumentMilestoneRef :one
+SELECT m.id, m.title, m.slug, m.state, m.start_date, m.due_date, m.closed_at,
+       p.id AS project_id, p.name AS project_name, p.slug AS project_slug,
+       p.workspace_id
+FROM milestones m
+JOIN projects p ON p.id = m.project_id
+WHERE m.id = $1
+`
+
+type DocumentMilestoneRefRow struct {
+	ID          uuid.UUID  `json:"id"`
+	Title       string     `json:"title"`
+	Slug        string     `json:"slug"`
+	State       string     `json:"state"`
+	StartDate   *time.Time `json:"start_date"`
+	DueDate     *time.Time `json:"due_date"`
+	ClosedAt    *time.Time `json:"closed_at"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	ProjectName string     `json:"project_name"`
+	ProjectSlug string     `json:"project_slug"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+}
+
+// DocumentMilestoneRef is what the head's stage chip draws and links to: the
+// stage, its state, and the project its page lives under.
+func (q *Queries) DocumentMilestoneRef(ctx context.Context, id uuid.UUID) (DocumentMilestoneRefRow, error) {
+	row := q.db.QueryRow(ctx, documentMilestoneRef, id)
+	var i DocumentMilestoneRefRow
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Slug,
+		&i.State,
+		&i.StartDate,
+		&i.DueDate,
+		&i.ClosedAt,
+		&i.ProjectID,
+		&i.ProjectName,
+		&i.ProjectSlug,
+		&i.WorkspaceID,
+	)
+	return i, err
+}
+
 const documentSlugExists = `-- name: DocumentSlugExists :one
 SELECT EXISTS(SELECT 1 FROM documents WHERE workspace_id = $1 AND slug = $2)
 `
@@ -337,7 +433,7 @@ func (q *Queries) DocumentsMissingSlug(ctx context.Context) ([]DocumentsMissingS
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by FROM documents WHERE id = $1 AND deleted_at IS NULL
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id FROM documents WHERE id = $1 AND deleted_at IS NULL
 `
 
 // GetDocument answers for live documents only: one in the trash (0086) is gone
@@ -362,12 +458,14 @@ func (q *Queries) GetDocument(ctx context.Context, id uuid.UUID) (Document, erro
 		&i.Preview,
 		&i.DeletedAt,
 		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
 
 const getDocumentAny = `-- name: GetDocumentAny :one
-SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by FROM documents WHERE id = $1
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id FROM documents WHERE id = $1
 `
 
 func (q *Queries) GetDocumentAny(ctx context.Context, id uuid.UUID) (Document, error) {
@@ -389,12 +487,14 @@ func (q *Queries) GetDocumentAny(ctx context.Context, id uuid.UUID) (Document, e
 		&i.Preview,
 		&i.DeletedAt,
 		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
 
 const getDocumentBySlug = `-- name: GetDocumentBySlug :one
-SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by FROM documents WHERE workspace_id = $1 AND slug = $2 AND deleted_at IS NULL
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id FROM documents WHERE workspace_id = $1 AND slug = $2 AND deleted_at IS NULL
 `
 
 type GetDocumentBySlugParams struct {
@@ -421,6 +521,8 @@ func (q *Queries) GetDocumentBySlug(ctx context.Context, arg GetDocumentBySlugPa
 		&i.Preview,
 		&i.DeletedAt,
 		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
@@ -616,6 +718,105 @@ func (q *Queries) ListDocumentsByProject(ctx context.Context, arg ListDocumentsB
 	return items, nil
 }
 
+const listMilestoneDocuments = `-- name: ListMilestoneDocuments :many
+SELECT id, title, slug, icon, preview, updated_at
+FROM documents
+WHERE milestone_id = $1 AND workspace_id = $2
+ORDER BY updated_at DESC
+LIMIT 50
+`
+
+type ListMilestoneDocumentsParams struct {
+	MilestoneID *uuid.UUID `json:"milestone_id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+}
+
+type ListMilestoneDocumentsRow struct {
+	ID        uuid.UUID `json:"id"`
+	Title     string    `json:"title"`
+	Slug      string    `json:"slug"`
+	Icon      string    `json:"icon"`
+	Preview   string    `json:"preview"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ListMilestoneDocuments — the documents of a stage, for its page (#3044). The
+// workspace filter is a backstop: the pin is checked at the door and severed on a
+// transfer, and a list naming another team's document is the leak both exist for.
+func (q *Queries) ListMilestoneDocuments(ctx context.Context, arg ListMilestoneDocumentsParams) ([]ListMilestoneDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, listMilestoneDocuments, arg.MilestoneID, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMilestoneDocumentsRow
+	for rows.Next() {
+		var i ListMilestoneDocumentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Slug,
+			&i.Icon,
+			&i.Preview,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspaceConferenceDocuments = `-- name: ListWorkspaceConferenceDocuments :many
+SELECT d.id, d.conference_id, d.title, d.slug, d.icon, d.created_at
+FROM documents d
+JOIN conferences c ON c.id = d.conference_id
+WHERE d.workspace_id = $1 AND c.workspace_id = $1
+ORDER BY d.created_at
+`
+
+type ListWorkspaceConferenceDocumentsRow struct {
+	ID           uuid.UUID  `json:"id"`
+	ConferenceID *uuid.UUID `json:"conference_id"`
+	Title        string     `json:"title"`
+	Slug         string     `json:"slug"`
+	Icon         string     `json:"icon"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+// ListWorkspaceConferenceDocuments — every document pinned to a meeting of the
+// workspace, in one read for the meetings list (an agenda chip per row) rather
+// than a request per row.
+func (q *Queries) ListWorkspaceConferenceDocuments(ctx context.Context, workspaceID uuid.UUID) ([]ListWorkspaceConferenceDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceConferenceDocuments, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWorkspaceConferenceDocumentsRow
+	for rows.Next() {
+		var i ListWorkspaceConferenceDocumentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConferenceID,
+			&i.Title,
+			&i.Slug,
+			&i.Icon,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const projectDocumentSlugs = `-- name: ProjectDocumentSlugs :many
 SELECT id, slug FROM documents WHERE project_id = $1 ORDER BY created_at
 `
@@ -745,11 +946,45 @@ func (q *Queries) RestoreDocumentSubtree(ctx context.Context, arg RestoreDocumen
 	return items, nil
 }
 
+const setDocumentConference = `-- name: SetDocumentConference :one
+UPDATE documents SET conference_id = $2 WHERE id = $1 RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
+`
+
+type SetDocumentConferenceParams struct {
+	ID           uuid.UUID  `json:"id"`
+	ConferenceID *uuid.UUID `json:"conference_id"`
+}
+
+func (q *Queries) SetDocumentConference(ctx context.Context, arg SetDocumentConferenceParams) (Document, error) {
+	row := q.db.QueryRow(ctx, setDocumentConference, arg.ID, arg.ConferenceID)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ParentID,
+		&i.ProjectID,
+		&i.AuthorID,
+		&i.Title,
+		&i.Slug,
+		&i.Icon,
+		&i.Content,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
+	)
+	return i, err
+}
+
 const setDocumentContent = `-- name: SetDocumentContent :one
 UPDATE documents
 SET content = $2, preview = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
 `
 
 type SetDocumentContentParams struct {
@@ -783,6 +1018,46 @@ func (q *Queries) SetDocumentContent(ctx context.Context, arg SetDocumentContent
 		&i.Preview,
 		&i.DeletedAt,
 		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
+	)
+	return i, err
+}
+
+const setDocumentMilestone = `-- name: SetDocumentMilestone :one
+UPDATE documents SET milestone_id = $2 WHERE id = $1 RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
+`
+
+type SetDocumentMilestoneParams struct {
+	ID          uuid.UUID  `json:"id"`
+	MilestoneID *uuid.UUID `json:"milestone_id"`
+}
+
+// SetDocumentMilestone / SetDocumentConference pin a document to a stage (#3044)
+// or to a meeting (#3046). Neither touches updated_at: it is the
+// optimistic-concurrency token UpdateDocumentContent checks, and a chip in the
+// head changing must not answer 409 to the next save of whoever is typing.
+func (q *Queries) SetDocumentMilestone(ctx context.Context, arg SetDocumentMilestoneParams) (Document, error) {
+	row := q.db.QueryRow(ctx, setDocumentMilestone, arg.ID, arg.MilestoneID)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ParentID,
+		&i.ProjectID,
+		&i.AuthorID,
+		&i.Title,
+		&i.Slug,
+		&i.Icon,
+		&i.Content,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
@@ -845,7 +1120,7 @@ const updateDocumentContent = `-- name: UpdateDocumentContent :one
 UPDATE documents
 SET content = $2, preview = $3, updated_at = now()
 WHERE id = $1 AND updated_at = $4
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
 `
 
 type UpdateDocumentContentParams struct {
@@ -884,6 +1159,8 @@ func (q *Queries) UpdateDocumentContent(ctx context.Context, arg UpdateDocumentC
 		&i.Preview,
 		&i.DeletedAt,
 		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
@@ -892,7 +1169,7 @@ const updateDocumentMeta = `-- name: UpdateDocumentMeta :one
 UPDATE documents
 SET title = $2, icon = $3, parent_id = $4, project_id = $5, position = $6, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
 `
 
 type UpdateDocumentMetaParams struct {
@@ -930,6 +1207,8 @@ func (q *Queries) UpdateDocumentMeta(ctx context.Context, arg UpdateDocumentMeta
 		&i.Preview,
 		&i.DeletedAt,
 		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }

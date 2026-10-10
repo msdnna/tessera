@@ -3,6 +3,8 @@ package website.msdnna.tessera.ui.screens.documents
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +19,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Text
@@ -49,9 +52,11 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.util.DOC_LOCAL_EXTENSIONS
 import website.msdnna.tessera.util.DOC_OFFICE_EXTENSIONS
 import website.msdnna.tessera.util.DOC_PDF_EXTENSION
+import website.msdnna.tessera.util.DOC_TEMPLATE_SOURCES
 import website.msdnna.tessera.util.DocTemplateCard
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.filterDocTemplates
+import website.msdnna.tessera.util.inDocTemplateSource
 
 /**
  * The template gallery, and the way a file becomes a document (#2734, #2733 —
@@ -76,6 +81,8 @@ fun DocTemplatesSheet(
     /** Whether the office half of the picker is offered — see [importHint]. */
     converterAvailable: Boolean,
     converterReason: String,
+    /** The reader — whose saved templates «Мои шаблоны» lists (#3045). */
+    userId: String = "",
     onDismiss: () -> Unit,
     onUse: (DocTemplateCard) -> Unit,
     onRemove: (DocTemplateCard) -> Unit,
@@ -83,8 +90,12 @@ fun DocTemplatesSheet(
 ) {
     val c = Tessera.colors
     var query by remember { mutableStateOf("") }
+    var source by remember { mutableStateOf("all") }
     var confirmRemove by remember { mutableStateOf<DocTemplateCard?>(null) }
-    val shown = remember(cards, query) { filterDocTemplates(cards, query) }
+    val shown = remember(cards, query, source, userId) { filterDocTemplates(cards, query, source, userId) }
+    val counts = remember(cards, userId) {
+        DOC_TEMPLATE_SOURCES.associateWith { s -> cards.count { inDocTemplateSource(it, s, userId) } }
+    }
 
     BackHandler(enabled = true) { onDismiss() }
 
@@ -122,6 +133,23 @@ fun DocTemplatesSheet(
                 modifier = Modifier.fillMaxWidth(),
                 fieldTag = TestTags.DOCUMENT_TEMPLATES_SEARCH,
             )
+            Spacer(Modifier.height(8.dp))
+            // The gallery's categories (#3045) — the web's column, as a row of
+            // pills that scrolls sideways on a phone.
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                DOC_TEMPLATE_SOURCES.forEach { s ->
+                    SourcePill(
+                        label = stringResource(sourceLabel(s)),
+                        count = counts[s] ?: 0,
+                        selected = source == s,
+                        onClick = { source = s },
+                        modifier = Modifier.testTag(TestTags.documentTemplateSource(s)),
+                    )
+                }
+            }
             Spacer(Modifier.height(8.dp))
             TButton(
                 stringResource(R.string.docs_templates_upload),
@@ -187,6 +215,45 @@ fun DocTemplatesSheet(
             },
             onDismiss = { confirmRemove = null },
         )
+    }
+}
+
+private fun sourceLabel(source: String): Int = when (source) {
+    "sprint" -> R.string.docs_templates_category_sprint
+    "product" -> R.string.docs_templates_category_product
+    "engineering" -> R.string.docs_templates_category_engineering
+    "meetings" -> R.string.docs_templates_category_meetings
+    "mine" -> R.string.docs_templates_source_mine
+    else -> R.string.docs_templates_source_all
+}
+
+/** One source of the gallery: its name and how many templates it holds. */
+@Composable
+private fun SourcePill(
+    label: String,
+    count: Int,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val c = Tessera.colors
+    Row(
+        modifier
+            .height(32.dp)
+            .clip(RoundedCornerShape(RadiusMd))
+            .background(if (selected) c.primary.copy(alpha = 0.16f) else c.surfaceAlt)
+            .clickable(onClick = onClick)
+            .padding(horizontal = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            color = if (selected) c.text1 else c.text2,
+            fontSize = 13.sp,
+            fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+        )
+        Spacer(Modifier.width(6.dp))
+        Text(count.toString(), color = c.text3, fontSize = 12.sp)
     }
 }
 

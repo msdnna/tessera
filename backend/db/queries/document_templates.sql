@@ -1,6 +1,6 @@
 -- name: CreateDocumentTemplate :one
-INSERT INTO document_templates (workspace_id, author_id, title, description, icon, content, preview)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO document_templates (workspace_id, author_id, title, description, icon, content, preview, category)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 RETURNING *;
 
 -- ListDocumentTemplates returns the workspace gallery. Content is left behind
@@ -9,7 +9,7 @@ RETURNING *;
 -- list stays cheap.
 -- name: ListDocumentTemplates :many
 SELECT t.id, t.workspace_id, t.author_id, t.title, t.description, t.icon, t.preview,
-       t.created_at, t.updated_at,
+       t.category, t.created_at, t.updated_at,
        u.name AS author_name
 FROM document_templates t
 LEFT JOIN users u ON u.id = t.author_id
@@ -21,7 +21,7 @@ SELECT * FROM document_templates WHERE id = $1;
 
 -- name: UpdateDocumentTemplateMeta :one
 UPDATE document_templates
-SET title = $2, description = $3, icon = $4, updated_at = now()
+SET title = $2, description = $3, icon = $4, category = $5, updated_at = now()
 WHERE id = $1
 RETURNING *;
 

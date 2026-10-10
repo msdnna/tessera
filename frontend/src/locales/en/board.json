@@ -106,7 +106,15 @@
       "todo": "To do",
       "in_progress": "In progress",
       "review": "In review",
-      "done": "Done"
+      "done": "Done",
+      "backlog": "Sprint backlog",
+      "new": "New",
+      "confirmed": "Confirmed",
+      "verify": "Verifying",
+      "closed": "Closed",
+      "ideas": "Ideas",
+      "planned": "Planned",
+      "shipped": "Shipped"
     },
     "color": "Colour",
     "doneToggle": "“Done” column",

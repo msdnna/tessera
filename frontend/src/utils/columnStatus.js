@@ -41,10 +41,13 @@ export function todoColumn(cols) {
 // defaults it is without going through the name at all — so it decides first, and
 // the name-matching above stays for every column that has no key: the ones a user
 // added or renamed.
+const REVIEW_KEYS = new Set(['review', 'verify'])
+
 export function columnStatusName({ isDone, first, name, nameKey }) {
   if (isDone) return 'status-done'
   if (first) return 'status-todo'
-  if (nameKey) return nameKey === 'review' ? 'status-review' : 'status-progress'
+  // «Проверка» of the bug-tracker template (#3047) is a review column too.
+  if (nameKey) return REVIEW_KEYS.has(nameKey) ? 'status-review' : 'status-progress'
   if (isReviewColumn(name)) return 'status-review'
   return 'status-progress'
 }
