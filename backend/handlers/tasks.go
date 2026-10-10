@@ -27,6 +27,9 @@ type taskDetail struct {
 	GitlabAssignees []db.ListTaskGitlabAssigneesRow `json:"gitlab_assignees"`
 	Subtasks        []db.ListSubtasksWithMetaRow    `json:"subtasks"`
 	GitLab          *gitlabLinkView                 `json:"gitlab,omitempty"`
+	// ProjectArchived: the task's project is in the archive (0086) — every
+	// client opens it read-only; the server refuses writes with 409.
+	ProjectArchived bool `json:"project_archived"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -295,9 +298,10 @@ func (h *API) GetTask(c *gin.Context) {
 	if glAssignees == nil {
 		glAssignees = []db.ListTaskGitlabAssigneesRow{}
 	}
+	archived, _ := h.q.ProjectArchivedForBoard(c, t.BoardID)
 	c.JSON(http.StatusOK, taskDetail{
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, GitlabAssignees: glAssignees,
-		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id),
+		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id), ProjectArchived: archived,
 	})
 }
 

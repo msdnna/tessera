@@ -321,10 +321,14 @@ func TestArchivedProjectIsHiddenReadOnlyAndRestorable(t *testing.T) {
 	if ids(owner.get("/workspaces/" + s.WS + "/tasks").listBody(t))[taskID] {
 		t.Fatal("task of an archived project in «Мои задачи»")
 	}
-	// Still readable…
+	// Still readable — and the board and the task say they are on view only.
 	owner.expect(t, owner.get("/projects/"+s.Project), http.StatusOK)
-	owner.expect(t, owner.get("/boards/"+s.Board), http.StatusOK)
-	owner.expect(t, owner.get("/tasks/"+taskID), http.StatusOK)
+	if b := owner.expect(t, owner.get("/boards/"+s.Board), http.StatusOK); b["project_archived"] != true {
+		t.Fatalf("board of an archived project: project_archived = %v", b["project_archived"])
+	}
+	if tk := owner.expect(t, owner.get("/tasks/"+taskID), http.StatusOK); tk["project_archived"] != true {
+		t.Fatalf("task of an archived project: project_archived = %v", tk["project_archived"])
+	}
 	if !ids(owner.get("/boards/" + s.Board + "/tasks").listBody(t))[taskID] {
 		t.Fatal("archived project's board lost its tasks")
 	}

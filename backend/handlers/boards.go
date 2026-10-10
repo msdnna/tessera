@@ -22,6 +22,9 @@ import (
 type boardScopeView struct {
 	db.Board
 	WorkspaceID uuid.UUID `json:"workspace_id"`
+	// ProjectArchived: the board's project is in the archive (0086) — the client
+	// opens the board read-only, the server refuses writes with 409.
+	ProjectArchived bool `json:"project_archived"`
 }
 
 // CreateBoard adds a board to a project.
@@ -244,7 +247,7 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID})
+	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID, ProjectArchived: proj.ArchivedAt != nil})
 }
 
 // resolveBoardParam resolves a board route's :id segment — a UUID or a
@@ -297,7 +300,8 @@ func (h *API) GetBoard(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID})
+	archived, _ := h.q.ProjectArchivedForBoard(c, b.ID)
+	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID, ProjectArchived: archived})
 }
 
 // UpdateBoard renames a board.
