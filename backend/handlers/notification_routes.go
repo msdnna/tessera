@@ -341,9 +341,7 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 		// Asked about an arbitrary instant, not just now: a digest slot is a future
 		// time, and whether *it* falls inside the window is what decides when the
 		// digest may go out (see digestSlot).
-		quietAt := func(t time.Time) (time.Time, bool) {
-			return quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, t)
-		}
+		quietAt := quietFor(p, quietExempt(p, n.Kind, h.taskPriorityOf(ctx, p, n.TaskID)))
 		_, inQuiet := quietAt(now)
 		var deviceTargets []string
 		for _, chID := range r.ChannelIds {
@@ -378,6 +376,49 @@ func (h *API) routeNotification(ctx context.Context, n db.Notification) []string
 		return deviceTargets // first matching rule wins
 	}
 	return nil
+}
+
+// urgentPriority is the task priority «Срочный» (the top of the 0–4 scale).
+const urgentPriority = 4
+
+// quietExempt reports whether a notification may go out inside the quiet window
+// anyway — «Только срочное и упоминания» (#3050). Only when the user asked for
+// it: a mention of them (in a task, a document or a meeting's chat), a meeting
+// about to start, and anything about a task marked urgent. The rest waits for
+// the window to end, as before.
+func quietExempt(p db.NotificationPref, kind string, taskPriority int32) bool {
+	if !p.QuietAllowUrgent {
+		return false
+	}
+	if kind == kindMention || kind == kindConferenceSoon {
+		return true
+	}
+	return taskPriority >= urgentPriority
+}
+
+// quietFor binds the quiet window to one notification: the user's window, or
+// none at all when the notification is exempt from it.
+func quietFor(p db.NotificationPref, exempt bool) quietFn {
+	return func(t time.Time) (time.Time, bool) {
+		if exempt {
+			return time.Time{}, false
+		}
+		return quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, t)
+	}
+}
+
+// taskPriorityOf reads the priority of the task a notification is about, 0 when
+// it is about none (or the task is gone). Asked only when an exception could
+// hang on it.
+func (h *API) taskPriorityOf(ctx context.Context, p db.NotificationPref, taskID *uuid.UUID) int32 {
+	if !p.QuietAllowUrgent || taskID == nil {
+		return 0
+	}
+	t, err := h.q.GetTask(ctx, *taskID)
+	if err != nil {
+		return 0
+	}
+	return t.Priority
 }
 
 // timedKinds are the notifications that name an instant the reader is already
@@ -521,10 +562,8 @@ func (h *API) reanchorDeliveries(ctx context.Context, uid uuid.UUID, p db.Notifi
 	if err != nil {
 		return
 	}
-	quietAt := func(t time.Time) (time.Time, bool) {
-		return quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, t)
-	}
 	for _, d := range rows {
+		quietAt := quietFor(p, quietExempt(p, d.Kind, d.TaskPriority))
 		next, group := digestSlot(d.CreatedAt, quietAt, digestMinutesFor(d.Kind, p.DigestMinutes), d.ChannelID)
 		soft(ctx, "RescheduleDelivery", h.q.RescheduleDelivery(ctx, db.RescheduleDeliveryParams{
 			ID: d.ID, NextAttemptAt: next, DigestGroup: group,
@@ -541,6 +580,7 @@ func scheduleChanged(before, after db.NotificationPref) bool {
 		before.QuietStartMinutes != after.QuietStartMinutes ||
 		before.QuietEndMinutes != after.QuietEndMinutes ||
 		before.QuietTz != after.QuietTz ||
+		before.QuietAllowUrgent != after.QuietAllowUrgent ||
 		before.DigestMinutes != after.DigestMinutes
 }
 

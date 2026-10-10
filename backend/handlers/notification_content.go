@@ -71,6 +71,19 @@ const (
 	kindReopened   = "reopened"
 )
 
+// ── v2 notifications (#3033) ────────────────────────────────────
+//
+// The payload events and routing kinds added with the v2 notifications
+// (#3048). Mentions outside a task — a document's comment, a meeting's chat —
+// keep the routing kind "mention" (one switch, «Меня упомянули в задаче,
+// документе, чате встречи»), and differ only in the event.
+const (
+	kindMilestoneClosed     = "milestone_closed"
+	kindConferenceSoon      = "conference_soon"
+	kindIntegrationConflict = "integration_conflict"
+	kindMention             = "mention"
+)
+
 // notifyMsg is one notification's content: the legacy pre-rendered sentence and
 // the structured payload. Build one with the msg* helpers below — never write a
 // payload inline at a call site, or the event names drift out of this file.

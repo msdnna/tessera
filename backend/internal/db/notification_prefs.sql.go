@@ -229,9 +229,9 @@ const upsertNotificationPrefs = `-- name: UpsertNotificationPrefs :one
 INSERT INTO notification_prefs (
     user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled,
     quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz, digest_minutes,
-    toasts_enabled, toasts, quiet_toasts, updated_at
+    toasts_enabled, toasts, quiet_toasts, quiet_allow_urgent, updated_at
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, now())
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, now())
 ON CONFLICT (user_id) DO UPDATE
 SET due_enabled = EXCLUDED.due_enabled,
     due_lead_minutes = EXCLUDED.due_lead_minutes,
@@ -245,6 +245,7 @@ SET due_enabled = EXCLUDED.due_enabled,
     toasts_enabled = EXCLUDED.toasts_enabled,
     toasts = EXCLUDED.toasts,
     quiet_toasts = EXCLUDED.quiet_toasts,
+    quiet_allow_urgent = EXCLUDED.quiet_allow_urgent,
     updated_at = now()
 RETURNING user_id, due_enabled, due_lead_minutes, due_repeat_minutes, reminder_enabled, updated_at, quiet_enabled, quiet_start_minutes, quiet_end_minutes, quiet_tz, digest_minutes, toasts_enabled, toasts, quiet_toasts, dnd_until, quiet_allow_urgent
 `
@@ -263,6 +264,7 @@ type UpsertNotificationPrefsParams struct {
 	ToastsEnabled     bool      `json:"toasts_enabled"`
 	Toasts            []byte    `json:"toasts"`
 	QuietToasts       bool      `json:"quiet_toasts"`
+	QuietAllowUrgent  bool      `json:"quiet_allow_urgent"`
 }
 
 func (q *Queries) UpsertNotificationPrefs(ctx context.Context, arg UpsertNotificationPrefsParams) (NotificationPref, error) {
@@ -280,6 +282,7 @@ func (q *Queries) UpsertNotificationPrefs(ctx context.Context, arg UpsertNotific
 		arg.ToastsEnabled,
 		arg.Toasts,
 		arg.QuietToasts,
+		arg.QuietAllowUrgent,
 	)
 	var i NotificationPref
 	err := row.Scan(

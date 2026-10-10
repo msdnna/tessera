@@ -36,6 +36,9 @@ type prefsView struct {
 	Toasts        json.RawMessage `json:"toasts"`
 	QuietToasts   bool            `json:"quiet_toasts"`
 	DndUntil      *time.Time      `json:"dnd_until"`
+	// «Только срочное и упоминания» (#3050): inside the quiet window the
+	// mentions, urgent tasks and a meeting about to start still go out.
+	QuietAllowUrgent bool `json:"quiet_allow_urgent"`
 }
 
 // prefsUpdate is the PUT body. The scheduling fields are full-replace as they
@@ -55,6 +58,9 @@ type prefsUpdate struct {
 	ToastsEnabled     *bool           `json:"toasts_enabled"`
 	Toasts            json.RawMessage `json:"toasts"`
 	QuietToasts       *bool           `json:"quiet_toasts"`
+	// Pointer for the same reason as the toast fields: a client that does not
+	// know it (Android) must not switch it off by saving its own prefs.
+	QuietAllowUrgent *bool `json:"quiet_allow_urgent"`
 }
 
 // maxToastsConfig bounds the client's toast object: a handful of switches, not
@@ -78,6 +84,7 @@ func prefsViewOf(p db.NotificationPref) prefsView {
 		QuietEnabled: p.QuietEnabled, QuietStartMinutes: p.QuietStartMinutes,
 		QuietEndMinutes: p.QuietEndMinutes, QuietTz: p.QuietTz, DigestMinutes: p.DigestMinutes,
 		ToastsEnabled: p.ToastsEnabled, Toasts: toasts, QuietToasts: p.QuietToasts, DndUntil: dnd,
+		QuietAllowUrgent: p.QuietAllowUrgent,
 	}
 }
 
@@ -193,6 +200,10 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 	if req.QuietToasts != nil {
 		quietToasts = *req.QuietToasts
 	}
+	allowUrgent := before.QuietAllowUrgent
+	if req.QuietAllowUrgent != nil {
+		allowUrgent = *req.QuietAllowUrgent
+	}
 	p, err := h.q.UpsertNotificationPrefs(c, db.UpsertNotificationPrefsParams{
 		UserID: uid, DueEnabled: req.DueEnabled,
 		DueLeadMinutes: req.DueLeadMinutes, DueRepeatMinutes: req.DueRepeatMinutes,
@@ -205,6 +216,7 @@ func (h *API) UpdateMyNotificationPrefs(c *gin.Context) {
 		ToastsEnabled:     toastsOn,
 		Toasts:            toasts,
 		QuietToasts:       quietToasts,
+		QuietAllowUrgent:  allowUrgent,
 	})
 	if err != nil {
 		fail(c, err)

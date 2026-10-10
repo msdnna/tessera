@@ -537,7 +537,8 @@ func (h *API) outsideQuietHours(ctx context.Context, d db.NotificationDelivery, 
 	if perr != nil {
 		p = defaultPrefs(n.UserID)
 	}
-	if end, quiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, next); quiet {
+	quietAt := quietFor(p, quietExempt(p, n.Kind, h.taskPriorityOf(ctx, p, n.TaskID)))
+	if end, quiet := quietAt(next); quiet {
 		return end
 	}
 	return next
