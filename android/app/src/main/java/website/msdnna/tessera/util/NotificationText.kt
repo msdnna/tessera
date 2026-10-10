@@ -38,6 +38,8 @@ private val FIELD_NAMES = linkedMapOf(
     "estimate" to R.string.notif_ev_field_estimate,
     "completed" to R.string.notif_ev_field_completed,
     "reopened" to R.string.notif_ev_field_reopened,
+    // Конфликт синхронизации (#3048) называет и статус задачи.
+    "state" to R.string.notif_ev_field_state,
 )
 
 /** Шаблоны событий. Ключи и порядок подстановок — каталог `notify.bundles`. */
@@ -55,6 +57,12 @@ private val EVENTS = mapOf(
     "integration_sync_partial" to R.string.notif_ev_sync_partial,
     "integration_sync_failed" to R.string.notif_ev_sync_failed,
     "conference_invited" to R.string.notif_ev_conference_invited,
+    // Уведомления v2 (#3048).
+    "milestone_closed" to R.string.notif_ev_milestone_closed,
+    "conference_starting" to R.string.notif_ev_conference_starting,
+    "integration_conflict" to R.string.notif_ev_integration_conflict,
+    "document_mention" to R.string.notif_ev_document_mention,
+    "conference_mention" to R.string.notif_ev_conference_mention,
 )
 
 /** Фраза для колокольчика и для тела системного уведомления. */
@@ -93,6 +101,27 @@ fun notificationText(res: Resources, payload: NotificationPayload?, fallback: St
 
         // Приглашение в конференцию номера задачи не несёт — подстановок две.
         "conference_invited" -> res.getString(template, actor, ctx)
+
+        // Уведомления v2 (#3048). Этап и встреча называются всегда (как срок
+        // задачи): без названия фраза ни о чём; упоминание вне задачи называет
+        // место (`name`), а комментарий идёт контекстом, как у task_mention.
+        "milestone_closed" -> res.getString(
+            template,
+            actor,
+            payload?.title.orEmpty(),
+            (payload?.done ?: 0).toString(),
+            (payload?.total ?: 0).toString(),
+        )
+
+        "conference_starting" -> res.getString(template, (payload?.minutes ?: 0).toString(), payload?.title.orEmpty())
+
+        "integration_conflict" -> res.getString(template, payload?.label.orEmpty(), ref, fieldList(res, payload?.fields))
+
+        "document_mention", "conference_mention" -> {
+            val excerpt = payload?.excerpt?.trim().orEmpty()
+            val quote = if (excerpt.isEmpty()) "" else res.getString(R.string.notif_ev_ctx, excerpt)
+            res.getString(template, actor, payload?.name.orEmpty(), quote)
+        }
 
         "integration_sync_ok", "integration_sync_partial" -> res.getString(
             template,

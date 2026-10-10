@@ -1775,6 +1775,13 @@
     <string name="notif_ev_sync_partial">%1$s: +%2$s new, ~%3$s updated, in %4$s (some actions failed)</string>
     <string name="notif_ev_sync_failed">%1$s: sync failed — %2$s (after %3$s)</string>
     <string name="notif_ev_conference_invited">%1$s invited you to a conference%2$s</string>
+    <!-- v2 notifications (#3048). -->
+    <string name="notif_ev_milestone_closed">%1$s closed stage “%2$s” — %3$s of %4$s done</string>
+    <string name="notif_ev_conference_starting">Meeting “%2$s” starts in %1$s min</string>
+    <string name="notif_ev_integration_conflict">%1$s · sync conflict on #%2$s (%3$s): changed on both sides</string>
+    <string name="notif_ev_document_mention">%1$s mentioned you in document “%2$s”%3$s</string>
+    <string name="notif_ev_conference_mention">%1$s mentioned you in the chat of “%2$s”%3$s</string>
+    <string name="notif_ev_field_state">status</string>
     <string name="notif_ev_field_title">title</string>
     <string name="notif_ev_field_description">description</string>
     <string name="notif_ev_field_priority">priority</string>
