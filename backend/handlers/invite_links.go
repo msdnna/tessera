@@ -278,7 +278,7 @@ func (h *API) CreateInviteLink(c *gin.Context) {
 	var req struct {
 		Role    string `json:"role"`
 		TTLDays int    `json:"ttl_days"`
-		MaxUses int    `json:"max_uses"`
+		MaxUses int32  `json:"max_uses"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -321,7 +321,7 @@ func (h *API) CreateInviteLink(c *gin.Context) {
 		}
 		var cerr error
 		link, cerr = q.CreateInviteLink(c, db.CreateInviteLinkParams{
-			WorkspaceID: id, TokenHash: hash, Role: role, MaxUses: int32(uses), //nolint:gosec // bounded above
+			WorkspaceID: id, TokenHash: hash, Role: role, MaxUses: uses,
 			CreatedBy: &uid, ExpiresAt: time.Now().Add(ttl),
 		})
 		return cerr
