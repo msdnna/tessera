@@ -7,6 +7,7 @@ import {
   sortCodeLinks,
   codeLinksPatch,
   codeChangeText,
+  changeRef,
 } from '@/utils/codeLinks'
 import { eventText } from '@/utils/taskFeed'
 import { useCodeLinksStore } from '@/stores/codeLinks'
@@ -67,6 +68,16 @@ describe('codeLinks', () => {
     expect(store.byTask.t1).toEqual([])
     store.forget('t1')
     expect(store.byTask.t1).toBeUndefined()
+  })
+
+  it('names an MR of another GitLab project with its path', () => {
+    expect(changeRef({ number: 418, ref: '!418' })).toBe('!418')
+    expect(changeRef({ number: 12, ref: 'team/api!12' })).toBe('team/api!12')
+    expect(changeRef({ number: 7 })).toBe('!7') // an older server: no ref
+    expect(codeChangeText({ state: 'merged', number: 12, ref: 'team/api!12' })).toEqual({
+      key: 'codeMerged',
+      params: { ref: 'team/api!12' },
+    })
   })
 
   it('words the history line', () => {

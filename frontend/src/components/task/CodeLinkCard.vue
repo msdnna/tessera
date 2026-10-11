@@ -14,7 +14,7 @@ import {
   RemoveCircleOutline,
   PlayCircleOutline,
 } from '@vicons/ionicons5'
-import { changeStatus, ciMeta, branchLine } from '@/utils/codeLinks'
+import { changeStatus, ciMeta, branchLine, changeRef } from '@/utils/codeLinks'
 import { readableHue } from '@/utils/gradient'
 import { useThemeStore } from '@/stores/theme'
 
@@ -35,6 +35,8 @@ const CI_ICONS = {
 const status = computed(() => changeStatus(props.link))
 const ci = computed(() => ciMeta(props.link.ci_status))
 const branches = computed(() => branchLine(props.link))
+// «!418», or «group/proj!12» for an MR of another GitLab project.
+const mrRef = computed(() => changeRef(props.link))
 // The mockup's tinted pill: a soft same-hue diagonal over the card surface. A
 // draft is neutral — flat grey, no hue. The text is clamped for legibility on the
 // active theme (the merged blue is too dark on the dark surface as is).
@@ -59,13 +61,13 @@ function open() {
     tabindex="0"
     data-testid="task-mr"
     :data-mr="link.number"
-    :title="t('task.dev.openMr', { ref: `!${link.number}` })"
+    :title="t('task.dev.openMr', { ref: mrRef })"
     @click="open"
     @keydown.enter.prevent="open"
   >
     <div class="mr-line">
       <n-icon :component="GitMergeOutline" :size="15" class="mr-ico" />
-      <b class="mr-num">!{{ link.number }}</b>
+      <b class="mr-num" :title="mrRef">{{ mrRef }}</b>
       <span class="mr-title">{{ link.title }}</span>
       <span
         class="mr-pill"
@@ -130,6 +132,11 @@ function open() {
 }
 .mr-num {
   flex: none;
+  /* Another project's path can be long: it yields to the title, never pushes the pill. */
+  max-width: 45%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-weight: 600;
 }
 .mr-title {

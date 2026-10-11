@@ -44,6 +44,13 @@ export function branchLine(link) {
   return from || to
 }
 
+// How the change is named: the server's `ref` — «!418» inside the bound GitLab
+// project, «group/proj!12» for an MR of another project — or, from an older
+// server, the bare number.
+export function changeRef(link) {
+  return link?.ref || `!${link?.number ?? ''}`
+}
+
 // Same order as the server: open changes first, then the most recently active.
 export function sortCodeLinks(links) {
   return [...(links || [])].sort((a, b) => {
@@ -72,7 +79,7 @@ export function codeLinksPatch(ev) {
 export function codeChangeText(data) {
   const d = data || {}
   const state = ['open', 'merged', 'closed'].includes(d.state) ? d.state : 'open'
-  const ref = `!${d.number ?? ''}`
+  const ref = changeRef(d)
   if (state === 'open' && d.branch)
     return { key: 'codeOpenedOn', params: { ref, branch: d.branch } }
   const key = { open: 'codeOpened', merged: 'codeMerged', closed: 'codeClosed' }[state]
