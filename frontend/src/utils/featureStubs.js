@@ -15,9 +15,6 @@ export const FEATURE_STUBS = {
   'admin.roles': 3076,
   // GitLab: import and export (#3068).
   'gitlab.importExport': 3068,
-  // Background jobs: history, steps and progress, the live log, the queue
-  // (#3067).
-  'jobs.history': 3067,
   // Workspace commands: palette macros and task templates (#3069).
   'commands.macros': 3069,
 }

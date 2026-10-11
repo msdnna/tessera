@@ -373,6 +373,10 @@ export const CATALOG = [
   { id: 'conflict.apply', keys: 'mod+enter', group: 'window', modal: true, input: true },
   { id: 'jobs.stop', keys: 'shift+backspace', group: 'window', modal: true },
   { id: 'jobs.run', keys: 'r', modal: true },
+  // The live log (#3092): follow the newest line, copy it all (only while no
+  // text is selected — see BackgroundJobsModal).
+  { id: 'jobs.follow', keys: 'f', group: 'window', modal: true },
+  { id: 'jobs.copyLog', keys: 'mod+c', group: 'window', modal: true },
   { id: 'members.invite', keys: 'i', group: 'window', modal: true },
   // The shared invitation link (#3062); only while it is on screen and no text
   // is selected — see MembersModal.

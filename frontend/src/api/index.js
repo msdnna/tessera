@@ -403,8 +403,12 @@ export const admin = {
   // GitLab OAuth app config.
   getOAuth: () => api.get('/admin/oauth/gitlab'),
   setOAuth: (data) => api.put('/admin/oauth/gitlab', data),
-  // Background jobs panel (instance-level).
-  jobs: () => api.get('/admin/jobs', { skipLoader: true }),
+  // Background jobs panel (instance-level): live jobs + the 30-day history
+  // (#3067); params.type narrows to one family.
+  jobs: (params) => api.get('/admin/jobs', { params, skipLoader: true }),
+  // One job with its log; `after` — only the lines past that seq.
+  job: (key, after = 0) =>
+    api.get(`/admin/jobs/${encodeURIComponent(key)}`, { params: { after }, skipLoader: true }),
   runJob: (key) =>
     api.post(`/admin/jobs/${encodeURIComponent(key)}/run`, null, { skipLoader: true }),
   cancelJob: (key) =>
@@ -565,6 +569,14 @@ export const accessRequests = {
   create: (data) => api.post('/access-requests', data),
 }
 
+// A member's own background run — an export or an import (#3068).
+export const jobs = {
+  get: (id, after = 0) => api.get(`/jobs/${id}`, { params: { after }, skipLoader: true }),
+  cancel: (id) => api.post(`/jobs/${id}/cancel`, null, { skipLoader: true }),
+  // responseType blob: the response is the exported file.
+  download: (id) => api.get(`/jobs/${id}/download`, { responseType: 'blob', skipLoader: true }),
+}
+
 export const boards = {
   // `id` may be a UUID or a bare board slug (legacy /board/<slug> links). A slug
   // is unique only within its project, so wsId tells the backend which of the
@@ -591,6 +603,15 @@ export const boards = {
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
   // «>deploy» / «>ci» (#3099): { mode: run|retry_failed, ref?, variables?, integration_id? }.
   runCI: (id, data) => api.post(`/boards/${id}/ci/run`, data),
+  // Export / import of the board's tasks as background jobs (#3068): both
+  // answer 202 with `{ job }`. data: { format: 'csv'|'json', task_ids? }.
+  exportTasks: (id, data) => api.post(`/boards/${id}/export`, data, { skipLoader: true }),
+  // formData: file, mapping (JSON), options (JSON).
+  importTasks: (id, formData) =>
+    api.post(`/boards/${id}/import`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      skipLoader: true,
+    }),
   // Saved board views (#2970): the reader's own + the board's shared ones.
   views: (id) => api.get(`/boards/${id}/views`),
   // { name, config, scope?: 'user' | 'board', is_default? } — upserts by name.

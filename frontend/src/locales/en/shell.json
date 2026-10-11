@@ -636,7 +636,9 @@
       "apply": "Conflict: apply and push"
     },
     "jobs": {
-      "stop": "Job: stop"
+      "stop": "Job: stop",
+      "follow": "Job: follow the log",
+      "copyLog": "Job: copy the log"
     },
     "members": {
       "invite": "Members: invite",

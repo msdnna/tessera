@@ -103,7 +103,7 @@ test('фоновые задания: G J, фильтр по типу, детал
   await page.keyboard.press('g')
   await page.keyboard.press('j')
   await expect(page.getByTestId('jobs-window')).toBeVisible()
-  await page.getByTestId('jobs-tab-workers').click()
+  await page.getByTestId('jobs-tab-maintenance').click()
   await expect(page.locator('.bj-row').first()).toBeVisible()
   await page.locator('.bj-row').first().click()
   await expect(page.locator('.bj-detail-name')).toBeVisible()

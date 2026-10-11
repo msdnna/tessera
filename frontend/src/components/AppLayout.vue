@@ -51,6 +51,7 @@ import { useMembersStore } from '@/stores/members'
 import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useCodeLinksStore } from '@/stores/codeLinks'
+import { useJobsStore } from '@/stores/jobs'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useTourStore } from '@/stores/tour'
 import { useOnboardingStore } from '@/stores/onboarding'
@@ -87,6 +88,7 @@ const membersStore = useMembersStore()
 const toasts = useToastsStore()
 const conflicts = useConflictsStore()
 const codeLinks = useCodeLinksStore()
+const jobsStore = useJobsStore()
 const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
 const onboarding = useOnboardingStore()
@@ -189,6 +191,8 @@ useRealtime(
     conflicts.onEvent(ev)
     // A merge request or its pipeline moved in GitLab → the open task window (#2964).
     codeLinks.onEvent(ev)
+    // Background jobs (#3067): the jobs window, and a member's own export/import.
+    jobsStore.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
     // A renamed or recoloured workspace repaints its rail tile everywhere.
