@@ -271,8 +271,60 @@
         "run_pipeline": "Pipeline"
       },
       "pipelineStarted": "Pipeline #{id} started · {project}",
-      "open": "Open"
-    }
+      "open": "Open",
+      "summary": "{n} command · shared ones are seen by everybody | {n} commands · shared ones are seen by everybody",
+      "new": "New command",
+      "mine": "mine",
+      "remove": "Delete the command",
+      "removeConfirm": "Delete?",
+      "empty": "No commands yet — «New command» or N",
+      "vis": {
+        "all": "All",
+        "shared": "Shared",
+        "mine": "Only mine"
+      },
+      "col": {
+        "name": "Name",
+        "call": "Call",
+        "action": "Action",
+        "keys": "Keys"
+      },
+      "fromTemplate": "From the template",
+      "noTemplate": "No template",
+      "template": "Task template",
+      "tags": "Tags",
+      "priority": "Priority",
+      "assignMe": "Assignee — me",
+      "currentStage": "Stage — current",
+      "docTemplate": "Document template",
+      "docTitle": "Document title",
+      "newPipeline": "New pipeline",
+      "retryFailed": "Retry the last failed",
+      "ref": "Branch",
+      "variables": "Variables (KEY=VALUE per line)",
+      "category": "Category",
+      "shared": "Shared",
+      "onlyMine": "Only mine",
+      "keysPlaceholder": "press the keys",
+      "keysTaken": "Keys taken: «{what}»",
+      "keysTakenMacro": "Keys taken by another command",
+      "keysNeedMod": "Needs a modifier: ⌥, ⌘ or ⇧ with a letter",
+      "triggerTaken": "The call >{trigger} is taken"
+    },
+    "tpl": {
+      "summary": "{n} task template | {n} task templates",
+      "new": "New template",
+      "remove": "Delete the template",
+      "empty": "No templates yet",
+      "name": "Name",
+      "taskTitle": "Task title",
+      "description": "Description (Markdown, a checklist is «- [ ]»)",
+      "descriptionPlaceholder": "## Steps\n- [ ] ",
+      "subtasks": "Subtasks — one per line",
+      "subtasksN": "{n} subtask | {n} subtasks",
+      "saveHint": "⌘↵ saves, Esc cancels"
+    },
+    "navPalette": "Palette ⌘K"
   },
   "layout": {
     "collapse": "Collapse the sidebar",

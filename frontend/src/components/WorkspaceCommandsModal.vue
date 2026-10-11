@@ -34,7 +34,9 @@ import { useResponsive } from '@/composables/useResponsive'
 import { builtinCommandKeys, canonCommandKey, isValidCommandKey } from '@/utils/commands'
 import { CAPS, cap } from '@/utils/keyCaps'
 import { isMac } from '@/utils/keys'
-import { stubTask } from '@/utils/featureStubs'
+import { useMacrosStore } from '@/stores/macros'
+import MacrosPane from './commands/MacrosPane.vue'
+import TemplatesPane from './commands/TemplatesPane.vue'
 import { workspaceName } from '@/utils/defaultNames'
 import LargeWindow from './kit/LargeWindow.vue'
 import ActionMenu from './kit/ActionMenu.vue'
@@ -266,7 +268,10 @@ function onMenu(key) {
   else if (key === 'delete') remove(i)
 }
 
-const macrosTask = stubTask('commands.macros')
+// Palette commands and task templates (#3069): their own panes.
+const macros = useMacrosStore()
+const macrosPane = ref(null)
+const templatesPane = ref(null)
 const navItems = computed(() => [
   {
     key: 'custom',
@@ -280,17 +285,28 @@ const navItems = computed(() => [
     label: t('shell.commands.navBuiltin'),
     count: builtin.value.length || null,
   },
-  { heading: t('shell.commands.navSoon') },
-  { key: 'macros', icon: TerminalOutline, label: t('shell.commands.navMacros'), stub: macrosTask },
+  { heading: t('shell.commands.navPalette') },
+  {
+    key: 'macros',
+    icon: TerminalOutline,
+    label: t('shell.commands.navMacros'),
+    count: macros.macros.length || null,
+  },
   {
     key: 'templates',
     icon: DocumentTextOutline,
     label: t('shell.commands.navTemplates'),
-    stub: macrosTask,
+    count: macros.templates.length || null,
   },
 ])
 
 function paneEscape() {
+  for (const pane of [macrosPane.value, templatesPane.value]) {
+    if (pane?.editing != null) {
+      pane.close()
+      return true
+    }
+  }
   if (menuFor.value >= 0) {
     menuFor.value = -1
     return true
@@ -305,6 +321,8 @@ const topmost = () => !!winRef.value?.topmost()
 useShortcuts(
   {
     'win.new': () => {
+      if (section.value === 'macros') return macrosPane.value?.open(null)
+      if (section.value === 'templates') return templatesPane.value?.open(null)
       if (!canEdit.value || editing.value >= 0) return
       section.value = 'custom'
       startEdit(rows.value.length)
@@ -366,7 +384,9 @@ function onOpened() {
     </template>
 
     <div class="cw cmd-modal">
-      <template v-if="section === 'custom'">
+      <MacrosPane v-if="section === 'macros'" ref="macrosPane" />
+      <TemplatesPane v-else-if="section === 'templates'" ref="templatesPane" />
+      <template v-else-if="section === 'custom'">
         <div class="cw-title">
           <h2>{{ t('shell.commands.navCustom') }}</h2>
           <span class="cw-note">{{ t('shell.commands.summary', rows.length) }}</span>

@@ -15,8 +15,6 @@ export const FEATURE_STUBS = {
   'admin.roles': 3076,
   // GitLab: import and export (#3068).
   'gitlab.importExport': 3068,
-  // Workspace commands: palette macros and task templates (#3069).
-  'commands.macros': 3069,
 }
 
 export function stubTask(key) {
