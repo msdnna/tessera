@@ -8,6 +8,8 @@ import { useHelpStore } from '@/stores/help'
 import { usePaletteStore } from '@/stores/palette'
 import { useInboxStore } from '@/stores/inbox'
 import { useFavoritesStore } from '@/stores/favorites'
+import { useMacrosStore } from '@/stores/macros'
+import { macroKeyId } from '@/shortcuts/dynamic'
 import { favoriteFirst } from '@/utils/favorites'
 import { unwindOverlay } from '@/utils/overlayNav'
 import { workspaceName } from '@/utils/defaultNames'
@@ -46,6 +48,7 @@ export function usePaletteResults() {
   const palette = usePaletteStore()
   const inbox = useInboxStore()
   const favorites = useFavoritesStore()
+  const macros = useMacrosStore()
   const route = useRoute()
 
   // Where a palette form would create its thing — said under the command, as
@@ -167,7 +170,39 @@ export function usePaletteResults() {
     }
   }
 
-  const commandRows = computed(() => {
+  // The workspace's own commands (#3069, CmdsWin): found by their call (>bug)
+  // and name, first in «Команды». A task command needs an open board.
+  const MACRO_ICON = {
+    create_task: 'AddOutline',
+    open_link: 'LinkOutline',
+    create_document: 'DocumentTextOutline',
+    run_pipeline: 'GitBranchOutline',
+  }
+  const macroRows = computed(() => {
+    void openedAt.value
+    const term = parsed.value.term
+    return rank(macros.enabled, (m) => [m.trigger, m.name], term).map((m) => {
+      const why = macros.blockedReason(m)
+      return {
+        key: `macro:${m.id}`,
+        icon: ICONS[MACRO_ICON[m.action]],
+        title: m.name,
+        hl: term,
+        sub: `>${m.trigger} · ${t(`shell.commands.macro.action.${m.action}`)}`,
+        keys: macroKeyId(m),
+        disabled: !!why,
+        hint: why
+          ? t(why === 'soon' ? 'shell.commands.macro.soon' : 'shell.commands.macro.needBoard')
+          : null,
+        run: async (ctx) => {
+          await macros.run(m, { go: (path) => go(path, ctx) })
+        },
+      }
+    })
+  })
+
+  const commandRows = computed(() => [...macroRows.value, ...catalogRows.value])
+  const catalogRows = computed(() => {
     void openedAt.value
     const term = parsed.value.term
     const live = CATALOG.filter((e) => e.command && (e.to || e.form || isLive(e.id)))

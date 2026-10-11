@@ -259,7 +259,18 @@
     "up": "Move up",
     "down": "Move down",
     "deleted": "Command /{key} deleted",
-    "restored": "Command /{key} restored"
+    "restored": "Command /{key} restored",
+    "macro": {
+      "soon": "Soon · #3099 — running a pipeline",
+      "needBoard": "Open a board — the task is created on it",
+      "missedTags": "No such tags in the project: {tags}",
+      "action": {
+        "create_task": "Create a task",
+        "open_link": "Link",
+        "create_document": "Document from a template",
+        "run_pipeline": "Pipeline"
+      }
+    }
   },
   "layout": {
     "collapse": "Collapse the sidebar",

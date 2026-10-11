@@ -46,6 +46,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useInboxStore } from '@/stores/inbox'
 import { useFavoritesStore } from '@/stores/favorites'
+import { useMacrosStore } from '@/stores/macros'
 import { useMembersStore } from '@/stores/members'
 import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
@@ -81,6 +82,7 @@ const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const inbox = useInboxStore()
 const favorites = useFavoritesStore()
+const macrosStore = useMacrosStore()
 const membersStore = useMembersStore()
 const toasts = useToastsStore()
 const conflicts = useConflictsStore()
@@ -178,6 +180,8 @@ useRealtime(
     // Favourite boards (#3115): the reader's own `favorites.changed` from another
     // tab, and the board/project events that rename or drop a starred board.
     favorites.onEvent(ev)
+    // Palette commands and task templates edited elsewhere (#3069).
+    macrosStore.onEvent(ev)
     // Roster, access requests and member groups changed elsewhere (#3063).
     membersStore.onSocket(ev)
     // The «Начало работы» checklist counts what the user did themselves (#3102).
@@ -372,6 +376,12 @@ watch(
 watch(
   () => ws.currentId,
   (id) => id && favorites.load(id),
+  { immediate: true },
+)
+// Palette commands, their keys and task templates (#3069).
+watch(
+  () => ws.currentId,
+  (id) => id && macrosStore.load(id),
   { immediate: true },
 )
 const inboxClock = setInterval(() => inbox.tick(), 30000)

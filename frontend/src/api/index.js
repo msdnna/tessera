@@ -480,6 +480,15 @@ export const workspaces = {
   commands: (id) => api.get(`/workspaces/${id}/commands`),
   // Full desired state of the custom dictionary (owner/admin only).
   setCommands: (id, commands) => api.put(`/workspaces/${id}/commands`, { commands }),
+  // Команды-макросы палитры и шаблоны задач (#3069).
+  macros: (id) => api.get(`/workspaces/${id}/macros`),
+  createMacro: (id, data) => api.post(`/workspaces/${id}/macros`, data),
+  updateMacro: (macroId, data) => api.patch(`/macros/${macroId}`, data),
+  deleteMacro: (macroId) => api.delete(`/macros/${macroId}`),
+  taskTemplates: (id) => api.get(`/workspaces/${id}/task-templates`),
+  createTaskTemplate: (id, data) => api.post(`/workspaces/${id}/task-templates`, data),
+  updateTaskTemplate: (tplId, data) => api.patch(`/task-templates/${tplId}`, data),
+  deleteTaskTemplate: (tplId) => api.delete(`/task-templates/${tplId}`),
 }
 
 export const projects = {

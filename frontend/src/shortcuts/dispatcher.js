@@ -34,7 +34,7 @@ let pending = null // { alive: [{ id, step, args }], fallback: { id, args } | nu
 let timer = 0
 
 function sequenceOf(id) {
-  if (!parsed.has(id)) parsed.set(id, parseKeys(byId.get(id).keys))
+  if (!parsed.has(id)) parsed.set(id, parseKeys(byId.get(id)?.keys))
   return parsed.get(id)
 }
 
@@ -83,6 +83,8 @@ function eligible(e) {
   const out = []
   for (const [id] of handlers) {
     const entry = byId.get(id)
+    // A workspace command's binding that was replaced (shortcuts/dynamic.js).
+    if (!entry) continue
     if (typing && !entry.input) continue
     if (isBlocked && !entry.modal) continue
     if (e.repeat && !entry.repeat) continue
@@ -143,7 +145,7 @@ export function handleKeydown(e) {
 
   // Two complete matches for one key (Esc closes the quick-actions menu and
   // also clears the card selection): the entry with the higher `prio` wins.
-  done.sort((a, b) => (byId.get(b.id).prio || 0) - (byId.get(a.id).prio || 0))
+  done.sort((a, b) => (byId.get(b.id)?.prio || 0) - (byId.get(a.id)?.prio || 0))
 
   if (!next.length) {
     clearPending()
@@ -151,7 +153,7 @@ export function handleKeydown(e) {
     return
   }
 
-  const eager = done.find((d) => byId.get(d.id).eager)
+  const eager = done.find((d) => byId.get(d.id)?.eager)
   if (eager) fire(eager.id, eager.args, e)
   const caps = [...pendingCaps.value, ...capsOf(sequenceOf(next[0].id)[next[0].step - 1])]
   clearTimeout(timer)
