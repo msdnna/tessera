@@ -147,3 +147,12 @@
   `closed_by`, пайплайн — из карточки MR), в синке и в фоне при открытии задачи (не чаще раза в 2 мин,
   ответ сокетом `task.code_links`), `handlers/gitlab_mr_foreign.go` + `internal/gitlab/related_mrs.go`;
   ключ строки включает `repo`, в ответе `ref` (`!12` / `group/proj!12`) — показывать его, а не `!number`.
+- **GitLab подключения и правила v2 (#3065, #3066, #3105, миграция 0097):** несколько привязок на
+  доску (карточка принадлежит одной привязке; task-действия через `boardIntegration`, без выбора —
+  409 `choose_integration`); OAuth-подключение `POST /gitlab/connection/oauth` (общий callback, state
+  `c.`, токен помечен `gitlab.MarkOAuthToken`, брать только через `credentialToken`); 401 → привязка
+  на паузе (`paused_at`, `noteSyncOutcome`); `import_labels` → `labelName` GraphQL. Правила: действие
+  `milestone` + `template`, `disabled`, `rules/preview`; `writeback.conflict_policy` ask|tessera|gitlab;
+  поля конфликта assignees/labels, пакетный resolve, черновик «Отложить» — localStorage
+  `tessera_conflict_drafts`. Полная сверка в две фазы (`NeedNotes`/`WithNotes`): при
+  `Issue.NotesLoaded=false` комментарии не трогать.
