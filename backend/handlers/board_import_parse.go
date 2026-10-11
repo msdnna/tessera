@@ -221,8 +221,8 @@ func jsonCell(v any) (string, bool) {
 	return "", false
 }
 
-// splitList splits a tags/assignees cell on commas and semicolons.
-func splitList(s string) []string {
+// splitImportList splits a tags/assignees cell on commas and semicolons.
+func splitImportList(s string) []string {
 	f := strings.FieldsFunc(s, func(r rune) bool { return r == ',' || r == ';' || r == '\n' })
 	out := make([]string, 0, len(f))
 	seen := map[string]bool{}

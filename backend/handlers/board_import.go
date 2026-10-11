@@ -331,14 +331,14 @@ func (b *boardImport) importRow(ctx context.Context, jh *jobs.Handle, row map[st
 		jh.Logf(jobs.LevelWarn, "Строка %d: дата начала «%s» не распознана", line, b.cell(row, "start_date"))
 	}
 	var assignees []uuid.UUID
-	for _, a := range splitList(b.cell(row, "assignees")) {
+	for _, a := range splitImportList(b.cell(row, "assignees")) {
 		if id, ok := b.members[strings.ToLower(a)]; ok {
 			assignees = append(assignees, id)
 		} else {
 			jh.Logf(jobs.LevelWarn, "Строка %d: «%s» не участник пространства — не назначен", line, a)
 		}
 	}
-	tagNames := splitList(b.cell(row, "tags"))
+	tagNames := splitImportList(b.cell(row, "tags"))
 
 	pos, err := h.nextTaskPosition(ctx, colID, nil)
 	if err != nil {

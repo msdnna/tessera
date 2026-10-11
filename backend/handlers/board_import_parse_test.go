@@ -61,7 +61,7 @@ func TestParseImportValues(t *testing.T) {
 	if !ok || d.UTC().Hour() != 7 {
 		t.Errorf("rfc3339 = %v %v", d, ok)
 	}
-	if got := splitList("a, b;A ,, c"); len(got) != 3 {
+	if got := splitImportList("a, b;A ,, c"); len(got) != 3 {
 		t.Errorf("splitList dedupes case-insensitively: %q", got)
 	}
 }
