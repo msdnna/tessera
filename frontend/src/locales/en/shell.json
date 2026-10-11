@@ -346,6 +346,13 @@
     "side": {
       "week": "Week",
       "weekDone": "{done} of {total} done"
+    },
+    "snooze": {
+      "tomorrow": "Tomorrow",
+      "dayAfter": "In two days",
+      "monday": "On Monday",
+      "week": "In a week",
+      "done": "Due moved to {when}"
     }
   },
   "notFound": {

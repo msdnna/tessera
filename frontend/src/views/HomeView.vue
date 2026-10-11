@@ -31,6 +31,10 @@ import EmptyState from '@/components/EmptyState.vue'
 import HomeAurora from '@/components/home/HomeAurora.vue'
 import HomeQuickEntry from '@/components/home/HomeQuickEntry.vue'
 import HomeTaskList from '@/components/home/HomeTaskList.vue'
+import ActionMenu from '@/components/kit/ActionMenu.vue'
+import { taskSnoozeDays, snoozedDue } from '@/utils/taskSnooze'
+import { resolvedTimezone } from '@/utils/format'
+import { useThemeStore } from '@/stores/theme'
 import HomeSideCards from '@/components/home/HomeSideCards.vue'
 import TourChecklist from '@/components/tour/TourChecklist.vue'
 import { useOnboardingStore } from '@/stores/onboarding'
@@ -225,6 +229,56 @@ async function complete(task) {
     message.error(humanizeError(e))
   }
 }
+// «Отложить» (#3108): a swipe on a phone row asks how far; the task's due moves
+// there (its clock kept), and the toast takes it back.
+const theme = useThemeStore()
+const snooze = ref({ show: false, task: null })
+function askSnooze(task) {
+  snooze.value = { show: true, task }
+}
+const snoozeAnchor = () =>
+  document.querySelector(`.hl-row[data-task-id="${snooze.value.task?.id}"]`)
+const snoozeItems = computed(() =>
+  taskSnoozeDays(formatters.value).map((o) => ({
+    key: o.key,
+    label: t(`shell.home.snooze.${o.key}`),
+    note: formatDate(new Date(o.day.year, o.day.month, o.day.day), {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    }),
+  })),
+)
+function setDue(task, due) {
+  tasks.value = tasks.value.map((x) => (x.id === task.id ? { ...x, due_date: due } : x))
+}
+async function applySnooze(key) {
+  const task = snooze.value.task
+  const opt = taskSnoozeDays(formatters.value).find((o) => o.key === key)
+  if (!task || !opt) return
+  const was = task.due_date || null
+  const due = snoozedDue(was, opt.day, formatters.value, resolvedTimezone(theme.timezone))
+  try {
+    // A PATCH of the due alone: the rule and the rest stay as stored.
+    await tasksApi.update(task.id, { due_date: due })
+    setDue(task, due)
+    message.success(
+      t('shell.home.snooze.done', { when: snoozeItems.value.find((i) => i.key === key)?.note }),
+      {
+        action: {
+          label: t('common.undo.undo'),
+          run: async () => {
+            await tasksApi.update(task.id, { due_date: was })
+            setDue(task, was)
+          },
+        },
+      },
+    )
+  } catch (e) {
+    message.error(humanizeError(e))
+  }
+}
+
 useShortcuts(
   {
     'card.up': () => move(-1),
@@ -302,12 +356,21 @@ watch(() => wsStore.currentId, load)
               @select="selectedId = $event"
               @open="openTask"
               @complete="complete"
+              @snooze="askSnooze"
               @toggle="toggleSection"
             />
             <EmptyState
               v-else-if="!loading"
               :icon="CheckmarkDoneOutline"
               :text="t('shell.home.allClear')"
+            />
+            <ActionMenu
+              v-model:show="snooze.show"
+              :anchor="snoozeAnchor"
+              :items="snoozeItems"
+              :header="t('shell.mobile.swipeSnooze')"
+              testid="home-snooze"
+              @select="applySnooze"
             />
           </div>
           <aside class="home-side">

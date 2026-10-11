@@ -346,6 +346,13 @@
     "side": {
       "week": "Неделя",
       "weekDone": "{done} из {total} выполнено"
+    },
+    "snooze": {
+      "tomorrow": "Завтра",
+      "dayAfter": "Послезавтра",
+      "monday": "В понедельник",
+      "week": "Через неделю",
+      "done": "Срок перенесён на {when}"
     }
   },
   "notFound": {
