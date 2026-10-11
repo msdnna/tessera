@@ -505,6 +505,15 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// dictionary, for the markdown editor's "/" autocomplete.
 			protected.GET("/workspaces/:id/commands", rh.ListWorkspaceCommands)
 			protected.PUT("/workspaces/:id/commands", rh.SetWorkspaceCommands)
+			// Команды-макросы палитры и шаблоны задач (#3069).
+			protected.GET("/workspaces/:id/macros", rh.ListMacros)
+			protected.POST("/workspaces/:id/macros", rh.CreateMacro)
+			protected.PATCH("/macros/:id", rh.UpdateMacro)
+			protected.DELETE("/macros/:id", rh.DeleteMacro)
+			protected.GET("/workspaces/:id/task-templates", rh.ListTaskTemplates)
+			protected.POST("/workspaces/:id/task-templates", rh.CreateTaskTemplate)
+			protected.PATCH("/task-templates/:id", rh.UpdateTaskTemplate)
+			protected.DELETE("/task-templates/:id", rh.DeleteTaskTemplate)
 
 			// Two-level task-estimation config (workspace default + project override).
 			protected.PUT("/workspaces/:id/estimation", rh.SetWorkspaceEstimation)

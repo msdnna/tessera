@@ -777,6 +777,20 @@ type TaskTag struct {
 	Source string    `json:"source"`
 }
 
+type TaskTemplate struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	Name        string     `json:"name"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Tags        []string   `json:"tags"`
+	Priority    int32      `json:"priority"`
+	Subtasks    []string   `json:"subtasks"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
 type TaskTimeEntry struct {
 	ID        uuid.UUID   `json:"id"`
 	TaskID    uuid.UUID   `json:"task_id"`
@@ -914,4 +928,21 @@ type WorkspaceInviteLinkUse struct {
 	LinkID uuid.UUID `json:"link_id"`
 	UserID uuid.UUID `json:"user_id"`
 	UsedAt time.Time `json:"used_at"`
+}
+
+type WorkspaceMacro struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	OwnerID     *uuid.UUID `json:"owner_id"`
+	Name        string     `json:"name"`
+	Trigger     string     `json:"trigger"`
+	Action      string     `json:"action"`
+	Params      []byte     `json:"params"`
+	Keys        string     `json:"keys"`
+	Category    string     `json:"category"`
+	Enabled     bool       `json:"enabled"`
+	Position    float64    `json:"position"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }
