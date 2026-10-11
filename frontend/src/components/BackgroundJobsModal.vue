@@ -1104,10 +1104,14 @@ useShortcuts(
   gap: 6px;
 }
 .bj-ava {
+  flex: none;
   width: 18px;
   height: 18px;
   border-radius: 50%;
-  font-size: 9px;
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  font-size: 8px;
+  font-weight: 600;
 }
 /* Steps (#3091). */
 .bj-steps {
