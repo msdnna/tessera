@@ -20,6 +20,10 @@ func TestParseImportCSVSemicolonAndBOM(t *testing.T) {
 	if tb.Rows[0]["Name"] != "A; quoted" || tb.Rows[0]["Name (2)"] != "dup" {
 		t.Fatalf("row 0 = %v", tb.Rows[0])
 	}
+	// The log names the file's own line, past the skipped blank one.
+	if len(tb.Lines) != 2 || tb.Lines[0] != 2 || tb.Lines[1] != 4 {
+		t.Fatalf("lines = %v, want [2 4]", tb.Lines)
+	}
 }
 
 func TestParseImportJSONShapes(t *testing.T) {

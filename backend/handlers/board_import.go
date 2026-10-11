@@ -215,6 +215,9 @@ func (b *boardImport) run(ctx context.Context, jh *jobs.Handle) error {
 			return err
 		}
 		line := b.next + 2 // the header is line 1
+		if b.next < len(b.table.Lines) {
+			line = b.table.Lines[b.next]
+		}
 		if err := b.importRow(ctx, jh, b.table.Rows[b.next], line); err != nil {
 			return fmt.Errorf("строка %d: %w", line, err)
 		}

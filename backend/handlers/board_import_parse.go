@@ -29,6 +29,9 @@ var importFields = []string{"title", "description", "column", "tags", "assignees
 type importTable struct {
 	Columns []string
 	Rows    []map[string]string
+	// Lines is each row's place in the file, for the log's «Строка N»: the CSV
+	// line it starts on (blank rows skipped), the JSON item's number.
+	Lines []int
 }
 
 var errImportEmpty = errors.New("файл пуст")
@@ -114,7 +117,9 @@ func parseImportCSV(data []byte) (importTable, error) {
 				row[c] = strings.TrimSpace(rec[i])
 			}
 		}
+		line, _ := r.FieldPos(0)
 		t.Rows = append(t.Rows, row)
+		t.Lines = append(t.Lines, line)
 	}
 	return t, nil
 }
@@ -188,6 +193,7 @@ func parseImportJSON(data []byte) (importTable, error) {
 			row[k] = v
 		}
 		t.Rows = append(t.Rows, row)
+		t.Lines = append(t.Lines, len(t.Rows))
 	}
 	t.Columns = cols
 	return t, nil
