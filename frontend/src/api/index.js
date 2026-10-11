@@ -395,6 +395,8 @@ export const acknowledgements = {
 // Global-admin panel (every endpoint re-checks is_admin server-side).
 export const admin = {
   listUsers: () => api.get('/admin/users'),
+  listInvitations: () => api.get('/admin/invitations'),
+  deleteInvitation: (id) => api.delete(`/admin/invitations/${id}`),
   setActive: (id, active) => api.patch(`/admin/users/${id}/active`, { active }),
   setAdmin: (id, isAdmin) => api.patch(`/admin/users/${id}/admin`, { admin: isAdmin }),
   resetLink: (id) => api.post(`/admin/users/${id}/reset-link`),

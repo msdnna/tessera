@@ -232,6 +232,40 @@
       "emptyTitle": "No feedback yet",
       "empty": "Answers to “Was this article helpful?” show up here, per article and language.",
       "share": "Helpful: {n}%"
+    },
+    "csvCol": {
+      "name": "Name",
+      "verified": "Email verified",
+      "lastSeen": "Last seen",
+      "created": "Created"
+    },
+    "invites": {
+      "search": "Find by email or workspace",
+      "filter": {
+        "pending": "Waiting",
+        "expired": "Expired",
+        "declined": "Declined",
+        "all": "All"
+      },
+      "col": {
+        "email": "Email",
+        "space": "Workspace",
+        "sent": "Sent"
+      },
+      "role": {
+        "owner": "Owner",
+        "admin": "Admin",
+        "member": "Member",
+        "guest": "Guest"
+      },
+      "until": "waiting until {date}",
+      "state": {
+        "expired": "expired",
+        "declined": "declined"
+      },
+      "revoke": "Revoke invitation",
+      "revokeConfirm": "Revoke?",
+      "empty": "No invitations"
     }
   },
   "notifications": {

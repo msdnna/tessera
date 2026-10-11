@@ -42,3 +42,21 @@ DELETE FROM workspace_invitations WHERE id = $1 AND workspace_id = $2;
 -- quietly accept what its owner turned down.
 SELECT * FROM workspace_invitations
 WHERE lower(email) = lower($1) AND accepted_at IS NULL AND declined_at IS NULL AND expires_at > now();
+
+-- name: ListAllInvitations :many
+-- The admin panel's «Приглашения» (#3079): every invitation not yet accepted,
+-- across all workspaces, with where it leads and who sent it.
+SELECT i.id, i.workspace_id, w.name AS workspace_name, i.email, i.role, i.created_at,
+       i.expires_at, i.sent_at, i.send_count, i.declined_at,
+       COALESCE(u.name, '')::text AS invited_by_name
+FROM workspace_invitations i
+JOIN workspaces w ON w.id = i.workspace_id
+LEFT JOIN users u ON u.id = i.invited_by
+WHERE i.accepted_at IS NULL
+ORDER BY i.sent_at DESC;
+
+-- name: DeleteInvitationAny :execrows
+-- Instance admin revoking from «Приглашения» (#3079): not scoped by workspace —
+-- the global admin flag is the right being checked. A spent one stays (it is
+-- history of a membership, not an open door).
+DELETE FROM workspace_invitations WHERE id = $1 AND accepted_at IS NULL;

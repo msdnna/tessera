@@ -15,10 +15,7 @@ export const FEATURE_STUBS = {
   'inbox.offline': 3031,
   // Settings (#3106): two-factor sign-in (#3081).
   'settings.twoFactor': 3081,
-  'admin.invites': 3079,
   'admin.roles': 3076,
-  'admin.userSpaces': 3078,
-  'admin.csv': 3080,
   'toasts.sound': 3121,
   // GitLab: several projects on one board, OAuth connection, the token's
   // expiry (#3065); label → stage rules, rule switches and counters, the

@@ -465,6 +465,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/admin/users/:id/active", rh.SetUserActive)
 			protected.PATCH("/admin/users/:id/admin", rh.SetUserAdmin)
 			protected.POST("/admin/users/:id/reset-link", rh.CreateUserResetLink)
+			protected.GET("/admin/invitations", rh.AdminListInvitations)
+			protected.DELETE("/admin/invitations/:id", rh.AdminDeleteInvitation)
 			// GitLab OAuth app config (admin-only).
 			protected.GET("/admin/oauth/gitlab", rh.GetOAuthConfig)
 			protected.PUT("/admin/oauth/gitlab", rh.SetOAuthConfig)

@@ -88,6 +88,21 @@ func (q *Queries) DeleteInvitation(ctx context.Context, arg DeleteInvitationPara
 	return result.RowsAffected(), nil
 }
 
+const deleteInvitationAny = `-- name: DeleteInvitationAny :execrows
+DELETE FROM workspace_invitations WHERE id = $1 AND accepted_at IS NULL
+`
+
+// Instance admin revoking from «Приглашения» (#3079): not scoped by workspace —
+// the global admin flag is the right being checked. A spent one stays (it is
+// history of a membership, not an open door).
+func (q *Queries) DeleteInvitationAny(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, deleteInvitationAny, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
 const getInvitationByHash = `-- name: GetInvitationByHash :one
 SELECT id, workspace_id, email, role, token_hash, invited_by, expires_at, accepted_at, created_at, declined_at, sent_at, send_count FROM workspace_invitations WHERE token_hash = $1
 `
@@ -139,6 +154,65 @@ func (q *Queries) GetInvitationInWorkspace(ctx context.Context, arg GetInvitatio
 		&i.SendCount,
 	)
 	return i, err
+}
+
+const listAllInvitations = `-- name: ListAllInvitations :many
+SELECT i.id, i.workspace_id, w.name AS workspace_name, i.email, i.role, i.created_at,
+       i.expires_at, i.sent_at, i.send_count, i.declined_at,
+       COALESCE(u.name, '')::text AS invited_by_name
+FROM workspace_invitations i
+JOIN workspaces w ON w.id = i.workspace_id
+LEFT JOIN users u ON u.id = i.invited_by
+WHERE i.accepted_at IS NULL
+ORDER BY i.sent_at DESC
+`
+
+type ListAllInvitationsRow struct {
+	ID            uuid.UUID  `json:"id"`
+	WorkspaceID   uuid.UUID  `json:"workspace_id"`
+	WorkspaceName string     `json:"workspace_name"`
+	Email         string     `json:"email"`
+	Role          string     `json:"role"`
+	CreatedAt     time.Time  `json:"created_at"`
+	ExpiresAt     time.Time  `json:"expires_at"`
+	SentAt        time.Time  `json:"sent_at"`
+	SendCount     int32      `json:"send_count"`
+	DeclinedAt    *time.Time `json:"declined_at"`
+	InvitedByName string     `json:"invited_by_name"`
+}
+
+// The admin panel's «Приглашения» (#3079): every invitation not yet accepted,
+// across all workspaces, with where it leads and who sent it.
+func (q *Queries) ListAllInvitations(ctx context.Context) ([]ListAllInvitationsRow, error) {
+	rows, err := q.db.Query(ctx, listAllInvitations)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllInvitationsRow
+	for rows.Next() {
+		var i ListAllInvitationsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.WorkspaceName,
+			&i.Email,
+			&i.Role,
+			&i.CreatedAt,
+			&i.ExpiresAt,
+			&i.SentAt,
+			&i.SendCount,
+			&i.DeclinedAt,
+			&i.InvitedByName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listInvitations = `-- name: ListInvitations :many

@@ -160,21 +160,63 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 	return i, err
 }
 
+const listAllMemberships = `-- name: ListAllMemberships :many
+SELECT m.user_id, m.workspace_id, w.name AS workspace_name, m.role
+FROM memberships m
+JOIN workspaces w ON w.id = m.workspace_id
+ORDER BY w.name
+`
+
+type ListAllMembershipsRow struct {
+	UserID        uuid.UUID `json:"user_id"`
+	WorkspaceID   uuid.UUID `json:"workspace_id"`
+	WorkspaceName string    `json:"workspace_name"`
+	Role          string    `json:"role"`
+}
+
+// The admin panel's «Пространства» column (#3078): every membership on the
+// instance with its workspace name, read once and grouped by user in Go.
+func (q *Queries) ListAllMemberships(ctx context.Context) ([]ListAllMembershipsRow, error) {
+	rows, err := q.db.Query(ctx, listAllMemberships)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllMembershipsRow
+	for rows.Next() {
+		var i ListAllMembershipsRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.WorkspaceID,
+			&i.WorkspaceName,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, name, is_admin, active, email_verified, created_at, updated_at
+SELECT id, email, name, is_admin, active, email_verified, created_at, updated_at, last_seen_at
 FROM users
 ORDER BY name
 `
 
 type ListUsersRow struct {
-	ID            uuid.UUID `json:"id"`
-	Email         string    `json:"email"`
-	Name          string    `json:"name"`
-	IsAdmin       bool      `json:"is_admin"`
-	Active        bool      `json:"active"`
-	EmailVerified bool      `json:"email_verified"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	Email         string     `json:"email"`
+	Name          string     `json:"name"`
+	IsAdmin       bool       `json:"is_admin"`
+	Active        bool       `json:"active"`
+	EmailVerified bool       `json:"email_verified"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	LastSeenAt    *time.Time `json:"last_seen_at"`
 }
 
 func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
@@ -195,6 +237,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 			&i.EmailVerified,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LastSeenAt,
 		); err != nil {
 			return nil, err
 		}
