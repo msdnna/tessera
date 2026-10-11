@@ -80,8 +80,18 @@ func holdScannerLock(t *testing.T) func() {
 		t.Fatalf("acquire holder conn: %v", err)
 	}
 	key := handlers.AdvisoryLockKey(handlers.NotifyScanLock)
+	// The lock is shared: the harness's own scanner tick and the other tests that
+	// hold it run alongside — wait for it a little instead of failing at once.
 	var locked bool
-	if err := holder.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", key).Scan(&locked); err != nil || !locked {
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		err = holder.QueryRow(ctx, "SELECT pg_try_advisory_lock($1)", key).Scan(&locked)
+		if err != nil || locked || time.Now().After(deadline) {
+			break
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+	if err != nil || !locked {
 		holder.Release()
 		t.Fatalf("could not take the scanner lock: locked=%v err=%v", locked, err)
 	}
