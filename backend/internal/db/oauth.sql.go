@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -134,7 +135,7 @@ func (q *Queries) GetOAuthIdentity(ctx context.Context, arg GetOAuthIdentityPara
 
 const getOAuthProvider = `-- name: GetOAuthProvider :one
 
-SELECT provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback FROM oauth_providers WHERE provider = $1
+SELECT provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback, service_token_expires_at FROM oauth_providers WHERE provider = $1
 `
 
 // OAuth provider config + external identities (see migration 0042).
@@ -152,6 +153,7 @@ func (q *Queries) GetOAuthProvider(ctx context.Context, provider string) (OauthP
 		&i.UpdatedAt,
 		&i.ServiceTokenEnc,
 		&i.SudoWriteback,
+		&i.ServiceTokenExpiresAt,
 	)
 	return i, err
 }
@@ -189,6 +191,22 @@ func (q *Queries) GetUserIDsByOAuthUsername(ctx context.Context, providerUsernam
 		return nil, err
 	}
 	return items, nil
+}
+
+const setServiceTokenExpiry = `-- name: SetServiceTokenExpiry :exec
+UPDATE oauth_providers SET service_token_expires_at = $2 WHERE provider = $1
+`
+
+type SetServiceTokenExpiryParams struct {
+	Provider              string     `json:"provider"`
+	ServiceTokenExpiresAt *time.Time `json:"service_token_expires_at"`
+}
+
+// SetServiceTokenExpiry records when the instance service token expires (#3084),
+// NULL = never or unknown.
+func (q *Queries) SetServiceTokenExpiry(ctx context.Context, arg SetServiceTokenExpiryParams) error {
+	_, err := q.db.Exec(ctx, setServiceTokenExpiry, arg.Provider, arg.ServiceTokenExpiresAt)
+	return err
 }
 
 const upsertOAuthIdentity = `-- name: UpsertOAuthIdentity :one
@@ -249,7 +267,7 @@ SET client_id = EXCLUDED.client_id,
     service_token_enc = EXCLUDED.service_token_enc,
     sudo_writeback = EXCLUDED.sudo_writeback,
     updated_at = now()
-RETURNING provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback
+RETURNING provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback, service_token_expires_at
 `
 
 type UpsertOAuthProviderParams struct {
@@ -287,6 +305,7 @@ func (q *Queries) UpsertOAuthProvider(ctx context.Context, arg UpsertOAuthProvid
 		&i.UpdatedAt,
 		&i.ServiceTokenEnc,
 		&i.SudoWriteback,
+		&i.ServiceTokenExpiresAt,
 	)
 	return i, err
 }

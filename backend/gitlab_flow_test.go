@@ -61,8 +61,11 @@ type glIssue struct {
 	AssigneeLogins []string
 	Milestone      *glMilestone
 	Notes          []glNote
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// Project puts the issue in another project of the same instance (#3082 —
+	// several projects on one board); "" = the fake's own project.
+	Project   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type glMember struct {
@@ -178,6 +181,10 @@ type fakeGitlab struct {
 	// it carried (#3085). A test reads them to see which issues a sweep paid the
 	// heavy half for.
 	issueQueries []fakeIssueQuery
+
+	// tokenExpires is what /personal_access_tokens/self reports as the PAT's
+	// expiry (#3084), "" = never.
+	tokenExpires string
 }
 
 // fakeIssueQuery is one issues request the fake served.
@@ -546,6 +553,21 @@ func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any, wit
 	} else {
 		filtered = append(filtered, f.issues...)
 	}
+	// The project the query names: an issue of another project of this instance
+	// is not in it (#3082).
+	if path, _ := vars["path"].(string); path != "" {
+		var inProject []*glIssue
+		for _, is := range filtered {
+			own := is.Project
+			if own == "" {
+				own = f.projectPath
+			}
+			if own == path {
+				inProject = append(inProject, is)
+			}
+		}
+		filtered = inProject
+	}
 	// labelName: every listed label must be on the issue (GitLab's AND).
 	if len(q.labels) > 0 {
 		var kept []*glIssue
@@ -679,6 +701,17 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 	// An instance-wide endpoint, outside every project's scope: reaching it at
 	// all means a request escaped the project path it was built for, and the
 	// body is the kind of thing only the PAT's owner may read.
+	if r.URL.Path == "/api/v4/personal_access_tokens/self" {
+		f.mu.Lock()
+		exp := f.tokenExpires
+		f.mu.Unlock()
+		var v any
+		if exp != "" {
+			v = exp
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": 1, "name": "owner-pat", "expires_at": v})
+		return
+	}
 	if r.URL.Path == "/api/v4/personal_access_tokens" {
 		writeJSON(w, http.StatusOK, []any{map[string]any{"id": 1, "name": "owner-pat", "token": f.token}})
 		return

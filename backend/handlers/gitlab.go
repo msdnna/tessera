@@ -40,9 +40,7 @@ func (h *API) GetGitlabConnection(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"connected": true, "base_url": cred.BaseUrl, "gl_username": cred.GlUsername,
-	})
+	c.JSON(http.StatusOK, credentialView(cred))
 }
 
 // ConnectGitlab validates a base URL + personal access token by resolving the
@@ -80,20 +78,24 @@ func (h *API) ConnectGitlab(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	uid := middleware.CurrentUser(c)
 	cred, err := h.q.UpsertGitlabCredential(c, db.UpsertGitlabCredentialParams{
-		UserID:     middleware.CurrentUser(c),
+		UserID:     uid,
 		BaseUrl:    req.BaseURL,
 		TokenEnc:   enc,
 		GlUserID:   user.ID,
 		GlUsername: user.Username,
+		AuthKind:   "pat",
+		// When the token runs out (#3084) — shown as «Токен до …».
+		TokenExpiresAt: tokenExpiryDate(c, client),
 	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"connected": true, "base_url": cred.BaseUrl, "gl_username": cred.GlUsername,
-	})
+	// A reconnect is the «Переподключить» of a paused binding (#3084).
+	h.resumeAfterReconnect(c, &uid)
+	c.JSON(http.StatusOK, credentialView(cred))
 }
 
 // DisconnectGitlab removes the current user's stored credential.
@@ -133,6 +135,15 @@ type gitlabIntegrationView struct {
 	WebhookEnabled bool       `json:"webhook_enabled"`
 	LastWebhookAt  *time.Time `json:"last_webhook_at"`
 	WebhookURL     string     `json:"webhook_url,omitempty"`
+	// Import filter (#3085): only issues carrying every one of these labels.
+	ImportLabels []string `json:"import_labels"`
+	// Paused sync (#3084): GitLab refused the credential; reconnect to resume.
+	PausedAt    *time.Time `json:"paused_at"`
+	PauseReason string     `json:"pause_reason,omitempty"`
+	// The credential the binding syncs under (#3084): service | pat | oauth, and
+	// when a token runs out (YYYY-MM-DD, null = never or unknown).
+	AuthKind       string  `json:"auth_kind,omitempty"`
+	TokenExpiresAt *string `json:"token_expires_at"`
 	// Resolved estimation unit for the integration board (project→workspace→time),
 	// so the UI can disable the estimate write-back toggle when it isn't "time".
 	EstimationUnit string `json:"estimation_unit,omitempty"`
@@ -152,6 +163,8 @@ func integrationView(integ db.GitlabIntegration) gitlabIntegrationView {
 		Writeback:  parseWriteback(integ.Writeback),
 		// Webhook: state only. The secret stays encrypted at rest.
 		WebhookEnabled: integ.WebhookEnabled, LastWebhookAt: integ.LastWebhookAt,
+		ImportLabels: gitlab.CleanLabels(integ.ImportLabels),
+		PausedAt:     integ.PausedAt, PauseReason: integ.PauseReason,
 	}
 }
 
@@ -194,7 +207,9 @@ func (h *API) personalGitlabConn(ctx context.Context, userID uuid.UUID) (baseURL
 	if err != nil {
 		return "", "", false
 	}
-	t, derr := h.sealer.Decrypt(cred.TokenEnc)
+	// An OAuth connection (#3083) is refreshed here when due, and comes back
+	// marked for gitlab.New.
+	t, derr := h.credentialToken(ctx, cred)
 	if derr != nil {
 		return "", "", false
 	}
@@ -277,6 +292,7 @@ func (h *API) assigneeGlUserID(ctx context.Context, userID uuid.UUID) (int64, bo
 func (h *API) fullIntegrationView(c *gin.Context, integ db.GitlabIntegration) gitlabIntegrationView {
 	view := integrationView(integ)
 	view.EstimationUnit = h.integrationEstimationUnit(c, integ)
+	view.AuthKind, view.TokenExpiresAt = h.integrationCredential(c, integ)
 	if pid, perr := h.q.ProjectIDForBoard(c, integ.BoardID); perr == nil {
 		view.ProjectID = &pid
 	}
@@ -335,6 +351,8 @@ type integrationRequest struct {
 	RelationsSync       string          `json:"relations_sync"`
 	LabelRules          json.RawMessage `json:"label_rules"`
 	Writeback           json.RawMessage `json:"writeback"`
+	// ImportLabels (#3085): import only issues with every one of these labels.
+	ImportLabels []string `json:"import_labels"`
 }
 
 // normalize validates and defaults the request fields in place.
@@ -382,6 +400,7 @@ func (req *integrationRequest) normalize() {
 	}
 	req.ProjectPath = strings.TrimSpace(req.ProjectPath)
 	req.Name = strings.TrimSpace(req.Name)
+	req.ImportLabels = gitlab.CleanLabels(req.ImportLabels)
 }
 
 // rulesOrDefault seeds label rules with the default taxonomy when empty.
@@ -437,9 +456,12 @@ func (h *API) CreateGitlabIntegration(c *gin.Context) {
 		ClosedPolicy:        req.ClosedPolicy,
 		ClosedAfter:         req.ClosedAfter,
 		RelationsSync:       req.RelationsSync,
+		ImportLabels:        req.ImportLabels,
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
+		// A board may take several projects now (#3082); what stays refused is the
+		// same project bound twice in one workspace.
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this GitLab project is already bound in this workspace"})
 		return
 	}
 	c.JSON(http.StatusOK, h.fullIntegrationView(c, integ))
@@ -489,9 +511,12 @@ func (h *API) UpdateGitlabIntegration(c *gin.Context) {
 		ClosedPolicy:        req.ClosedPolicy,
 		ClosedAfter:         req.ClosedAfter,
 		RelationsSync:       req.RelationsSync,
+		ImportLabels:        req.ImportLabels,
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
+		// A board may take several projects now (#3082); what stays refused is the
+		// same project bound twice in one workspace.
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this GitLab project is already bound in this workspace"})
 		return
 	}
 	c.JSON(http.StatusOK, h.fullIntegrationView(c, updated))
@@ -839,6 +864,9 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		// Use a cancellation-detached context so the journal still records even when
 		// the originating request was cancelled mid-sync.
 		h.flushJournal(context.WithoutCancel(ctx), j)
+		// A refused credential pauses the binding, a sync that got through lifts
+		// the pause (#3084).
+		h.noteSyncOutcome(ctx, integ, err)
 	}()
 
 	// The binding's board is soft-deleted (0078): the sync sits out until the
@@ -912,8 +940,11 @@ func (h *API) syncClient(ctx context.Context, cred db.GitlabCredential) (*gitlab
 	if baseURL, token, ok := h.serviceGitlabConn(ctx); ok {
 		return gitlab.New(baseURL, token), "", nil
 	}
-	token, err := h.sealer.Decrypt(cred.TokenEnc)
+	token, err := h.credentialToken(ctx, cred)
 	if err != nil {
+		if gitlab.IsUnauthorized(err) {
+			return nil, "", err // a dead OAuth grant: the binding pauses (#3084)
+		}
 		return nil, "", fmt.Errorf("decrypt stored token: %w", err)
 	}
 	return gitlab.New(cred.BaseUrl, token), cred.GlUsername, nil
@@ -940,7 +971,8 @@ func (r *syncRun) fetchIssues(ctx context.Context) ([]gitlab.Issue, []int64, err
 		s := r.integ.LastSyncedAt.Add(-syncOverlap)
 		since = &s
 	}
-	filter := gitlab.IssueFilter{Since: since, Light: !r.incremental}
+	// The import filter (#3085) rides in the same request as the list itself.
+	filter := gitlab.IssueFilter{Since: since, Light: !r.incremental, Labels: r.integ.ImportLabels}
 	if r.integ.Scope != "all" && r.assignUser != "" {
 		filter.Assignee = r.assignUser
 	}

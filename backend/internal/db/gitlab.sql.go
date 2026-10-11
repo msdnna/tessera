@@ -95,7 +95,7 @@ const clearGitlabWebhook = `-- name: ClearGitlabWebhook :one
 UPDATE gitlab_integrations
 SET webhook_secret_enc = '', webhook_enabled = false, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason
 `
 
 // ClearGitlabWebhook turns the hook off and wipes the stored secret, so a delivery
@@ -130,6 +130,9 @@ func (q *Queries) ClearGitlabWebhook(ctx context.Context, id uuid.UUID) (GitlabI
 		&i.WebhookEnabled,
 		&i.LastWebhookAt,
 		&i.MrSyncedAt,
+		&i.ImportLabels,
+		&i.PausedAt,
+		&i.PauseReason,
 	)
 	return i, err
 }
@@ -160,9 +163,9 @@ const createGitlabIntegration = `-- name: CreateGitlabIntegration :one
 INSERT INTO gitlab_integrations (
     workspace_id, name, project_path, board_id, label_rules, enabled, owner_user_id,
     sync_interval_sec, due_source, start_source, writeback, scope, closed_policy, closed_after,
-    relations_sync, full_sync_interval_sec, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at
+    relations_sync, full_sync_interval_sec, import_labels, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now())
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason
 `
 
 type CreateGitlabIntegrationParams struct {
@@ -182,6 +185,7 @@ type CreateGitlabIntegrationParams struct {
 	ClosedAfter         *time.Time `json:"closed_after"`
 	RelationsSync       string     `json:"relations_sync"`
 	FullSyncIntervalSec int32      `json:"full_sync_interval_sec"`
+	ImportLabels        []string   `json:"import_labels"`
 }
 
 // ── Per-workspace integration ──────────────────────────────
@@ -203,6 +207,7 @@ func (q *Queries) CreateGitlabIntegration(ctx context.Context, arg CreateGitlabI
 		arg.ClosedAfter,
 		arg.RelationsSync,
 		arg.FullSyncIntervalSec,
+		arg.ImportLabels,
 	)
 	var i GitlabIntegration
 	err := row.Scan(
@@ -232,6 +237,9 @@ func (q *Queries) CreateGitlabIntegration(ctx context.Context, arg CreateGitlabI
 		&i.WebhookEnabled,
 		&i.LastWebhookAt,
 		&i.MrSyncedAt,
+		&i.ImportLabels,
+		&i.PausedAt,
+		&i.PauseReason,
 	)
 	return i, err
 }
@@ -424,7 +432,7 @@ func (q *Queries) GetCommentIDByGlNoteID(ctx context.Context, arg GetCommentIDBy
 }
 
 const getGitlabCredential = `-- name: GetGitlabCredential :one
-SELECT user_id, base_url, token_enc, gl_user_id, gl_username, created_at, updated_at FROM gitlab_credentials WHERE user_id = $1
+SELECT user_id, base_url, token_enc, gl_user_id, gl_username, created_at, updated_at, token_expires_at, auth_kind, refresh_token_enc, access_expires_at FROM gitlab_credentials WHERE user_id = $1
 `
 
 func (q *Queries) GetGitlabCredential(ctx context.Context, userID uuid.UUID) (GitlabCredential, error) {
@@ -438,12 +446,16 @@ func (q *Queries) GetGitlabCredential(ctx context.Context, userID uuid.UUID) (Gi
 		&i.GlUsername,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TokenExpiresAt,
+		&i.AuthKind,
+		&i.RefreshTokenEnc,
+		&i.AccessExpiresAt,
 	)
 	return i, err
 }
 
 const getGitlabIntegration = `-- name: GetGitlabIntegration :one
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at FROM gitlab_integrations WHERE id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason FROM gitlab_integrations WHERE id = $1
 `
 
 func (q *Queries) GetGitlabIntegration(ctx context.Context, id uuid.UUID) (GitlabIntegration, error) {
@@ -476,52 +488,15 @@ func (q *Queries) GetGitlabIntegration(ctx context.Context, id uuid.UUID) (Gitla
 		&i.WebhookEnabled,
 		&i.LastWebhookAt,
 		&i.MrSyncedAt,
-	)
-	return i, err
-}
-
-const getGitlabIntegrationByBoard = `-- name: GetGitlabIntegrationByBoard :one
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at FROM gitlab_integrations WHERE board_id = $1 AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL)
-`
-
-// GetGitlabIntegrationByBoard resolves the binding that mirrors into a given board
-// (task-scoped operations: create-issue, board-scoped sync).
-func (q *Queries) GetGitlabIntegrationByBoard(ctx context.Context, boardID uuid.UUID) (GitlabIntegration, error) {
-	row := q.db.QueryRow(ctx, getGitlabIntegrationByBoard, boardID)
-	var i GitlabIntegration
-	err := row.Scan(
-		&i.ID,
-		&i.WorkspaceID,
-		&i.ProjectPath,
-		&i.BoardID,
-		&i.LabelRules,
-		&i.Enabled,
-		&i.CreatedAt,
-		&i.UpdatedAt,
-		&i.OwnerUserID,
-		&i.SyncIntervalSec,
-		&i.LastSyncedAt,
-		&i.DueSource,
-		&i.StartSource,
-		&i.Writeback,
-		&i.Name,
-		&i.Scope,
-		&i.ClosedPolicy,
-		&i.ClosedAfter,
-		&i.LastFullSyncedAt,
-		&i.MembersSyncedAt,
-		&i.FullSyncIntervalSec,
-		&i.RelationsSync,
-		&i.WebhookSecretEnc,
-		&i.WebhookEnabled,
-		&i.LastWebhookAt,
-		&i.MrSyncedAt,
+		&i.ImportLabels,
+		&i.PausedAt,
+		&i.PauseReason,
 	)
 	return i, err
 }
 
 const getGitlabIntegrationByProject = `-- name: GetGitlabIntegrationByProject :one
-SELECT i.id, i.workspace_id, i.project_path, i.board_id, i.label_rules, i.enabled, i.created_at, i.updated_at, i.owner_user_id, i.sync_interval_sec, i.last_synced_at, i.due_source, i.start_source, i.writeback, i.name, i.scope, i.closed_policy, i.closed_after, i.last_full_synced_at, i.members_synced_at, i.full_sync_interval_sec, i.relations_sync, i.webhook_secret_enc, i.webhook_enabled, i.last_webhook_at, i.mr_synced_at FROM gitlab_integrations i
+SELECT i.id, i.workspace_id, i.project_path, i.board_id, i.label_rules, i.enabled, i.created_at, i.updated_at, i.owner_user_id, i.sync_interval_sec, i.last_synced_at, i.due_source, i.start_source, i.writeback, i.name, i.scope, i.closed_policy, i.closed_after, i.last_full_synced_at, i.members_synced_at, i.full_sync_interval_sec, i.relations_sync, i.webhook_secret_enc, i.webhook_enabled, i.last_webhook_at, i.mr_synced_at, i.import_labels, i.paused_at, i.pause_reason FROM gitlab_integrations i
 JOIN boards b ON b.id = i.board_id
 WHERE b.project_id = $1 AND b.deleted_at IS NULL
 ORDER BY i.created_at
@@ -560,6 +535,9 @@ func (q *Queries) GetGitlabIntegrationByProject(ctx context.Context, projectID u
 		&i.WebhookEnabled,
 		&i.LastWebhookAt,
 		&i.MrSyncedAt,
+		&i.ImportLabels,
+		&i.PausedAt,
+		&i.PauseReason,
 	)
 	return i, err
 }
@@ -941,8 +919,10 @@ func (q *Queries) LinkedTasksForIntegration(ctx context.Context, integrationID u
 }
 
 const listAutoSyncIntegrations = `-- name: ListAutoSyncIntegrations :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at FROM gitlab_integrations
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason FROM gitlab_integrations
 WHERE enabled
+  -- A binding GitLab refused the credential of (#3084) waits for a reconnect.
+  AND paused_at IS NULL
   AND sync_interval_sec > 0
   AND owner_user_id IS NOT NULL
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
@@ -991,6 +971,9 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 			&i.WebhookEnabled,
 			&i.LastWebhookAt,
 			&i.MrSyncedAt,
+			&i.ImportLabels,
+			&i.PausedAt,
+			&i.PauseReason,
 		); err != nil {
 			return nil, err
 		}
@@ -1003,8 +986,10 @@ func (q *Queries) ListAutoSyncIntegrations(ctx context.Context) ([]GitlabIntegra
 }
 
 const listDueSyncIntegrations = `-- name: ListDueSyncIntegrations :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at FROM gitlab_integrations
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason FROM gitlab_integrations
 WHERE enabled
+  -- A binding GitLab refused the credential of (#3084) waits for a reconnect.
+  AND paused_at IS NULL
   AND sync_interval_sec > 0
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
   -- A binding on a deleted board (0078) or in an archived project (0086 — read
@@ -1051,6 +1036,9 @@ func (q *Queries) ListDueSyncIntegrations(ctx context.Context) ([]GitlabIntegrat
 			&i.WebhookEnabled,
 			&i.LastWebhookAt,
 			&i.MrSyncedAt,
+			&i.ImportLabels,
+			&i.PausedAt,
+			&i.PauseReason,
 		); err != nil {
 			return nil, err
 		}
@@ -1099,8 +1087,67 @@ func (q *Queries) ListGitlabChildGlobalIDs(ctx context.Context, arg ListGitlabCh
 	return items, nil
 }
 
+const listGitlabIntegrationsByBoard = `-- name: ListGitlabIntegrationsByBoard :many
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason FROM gitlab_integrations WHERE board_id = $1
+  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL)
+ORDER BY created_at, id
+`
+
+// ListGitlabIntegrationsByBoard lists the bindings that mirror into a board — a
+// board may take several GitLab projects (#3082) — oldest first (task-scoped
+// operations: create-issue picks one of them).
+func (q *Queries) ListGitlabIntegrationsByBoard(ctx context.Context, boardID uuid.UUID) ([]GitlabIntegration, error) {
+	rows, err := q.db.Query(ctx, listGitlabIntegrationsByBoard, boardID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GitlabIntegration
+	for rows.Next() {
+		var i GitlabIntegration
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProjectPath,
+			&i.BoardID,
+			&i.LabelRules,
+			&i.Enabled,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.OwnerUserID,
+			&i.SyncIntervalSec,
+			&i.LastSyncedAt,
+			&i.DueSource,
+			&i.StartSource,
+			&i.Writeback,
+			&i.Name,
+			&i.Scope,
+			&i.ClosedPolicy,
+			&i.ClosedAfter,
+			&i.LastFullSyncedAt,
+			&i.MembersSyncedAt,
+			&i.FullSyncIntervalSec,
+			&i.RelationsSync,
+			&i.WebhookSecretEnc,
+			&i.WebhookEnabled,
+			&i.LastWebhookAt,
+			&i.MrSyncedAt,
+			&i.ImportLabels,
+			&i.PausedAt,
+			&i.PauseReason,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listGitlabIntegrationsByWorkspace = `-- name: ListGitlabIntegrationsByWorkspace :many
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at FROM gitlab_integrations WHERE workspace_id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason FROM gitlab_integrations WHERE workspace_id = $1
   AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL)
 ORDER BY name, created_at
 `
@@ -1144,6 +1191,9 @@ func (q *Queries) ListGitlabIntegrationsByWorkspace(ctx context.Context, workspa
 			&i.WebhookEnabled,
 			&i.LastWebhookAt,
 			&i.MrSyncedAt,
+			&i.ImportLabels,
+			&i.PausedAt,
+			&i.PauseReason,
 		); err != nil {
 			return nil, err
 		}
@@ -1335,6 +1385,27 @@ func (q *Queries) MarkGitlabWebhookSeen(ctx context.Context, id uuid.UUID) error
 	return err
 }
 
+const pauseGitlabIntegration = `-- name: PauseGitlabIntegration :exec
+
+UPDATE gitlab_integrations
+SET paused_at = COALESCE(paused_at, now()), pause_reason = $2
+WHERE id = $1
+`
+
+type PauseGitlabIntegrationParams struct {
+	ID          uuid.UUID `json:"id"`
+	PauseReason string    `json:"pause_reason"`
+}
+
+// ── Paused sync (#3084) ────────────────────────────────────
+// PauseGitlabIntegration parks a binding whose credential GitLab refused: the
+// unattended sync passes it over until it is resumed. The first pause keeps its
+// time.
+func (q *Queries) PauseGitlabIntegration(ctx context.Context, arg PauseGitlabIntegrationParams) error {
+	_, err := q.db.Exec(ctx, pauseGitlabIntegration, arg.ID, arg.PauseReason)
+	return err
+}
+
 const pinGitlabAssignee = `-- name: PinGitlabAssignee :exec
 INSERT INTO task_gitlab_assignees (task_id, gl_username, gl_name, gl_avatar_url, source) VALUES ($1, $2, $3, $4, 'user')
 ON CONFLICT (task_id, gl_username) DO UPDATE SET source = 'user', gl_name = EXCLUDED.gl_name, gl_avatar_url = EXCLUDED.gl_avatar_url
@@ -1388,6 +1459,70 @@ type RemoveGitlabAssigneeParams struct {
 
 func (q *Queries) RemoveGitlabAssignee(ctx context.Context, arg RemoveGitlabAssigneeParams) error {
 	_, err := q.db.Exec(ctx, removeGitlabAssignee, arg.TaskID, arg.GlUsername)
+	return err
+}
+
+const resumeAllGitlabIntegrations = `-- name: ResumeAllGitlabIntegrations :execrows
+UPDATE gitlab_integrations SET paused_at = NULL, pause_reason = '' WHERE paused_at IS NOT NULL
+`
+
+// ResumeAllGitlabIntegrations clears every pause — the instance service token was
+// replaced.
+func (q *Queries) ResumeAllGitlabIntegrations(ctx context.Context) (int64, error) {
+	result, err := q.db.Exec(ctx, resumeAllGitlabIntegrations)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const resumeGitlabIntegration = `-- name: ResumeGitlabIntegration :exec
+UPDATE gitlab_integrations SET paused_at = NULL, pause_reason = '' WHERE id = $1 AND paused_at IS NOT NULL
+`
+
+// ResumeGitlabIntegration clears a pause (a sync got through).
+func (q *Queries) ResumeGitlabIntegration(ctx context.Context, id uuid.UUID) error {
+	_, err := q.db.Exec(ctx, resumeGitlabIntegration, id)
+	return err
+}
+
+const resumeGitlabIntegrationsForOwner = `-- name: ResumeGitlabIntegrationsForOwner :execrows
+UPDATE gitlab_integrations SET paused_at = NULL, pause_reason = ''
+WHERE owner_user_id = $1 AND paused_at IS NOT NULL
+`
+
+// ResumeGitlabIntegrationsForOwner clears the pauses of every binding a user owns
+// — they have just reconnected their account.
+func (q *Queries) ResumeGitlabIntegrationsForOwner(ctx context.Context, ownerUserID *uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, resumeGitlabIntegrationsForOwner, ownerUserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const setGitlabCredentialTokens = `-- name: SetGitlabCredentialTokens :exec
+UPDATE gitlab_credentials
+SET token_enc = $2, refresh_token_enc = $3, access_expires_at = $4, updated_at = now()
+WHERE user_id = $1
+`
+
+type SetGitlabCredentialTokensParams struct {
+	UserID          uuid.UUID  `json:"user_id"`
+	TokenEnc        string     `json:"token_enc"`
+	RefreshTokenEnc string     `json:"refresh_token_enc"`
+	AccessExpiresAt *time.Time `json:"access_expires_at"`
+}
+
+// SetGitlabCredentialTokens writes a refreshed OAuth grant (#3083). GitLab rotates
+// the refresh token on every use, so both halves are replaced together.
+func (q *Queries) SetGitlabCredentialTokens(ctx context.Context, arg SetGitlabCredentialTokensParams) error {
+	_, err := q.db.Exec(ctx, setGitlabCredentialTokens,
+		arg.UserID,
+		arg.TokenEnc,
+		arg.RefreshTokenEnc,
+		arg.AccessExpiresAt,
+	)
 	return err
 }
 
@@ -1447,7 +1582,7 @@ const setGitlabWebhook = `-- name: SetGitlabWebhook :one
 UPDATE gitlab_integrations
 SET webhook_secret_enc = $2, webhook_enabled = true, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason
 `
 
 type SetGitlabWebhookParams struct {
@@ -1488,6 +1623,9 @@ func (q *Queries) SetGitlabWebhook(ctx context.Context, arg SetGitlabWebhookPara
 		&i.WebhookEnabled,
 		&i.LastWebhookAt,
 		&i.MrSyncedAt,
+		&i.ImportLabels,
+		&i.PausedAt,
+		&i.PauseReason,
 	)
 	return i, err
 }
@@ -1557,9 +1695,9 @@ UPDATE gitlab_integrations
 SET name = $2, project_path = $3, board_id = $4, label_rules = $5, enabled = $6,
     owner_user_id = $7, sync_interval_sec = $8, due_source = $9, start_source = $10,
     writeback = $11, scope = $12, closed_policy = $13, closed_after = $14,
-    relations_sync = $15, full_sync_interval_sec = $16, updated_at = now()
+    relations_sync = $15, full_sync_interval_sec = $16, import_labels = $17, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at
+RETURNING id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason
 `
 
 type UpdateGitlabIntegrationParams struct {
@@ -1579,6 +1717,7 @@ type UpdateGitlabIntegrationParams struct {
 	ClosedAfter         *time.Time `json:"closed_after"`
 	RelationsSync       string     `json:"relations_sync"`
 	FullSyncIntervalSec int32      `json:"full_sync_interval_sec"`
+	ImportLabels        []string   `json:"import_labels"`
 }
 
 func (q *Queries) UpdateGitlabIntegration(ctx context.Context, arg UpdateGitlabIntegrationParams) (GitlabIntegration, error) {
@@ -1599,6 +1738,7 @@ func (q *Queries) UpdateGitlabIntegration(ctx context.Context, arg UpdateGitlabI
 		arg.ClosedAfter,
 		arg.RelationsSync,
 		arg.FullSyncIntervalSec,
+		arg.ImportLabels,
 	)
 	var i GitlabIntegration
 	err := row.Scan(
@@ -1628,6 +1768,9 @@ func (q *Queries) UpdateGitlabIntegration(ctx context.Context, arg UpdateGitlabI
 		&i.WebhookEnabled,
 		&i.LastWebhookAt,
 		&i.MrSyncedAt,
+		&i.ImportLabels,
+		&i.PausedAt,
+		&i.PauseReason,
 	)
 	return i, err
 }
@@ -1746,27 +1889,41 @@ func (q *Queries) UpsertGitlabComment(ctx context.Context, arg UpsertGitlabComme
 const upsertGitlabCredential = `-- name: UpsertGitlabCredential :one
 
 
-INSERT INTO gitlab_credentials (user_id, base_url, token_enc, gl_user_id, gl_username, updated_at)
-VALUES ($1, $2, $3, $4, $5, now())
+INSERT INTO gitlab_credentials (
+    user_id, base_url, token_enc, gl_user_id, gl_username,
+    auth_kind, refresh_token_enc, access_expires_at, token_expires_at, updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
 ON CONFLICT (user_id) DO UPDATE
 SET base_url = EXCLUDED.base_url,
     token_enc = EXCLUDED.token_enc,
     gl_user_id = EXCLUDED.gl_user_id,
     gl_username = EXCLUDED.gl_username,
+    auth_kind = EXCLUDED.auth_kind,
+    refresh_token_enc = EXCLUDED.refresh_token_enc,
+    access_expires_at = EXCLUDED.access_expires_at,
+    token_expires_at = EXCLUDED.token_expires_at,
     updated_at = now()
-RETURNING user_id, base_url, token_enc, gl_user_id, gl_username, created_at, updated_at
+RETURNING user_id, base_url, token_enc, gl_user_id, gl_username, created_at, updated_at, token_expires_at, auth_kind, refresh_token_enc, access_expires_at
 `
 
 type UpsertGitlabCredentialParams struct {
-	UserID     uuid.UUID `json:"user_id"`
-	BaseUrl    string    `json:"base_url"`
-	TokenEnc   string    `json:"token_enc"`
-	GlUserID   int64     `json:"gl_user_id"`
-	GlUsername string    `json:"gl_username"`
+	UserID          uuid.UUID  `json:"user_id"`
+	BaseUrl         string     `json:"base_url"`
+	TokenEnc        string     `json:"token_enc"`
+	GlUserID        int64      `json:"gl_user_id"`
+	GlUsername      string     `json:"gl_username"`
+	AuthKind        string     `json:"auth_kind"`
+	RefreshTokenEnc string     `json:"refresh_token_enc"`
+	AccessExpiresAt *time.Time `json:"access_expires_at"`
+	TokenExpiresAt  *time.Time `json:"token_expires_at"`
 }
 
 // GitLab integration queries (Phase A, pull-only).
 // ── Per-user credential ────────────────────────────────────
+// UpsertGitlabCredential stores a user's connection: a PAT (auth_kind 'pat',
+// token_expires_at from GitLab, #3084) or an OAuth grant (auth_kind 'oauth' with
+// the refresh token and the access token's expiry, #3083).
 func (q *Queries) UpsertGitlabCredential(ctx context.Context, arg UpsertGitlabCredentialParams) (GitlabCredential, error) {
 	row := q.db.QueryRow(ctx, upsertGitlabCredential,
 		arg.UserID,
@@ -1774,6 +1931,10 @@ func (q *Queries) UpsertGitlabCredential(ctx context.Context, arg UpsertGitlabCr
 		arg.TokenEnc,
 		arg.GlUserID,
 		arg.GlUsername,
+		arg.AuthKind,
+		arg.RefreshTokenEnc,
+		arg.AccessExpiresAt,
+		arg.TokenExpiresAt,
 	)
 	var i GitlabCredential
 	err := row.Scan(
@@ -1784,6 +1945,10 @@ func (q *Queries) UpsertGitlabCredential(ctx context.Context, arg UpsertGitlabCr
 		&i.GlUsername,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.TokenExpiresAt,
+		&i.AuthKind,
+		&i.RefreshTokenEnc,
+		&i.AccessExpiresAt,
 	)
 	return i, err
 }

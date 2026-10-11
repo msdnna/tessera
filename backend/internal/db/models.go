@@ -244,13 +244,17 @@ type DueNotificationState struct {
 }
 
 type GitlabCredential struct {
-	UserID     uuid.UUID `json:"user_id"`
-	BaseUrl    string    `json:"base_url"`
-	TokenEnc   string    `json:"token_enc"`
-	GlUserID   int64     `json:"gl_user_id"`
-	GlUsername string    `json:"gl_username"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	UserID          uuid.UUID  `json:"user_id"`
+	BaseUrl         string     `json:"base_url"`
+	TokenEnc        string     `json:"token_enc"`
+	GlUserID        int64      `json:"gl_user_id"`
+	GlUsername      string     `json:"gl_username"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	TokenExpiresAt  *time.Time `json:"token_expires_at"`
+	AuthKind        string     `json:"auth_kind"`
+	RefreshTokenEnc string     `json:"refresh_token_enc"`
+	AccessExpiresAt *time.Time `json:"access_expires_at"`
 }
 
 type GitlabIntegration struct {
@@ -280,6 +284,9 @@ type GitlabIntegration struct {
 	WebhookEnabled      bool       `json:"webhook_enabled"`
 	LastWebhookAt       *time.Time `json:"last_webhook_at"`
 	MrSyncedAt          *time.Time `json:"mr_synced_at"`
+	ImportLabels        []string   `json:"import_labels"`
+	PausedAt            *time.Time `json:"paused_at"`
+	PauseReason         string     `json:"pause_reason"`
 }
 
 type GitlabIssueLink struct {
@@ -549,16 +556,17 @@ type OauthIdentity struct {
 }
 
 type OauthProvider struct {
-	Provider        string    `json:"provider"`
-	ClientID        string    `json:"client_id"`
-	ClientSecretEnc string    `json:"client_secret_enc"`
-	GlBaseUrl       string    `json:"gl_base_url"`
-	Enabled         bool      `json:"enabled"`
-	OrgMap          []byte    `json:"org_map"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	ServiceTokenEnc string    `json:"service_token_enc"`
-	SudoWriteback   bool      `json:"sudo_writeback"`
+	Provider              string     `json:"provider"`
+	ClientID              string     `json:"client_id"`
+	ClientSecretEnc       string     `json:"client_secret_enc"`
+	GlBaseUrl             string     `json:"gl_base_url"`
+	Enabled               bool       `json:"enabled"`
+	OrgMap                []byte     `json:"org_map"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	ServiceTokenEnc       string     `json:"service_token_enc"`
+	SudoWriteback         bool       `json:"sudo_writeback"`
+	ServiceTokenExpiresAt *time.Time `json:"service_token_expires_at"`
 }
 
 type PersonalAccessToken struct {

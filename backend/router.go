@@ -809,6 +809,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/gitlab/connection", rh.GetGitlabConnection)
 			protected.POST("/gitlab/connection", rh.ConnectGitlab)
 			protected.DELETE("/gitlab/connection", rh.DisconnectGitlab)
+			// Connect through GitLab OAuth instead of a PAT (#3083): answers the authorize
+			// URL; the grant comes back on /auth/gitlab/callback.
+			protected.POST("/gitlab/connection/oauth", authHandler.GitlabConnectStart)
 			// Multi-binding: a workspace can mirror several GitLab projects, each
 			// into its own board.
 			protected.GET("/workspaces/:id/gitlab/integrations", rh.ListGitlabIntegrations)

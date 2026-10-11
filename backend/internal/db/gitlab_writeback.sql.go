@@ -176,7 +176,7 @@ func (q *Queries) GetCommentThreadTarget(ctx context.Context, id uuid.UUID) (Get
 
 const getGitlabIntegrationByID = `-- name: GetGitlabIntegrationByID :one
 
-SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at FROM gitlab_integrations WHERE id = $1
+SELECT id, workspace_id, project_path, board_id, label_rules, enabled, created_at, updated_at, owner_user_id, sync_interval_sec, last_synced_at, due_source, start_source, writeback, name, scope, closed_policy, closed_after, last_full_synced_at, members_synced_at, full_sync_interval_sec, relations_sync, webhook_secret_enc, webhook_enabled, last_webhook_at, mr_synced_at, import_labels, paused_at, pause_reason FROM gitlab_integrations WHERE id = $1
 `
 
 // GitLab write-back (phase B): outbox queue + the integration lookup the worker
@@ -211,6 +211,9 @@ func (q *Queries) GetGitlabIntegrationByID(ctx context.Context, id uuid.UUID) (G
 		&i.WebhookEnabled,
 		&i.LastWebhookAt,
 		&i.MrSyncedAt,
+		&i.ImportLabels,
+		&i.PausedAt,
+		&i.PauseReason,
 	)
 	return i, err
 }

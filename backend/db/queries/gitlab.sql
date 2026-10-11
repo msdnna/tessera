@@ -2,16 +2,33 @@
 
 -- ── Per-user credential ────────────────────────────────────
 
+-- UpsertGitlabCredential stores a user's connection: a PAT (auth_kind 'pat',
+-- token_expires_at from GitLab, #3084) or an OAuth grant (auth_kind 'oauth' with
+-- the refresh token and the access token's expiry, #3083).
 -- name: UpsertGitlabCredential :one
-INSERT INTO gitlab_credentials (user_id, base_url, token_enc, gl_user_id, gl_username, updated_at)
-VALUES ($1, $2, $3, $4, $5, now())
+INSERT INTO gitlab_credentials (
+    user_id, base_url, token_enc, gl_user_id, gl_username,
+    auth_kind, refresh_token_enc, access_expires_at, token_expires_at, updated_at
+)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, now())
 ON CONFLICT (user_id) DO UPDATE
 SET base_url = EXCLUDED.base_url,
     token_enc = EXCLUDED.token_enc,
     gl_user_id = EXCLUDED.gl_user_id,
     gl_username = EXCLUDED.gl_username,
+    auth_kind = EXCLUDED.auth_kind,
+    refresh_token_enc = EXCLUDED.refresh_token_enc,
+    access_expires_at = EXCLUDED.access_expires_at,
+    token_expires_at = EXCLUDED.token_expires_at,
     updated_at = now()
 RETURNING *;
+
+-- SetGitlabCredentialTokens writes a refreshed OAuth grant (#3083). GitLab rotates
+-- the refresh token on every use, so both halves are replaced together.
+-- name: SetGitlabCredentialTokens :exec
+UPDATE gitlab_credentials
+SET token_enc = $2, refresh_token_enc = $3, access_expires_at = $4, updated_at = now()
+WHERE user_id = $1;
 
 -- name: GetGitlabCredential :one
 SELECT * FROM gitlab_credentials WHERE user_id = $1;
@@ -25,8 +42,8 @@ DELETE FROM gitlab_credentials WHERE user_id = $1;
 INSERT INTO gitlab_integrations (
     workspace_id, name, project_path, board_id, label_rules, enabled, owner_user_id,
     sync_interval_sec, due_source, start_source, writeback, scope, closed_policy, closed_after,
-    relations_sync, full_sync_interval_sec, updated_at
-) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, now())
+    relations_sync, full_sync_interval_sec, import_labels, updated_at
+) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, now())
 RETURNING *;
 
 -- name: UpdateGitlabIntegration :one
@@ -34,7 +51,7 @@ UPDATE gitlab_integrations
 SET name = $2, project_path = $3, board_id = $4, label_rules = $5, enabled = $6,
     owner_user_id = $7, sync_interval_sec = $8, due_source = $9, start_source = $10,
     writeback = $11, scope = $12, closed_policy = $13, closed_after = $14,
-    relations_sync = $15, full_sync_interval_sec = $16, updated_at = now()
+    relations_sync = $15, full_sync_interval_sec = $16, import_labels = $17, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
@@ -60,10 +77,13 @@ SELECT * FROM gitlab_integrations WHERE workspace_id = $1
   AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL)
 ORDER BY name, created_at;
 
--- GetGitlabIntegrationByBoard resolves the binding that mirrors into a given board
--- (task-scoped operations: create-issue, board-scoped sync).
--- name: GetGitlabIntegrationByBoard :one
-SELECT * FROM gitlab_integrations WHERE board_id = $1 AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL);
+-- ListGitlabIntegrationsByBoard lists the bindings that mirror into a board — a
+-- board may take several GitLab projects (#3082) — oldest first (task-scoped
+-- operations: create-issue picks one of them).
+-- name: ListGitlabIntegrationsByBoard :many
+SELECT * FROM gitlab_integrations WHERE board_id = $1
+  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = gitlab_integrations.board_id AND b.deleted_at IS NULL)
+ORDER BY created_at, id;
 
 -- GetGitlabIntegrationByProject resolves a binding whose target board lives in a
 -- project (milestone push is project-scoped). Picks the oldest when several.
@@ -112,6 +132,8 @@ UPDATE gitlab_integrations SET mr_synced_at = $2 WHERE id = $1;
 -- name: ListAutoSyncIntegrations :many
 SELECT * FROM gitlab_integrations
 WHERE enabled
+  -- A binding GitLab refused the credential of (#3084) waits for a reconnect.
+  AND paused_at IS NULL
   AND sync_interval_sec > 0
   AND owner_user_id IS NOT NULL
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
@@ -125,6 +147,8 @@ WHERE enabled
 -- name: ListDueSyncIntegrations :many
 SELECT * FROM gitlab_integrations
 WHERE enabled
+  -- A binding GitLab refused the credential of (#3084) waits for a reconnect.
+  AND paused_at IS NULL
   AND sync_interval_sec > 0
   AND (last_synced_at IS NULL OR last_synced_at < now() - make_interval(secs => sync_interval_sec))
   -- A binding on a deleted board (0078) or in an archived project (0086 — read
@@ -424,3 +448,28 @@ SELECT u.source_key FROM gitlab_uploads u
 JOIN gitlab_integrations i ON i.id = u.integration_id
 WHERE i.workspace_id = $1 AND u.gl_url = $2
 LIMIT 1;
+
+-- ── Paused sync (#3084) ────────────────────────────────────
+
+-- PauseGitlabIntegration parks a binding whose credential GitLab refused: the
+-- unattended sync passes it over until it is resumed. The first pause keeps its
+-- time.
+-- name: PauseGitlabIntegration :exec
+UPDATE gitlab_integrations
+SET paused_at = COALESCE(paused_at, now()), pause_reason = $2
+WHERE id = $1;
+
+-- ResumeGitlabIntegration clears a pause (a sync got through).
+-- name: ResumeGitlabIntegration :exec
+UPDATE gitlab_integrations SET paused_at = NULL, pause_reason = '' WHERE id = $1 AND paused_at IS NOT NULL;
+
+-- ResumeGitlabIntegrationsForOwner clears the pauses of every binding a user owns
+-- — they have just reconnected their account.
+-- name: ResumeGitlabIntegrationsForOwner :execrows
+UPDATE gitlab_integrations SET paused_at = NULL, pause_reason = ''
+WHERE owner_user_id = $1 AND paused_at IS NOT NULL;
+
+-- ResumeAllGitlabIntegrations clears every pause — the instance service token was
+-- replaced.
+-- name: ResumeAllGitlabIntegrations :execrows
+UPDATE gitlab_integrations SET paused_at = NULL, pause_reason = '' WHERE paused_at IS NOT NULL;

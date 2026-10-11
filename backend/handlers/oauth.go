@@ -199,6 +199,12 @@ func (h *AuthHandler) GitlabAuthorize(c *gin.Context) {
 // GitLab user, provision/link the Tessera account, apply the org_map, then hand the
 // session back to the SPA via the URL fragment (never logged/sent to the server).
 func (h *AuthHandler) GitlabCallback(c *gin.Context) {
+	// Connecting a GitLab account (#3083) shares this callback — the redirect URI
+	// the GitLab application already has — and is told apart by its state.
+	if strings.HasPrefix(c.Query("state"), oauthConnectState) {
+		h.gitlabConnectCallback(c)
+		return
+	}
 	base := h.oauthBaseURL(c)
 	// The native marker lives inside the state value, which is echoed back untouched by
 	// GitLab — safe to read here for choosing the handoff target even before the CSRF

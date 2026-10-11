@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -77,17 +78,60 @@ func envBool(key string, fallback bool) bool {
 type Client struct {
 	baseURL string
 	token   string
+	oauth   bool   // token is an OAuth access token (#3083), not a PAT
 	sudo    string // GitLab username to impersonate on write (REST) calls; "" = none
 	http    *http.Client
+}
+
+// oauthTokenMark tags an OAuth access token (#3083) as it travels from the
+// credential store to New: a PAT goes into REST calls as PRIVATE-TOKEN, which
+// GitLab refuses for an OAuth token — that one has to ride as a Bearer header.
+// Marking the string keeps every caller's (baseURL, token) pair as it is.
+const oauthTokenMark = "oauth2:"
+
+// MarkOAuthToken tags an OAuth access token for New.
+func MarkOAuthToken(token string) string { return oauthTokenMark + token }
+
+// SplitToken undoes MarkOAuthToken: the bare token and whether it is OAuth.
+func SplitToken(token string) (raw string, oauth bool) {
+	if rest, ok := strings.CutPrefix(token, oauthTokenMark); ok {
+		return rest, true
+	}
+	return token, false
+}
+
+// ErrUnauthorized is GitLab refusing the credential (HTTP 401) — an expired,
+// revoked or wrong token (#3084).
+var ErrUnauthorized = errors.New("gitlab: unauthorized (check token)")
+
+// IsUnauthorized reports a refused credential on either surface: the GraphQL
+// client's ErrUnauthorized or a REST 401.
+func IsUnauthorized(err error) bool {
+	if errors.Is(err, ErrUnauthorized) {
+		return true
+	}
+	var ae *APIError
+	return errors.As(err, &ae) && ae.Status == http.StatusUnauthorized
+}
+
+// authorize puts the credential on a REST request.
+func (c *Client) authorize(req *http.Request) {
+	if c.oauth {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.token)
 }
 
 // New builds a client. baseURL is the GitLab root (trailing slash trimmed).
 // Set GITLAB_INSECURE_TLS=true to skip certificate verification for a
 // self-hosted instance with a private/self-signed CA (dev convenience).
 func New(baseURL, token string) *Client {
+	raw, oauth := SplitToken(token)
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		token:   token,
+		token:   raw,
+		oauth:   oauth,
 		// A large pull (hundreds of issues, each with up to 100 notes, plus all
 		// linked issues) can take well over 15s; the sync now runs in the
 		// background so it can afford a generous ceiling. A dead host still fails
@@ -142,7 +186,7 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("gitlab: unauthorized (check token)")
+		return ErrUnauthorized
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("gitlab: http %d", resp.StatusCode)
@@ -767,7 +811,7 @@ func (c *Client) restForm(ctx context.Context, method, path string, form url.Val
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	c.authorize(req)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if c.sudo != "" {
 		req.Header.Set("Sudo", c.sudo) // impersonate the acting user (admin token only)
@@ -792,7 +836,7 @@ func (c *Client) restGet(ctx context.Context, path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	c.authorize(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
@@ -803,6 +847,26 @@ func (c *Client) restGet(ctx context.Context, path string) ([]byte, error) {
 		return nil, &APIError{Status: resp.StatusCode, Body: string(body)}
 	}
 	return body, nil
+}
+
+// TokenExpiry reads when the client's personal access token expires (#3084),
+// GET /personal_access_tokens/self. nil with no error = the token never expires.
+// An OAuth token has no such record; it answers (nil, nil) without asking.
+func (c *Client) TokenExpiry(ctx context.Context) (*time.Time, error) {
+	if c.oauth {
+		return nil, nil
+	}
+	body, err := c.restGet(ctx, "personal_access_tokens/self")
+	if err != nil {
+		return nil, err
+	}
+	var tok struct {
+		ExpiresAt string `json:"expires_at"`
+	}
+	if err := json.Unmarshal(body, &tok); err != nil {
+		return nil, err
+	}
+	return parseDate(tok.ExpiresAt), nil
 }
 
 // Member is a GitLab project member (for the assignee picker + assignee write-back).
@@ -1073,7 +1137,7 @@ func (c *Client) UploadFile(ctx context.Context, projectPath, filename string, r
 	if err != nil {
 		return Upload{}, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	c.authorize(req)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	if c.sudo != "" {
 		req.Header.Set("Sudo", c.sudo)
