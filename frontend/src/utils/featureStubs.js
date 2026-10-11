@@ -36,7 +36,6 @@ export const FEATURE_STUBS = {
   // The editor (#3118): «Ссылка на фрагмент» in the bubble over read text — a
   // link to a stretch of a description or a comment needs anchors the app
   // doesn't keep yet (#3119).
-  'editor.fragmentLink': 3119,
 }
 
 export function stubTask(key) {

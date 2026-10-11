@@ -122,7 +122,8 @@
     "bubble": {
       "label": "Selected text",
       "quote": "Quote in reply",
-      "fragment": "Link to the fragment"
+      "fragment": "Link to the fragment",
+      "fragmentCopied": "Link to the fragment copied"
     },
     "attach": {
       "image": "Image…",

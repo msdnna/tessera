@@ -123,7 +123,7 @@ test('пузырь над текстом: «Цитировать в ответ»
     })
   const rb = page.getByTestId('read-bubble')
   await expect(rb).toBeVisible()
-  await expect(page.getByTestId('read-bubble-link')).toHaveAttribute('aria-disabled', 'true')
+  await expect(page.getByTestId('read-bubble-link')).toBeVisible()
   await page.keyboard.press('q')
   const field = modal.locator('.comment-add textarea')
   await expect(field).toHaveValue('> Контраст чипа всё ещё низкий\n\n')
@@ -211,4 +211,49 @@ test('полноэкранный: «Рядом» по умолчанию, ⌘1�
   await expect
     .poll(async () => (await backend.get(`/tasks/${task.id}`)).description)
     .toBe('Первый абзац. Из окна.')
+})
+
+// «Ссылка на фрагмент» (#3119): the bubble copies a link to the selected text of
+// a comment; opening the link lands on that comment with the text marked.
+test('ссылка на фрагмент: копируется из пузыря и открывает задачу на этом тексте', async ({
+  page,
+  backend,
+}) => {
+  await page.context().grantPermissions(['clipboard-read', 'clipboard-write'])
+  const { modal, task, board } = await openTask(page, backend, 'fragment', {
+    description: 'Описание задачи.',
+  })
+  const c = await backend.post(`/tasks/${task.id}/comments`, {
+    body: 'Сначала собрать билд, потом выкатить на стенд',
+  })
+  await page.reload()
+  const bubble = modal.locator(`[data-comment-id="${c.id}"] p`).first()
+  await expect(bubble).toContainText('собрать билд')
+  await bubble.evaluate((p) => {
+    const text = p.firstChild
+    const at = text.nodeValue.indexOf('собрать билд')
+    const r = document.createRange()
+    r.setStart(text, at)
+    r.setEnd(text, at + 'собрать билд'.length)
+    const sel = window.getSelection()
+    sel.removeAllRanges()
+    sel.addRange(r)
+  })
+  await page.getByTestId('read-bubble-link').click()
+  const href = await page.evaluate(() => navigator.clipboard.readText())
+  const url = new URL(href)
+  expect(url.searchParams.get('frag')).toBe(`c:${c.id}`)
+  expect(url.searchParams.get('q')).toBe('собрать билд')
+
+  // Open the link fresh: the comment's text is marked and the address is cleaned.
+  await page.goto(`/board/${board.id}?${url.searchParams.toString()}`)
+  await expect(modal).toBeVisible({ timeout: 15000 })
+  await expect
+    .poll(() => page.evaluate(() => globalThis.CSS?.highlights?.has('t-fragment')))
+    .toBe(true)
+  const marked = await page.evaluate(() =>
+    [...globalThis.CSS.highlights.get('t-fragment')][0].toString(),
+  )
+  expect(marked).toBe('собрать билд')
+  await expect(page).not.toHaveURL(/frag=/)
 })

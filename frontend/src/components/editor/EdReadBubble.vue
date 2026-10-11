@@ -3,8 +3,8 @@
 // тексте только для чтения»): select a stretch of the description or of a
 // comment and, 150 ms later, «Цитировать в ответ Q» and «Ссылка на фрагмент»
 // float over it. Quoting hands the text to the task's comment composer
-// (utils/quoteBus); a link to a fragment needs anchors the app doesn't keep yet
-// — a visible stub until then.
+// (utils/quoteBus); «Ссылка на фрагмент» copies a link that opens the task on
+// that very text (utils/fragmentLink, #3119).
 //
 // Rendered in place (position: fixed) rather than teleported, for the same
 // reason as the editor's own popups: inside the task modal a body-level layer is
@@ -16,7 +16,9 @@ import { ChatbubbleOutline, LinkOutline } from '@vicons/ionicons5'
 import ShortcutKeys from '../ShortcutKeys.vue'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { requestQuote } from '@/utils/quoteBus'
-import { stubTask } from '@/utils/featureStubs'
+import { fragmentHref, scopeOf } from '@/utils/fragmentLink'
+import { copyText } from '@/utils/clipboard'
+import { useMessage } from '@/composables/useMessage'
 import { isTypingTarget } from '@/utils/keys'
 
 const props = defineProps({
@@ -26,11 +28,13 @@ const props = defineProps({
   taskId: { type: String, default: null },
   // Off where there is nothing to quote into (a read-only task).
   canQuote: { type: Boolean, default: true },
+  // { board_id, number } — for «Ссылка на фрагмент»; without it there is no link.
+  task: { type: Object, default: null },
 })
 
 const { t } = useI18n()
 const SHOW_DELAY = 150
-const fragmentStub = stubTask('editor.fragmentLink')
+const message = useMessage()
 
 const el = ref(null)
 const shown = ref(null) // { left, top, text }
@@ -51,7 +55,7 @@ function check() {
   const text = String(sel).trim()
   if (!text) return hide()
   const r = range.getClientRects()[0] || range.getBoundingClientRect()
-  shown.value = { left: r.left, top: r.top, text }
+  shown.value = { left: r.left, top: r.top, text, scope: scopeOf(range.startContainer) }
   nextTick(clamp)
 }
 // Keep the bubble on screen: it starts at the selection's first line and is
@@ -83,6 +87,15 @@ function quote() {
     window.getSelection?.()?.removeAllRanges?.()
     hide()
   }
+}
+
+const canLink = () => !!fragmentHref(props.task, 'desc', '')
+async function copyLink() {
+  if (!shown.value) return
+  const href = fragmentHref(props.task, shown.value.scope, shown.value.text)
+  if (!href) return
+  if (await copyText(href)) message.success(t('documents.editor.bubble.fragmentCopied'))
+  hide()
 }
 
 onMounted(() => {
@@ -120,11 +133,11 @@ useShortcuts({ 'editor.quote': quote }, { when: () => !!shown.value && props.can
         <ShortcutKeys id="editor.quote" />
       </button>
       <button
+        v-if="canLink()"
         type="button"
-        class="erb-b stub"
-        aria-disabled="true"
-        :title="t('common.stub.soon', { n: fragmentStub })"
+        class="erb-b"
         data-testid="read-bubble-link"
+        @click="copyLink"
       >
         <n-icon :component="LinkOutline" :size="14" class="erb-ic" />
         {{ t('documents.editor.bubble.fragment') }}
@@ -166,19 +179,8 @@ useShortcuts({ 'editor.quote': quote }, { when: () => !!shown.value && props.can
 .erb-b:hover {
   background: var(--t-hover);
 }
-.erb-b.stub {
-  padding-right: 9px;
-  color: var(--t-text3);
-  cursor: default;
-}
-.erb-b.stub:hover {
-  background: transparent;
-}
 .erb-ic {
   color: var(--t-text2);
-}
-.stub .erb-ic {
-  color: var(--t-text3);
 }
 .erb-enter-active,
 .erb-leave-active {

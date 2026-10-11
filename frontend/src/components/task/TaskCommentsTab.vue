@@ -50,6 +50,7 @@ import TesseraSpinner from '../TesseraSpinner.vue'
 import EmptyState from '../EmptyState.vue'
 import ArmButton from '../kit/ArmButton.vue'
 import EdReadBubble from '../editor/EdReadBubble.vue'
+import { findText, markRange } from '@/utils/fragmentLink'
 import { quoteRequest } from '@/utils/quoteBus'
 import { CAPS } from '@/utils/keyCaps'
 
@@ -465,7 +466,18 @@ const draftTime = computed(() =>
       )
     : '',
 )
-defineExpose({ scrollToBottom, autoGrow, resetComposers })
+// A link to a fragment of a comment (#3119): the comment into view, the text
+// marked for a moment. False when the comment is not in the thread (deleted).
+async function revealComment(id, q) {
+  await nextTick()
+  const el = commentsListEl.value?.querySelector(`[data-comment-id="${id}"]`)
+  if (!el) return false
+  revealInPane(el)
+  markRange(findText(el, q))
+  return true
+}
+
+defineExpose({ scrollToBottom, autoGrow, resetComposers, revealComment })
 
 // ── offline retry for a comment POST ──
 // A network error (server unreachable — err.offline) is retried a few times with
@@ -963,7 +975,12 @@ async function onCommentCheck(c, i) {
       />
     </div>
     <!-- Selecting a comment's text: «Цитировать в ответ Q · Ссылка на фрагмент». -->
-    <EdReadBubble :target="() => commentsListEl" :task-id="taskId" :can-quote="!readonly" />
+    <EdReadBubble
+      :target="() => commentsListEl"
+      :task-id="taskId"
+      :task="editorTask"
+      :can-quote="!readonly"
+    />
     <!-- The composer: pinned under the modal's scrolling column when it gives a
          target (v2), else sticky at the bottom of this pane. -->
     <Teleport v-if="!readonly" :to="composerTo" :disabled="!composerTo">

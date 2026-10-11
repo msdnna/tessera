@@ -851,3 +851,10 @@ body {
     box-shadow: 0 0 0 2px var(--t-primary);
   }
 }
+
+/* «Ссылка на фрагмент» (#3119): the text a link points at, marked for a moment
+   (utils/fragmentLink — the CSS Custom Highlight API, no DOM rewritten). */
+::highlight(t-fragment) {
+  background-color: color-mix(in srgb, var(--t-primary) 30%, transparent);
+  color: inherit;
+}

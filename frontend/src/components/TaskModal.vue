@@ -3,6 +3,7 @@ import { tourEvent } from '@/utils/tourEvents'
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { readFragment } from '@/utils/fragmentLink'
 import { NModal, NIcon, NSpin } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
@@ -618,6 +619,18 @@ async function loadExtras(mine) {
   // On open, land on the newest comment — but only in the wide layout, where the
   // right column scrolls on its own. In the stacked layout the whole modal scrolls,
   // and jumping to the bottom would skip past the title and description.
+  // Opened by a link to a fragment (#3119): land on that text instead.
+  const frag = readFragment(router?.currentRoute?.value?.query)
+  if (frag) {
+    scrollOnOpen = false
+    await nextTick()
+    if (frag.scope === 'desc') descTab.value?.reveal(frag.q)
+    else await commentsTab.value?.revealComment(frag.scope.slice(2), frag.q)
+    const rest = { ...router.currentRoute.value.query }
+    delete rest.frag
+    delete rest.q
+    router.replace({ query: rest })
+  }
   if (scrollOnOpen && wide.value) commentsTab.value?.scrollToBottom()
   scrollOnOpen = false
   // Enable the enter fade only after this population has rendered.
@@ -764,6 +777,7 @@ const editorTask = computed(() =>
   task.value
     ? {
         number: task.value.number,
+        board_id: task.value.board_id,
         icon: statusIcon(currentColumn.value),
         color: currentColumn.value?.color || '',
       }
