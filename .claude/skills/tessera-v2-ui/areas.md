@@ -143,3 +143,7 @@
   задачи, `provider`+`source_id` без FK в GitLab-таблицы (чистит сам провайдер). GitLab-часть —
   `internal/gitlab/mergerequests.go` + `handlers/gitlab_mr.go`; вебхуки `merge_request`/`pipeline`
   применяются сразу из payload (issue/note — по-прежнему только через инкрементальный пул).
+  MR из других проектов (#2964 rework, миграция 0095): берутся у issue (`related_merge_requests` +
+  `closed_by`, пайплайн — из карточки MR), в синке и в фоне при открытии задачи (не чаще раза в 2 мин,
+  ответ сокетом `task.code_links`), `handlers/gitlab_mr_foreign.go` + `internal/gitlab/related_mrs.go`;
+  ключ строки включает `repo`, в ответе `ref` (`!12` / `group/proj!12`) — показывать его, а не `!number`.
