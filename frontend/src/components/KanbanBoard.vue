@@ -171,6 +171,7 @@ const {
   gitlabCanCreate,
   gitlabFetchTemplates,
   gitlabIntegrationId,
+  gitlabCreateTargets,
   gitlabCanGroup,
   cardSize,
   stackFields,
@@ -1394,14 +1395,26 @@ async function loadWorkspaceMeta() {
     gitlabMembersMap,
     Object.fromEntries((glMem.data || []).map((g) => [g.gl_user_id, g])),
   )
-  // Issue-creation is offered only on the binding that targets THIS board.
-  const gi = (glInt.data?.integrations || []).find((b) => b.board_id === props.boardId) || {}
+  // Issue-creation is offered only on the bindings that target THIS board — and a
+  // board may take several GitLab projects (#3082): the modal then asks which.
+  const onBoard = (glInt.data?.integrations || []).filter((b) => b.board_id === props.boardId)
+  const creatable = onBoard.filter((b) => b.enabled === true && b.writeback?.push_create === true)
+  gitlabCreateTargets.value = creatable.map((b) => ({
+    id: b.id,
+    project_path: b.project_path,
+    name: b.name,
+    fetch_templates: b.writeback?.fetch_templates === true,
+  }))
+  const gi = creatable[0] || onBoard[0] || {}
   gitlabIntegrationId.value = gi.id || null
-  gitlabCanCreate.value = gi.enabled === true && gi.writeback?.push_create === true
-  gitlabFetchTemplates.value = gitlabCanCreate.value && gi.writeback?.fetch_templates === true
+  gitlabCanCreate.value = creatable.length > 0
+  gitlabFetchTemplates.value = creatable.some((b) => b.writeback?.fetch_templates === true)
   // Grouping is its own flag, not a sub-option of push_create: an integration may push
   // subtasks into an existing issue hierarchy without allowing issue creation from tasks.
-  gitlabCanGroup.value = gi.enabled === true && gi.writeback?.push_children === true
+  // A linked task answers to its own binding on the server; here, any will do.
+  gitlabCanGroup.value = onBoard.some(
+    (b) => b.enabled === true && b.writeback?.push_children === true,
+  )
   // Prefixes whose tags are governed by a status/priority/meta GitLab rule — hidden
   // from tag pickers so they can't be toggled out of sync with the mapped field.
   // Collected across every integration that targets this board (multi-binding).

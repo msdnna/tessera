@@ -4,11 +4,13 @@
 // direction, state), the settings of the picked one and its webhook. A new
 // binding is filled in place, without a modal of its own.
 //
-// Several GitLab projects on one board, the OAuth connection and the token's
-// expiry are #3065 — drawn, not wired.
+// #3065: several GitLab projects on one board («Ещё проект на ту же доску»), the
+// account connected through OAuth («Войти через GitLab»), the token's expiry and
+// a binding paused when GitLab refuses it («Переподключить»), and an import
+// filter by label.
 import { computed, inject, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NInput, NSelect, NSwitch, NTooltip } from 'naive-ui'
+import { NIcon, NInput, NSelect, NSwitch } from 'naive-ui'
 import DateField from '@/components/kit/DateField.vue'
 import {
   LogoGitlab,
@@ -25,24 +27,67 @@ import {
   PersonCircleOutline,
 } from '@vicons/ionicons5'
 import { GITLAB_FORM } from './useGitlabForm'
-import { stubTask } from '@/utils/featureStubs'
+import { useFormat } from '@/composables/useFormat'
 import { cap, CAPS } from '@/utils/keyCaps'
 import ActionMenu from '../kit/ActionMenu.vue'
 import Kbd from '../Kbd.vue'
 
 const f = inject(GITLAB_FORM)
 const { t } = useI18n()
-const stub = stubTask('gitlab.connections')
+const { formatDate } = useFormat()
 const ro = computed(() => !f.isAdmin)
+// A GitLab label as the filter's sample — data, not interface text.
+const LABEL_SAMPLE = 'backend'
 
 const boardLabel = (id) => f.boardOptions.find((o) => o.value === id)?.label || ''
 const scopeLabel = (v) => f.scopeOptions.find((o) => o.value === v)?.label || ''
 function cardState(b) {
   if (b.enabled === false) return { key: 'off', tone: '' }
+  if (b.paused_at) return { key: 'paused', tone: 'err' }
   if (!f.gl.connected && !f.serviceConfigured) return { key: 'noCreds', tone: 'err' }
   return { key: 'on', tone: 'ok' }
 }
 const isPush = (b) => b.writeback?.enabled === true
+
+// A token's last day (#3084), 'YYYY-MM-DD' read as a calendar day — not as an
+// instant, which west of UTC would print the day before.
+function dayOf(s) {
+  const [y, m, d] = String(s).split('-').map(Number)
+  return new Date(y, m - 1, d)
+}
+function expiryText(s) {
+  if (!s) return ''
+  const day = dayOf(s)
+  const today = new Date()
+  today.setHours(0, 0, 0, 0)
+  if (day < today) return t('gitlab.window.tokenExpired')
+  const opts = { day: 'numeric', month: 'short' }
+  if (day.getFullYear() !== today.getFullYear()) opts.year = 'numeric'
+  return t('gitlab.window.tokenUntil', { date: formatDate(day, opts) })
+}
+const expired = (s) => !!s && dayOf(s) < new Date(new Date().setHours(0, 0, 0, 0))
+const accountKind = computed(() =>
+  f.gl.authKind === 'oauth' ? t('gitlab.window.oauthKind') : t('gitlab.window.pat'),
+)
+// «Переподключить» a paused binding: under a service token only an admin can
+// replace it; otherwise the account goes through the way it was connected.
+function reconnect(b) {
+  if (b.auth_kind === 'service') return
+  if (b.auth_kind === 'oauth' && f.oauthAvailable) {
+    f.connectOAuth()
+    return
+  }
+  f.reconnecting = true
+  nextTick(() => document.querySelector('[data-testid="gitlab-token"] input')?.focus())
+}
+const sameBoardTarget = computed(
+  () => f.currentBinding?.board_id || f.integrations[0]?.board_id || null,
+)
+function addSameBoard() {
+  if (ro.value || !sameBoardTarget.value) return
+  f.addToBoard(sameBoardTarget.value)
+  nextTick(() => pathEl.value?.focus?.())
+}
 
 // ── menus: a card's «⋯», the account's ──
 const menuFor = ref('') // binding id | 'account'
@@ -155,13 +200,14 @@ defineExpose({ addNew, escape })
               <span class="glw-pill ok">{{ t('gitlab.window.connected') }}</span>
             </div>
             <div class="glw-sub">
-              {{ f.gl.baseUrl }} · {{ t('gitlab.window.pat') }}
-              <n-tooltip :delay="300">
-                <template #trigger>
-                  <span class="glw-stub gc-expiry">· {{ t('gitlab.window.tokenExpiry') }}</span>
-                </template>
-                {{ t('common.stub.soon', { n: stub }) }}
-              </n-tooltip>
+              {{ f.gl.baseUrl }} · {{ accountKind }}
+              <span
+                v-if="f.gl.tokenExpiresAt"
+                class="gc-expiry"
+                :class="{ err: expired(f.gl.tokenExpiresAt) }"
+                data-testid="gitlab-token-expiry"
+                >· {{ expiryText(f.gl.tokenExpiresAt) }}</span
+              >
             </div>
           </template>
           <template v-else>
@@ -171,19 +217,17 @@ defineExpose({ addNew, escape })
             <div class="glw-sub">{{ t('gitlab.window.noAccountSub') }}</div>
           </template>
         </div>
-        <n-tooltip :delay="300">
-          <template #trigger>
-            <span
-              class="kit-btn glw-stub glw-hide-m"
-              aria-disabled="true"
-              data-testid="gitlab-oauth-stub"
-            >
-              <n-icon :component="LogoGitlab" :size="15" />
-              {{ t('gitlab.window.oauth') }}
-            </span>
-          </template>
-          {{ t('common.stub.soon', { n: stub }) }}
-        </n-tooltip>
+        <button
+          v-if="f.oauthAvailable"
+          type="button"
+          class="kit-btn"
+          :disabled="f.connecting"
+          data-testid="gitlab-oauth-connect"
+          @click="f.connectOAuth"
+        >
+          <n-icon :component="LogoGitlab" :size="15" />
+          {{ f.gl.connected ? t('gitlab.window.oauthReconnect') : t('gitlab.window.oauth') }}
+        </button>
         <button
           v-if="f.gl.connected"
           type="button"
@@ -204,7 +248,7 @@ defineExpose({ addNew, escape })
           </template>
         </i18n-t>
       </p>
-      <div v-if="!f.gl.connected" class="glw-card col gc-pat">
+      <div v-if="!f.gl.connected || f.reconnecting" class="glw-card col gc-pat">
         <div class="glw-row">
           <div class="glw-lbl">
             <span class="glw-lbl-t">{{ t('gitlab.modal.account.baseUrl') }}</span>
@@ -293,6 +337,14 @@ defineExpose({ addNew, escape })
             → {{ boardLabel(b.board_id) || t('gitlab.window.noBoard') }}
             <template v-if="b.name"> · {{ b.name }}</template>
             · {{ scopeLabel(b.scope || 'all') }}
+            <template v-if="b.import_labels?.length">
+              · {{ t('gitlab.window.importOnly', { labels: b.import_labels.join(', ') }) }}
+            </template>
+            <template v-if="b.token_expires_at && !b.paused_at">
+              · <span :class="{ 'gc-err': expired(b.token_expires_at) }">{{
+                expiryText(b.token_expires_at)
+              }}</span>
+            </template>
             ·
             {{
               b.last_synced_at
@@ -301,6 +353,21 @@ defineExpose({ addNew, escape })
             }}
           </div>
         </div>
+        <button
+          v-if="b.paused_at && b.auth_kind !== 'service'"
+          type="button"
+          class="kit-btn small primary"
+          data-testid="gitlab-reconnect"
+          @click.stop="reconnect(b)"
+        >
+          {{ t('gitlab.window.reconnect') }}
+        </button>
+        <span
+          v-else-if="b.paused_at"
+          class="glw-hint gc-svc"
+          :title="t('gitlab.window.reconnectService')"
+          >{{ t('gitlab.window.reconnectServiceShort') }}</span
+        >
         <span class="glw-seg gc-dir" :title="t('gitlab.window.directionHint')">
           <span :class="{ on: !isPush(b) }">{{ t('gitlab.window.pull') }}</span>
           <span :class="{ on: isPush(b) }">{{ t('gitlab.window.pullPush') }}</span>
@@ -315,16 +382,17 @@ defineExpose({ addNew, escape })
           <n-icon :component="EllipsisHorizontal" :size="16" />
         </button>
       </div>
-      <n-tooltip :delay="300">
-        <template #trigger>
-          <div class="gc-more-stub glw-stub" aria-disabled="true">
-            <n-icon :component="AddOutline" :size="14" />
-            {{ t('gitlab.window.sameBoard') }}
-            <span class="gc-soon">{{ t('common.stub.badge') }}</span>
-          </div>
-        </template>
-        {{ t('common.stub.soon', { n: stub }) }}
-      </n-tooltip>
+      <button
+        v-if="!ro && sameBoardTarget"
+        type="button"
+        class="gc-more"
+        data-testid="gitlab-same-board"
+        @click="addSameBoard"
+      >
+        <n-icon :component="AddOutline" :size="14" />
+        {{ t('gitlab.window.sameBoard') }}
+        <span class="gc-more-b">{{ boardLabel(sameBoardTarget) }}</span>
+      </button>
 
       <!-- THE PICKED BINDING (or the new one) -->
       <div class="glw-h">
@@ -383,6 +451,21 @@ defineExpose({ addNew, escape })
             </div>
             <div class="glw-ctl">
               <n-select v-model:value="f.scope" :options="f.scopeOptions" :disabled="ro" />
+            </div>
+          </div>
+          <div class="glw-row">
+            <div class="glw-lbl">
+              <span class="glw-lbl-t">{{ t('gitlab.window.importLabels') }}</span>
+              <span class="glw-lbl-s">{{ t('gitlab.window.importLabelsHint') }}</span>
+            </div>
+            <div class="glw-ctl">
+              <n-input
+                v-model:value="f.importLabels"
+                class="glw-mono"
+                :placeholder="LABEL_SAMPLE"
+                :disabled="ro"
+                data-testid="gitlab-import-labels"
+              />
             </div>
           </div>
           <div class="glw-row">
@@ -571,21 +654,35 @@ defineExpose({ addNew, escape })
 .gc-dir {
   pointer-events: none;
 }
-.gc-more-stub {
+.gc-more {
   display: flex;
   align-items: center;
   gap: 8px;
+  width: 100%;
   height: 38px;
   margin-top: 6px;
   padding: 0 14px;
+  border: 1px dashed var(--t-border);
+  border-radius: 10px;
+  background: none;
+  font: inherit;
   font-size: 12.5px;
+  color: var(--t-text2);
+  cursor: pointer;
+}
+.gc-more:hover {
+  color: var(--t-text1);
+  border-color: color-mix(in srgb, var(--t-primary) 45%, var(--t-border));
+}
+.gc-more-b {
   color: var(--t-text3);
 }
-.gc-soon {
-  padding: 1px 6px;
-  border-radius: 6px;
-  background: var(--t-pill);
-  font-size: 11px;
+.gc-expiry.err,
+.gc-err {
+  color: var(--t-error);
+}
+.gc-svc {
+  white-space: nowrap;
 }
 .gc-of {
   font-weight: 600;

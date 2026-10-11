@@ -366,7 +366,6 @@
     "connectProject": "Connect a project",
     "connected": "Connected",
     "pat": "personal token",
-    "tokenExpiry": "token expiry",
     "noAccount": "No personal account connected",
     "noAccountSub": "Needed to write on your behalf — the URL and a token below",
     "oauth": "Sign in with GitLab",
@@ -378,7 +377,8 @@
     "state": {
       "on": "Connected",
       "off": "Off",
-      "noCreds": "No access"
+      "noCreds": "No access",
+      "paused": "Token expired · sync paused"
     },
     "webhookOn": "webhook",
     "noBoard": "no board",
@@ -465,6 +465,21 @@
       "keyResolve": "resolve",
       "resolve": "Resolve the conflict",
       "changes": "Changes"
-    }
+    },
+    "tokenUntil": "token until {date}",
+    "tokenExpired": "token expired",
+    "oauthKind": "OAuth",
+    "oauthReconnect": "Reconnect with GitLab",
+    "reconnect": "Reconnect",
+    "reconnectService": "Syncing under the service token — an administrator can replace it",
+    "reconnectServiceShort": "needs a new service token",
+    "importOnly": "only labelled “{labels}”",
+    "importLabels": "Only issues labelled",
+    "importLabelsHint": "comma-separated, all of them; empty — no filter",
+    "oauthResult": {
+      "connected": "GitLab connected through OAuth",
+      "failed": "Couldn't connect GitLab: {reason}"
+    },
+    "chooseProject": "GitLab project"
   }
 }

@@ -971,6 +971,8 @@ export const gitlab = {
   getConnection: () => api.get('/gitlab/connection'),
   connect: (data) => api.post('/gitlab/connection', data), // { base_url, token }
   disconnect: () => api.delete('/gitlab/connection'),
+  // Connect through GitLab OAuth instead of a PAT (#3083) → { url } to navigate to.
+  connectOAuth: (returnTo) => api.post('/gitlab/connection/oauth', { return_to: returnTo }),
   // Per-workspace integration bindings (multi-binding: several GL project → board).
   listIntegrations: (wsId) => sharedGet(`/workspaces/${wsId}/gitlab/integrations`),
   createIntegration: (wsId, data) => api.post(`/workspaces/${wsId}/gitlab/integrations`, data),

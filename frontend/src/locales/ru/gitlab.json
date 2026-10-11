@@ -366,7 +366,6 @@
     "connectProject": "Подключить проект",
     "connected": "Подключено",
     "pat": "личный токен",
-    "tokenExpiry": "срок токена",
     "noAccount": "Личный аккаунт не подключён",
     "noAccountSub": "Нужен для записи от вашего имени — URL и токен ниже",
     "oauth": "Войти через GitLab",
@@ -378,7 +377,8 @@
     "state": {
       "on": "Подключено",
       "off": "Выключено",
-      "noCreds": "Нет доступа"
+      "noCreds": "Нет доступа",
+      "paused": "Токен истёк · синхронизация на паузе"
     },
     "webhookOn": "вебхук",
     "noBoard": "доска не выбрана",
@@ -465,6 +465,21 @@
       "keyResolve": "разрешить конфликт",
       "resolve": "Разрешить конфликт",
       "changes": "Изменения"
-    }
+    },
+    "tokenUntil": "токен до {date}",
+    "tokenExpired": "токен истёк",
+    "oauthKind": "OAuth",
+    "oauthReconnect": "Переподключить через GitLab",
+    "reconnect": "Переподключить",
+    "reconnectService": "Синхронизация идёт под сервисным токеном — обновить его может администратор",
+    "reconnectServiceShort": "нужен новый сервисный токен",
+    "importOnly": "только с лейблом «{labels}»",
+    "importLabels": "Только issues с лейблами",
+    "importLabelsHint": "через запятую, нужны все; пусто — без фильтра",
+    "oauthResult": {
+      "connected": "GitLab подключён через OAuth",
+      "failed": "Не удалось подключить GitLab: {reason}"
+    },
+    "chooseProject": "Проект GitLab"
   }
 }

@@ -118,6 +118,7 @@ const {
   gitlabCanCreate,
   gitlabFetchTemplates,
   gitlabIntegrationId,
+  gitlabCreateTargets,
   gitlabCanGroup,
 } = storeToRefs(bv)
 const tagPrefixNames = bv.prefixNames
@@ -851,11 +852,27 @@ async function closeTask() {
 // editor (above) before creating. On success the task becomes a synced issue task.
 const glCreating = ref(false)
 const glTemplates = ref([])
+// Which GitLab project the issue is opened in — asked only when several mirror
+// into this board (#3082); the first is the default.
+const glTarget = ref(null)
+const glTargetId = computed(() => glTarget.value || gitlabIntegrationId.value)
+const glTargetOptions = computed(() =>
+  gitlabCreateTargets.value.map((b) => ({ label: b.project_path || b.name, value: b.id })),
+)
+const glTargetFetchesTemplates = computed(() => {
+  const many = gitlabCreateTargets.value
+  if (!many.length) return gitlabFetchTemplates.value
+  return many.find((b) => b.id === glTargetId.value)?.fetch_templates === true
+})
+function pickGlTarget(id) {
+  glTarget.value = id
+  loadGlTemplates(loadSeq)
+}
 async function loadGlTemplates(mine) {
   glTemplates.value = []
-  if (!gitlabFetchTemplates.value || !wsId.value) return
+  if (!glTargetFetchesTemplates.value || !wsId.value) return
   try {
-    const res = await glApi.issueTemplates(wsId.value, gitlabIntegrationId.value)
+    const res = await glApi.issueTemplates(wsId.value, glTargetId.value)
     if (mine !== loadSeq) return
     glTemplates.value = res.data || []
   } catch {
@@ -888,7 +905,8 @@ async function createGlIssue() {
     await applyMeta()
     // The due date crosses over as a day, not an instant — send the calendar it
     // was written in (the profile zone, else the browser's).
-    const created = await glApi.createIssue(props.taskId, {}, resolvedTimezone(theme.timezone))
+    const body = gitlabCreateTargets.value.length > 1 ? { integration_id: glTargetId.value } : {}
+    const created = await glApi.createIssue(props.taskId, body, resolvedTimezone(theme.timezone))
     // Re-fetch so the task picks up its GitLab provenance and renders as synced.
     const res = await tasksApi.get(props.taskId)
     task.value = res.data
@@ -1944,10 +1962,31 @@ useShortcuts(
                         </button>
                       </div>
                     </div>
-                    <button v-else class="dev-create" :disabled="glCreating" @click="createGlIssue">
-                      <n-icon :component="LogoGitlab" :size="15" />
-                      {{ glCreating ? t('task.gitlab.creating') : t('task.gitlab.create') }}
-                    </button>
+                    <template v-else>
+                      <div
+                        v-if="glTargetOptions.length > 1"
+                        class="dev-targets"
+                        role="radiogroup"
+                        :aria-label="t('gitlab.window.chooseProject')"
+                        data-testid="gitlab-create-target"
+                      >
+                        <button
+                          v-for="o in glTargetOptions"
+                          :key="o.value"
+                          type="button"
+                          role="radio"
+                          :aria-checked="o.value === glTargetId"
+                          :class="{ on: o.value === glTargetId }"
+                          @click="pickGlTarget(o.value)"
+                        >
+                          {{ o.label }}
+                        </button>
+                      </div>
+                      <button class="dev-create" :disabled="glCreating" @click="createGlIssue">
+                        <n-icon :component="LogoGitlab" :size="15" />
+                        {{ glCreating ? t('task.gitlab.creating') : t('task.gitlab.create') }}
+                      </button>
+                    </template>
                   </template>
 
                   <div
@@ -2751,6 +2790,27 @@ useShortcuts(
   color: var(--t-text2);
   font-size: 11px;
   white-space: nowrap;
+}
+.dev-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.dev-targets > button {
+  padding: 2px 8px;
+  border: 1px solid var(--t-border);
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--t-text2);
+  cursor: pointer;
+}
+.dev-targets > button.on {
+  border-color: color-mix(in srgb, var(--t-primary) 55%, var(--t-border));
+  color: var(--t-text1);
+  background: color-mix(in srgb, var(--t-primary) 10%, transparent);
 }
 .dev-create {
   display: inline-flex;

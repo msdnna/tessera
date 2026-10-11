@@ -13,9 +13,7 @@ export const FEATURE_STUBS = {
   // Settings (#3106): two-factor sign-in (#3081).
   'settings.twoFactor': 3081,
   'admin.roles': 3076,
-  // GitLab: several projects on one board, OAuth connection, the token's
-  // expiry (#3065); import and export (#3068).
-  'gitlab.connections': 3065,
+  // GitLab: import and export (#3068).
   'gitlab.importExport': 3068,
   // Background jobs: history, steps and progress, the live log, the queue
   // (#3067).

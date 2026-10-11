@@ -70,6 +70,10 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const gitlabCanCreate = ref(false)
   const gitlabFetchTemplates = ref(false)
   const gitlabIntegrationId = ref(null)
+  // Several GitLab projects may mirror into one board (#3082): the bindings an
+  // issue can be created in — [{ id, project_path, name, fetch_templates }]. More
+  // than one → the task modal asks which project.
+  const gitlabCreateTargets = ref([])
   // Same shape for the hierarchy half (#2592): writeback.push_children gates both the
   // "Сделать сгруппированной" button on a parent and the per-subtask push/retry. Kept
   // separate from gitlabCanCreate because an integration can allow one and not the other.
@@ -167,6 +171,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     gitlabCanCreate.value = false
     gitlabFetchTemplates.value = false
     gitlabIntegrationId.value = null
+    gitlabCreateTargets.value = []
     gitlabCanGroup.value = false
     cardSize.value = 'medium'
     stackFields.value = false
@@ -212,6 +217,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     gitlabCanCreate,
     gitlabFetchTemplates,
     gitlabIntegrationId,
+    gitlabCreateTargets,
     gitlabCanGroup,
     cardSize,
     stackFields,

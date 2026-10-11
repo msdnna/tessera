@@ -7,7 +7,7 @@ import { tourEvent } from '@/utils/tourEvents'
 import { ref, computed } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useMessage } from '@/composables/useMessage'
-import { gitlab as glApi, projects as projApi, boards as boardsApi } from '@/api'
+import { gitlab as glApi, projects as projApi, boards as boardsApi, auth as authApi } from '@/api'
 import { canonPrefix } from '@/utils/tagGroups'
 import { useGitlabStore } from '@/stores/gitlab'
 import { useWorkspacesStore } from '@/stores/workspaces'
@@ -40,6 +40,13 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
     try {
       await gl.connect(b, tok)
       tokenInput.value = ''
+      reconnecting.value = false
+      // A reconnect lifts the pauses of the bindings this account drives (#3084):
+      // refresh the cards, not the form being edited.
+      glApi
+        .listIntegrations(wsId())
+        .then(({ data }) => (integrations.value = data.integrations || []))
+        .catch(() => {})
       message.success(t('gitlab.modal.connectedAs', { name: gl.username }))
     } catch (e) {
       message.error(e.message)
@@ -47,6 +54,23 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
       connecting.value = false
     }
   }
+  // «Войти через GitLab» (#3083): only when the instance has the OAuth app set up.
+  // The page leaves for GitLab and comes back here with ?gitlab_oauth=…
+  // (WorkspaceDialogsHost reopens this window and says how it went).
+  const oauthAvailable = ref(false)
+  async function connectOAuth() {
+    connecting.value = true
+    try {
+      await gl.connectOAuth(window.location.pathname + window.location.search)
+    } catch (e) {
+      connecting.value = false
+      message.error(e.message)
+    }
+  }
+  // «Переподключить» a paused binding (#3084) with a token: the PAT form opens
+  // even while an account is connected.
+  const reconnecting = ref(false)
+
   async function disconnect() {
     try {
       await gl.disconnect()
@@ -120,6 +144,9 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
   // Defaults to ON — an integration saved before this flag existed has no key, and
   // the backend reads that as enabled (dead links in issues are a bug, not a taste).
   const wbAttachments = ref(true)
+  // Import filter (#3085): issues must carry every one of these labels — typed
+  // comma-separated, sent as a list.
+  const importLabels = ref('')
   // On a write-back conflict (#3088): ask | tessera (push ours) | gitlab (take theirs).
   const wbConflictPolicy = ref('ask')
   // bindings is the customizable trigger→action table (replaces the fixed toggles).
@@ -460,12 +487,23 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
     currentId.value = null
     applyBinding({ label_rules: defaultRules.value || {} })
   }
+  // «Ещё проект на ту же доску» (#3082): a new binding with the board picked.
+  async function addToBoard(board) {
+    currentId.value = null
+    await applyBinding({ label_rules: defaultRules.value || {}, board_id: board })
+  }
+  const importLabelList = () =>
+    importLabels.value
+      .split(',')
+      .map((l) => l.trim())
+      .filter(Boolean)
 
   async function applyBinding(data) {
     name.value = data.name || ''
     scope.value = data.scope || 'all'
     closedPolicy.value = data.closed_policy || 'archive_closed_sprints'
     closedAfter.value = data.closed_after ? new Date(data.closed_after).getTime() : null
+    importLabels.value = (data.import_labels || []).join(', ')
     {
       projectPath.value = data.project_path || ''
       boardId.value = data.board_id || null
@@ -771,6 +809,7 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
         start_source: startSource.value,
         relations_sync: relationsSync.value ? 'pull' : 'off',
         scope: scope.value,
+        import_labels: importLabelList(),
         closed_policy: closedPolicy.value,
         closed_after:
           closedPolicy.value === 'period' && closedAfter.value
@@ -895,6 +934,7 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
       scope: scope.value,
       closedPolicy: closedPolicy.value,
       closedAfter: closedAfter.value,
+      importLabels: importLabels.value,
       defaultColumn: defaultColumn.value,
       defaultAction: defaultAction.value,
       tagKeepPrefix: tagKeepPrefix.value,
@@ -960,6 +1000,10 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
 
   // Opening the window: the connection, the boards and the bindings.
   async function open() {
+    Promise.resolve()
+      .then(() => authApi.providers())
+      .then(({ data }) => (oauthAvailable.value = data?.gitlab === true))
+      .catch(() => (oauthAvailable.value = false))
     if (!gl.loaded) await gl.load()
     await loadBoards()
     await loadList()
@@ -972,6 +1016,11 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
     connecting,
     connect,
     disconnect,
+    oauthAvailable,
+    connectOAuth,
+    reconnecting,
+    importLabels,
+    addToBoard,
     integrations,
     currentId,
     defaultRules,
