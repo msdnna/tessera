@@ -66,6 +66,16 @@ export const ME_CATEGORIES = [
 ]
 export const ACTIVITY_KINDS = ['created', 'moved', 'completed', 'deleted']
 export const ACTIVITY_MODES = ['off', 'others', 'all']
+// «Звук» (#3121): silent, only what is about me and can't wait, or every toast
+// of the top lane. My own answers (the bottom lane) never sound.
+export const SOUND_MODES = ['off', 'important', 'all']
+const IMPORTANT_SOUND = new Set(['mention', 'assign', 'call', 'reminder'])
+
+// soundFor — does a top-lane toast of this kind chime under this mode?
+export function soundFor(kind, mode) {
+  if (mode === 'all') return true
+  return mode === 'important' && IMPORTANT_SOUND.has(kind)
+}
 
 export function defaultPrefs() {
   return {
@@ -75,6 +85,7 @@ export function defaultPrefs() {
     batch: true,
     batchMin: 3,
     phone: true,
+    sound: 'off',
   }
 }
 
@@ -92,6 +103,7 @@ export function normalizePrefs(raw) {
   const kinds = src.activityKinds && typeof src.activityKinds === 'object' ? src.activityKinds : {}
   for (const k of ACTIVITY_KINDS) if (typeof kinds[k] === 'boolean') out.activityKinds[k] = kinds[k]
   if (typeof src.batch === 'boolean') out.batch = src.batch
+  if (SOUND_MODES.includes(src.sound)) out.sound = src.sound
   const n = Math.round(Number(src.batchMin))
   if (Number.isFinite(n)) out.batchMin = Math.min(BATCH_MAX, Math.max(BATCH_MIN, n))
   if (typeof src.phone === 'boolean') out.phone = src.phone

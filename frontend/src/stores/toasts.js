@@ -20,7 +20,9 @@ import {
   insertTop,
   normalizePrefs,
   passesQuiet,
+  soundFor,
 } from '@/utils/toastModel'
+import { playChime } from '@/utils/chime'
 
 // The in-app toasts (v2, #3117 — PackageI): one frame, two lanes.
 //
@@ -151,6 +153,14 @@ export const useToastsStore = defineStore('toasts', () => {
     return !dnd.value && !inQuietHours(server, new Date())
   }
 
+  // «Звук» (#3121): a top-lane toast that made it on screen may ring — never in
+  // «Не беспокоить» or the quiet hours, whatever passes them visually.
+  function chime(kind) {
+    if (!soundFor(kind, prefs.value.sound)) return
+    if (dnd.value || inQuietHours(server, new Date())) return
+    playChime()
+  }
+
   function waits(item) {
     if (holds.drag && item.tone !== 'red') return true
     return (
@@ -173,6 +183,7 @@ export const useToastsStore = defineStore('toasts', () => {
     }
     const { list, evicted } = insertTop(top.value, item)
     top.value = list
+    if (list.includes(item)) chime(item.kind)
     for (const x of evicted) {
       if (x.notificationId) {
         more.value++

@@ -461,8 +461,12 @@
         "phone": "On the phone",
         "phoneHint": "One at a time over the bottom navigation",
         "sound": "Sound",
-        "soundHint": "No sound anywhere yet",
-        "soon": "Soon"
+        "soundHint": "Silent in Do not disturb and quiet hours",
+        "soundMode": {
+          "off": "Off",
+          "important": "Important",
+          "all": "All"
+        }
       }
     }
   },

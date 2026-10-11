@@ -16,7 +16,6 @@ export const FEATURE_STUBS = {
   // Settings (#3106): two-factor sign-in (#3081).
   'settings.twoFactor': 3081,
   'admin.roles': 3076,
-  'toasts.sound': 3121,
   // GitLab: several projects on one board, OAuth connection, the token's
   // expiry (#3065); label → stage rules, rule switches and counters, the
   // conflict policy, «Отложить» in the resolver (#3066); import and export
