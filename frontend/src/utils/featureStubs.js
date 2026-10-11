@@ -14,11 +14,8 @@ export const FEATURE_STUBS = {
   'settings.twoFactor': 3081,
   'admin.roles': 3076,
   // GitLab: several projects on one board, OAuth connection, the token's
-  // expiry (#3065); label → stage rules, rule switches and counters, the
-  // conflict policy, «Отложить» in the resolver (#3066); import and export
-  // (#3068).
+  // expiry (#3065); import and export (#3068).
   'gitlab.connections': 3065,
-  'gitlab.rules': 3066,
   'gitlab.importExport': 3068,
   // Background jobs: history, steps and progress, the live log, the queue
   // (#3067).

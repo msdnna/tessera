@@ -120,6 +120,8 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
   // Defaults to ON — an integration saved before this flag existed has no key, and
   // the backend reads that as enabled (dead links in issues are a bug, not a taste).
   const wbAttachments = ref(true)
+  // On a write-back conflict (#3088): ask | tessera (push ours) | gitlab (take theirs).
+  const wbConflictPolicy = ref('ask')
   // bindings is the customizable trigger→action table (replaces the fixed toggles).
   // Each entry: { enabled, trigger:{type,column_id,column_name,priority,completed,date_kind},
   //               action:{type,label,clear_prefix,state,date_kind,add_marker} }
@@ -226,7 +228,7 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
     { label: t('gitlab.modal.option.fullInterval.w1'), value: 604800 },
   ])
   const actionOptions = computed(() =>
-    ['status', 'priority', 'board', 'tag', 'group', 'ignore'].map((v) => ({
+    ['status', 'priority', 'board', 'milestone', 'tag', 'group', 'ignore'].map((v) => ({
       label: t(`gitlab.modal.option.ruleAction.${v}`),
       value: v,
     })),
@@ -486,6 +488,9 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
       wbAutoGroup.value = wb.auto_group_on_child === true
       wbGroupLabel.value = wb.group_label || ''
       wbAttachments.value = wb.push_attachments !== false
+      wbConflictPolicy.value = ['tessera', 'gitlab'].includes(wb.conflict_policy)
+        ? wb.conflict_policy
+        : 'ask'
       estimationUnit.value = data.estimation_unit || 'time'
       const r = data.label_rules || {}
       defaultColumn.value = r.default_column || ''
@@ -496,6 +501,10 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
         match_type: rule.match_type || 'prefix',
         action: rule.action || 'tag',
         keep_prefix: rule.keep_prefix !== false,
+        // «лейбл → этап» (#3086): the stage name, «{value}» = the label's value.
+        template: rule.template || '',
+        // Per-rule switch (#3087); stored inverted, so every older rule is on.
+        enabled: rule.disabled !== true,
         label: '', // friendly prefix name, filled by loadPrefixNames()
         map: Object.entries(rule.value_map || {}).map(([k, v]) => ({
           k,
@@ -698,6 +707,8 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
       match_type: 'prefix',
       action: 'tag',
       keep_prefix: true,
+      template: '',
+      enabled: true,
       label: '',
       map: [],
     })
@@ -706,18 +717,18 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
     rule.map.push({ k: '', v: '' })
   }
 
-  async function save() {
-    if (!projectPath.value.trim() || !boardId.value) {
-      message.warning(t('gitlab.modal.binding.needProjectAndBoard'))
-      return
-    }
-    const label_rules = {
+  // The label rules as save() sends them — also what the rule counters and
+  // «Проверить лейбл» (#3087) run on, so they describe the form, not the server.
+  function rulesPayload() {
+    return {
       default_column: defaultColumn.value,
       default_action: defaultAction.value,
       tag_keep_prefix: tagKeepPrefix.value,
       rules: rules.value.map((rule) => {
         const out = { match: rule.match, match_type: rule.match_type, action: rule.action }
         if (rule.action === 'tag') out.keep_prefix = rule.keep_prefix
+        if (rule.action === 'milestone' && rule.template?.trim()) out.template = rule.template.trim()
+        if (rule.enabled === false) out.disabled = true
         if (mapActions.includes(rule.action)) {
           out.value_map = Object.fromEntries(
             rule.map
@@ -728,6 +739,25 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
         return out
       }),
     }
+  }
+
+  // Counters by rule + the check of one label (#3087), on the rules as edited.
+  // A binding not saved yet has no tasks to count; the check still answers.
+  async function previewRules(label = '') {
+    const { data } = await glApi.previewRules(wsId(), {
+      integration_id: currentId.value || null,
+      label_rules: rulesPayload(),
+      label,
+    })
+    return data
+  }
+
+  async function save() {
+    if (!projectPath.value.trim() || !boardId.value) {
+      message.warning(t('gitlab.modal.binding.needProjectAndBoard'))
+      return
+    }
+    const label_rules = rulesPayload()
     saving.value = true
     try {
       const payload = {
@@ -757,6 +787,7 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
           auto_group_on_child: wbChildren.value && wbAutoGroup.value,
           group_label: wbChildren.value ? wbGroupLabel.value.trim() : '',
           push_attachments: wbAttachments.value,
+          conflict_policy: wbConflictPolicy.value,
           // The binding table fully replaces the legacy toggles; a non-empty set makes
           // the backend ignore them entirely.
           bindings: wbEnabled.value ? bindings.value.map(serializeBinding) : [],
@@ -876,6 +907,7 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
         wbAutoGroup.value,
         wbGroupLabel.value,
         wbAttachments.value,
+        wbConflictPolicy.value,
       ],
       bindings: bindings.value,
     })
@@ -972,6 +1004,9 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
     wbAutoGroup,
     wbGroupLabel,
     wbAttachments,
+    wbConflictPolicy,
+    rulesPayload,
+    previewRules,
     bindings,
     TRIGGER_TYPES,
     triggerTypeOptions,

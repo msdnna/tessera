@@ -7,7 +7,7 @@
 // The policy choices other than «Спросить меня» are #3066 — drawn, not wired.
 import { computed, inject, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NInput, NSelect, NSwitch, NTooltip } from 'naive-ui'
+import { NIcon, NInput, NSelect, NSwitch } from 'naive-ui'
 import {
   AddOutline,
   ArrowForwardOutline,
@@ -30,7 +30,6 @@ import {
 } from '@vicons/ionicons5'
 import { GITLAB_FORM } from './useGitlabForm'
 import { useUndoStore } from '@/stores/undo'
-import { stubTask } from '@/utils/featureStubs'
 import { cap, CAPS } from '@/utils/keyCaps'
 import ActionMenu from '../kit/ActionMenu.vue'
 import Kbd from '../Kbd.vue'
@@ -39,8 +38,21 @@ import ShortcutKeys from '../ShortcutKeys.vue'
 const f = inject(GITLAB_FORM)
 const { t } = useI18n()
 const undo = useUndoStore()
-const stub = stubTask('gitlab.rules')
 const ro = computed(() => !f.isAdmin)
+
+// The conflict policy (#3088): what a field changed on both sides turns into.
+const POLICIES = [
+  { key: 'ask', label: 'gitlab.window.wb.askMe' },
+  { key: 'tessera', label: 'gitlab.window.wb.tesseraWins' },
+  { key: 'gitlab', label: 'gitlab.window.wb.gitlabWins' },
+]
+const policyHint = computed(
+  () =>
+    ({
+      tessera: 'gitlab.window.wb.tesseraWinsHint',
+      gitlab: 'gitlab.window.wb.gitlabWinsHint',
+    })[f.wbConflictPolicy] || 'gitlab.window.wb.askMeHint',
+)
 
 const TRIGGER_ICON = {
   column: SwapVerticalOutline,
@@ -401,33 +413,29 @@ defineExpose({ addNew, escape })
         <p v-if="f.wbChildren" class="glw-hint">{{ t('gitlab.modal.writeback.childrenHint') }}</p>
       </div>
 
-      <!-- On conflict: «Ask me» is how it works today; the other two are #3066. -->
+      <!-- On conflict (#3088): ask, or let one side win without asking. -->
       <div class="glw-row gwb-line">
         <div class="glw-lbl">
           <span class="glw-lbl-t">{{ t('gitlab.window.wb.onConflict') }}</span>
           <span class="glw-lbl-s">{{ t('gitlab.window.wb.onConflictSub') }}</span>
         </div>
         <div class="glw-ctl">
-          <span class="glw-seg">
-            <span class="on">{{ t('gitlab.window.wb.askMe') }}</span>
-            <n-tooltip :delay="300">
-              <template #trigger>
-                <span class="stub" aria-disabled="true">{{
-                  t('gitlab.window.wb.tesseraWins')
-                }}</span>
-              </template>
-              {{ t('common.stub.soon', { n: stub }) }}
-            </n-tooltip>
-            <n-tooltip :delay="300">
-              <template #trigger>
-                <span class="stub" aria-disabled="true">{{
-                  t('gitlab.window.wb.gitlabWins')
-                }}</span>
-              </template>
-              {{ t('common.stub.soon', { n: stub }) }}
-            </n-tooltip>
+          <span class="glw-seg" role="radiogroup" data-testid="gitlab-conflict-policy">
+            <button
+              v-for="p in POLICIES"
+              :key="p.key"
+              type="button"
+              role="radio"
+              :aria-checked="f.wbConflictPolicy === p.key"
+              :class="{ on: f.wbConflictPolicy === p.key }"
+              :disabled="ro"
+              :data-testid="`gitlab-conflict-policy-${p.key}`"
+              @click="f.wbConflictPolicy = p.key"
+            >
+              {{ t(p.label) }}
+            </button>
           </span>
-          <span class="glw-hint gwb-inline">{{ t('gitlab.window.wb.askMeHint') }}</span>
+          <span class="glw-hint gwb-inline">{{ t(policyHint) }}</span>
         </div>
       </div>
 

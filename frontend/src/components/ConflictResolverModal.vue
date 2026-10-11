@@ -7,8 +7,11 @@
 //
 // The window's one deliberate exception to «no Save button»: the decisions go
 // to GitLab in one push, so they are applied together by «Применить и
-// отправить» (⌘↵), enabled once every field has a version. Esc closes the
-// window and keeps the choices as a draft (stores/conflicts).
+// отправить» (⌘↵), enabled once every field has a version — every task of the
+// queue that is fully decided goes in the same request (#3089). Esc closes the
+// window and keeps the choices as a draft (stores/conflicts); «Отложить» keeps
+// the draft across reloads and sends the task to the end of the queue, out of
+// the batch.
 //
 // The server still takes one of three resolutions per conflict: theirs (GitLab
 // wins, nothing is pushed), ours (Tessera wins, pushed) or manual (the given
@@ -26,7 +29,7 @@
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { NIcon, NTooltip } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
   GitMergeOutline,
@@ -45,7 +48,6 @@ import { useResponsive } from '@/composables/useResponsive'
 import { useFormat } from '@/composables/useFormat'
 import { diffSegments } from '@/utils/linediff'
 import { priorityLabel } from '@/utils/priority'
-import { stubTask } from '@/utils/featureStubs'
 import { workspaceName } from '@/utils/defaultNames'
 import { cap } from '@/utils/keyCaps'
 import EmptyState from '@/components/EmptyState.vue'
@@ -80,10 +82,30 @@ const resolving = ref(false)
 // Field and change-kind names come from the catalog per call (a frozen map would
 // keep the language of the first render). An unknown key from the server is
 // shown raw.
-const FIELD_KEYS = ['title', 'description', 'start', 'due', 'estimate', 'state', 'priority']
-const KIND_KEYS = ['title_desc', 'due', 'estimate', 'state', 'priority', 'milestone']
-// Free text and numbers can be merged by hand; state and priority are discrete.
-const MERGEABLE = ['title', 'description', 'start', 'due', 'estimate']
+const FIELD_KEYS = [
+  'title',
+  'description',
+  'start',
+  'due',
+  'estimate',
+  'state',
+  'priority',
+  'assignees',
+  'labels',
+]
+const KIND_KEYS = [
+  'title_desc',
+  'due',
+  'estimate',
+  'state',
+  'priority',
+  'milestone',
+  'assignees',
+  'labels',
+]
+// Free text, numbers and lists (assignees, labels — comma-separated, #3089) can
+// be merged by hand; state and priority are discrete.
+const MERGEABLE = ['title', 'description', 'start', 'due', 'estimate', 'assignees', 'labels']
 const SIDES = ['base', 'ours', 'theirs']
 
 const selected = computed(() => conflicts.value.find((c) => c.id === selectedId.value) || null)
@@ -130,6 +152,19 @@ const leftOf = (c) => {
   const d = store.draftFor(c.id)
   return (c.fields || []).filter((f) => !(d[f.field]?.pick || autoPick(f))).length
 }
+// The task conflicts «Применить» sends together (#3089): the one on screen and
+// every other fully decided one not put off. A stage's conflict goes alone — it
+// has its own endpoint, which writes to the GitLab milestone at once.
+const batch = computed(() => {
+  const c = selected.value
+  if (!c || isStage(c)) return c ? [c] : []
+  return conflicts.value.filter(
+    (x) =>
+      !isStage(x) &&
+      (x.id === c.id ||
+        (!store.isPostponed(x.id) && (x.fields || []).length > 0 && leftOf(x) === 0)),
+  )
+})
 
 function choose(f, side) {
   if (!selected.value) return
@@ -167,7 +202,12 @@ async function load() {
   loading.value = true
   try {
     const { data } = await glApi.conflicts(props.wsId)
-    conflicts.value = data || []
+    // Put-off tasks (#3089) wait at the end of the queue.
+    const list = data || []
+    conflicts.value = [
+      ...list.filter((c) => !store.isPostponed(c.id)),
+      ...list.filter((c) => store.isPostponed(c.id)),
+    ]
     // Pre-select the focused task's conflict (opened from a card), else keep
     // the current one if still there, else the first.
     const focused =
@@ -188,6 +228,7 @@ async function load() {
 async function apply() {
   const c = selected.value
   if (!c || !ready.value || resolving.value) return
+  const done = batch.value
   resolving.value = true
   try {
     if (isStage(c)) {
@@ -196,16 +237,26 @@ async function apply() {
       // stage «not synced» with its own retry.
       if (data?.gl_sync?.status === 'failed')
         message.warning(t('milestones.gitlab.failedToast', { error: data.gl_sync.error || '' }))
-    } else {
+    } else if (done.length === 1) {
       await glApi.resolveConflict(c.task_id, c.id, resolutionOf(c))
+    } else {
+      await glApi.resolveConflicts(
+        props.wsId,
+        done.map((x) => ({ task_id: x.task_id, conflict_id: x.id, ...resolutionOf(x) })),
+      )
     }
-    message.success(t('gitlab.conflicts.resolved'))
-    store.dropDraft(c.id)
+    message.success(
+      done.length > 1
+        ? t('gitlab.conflicts.resolvedN', done.length)
+        : t('gitlab.conflicts.resolved'),
+    )
+    const gone = new Set(done.map((x) => x.id))
+    for (const x of done) store.dropDraft(x.id)
     const at = index.value
-    conflicts.value = conflicts.value.filter((x) => x.id !== c.id)
+    conflicts.value = conflicts.value.filter((x) => !gone.has(x.id))
     selectedId.value = conflicts.value[Math.min(at, conflicts.value.length - 1)]?.id || null
     fieldCursor.value = 0
-    emit('resolved', c)
+    for (const x of done) emit('resolved', x)
     if (!conflicts.value.length) emit('update:show', false)
   } catch (e) {
     message.error(e.message)
@@ -214,10 +265,28 @@ async function apply() {
   }
 }
 
+// «Отложить» (#3089): keep the choices as a draft (across reloads too), send the
+// task to the end of the queue and go on with the next one.
+function postpone() {
+  const c = selected.value
+  if (!c) return
+  store.postpone(c.id)
+  const rest = conflicts.value.filter((x) => x.id !== c.id)
+  conflicts.value = [...rest, c]
+  if (rest.length) pick(rest[Math.min(Math.max(index.value, 0), rest.length - 1)])
+}
+
 function pick(c) {
   selectedId.value = c.id
   fieldCursor.value = 0
 }
+// Choosing a version on a put-off task brings it back into the batch.
+watch(
+  () => [selectedId.value, selected.value ? JSON.stringify(store.draftFor(selected.value.id)) : ''],
+  ([id, now], [beforeId, before]) => {
+    if (id && id === beforeId && now !== before) store.resume(id)
+  },
+)
 function step(delta) {
   const list = conflicts.value
   if (!list.length) return
@@ -319,7 +388,6 @@ function onOpened() {
   if (!isMobile.value) paneEl.value?.focus({ preventScroll: true })
 }
 
-const postponeTask = stubTask('gitlab.rules')
 const sideCap = { base: 'B', ours: 'T', theirs: 'G' }
 const sideName = computed(() => ({
   base: t('gitlab.conflicts.colBaseShort'),
@@ -378,6 +446,7 @@ const detectedText = computed(() =>
           <span class="cr-dot" :class="{ done: !leftOf(c) }" />
           {{ leftOf(c) ? t('gitlab.conflicts.left', leftOf(c)) : t('gitlab.conflicts.readyShort') }}
           · {{ kindLabel(c.change_kind) }}
+          <template v-if="store.isPostponed(c.id)"> · {{ t('gitlab.conflicts.postponed') }}</template>
         </span>
       </button>
     </template>
@@ -530,14 +599,16 @@ const detectedText = computed(() =>
             ><Kbd>{{ sideCap.ours }}</Kbd
             ><Kbd>{{ sideCap.theirs }}</Kbd> {{ t('gitlab.conflicts.keyVersion') }}
           </span>
-          <n-tooltip :delay="300">
-            <template #trigger>
-              <span class="kit-btn stub" aria-disabled="true" data-testid="conflict-postpone">
-                {{ t('gitlab.conflicts.postpone') }}
-              </span>
-            </template>
-            {{ t('common.stub.soon', { n: postponeTask }) }}
-          </n-tooltip>
+          <button
+            v-if="conflicts.length > 1 && !stageSel"
+            type="button"
+            class="kit-btn"
+            :title="t('gitlab.conflicts.postponeHint')"
+            data-testid="conflict-postpone"
+            @click="postpone"
+          >
+            {{ t('gitlab.conflicts.postpone') }}
+          </button>
           <button
             type="button"
             class="kit-btn primary"
@@ -546,7 +617,11 @@ const detectedText = computed(() =>
             @click="apply"
           >
             <n-icon :component="CloudUploadOutline" :size="15" />
-            {{ t('gitlab.conflicts.apply') }}
+            {{
+              batch.length > 1
+                ? t('gitlab.conflicts.applyN', { n: batch.length })
+                : t('gitlab.conflicts.apply')
+            }}
             <ShortcutKeys v-if="!isMobile" id="conflict.apply" joined />
           </button>
         </div>

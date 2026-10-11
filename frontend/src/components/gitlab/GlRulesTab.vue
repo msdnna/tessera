@@ -5,11 +5,13 @@
 // (Enter / click) into its details — the friendly prefix name, «keep the
 // prefix», the value map. ⌥↑/⌥↓ reorder, ⌫ deletes with an undo toast.
 //
-// Label → stage rules, per-rule switches with counters and «Проверить лейбл»
-// are #3066 — drawn, not wired.
-import { computed, inject, nextTick, ref } from 'vue'
+// «Лейбл → этап» (#3086) names the task's stage («Спринт {value}»); every rule
+// has a switch (Space) and a counter of the binding's tasks it decides something
+// for, and «Проверить лейбл» walks one label through the rules (#3087). Both run
+// on the rules as edited, so they show what saving would do.
+import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NInput, NSelect, NSwitch, NTooltip } from 'naive-ui'
+import { NIcon, NInput, NSelect, NSwitch } from 'naive-ui'
 import {
   AddOutline,
   ArrowForwardOutline,
@@ -25,7 +27,6 @@ import {
 } from '@vicons/ionicons5'
 import { GITLAB_FORM } from './useGitlabForm'
 import { useUndoStore } from '@/stores/undo'
-import { stubTask } from '@/utils/featureStubs'
 import { cap, CAPS } from '@/utils/keyCaps'
 import { isMac } from '@/utils/keys'
 import ActionMenu from '../kit/ActionMenu.vue'
@@ -34,12 +35,11 @@ import Kbd from '../Kbd.vue'
 const f = inject(GITLAB_FORM)
 const { t } = useI18n()
 const undo = useUndoStore()
-const stub = stubTask('gitlab.rules')
 const ro = computed(() => !f.isAdmin)
 
 // ── filter by what a rule does ──
 const filter = ref('all')
-const ACTIONS = ['status', 'priority', 'board', 'tag', 'group', 'ignore']
+const ACTIONS = ['status', 'priority', 'board', 'milestone', 'tag', 'group', 'ignore']
 const actionName = (a) => f.actionOptions.find((o) => o.value === a)?.label || a
 const segs = computed(() => [
   { key: 'all', label: t('gitlab.window.rules.all'), n: f.rules.length },
@@ -60,6 +60,7 @@ const TONE = {
   status: '#3b82f6',
   priority: '#f0a020',
   board: '#2fa86b',
+  milestone: '#0ea5e9',
   tag: '#a855f7',
   group: '#14b8a6',
   ignore: '#8b8b96',
@@ -73,8 +74,76 @@ function summary(rule) {
     parts.push(
       rule.keep_prefix ? t('gitlab.window.rules.keepPrefix') : t('gitlab.window.rules.dropPrefix'),
     )
+  if (rule.action === 'milestone')
+    parts.push(`→ «${rule.template?.trim() || t('gitlab.window.rules.templateValue')}»`)
   return parts.join(' · ')
 }
+
+// ── switches, counters and «Проверить лейбл» (#3087) ──
+function toggleRule(i) {
+  if (ro.value) return
+  const rule = f.rules[i]
+  if (rule) rule.enabled = rule.enabled === false
+}
+const hits = ref([])
+const recorded = ref({ linked: 0, recorded: 0 })
+const checkLabel = ref('')
+const check = ref(null)
+let previewTimer = null
+let previewSeq = 0
+async function runPreview() {
+  const mine = ++previewSeq
+  try {
+    const data = await f.previewRules(checkLabel.value.trim())
+    if (mine !== previewSeq) return
+    hits.value = data.hits || []
+    recorded.value = { linked: data.linked || 0, recorded: data.recorded || 0 }
+    check.value = data.check || null
+  } catch {
+    if (mine === previewSeq) check.value = null
+  }
+}
+function schedulePreview() {
+  clearTimeout(previewTimer)
+  previewTimer = setTimeout(runPreview, 350)
+}
+watch(
+  () => [JSON.stringify(f.rulesPayload()), f.currentId, checkLabel.value],
+  schedulePreview,
+  { immediate: true },
+)
+onBeforeUnmount(() => clearTimeout(previewTimer))
+const hitsOf = (i) => (f.currentId ? (hits.value[i] ?? 0) : null)
+const partial = computed(
+  () => !!f.currentId && recorded.value.recorded < recorded.value.linked,
+)
+// What the checked label turns into, in words.
+const checkText = computed(() => {
+  const c = check.value
+  if (!c || !checkLabel.value.trim()) return ''
+  const o = c.outcome || {}
+  if (o.rule < 0)
+    return o.action === 'tag'
+      ? t('gitlab.window.rules.checkDefaultTag', { tag: o.result || o.label })
+      : t('gitlab.window.rules.checkDefaultIgnore')
+  const head = t('gitlab.window.rules.checkRule', { n: o.rule + 1, action: actionName(o.action) })
+  let tail
+  if (o.action === 'priority' && o.result !== '' && o.result != null)
+    tail = f.priorityLevelOptions.find((p) => String(p.value) === String(o.result))?.label || o.result
+  else if (o.action === 'board')
+    tail = f.boardOptions.find((b) => b.value === o.result)?.label || o.result || ''
+  else if (o.action === 'status')
+    tail = f.columnOptions.find((col) => col.value === o.result)?.label || o.result || ''
+  else tail = o.result || ''
+  if (o.action === 'ignore') tail = t('gitlab.window.rules.checkIgnored')
+  if (o.action === 'group') tail = t('gitlab.window.rules.checkGroup')
+  if (!tail && ['status', 'priority', 'board'].includes(o.action))
+    tail = t('gitlab.window.rules.checkNoValue')
+  return tail ? `${head} → ${tail}` : head
+})
+const checkTasks = computed(() =>
+  f.currentId && check.value && checkLabel.value.trim() ? check.value.tasks || 0 : null,
+)
 
 // ── a row open into its details ──
 const openIdx = ref(-1)
@@ -132,6 +201,9 @@ function onTableKey(e) {
   } else if (e.key === 'Enter' && plain && i >= 0) {
     e.preventDefault()
     toggle(i)
+  } else if (e.key === ' ' && plain && i >= 0) {
+    e.preventDefault()
+    toggleRule(i)
   } else if ((e.key === 'Backspace' || e.key === 'Delete') && plain && i >= 0) {
     e.preventDefault()
     remove(i)
@@ -270,12 +342,6 @@ defineExpose({ addNew, escape })
           >
             {{ s.label }} <span class="glw-seg-n">{{ s.n }}</span>
           </button>
-          <n-tooltip :delay="300">
-            <template #trigger>
-              <span class="stub" aria-disabled="true">{{ t('gitlab.window.rules.stage') }}</span>
-            </template>
-            {{ t('common.stub.soon', { n: stub }) }}
-          </n-tooltip>
         </span>
       </div>
 
@@ -296,7 +362,7 @@ defineExpose({ addNew, escape })
           <div
             :ref="(el) => (rowEls[i] = el)"
             class="glw-trow gr-grid"
-            :class="{ open: openIdx === i, ctx: menuFor === i }"
+            :class="{ open: openIdx === i, ctx: menuFor === i, off: rule.enabled === false }"
             tabindex="-1"
             data-testid="gitlab-rule-row"
             @focus="cursor = i"
@@ -334,15 +400,23 @@ defineExpose({ addNew, escape })
               <span class="gr-sum-t">{{
                 summary(rule) || t('gitlab.window.rules.noDetails')
               }}</span>
+              <span
+                v-if="hitsOf(i) != null"
+                class="gr-n"
+                :title="t('gitlab.window.rules.tasksTitle')"
+                data-testid="gitlab-rule-hits"
+                >{{ t('gitlab.window.rules.tasks', hitsOf(i)) }}</span
+              >
             </button>
-            <n-tooltip :delay="300">
-              <template #trigger>
-                <span class="glw-stub gr-sw" aria-disabled="true"
-                  ><n-switch size="small" :value="true" disabled
-                /></span>
-              </template>
-              {{ t('common.stub.soon', { n: stub }) }}
-            </n-tooltip>
+            <span class="gr-sw glw-keep" :title="t('gitlab.window.rules.toggle')">
+              <n-switch
+                size="small"
+                :value="rule.enabled !== false"
+                :disabled="ro"
+                data-testid="gitlab-rule-switch"
+                @update:value="(v) => (rule.enabled = v)"
+              />
+            </span>
             <button
               v-if="!ro"
               type="button"
@@ -365,6 +439,19 @@ defineExpose({ addNew, escape })
                 :placeholder="t('gitlab.modal.rules.friendlyNamePlaceholder')"
                 :disabled="ro"
               />
+            </template>
+            <template v-if="rule.action === 'milestone'">
+              <span class="glw-edit-l">{{ t('gitlab.window.rules.template') }}</span>
+              <div class="gr-tpl">
+                <n-input
+                  v-model:value="rule.template"
+                  size="small"
+                  :placeholder="t('gitlab.window.rules.templatePlaceholder')"
+                  :disabled="ro"
+                  data-testid="gitlab-rule-template"
+                />
+                <span class="glw-hint">{{ t('gitlab.window.rules.templateHint') }}</span>
+              </div>
             </template>
             <template v-if="rule.action === 'tag'">
               <span class="glw-edit-l">{{ t('gitlab.modal.rules.keepPrefix') }}</span>
@@ -412,7 +499,12 @@ defineExpose({ addNew, escape })
               </div>
             </template>
             <span
-              v-if="rule.match_type !== 'prefix' && rule.action !== 'tag' && !hasMap(rule)"
+              v-if="
+                rule.match_type !== 'prefix' &&
+                rule.action !== 'tag' &&
+                rule.action !== 'milestone' &&
+                !hasMap(rule)
+              "
               class="glw-edit-full glw-hint"
               >{{ t('gitlab.window.rules.nothingToSet') }}</span
             >
@@ -423,26 +515,33 @@ defineExpose({ addNew, escape })
           ><Kbd>{{ ARROW_UP }}</Kbd
           ><Kbd>{{ ARROW_DOWN }}</Kbd> {{ t('gitlab.window.rules.keyOrder') }}
           <Kbd>{{ CAPS.enter }}</Kbd> {{ t('gitlab.window.rules.keyOpen') }}
+          <Kbd>{{ CAPS.space }}</Kbd> {{ t('gitlab.window.rules.keyToggle') }}
           <Kbd>{{ CAPS.backspace }}</Kbd> {{ t('gitlab.window.rules.keyDelete') }}
         </p>
       </div>
     </div>
 
-    <!-- «Проверить лейбл» (#3066): which rule fires and how many tasks it hits. -->
-    <n-tooltip :delay="300">
-      <template #trigger>
-        <div
-          class="glw-info gr-check glw-stub"
-          aria-disabled="true"
-          data-testid="gitlab-rule-check"
+    <!-- «Проверить лейбл» (#3087): which rule fires and how many tasks carry it. -->
+    <div class="glw-info gr-check" data-testid="gitlab-rule-check">
+      <n-icon :component="FlaskOutline" :size="16" />
+      <span class="gr-check-t">{{ t('gitlab.window.rules.check') }}</span>
+      <input
+        v-model="checkLabel"
+        class="glw-mono gr-check-in"
+        spellcheck="false"
+        :placeholder="CHECK_SAMPLE"
+        data-testid="gitlab-rule-check-input"
+      />
+      <span v-if="checkText" class="gr-check-out" data-testid="gitlab-rule-check-out">
+        {{ checkText }}
+        <template v-if="checkTasks != null">
+          · {{ t('gitlab.window.rules.checkTasks', checkTasks) }}</template
         >
-          <n-icon :component="FlaskOutline" :size="16" />
-          <span class="gr-check-t">{{ t('gitlab.window.rules.check') }}</span>
-          <span class="glw-mono gr-check-in">{{ CHECK_SAMPLE }}</span>
-        </div>
-      </template>
-      {{ t('common.stub.soon', { n: stub }) }}
-    </n-tooltip>
+      </span>
+      <span v-else-if="partial" class="glw-hint gr-check-out">{{
+        t('gitlab.window.rules.partial', recorded)
+      }}</span>
+    </div>
 
     <ActionMenu
       v-model:show="menuShow"
@@ -580,15 +679,49 @@ defineExpose({ addNew, escape })
   font-size: 12px;
   color: var(--t-text3);
 }
+.gr-n {
+  flex: none;
+  margin-left: auto;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: var(--t-pill);
+  font-size: 11.5px;
+  font-variant-numeric: tabular-nums;
+  color: var(--t-text2);
+}
+.gr-tpl {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
 .gr-check {
   align-items: center;
+  flex-wrap: wrap;
 }
 .gr-check-t {
   font-weight: 650;
   color: var(--t-text1);
 }
 .gr-check-in {
-  color: var(--t-text3);
+  flex: 0 1 200px;
+  min-width: 120px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  outline: 0;
+  background: var(--t-pill);
+  color: var(--t-text1);
+  font-size: 12.5px;
+}
+.gr-check-in:focus {
+  box-shadow: 0 0 0 2px var(--t-primary);
+}
+.gr-check-out {
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--t-text2);
 }
 .lw-mobile .gr-defaults {
   grid-template-columns: minmax(0, 1fr);

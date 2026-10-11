@@ -6,6 +6,9 @@ import { gitlab as glApi } from '@/api'
 // warning badges (Integrations button + GitLab item + sync button + task cards +
 // bell) so an unresolved conflict stays visible until the user resolves it — not
 // just a one-time toast. Refreshed on workspace change and on `gitlab.conflict`.
+// The drafts of conflicts put off with «Отложить» (#3089).
+const DRAFTS_KEY = 'tessera_conflict_drafts'
+
 export const useConflictsStore = defineStore('conflicts', () => {
   const list = ref([])
   const wsId = ref(null)
@@ -25,15 +28,48 @@ export const useConflictsStore = defineStore('conflicts', () => {
   // Choices made in the resolver window but not applied yet (#2975): Esc closes
   // the window and keeps them, so reopening lands where the user left. Per
   // conflict id: { [field]: { pick: 'base'|'ours'|'theirs'|'manual', text } }.
-  // Session-only — a reload starts over, like any unsaved draft.
+  // Session-only — a reload starts over, like any unsaved draft — unless the
+  // conflict was put off with «Отложить» (#3089): then its draft is kept in
+  // localStorage (non-critical UX state) and it waits at the end of the queue,
+  // out of the batch «Применить», until it is picked again.
   const drafts = reactive({})
+  const postponed = reactive(new Set())
+  try {
+    const saved = JSON.parse(localStorage.getItem(DRAFTS_KEY) || '{}')
+    for (const [id, d] of Object.entries(saved)) {
+      drafts[id] = d
+      postponed.add(id)
+    }
+  } catch {
+    /* a broken entry is just no draft */
+  }
+  function persist() {
+    const out = {}
+    for (const id of postponed) out[id] = drafts[id] || {}
+    try {
+      if (postponed.size) localStorage.setItem(DRAFTS_KEY, JSON.stringify(out))
+      else localStorage.removeItem(DRAFTS_KEY)
+    } catch {
+      /* storage full or off — the draft lives for the session */
+    }
+  }
   function draftFor(id) {
     if (!drafts[id]) drafts[id] = {}
     return drafts[id]
   }
   function dropDraft(id) {
     delete drafts[id]
+    if (postponed.delete(id)) persist()
   }
+  function postpone(id) {
+    draftFor(id)
+    postponed.add(id)
+    persist()
+  }
+  function resume(id) {
+    if (postponed.delete(id)) persist()
+  }
+  const isPostponed = (id) => postponed.has(id)
 
   // Open the conflicts resolver, optionally focused on one task's conflict — or,
   // with { milestoneId }, on a stage's.
@@ -79,6 +115,8 @@ export const useConflictsStore = defineStore('conflicts', () => {
     list.value = []
     wsId.value = null
     for (const id of Object.keys(drafts)) delete drafts[id]
+    postponed.clear()
+    persist()
   }
 
   return {
@@ -96,5 +134,8 @@ export const useConflictsStore = defineStore('conflicts', () => {
     openResolver,
     draftFor,
     dropDraft,
+    postpone,
+    resume,
+    isPostponed,
   }
 })

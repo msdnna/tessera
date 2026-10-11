@@ -1038,6 +1038,13 @@ export const gitlab = {
     api.get(`/workspaces/${wsId}/gitlab/conflicts`, { params: { include: 'milestones' } }),
   resolveConflict: (taskId, conflictId, data) =>
     api.post(`/tasks/${taskId}/gitlab/conflicts/${conflictId}/resolve`, data), // { resolution, value? }
+  // Several decisions at once (#3089): items = [{ task_id, conflict_id, resolution, value? }].
+  resolveConflicts: (wsId, items) =>
+    api.post(`/workspaces/${wsId}/gitlab/conflicts/resolve`, { items }),
+  // Label rules (#3087): counters by rule and «Проверить лейбл», on the edited
+  // rules → { hits: [n…], linked, recorded, check?: { outcome, tasks } }.
+  previewRules: (wsId, data) =>
+    api.post(`/workspaces/${wsId}/gitlab/rules/preview`, data, { skipLoader: true }),
 }
 
 export default api

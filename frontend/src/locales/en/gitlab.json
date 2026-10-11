@@ -189,7 +189,8 @@
         "board": "Board (routing)",
         "tag": "Tag",
         "group": "Grouping (subtasks)",
-        "ignore": "Ignore"
+        "ignore": "Ignore",
+        "milestone": "Stage"
       },
       "matchType": {
         "prefix": "Prefix",
@@ -290,7 +291,9 @@
       "estimate": "Estimate (minutes)",
       "state": "State",
       "priority": "Priority",
-      "start": "Start (YYYY-MM-DD)"
+      "start": "Start (YYYY-MM-DD)",
+      "assignees": "Assignees",
+      "labels": "Labels"
     },
     "kind": {
       "title_desc": "Title and description",
@@ -298,7 +301,9 @@
       "estimate": "Estimate",
       "state": "State",
       "priority": "Priority",
-      "milestone": "stage"
+      "milestone": "stage",
+      "assignees": "Assignees",
+      "labels": "Labels"
     },
     "state": {
       "open": "Open",
@@ -327,7 +332,11 @@
     "openStage": "Open the stage",
     "fromMilestone": "milestone %{iid} · {at}",
     "hintStage": "The stage changed both in Tessera and in GitLab since the last sync. Pick a version for each field.",
-    "onePushStage": "The decision goes straight to the GitLab milestone"
+    "onePushStage": "The decision goes straight to the GitLab milestone",
+    "resolvedN": "{n} conflict resolved | {n} conflicts resolved",
+    "applyN": "Apply {n} and push",
+    "postponeHint": "Keep the choices as a draft and go to the next task",
+    "postponed": "put off"
   },
   "window": {
     "crumb": "Integrations",
@@ -383,7 +392,6 @@
     "rules": {
       "note": "top to bottom, the first match wins",
       "all": "All",
-      "stage": "Stage",
       "colLabel": "GitLab label",
       "colMatch": "Match",
       "colAction": "Becomes",
@@ -402,7 +410,23 @@
       "keyOrder": "order",
       "keyOpen": "details",
       "keyDelete": "delete with undo",
-      "check": "Check a label"
+      "check": "Check a label",
+      "template": "Stage name",
+      "templatePlaceholder": "Sprint {'{'}value{'}'}",
+      "templateHint": "{'{'}value{'}'} is the label's value: sprint::42 → “Sprint 42”. The issue's own milestone wins.",
+      "templateValue": "the label's value",
+      "tasks": "{n} task | {n} tasks",
+      "tasksTitle": "Tasks of the binding this rule decides something for",
+      "toggle": "Turn the rule on / off",
+      "keyToggle": "on/off",
+      "checkDefaultTag": "no rule fits → tag “{tag}”",
+      "checkDefaultIgnore": "no rule fits → the label is skipped",
+      "checkRule": "rule {n} · {action}",
+      "checkIgnored": "skipped",
+      "checkGroup": "the task becomes a group",
+      "checkNoValue": "the value is not in the map",
+      "checkTasks": "on {n} task | on {n} tasks",
+      "partial": "Counted over {recorded} of {linked} tasks; the rest count after their next sync"
     },
     "wb": {
       "note": "an event in Tessera → an action in GitLab, sent with the next push",
@@ -421,7 +445,9 @@
       "schedule": "Sync",
       "scheduleSub": "scheduled pull",
       "now": "Now",
-      "notInGitlab": "Reminders, notes and documents don't go to GitLab — it has nothing of the kind."
+      "notInGitlab": "Reminders, notes and documents don't go to GitLab — it has nothing of the kind.",
+      "tesseraWinsHint": "Tessera's value goes to GitLab over theirs",
+      "gitlabWinsHint": "GitLab's value goes into the task, nothing is pushed"
     },
     "journal": {
       "lastPull": "Last pull",
