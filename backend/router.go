@@ -514,6 +514,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/workspaces/:id/task-templates", rh.CreateTaskTemplate)
 			protected.PATCH("/task-templates/:id", rh.UpdateTaskTemplate)
 			protected.DELETE("/task-templates/:id", rh.DeleteTaskTemplate)
+			protected.POST("/boards/:id/ci/run", rh.RunCI)
 
 			// Two-level task-estimation config (workspace default + project override).
 			protected.PUT("/workspaces/:id/estimation", rh.SetWorkspaceEstimation)

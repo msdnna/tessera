@@ -102,6 +102,20 @@ export const useMacrosStore = defineStore('macros', () => {
         // imported by the palette, which tests mount without a router.
         go: go || (async (path) => (await import('@/router')).default.push(path)),
       })
+      if (res?.pipeline) {
+        const pl = res.pipeline
+        message.success(
+          t('shell.commands.macro.pipelineStarted', { id: pl.id, project: pl.project }),
+          {
+            action: pl.url
+              ? {
+                  label: t('shell.commands.macro.open'),
+                  run: () => window.open(pl.url, '_blank', 'noopener'),
+                }
+              : undefined,
+          },
+        )
+      }
       if (res?.missedTags?.length)
         message.warning(t('shell.commands.macro.missedTags', { tags: res.missedTags.join(', ') }))
       return res

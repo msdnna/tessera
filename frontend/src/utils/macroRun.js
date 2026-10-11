@@ -10,11 +10,12 @@
 //   open_link        the URL in a new tab
 //   create_document  a document from a document template (in the board's project
 //                    when a board is open)
-//   run_pipeline     not yet (#3099) — the row says «Скоро»
+//   run_pipeline     the CI of the board's project (#3099): a new pipeline on a
+//                    ref with variables, or a retry of the last failed one
 import { stageState } from './milestones'
 
 export const MACRO_ACTIONS = ['create_task', 'open_link', 'create_document', 'run_pipeline']
-export const SOON_ACTIONS = { run_pipeline: 3099 }
+export const SOON_ACTIONS = {}
 
 // taskPlan — what create_task makes, as data (pure, tested).
 export function taskPlan(macro, template) {
@@ -55,7 +56,8 @@ export function currentStage(milestones, today) {
 // create_task without a board open), 'soon' (an action not built yet).
 export function macroBlocked(macro, { boardId } = {}) {
   if (SOON_ACTIONS[macro?.action]) return 'soon'
-  if (macro?.action === 'create_task' && !boardId) return 'board'
+  if ((macro?.action === 'create_task' || macro?.action === 'run_pipeline') && !boardId)
+    return 'board'
   return ''
 }
 
@@ -81,6 +83,15 @@ export async function runMacro(macro, ctx) {
     const path = `/documents/${data.slug || data.id}`
     ctx.go(path)
     return { path }
+  }
+  if (macro.action === 'run_pipeline') {
+    const { data } = await ctx.api.boards.runCI(ctx.board.id, {
+      mode: p.mode === 'retry_failed' ? 'retry_failed' : 'run',
+      ref: p.ref || undefined,
+      variables: p.variables && typeof p.variables === 'object' ? p.variables : undefined,
+      integration_id: p.integration_id || undefined,
+    })
+    return { pipeline: data }
   }
   if (macro.action !== 'create_task') throw new Error('unsupported')
 

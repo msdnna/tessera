@@ -44,10 +44,26 @@ describe('macro run (#3069)', () => {
     expect(currentStage(ms).id).toBe('soon')
   })
 
-  it('needs a board for a task, and a pipeline is not built yet', () => {
+  it('needs a board for a task and a pipeline', () => {
     expect(macroBlocked({ action: 'create_task' }, {})).toBe('board')
     expect(macroBlocked({ action: 'create_task' }, { boardId: 'b' })).toBe('')
-    expect(macroBlocked({ action: 'run_pipeline' }, { boardId: 'b' })).toBe('soon')
+    expect(macroBlocked({ action: 'run_pipeline' }, {})).toBe('board')
+    expect(macroBlocked({ action: 'open_link' }, {})).toBe('')
+  })
+
+  it('runs the board project pipeline (#3099)', async () => {
+    const runCI = vi.fn(async () => ({ data: { id: 77, project: 'team/web' } }))
+    const res = await runMacro(
+      { action: 'run_pipeline', params: { ref: 'main', variables: { ENV: 'staging' } } },
+      { board: { id: 'b1' }, api: { boards: { runCI } } },
+    )
+    expect(runCI).toHaveBeenCalledWith('b1', {
+      mode: 'run',
+      ref: 'main',
+      variables: { ENV: 'staging' },
+      integration_id: undefined,
+    })
+    expect(res.pipeline.id).toBe(77)
   })
 
   it('creates the task, its tags, assignee and subtasks through the API', async () => {

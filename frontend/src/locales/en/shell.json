@@ -269,7 +269,9 @@
         "open_link": "Link",
         "create_document": "Document from a template",
         "run_pipeline": "Pipeline"
-      }
+      },
+      "pipelineStarted": "Pipeline #{id} started · {project}",
+      "open": "Open"
     }
   },
   "layout": {

@@ -107,6 +107,9 @@ type glLink struct {
 // fakeGitlab is an in-memory GitLab instance serving the exact API subset the
 // backend's client uses. pageSize < len(issues) exercises GraphQL pagination.
 type fakeGitlab struct {
+	// restHook, when set, sees every authorised REST call first and answers it
+	// by returning true (a test's own endpoints, e.g. CI — #3099).
+	restHook    func(w http.ResponseWriter, r *http.Request) bool
 	t           *testing.T
 	srv         *httptest.Server
 	username    string // the identity the PAT resolves to
@@ -696,6 +699,9 @@ func (f *fakeGitlab) issueNode(is *glIssue) map[string]any {
 func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 	if r.Header.Get("PRIVATE-TOKEN") != f.token {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"message": "401 Unauthorized"})
+		return
+	}
+	if f.restHook != nil && f.restHook(w, r) {
 		return
 	}
 	// An instance-wide endpoint, outside every project's scope: reaching it at

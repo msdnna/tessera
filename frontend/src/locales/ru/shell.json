@@ -269,7 +269,9 @@
         "open_link": "Ссылка",
         "create_document": "Документ из шаблона",
         "run_pipeline": "Пайплайн"
-      }
+      },
+      "pipelineStarted": "Пайплайн #{id} запущен · {project}",
+      "open": "Открыть"
     }
   },
   "layout": {
