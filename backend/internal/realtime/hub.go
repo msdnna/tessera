@@ -25,12 +25,17 @@ import (
 // events that are one person's business (a notification carries its text, and a
 // reminder's text is the user's own private message). It is server-side only —
 // the wire format is unchanged — and unset means "everyone in scope".
+//
+// Admin routes an instance-level event (the background-jobs window, #3067) to the
+// sockets of global administrators instead of a workspace: Scope is then empty and
+// ignored. Server-side only as well.
 type Event struct {
 	Scope string          `json:"scope"`
 	Type  string          `json:"type"`
 	Actor string          `json:"actor,omitempty"`
 	Data  json.RawMessage `json:"data,omitempty"`
 	User  uuid.UUID       `json:"-"`
+	Admin bool            `json:"-"`
 }
 
 // Hub fans out Events to the clients authorised to receive them.

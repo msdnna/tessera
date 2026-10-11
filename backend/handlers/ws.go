@@ -115,11 +115,17 @@ func (h *WSHandler) Connect(c *gin.Context) {
 	// refresh is not guaranteed in the first minutes. Throttled in the UPDATE.
 	soft(c, "touch last_seen_at", h.q.TouchUserSeen(c, uid))
 
+	// Global admins also get the instance-level events (the jobs window, #3067).
+	isAdmin := false
+	if u, uerr := h.q.GetUserByID(c, uid); uerr == nil {
+		isAdmin = u.IsAdmin
+	}
+
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return // Upgrade already wrote an error response.
 	}
-	realtime.NewClient(h.hub, conn, uid, scopes).Start()
+	realtime.NewClient(h.hub, conn, uid, scopes).WithAdmin(isAdmin).Start()
 }
 
 // authenticate resolves the bearer credential from either the Authorization

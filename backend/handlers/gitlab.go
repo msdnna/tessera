@@ -712,8 +712,8 @@ func fmtSyncDuration(d time.Duration) string {
 // stable per integration so a manual and an auto run can't overlap (busy-guard).
 func gitlabSyncKey(integrationID uuid.UUID) string { return "gitlab_sync:" + integrationID.String() }
 
-// gitlabSyncJournalPrefix names a sync run in the jobs panel. Shared with the journal
-// side (syncRunToDTO) so a run doesn't get renamed the moment it finishes.
+// gitlabSyncJournalPrefix names a sync run in the jobs panel — live and in the
+// history — so a run doesn't get renamed the moment it finishes.
 const gitlabSyncJournalPrefix = "Синхронизация GitLab · "
 
 // gitlabSyncNameKey is the catalog key for that same phrase; the integration label
@@ -881,6 +881,24 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		return 0, 0, errors.New("integration project is archived")
 	}
 
+	// The run's entry in the jobs window (#3067): steps, progress and a live log.
+	live := h.jobs.Live(gitlabSyncKey(integ.ID))
+	j.live = live
+	live.SetMeta("mode", j.mode)
+	live.SetQuietable(j.trigger != "manual")
+	if j.actorID != nil {
+		live.SetTrigger(j.trigger, actorTag(*j.actorID))
+	} else {
+		live.SetTrigger(j.trigger, "")
+	}
+	live.Steps(
+		jobs.Step{Key: "connect", Label: "Подключение к GitLab"},
+		jobs.Step{Key: "fetch", Label: "Загрузка задач"},
+		jobs.Step{Key: "mirror", Label: "Задачи и комментарии"},
+		jobs.Step{Key: "links", Label: "Связи и merge request'ы"},
+	)
+	live.Step("connect")
+
 	client, assignUser, cerr := h.syncClient(ctx, cred)
 	if cerr != nil {
 		return 0, 0, cerr
@@ -895,6 +913,7 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		boards:       map[uuid.UUID]*syncBoard{},
 	}
 
+	live.Step("fetch")
 	issues, linkedIids, ferr := r.fetchIssues(ctx)
 	if ferr != nil {
 		return 0, 0, ferr
@@ -905,13 +924,17 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 			return 0, 0, ferr
 		}
 	}
+	live.StepCount(len(issues), 0)
+	live.Logf(jobs.LevelInfo, "%s: задач к синхронизации — %d", integ.ProjectPath, len(issues))
 	r.refreshMembers(ctx)
 	if _, berr := r.loadBoard(ctx, integ.BoardID); berr != nil {
 		return 0, 0, fmt.Errorf("integration board has no columns")
 	}
 
 	claimed, childrenOf, distrusted := r.fetchGroupedChildren(ctx, issues)
+	live.Step("mirror")
 	created, updated, syncedIIDs := r.mirrorIssues(ctx, issues, claimed, childrenOf, distrusted)
+	live.Step("links")
 
 	// Linked items last: every task the links can point at has been mirrored by now,
 	// so a link between two issues of this run resolves on the first pass.
@@ -1258,7 +1281,10 @@ func (r *syncRun) distrustChildren(ctx context.Context, issue gitlab.Issue, dist
 // parent down into its children. Per-issue failures are skipped, not fatal. The
 // returned iids are the ones actually mirrored — the scope of the linked-items pass.
 func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claimed map[string]bool, childrenOf map[string][]gitlab.Issue, distrusted map[string]bool) (created, updated int, syncedIIDs []int64) {
-	for _, issue := range issues {
+	for i, issue := range issues {
+		// Progress of the run in the jobs window (#3067).
+		r.j.live.Progress(i+1, len(issues))
+		r.j.live.StepCount(i+1, len(issues))
 		if claimed[issue.GlobalID] {
 			continue // synced as a subtask under its parent
 		}

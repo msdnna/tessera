@@ -478,6 +478,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/admin/jobs/:key", rh.GetJob)
 			protected.POST("/admin/jobs/:key/run", rh.RunJob)
 			protected.POST("/admin/jobs/:key/cancel", rh.CancelJob)
+			// A member's own export/import run: its state, its file, its stop (#3068).
+			protected.GET("/jobs/:id", rh.GetMyJob)
+			protected.POST("/jobs/:id/cancel", rh.CancelMyJob)
 
 			// Project groups & projects (nested under a workspace).
 			protected.POST("/workspaces/:id/groups", rh.CreateProjectGroup)

@@ -418,6 +418,36 @@ type GitlabWriteback struct {
 	ActorUserID   *uuid.UUID `json:"actor_user_id"`
 }
 
+type JobRun struct {
+	ID            uuid.UUID  `json:"id"`
+	JobKey        string     `json:"job_key"`
+	Kind          string     `json:"kind"`
+	Type          string     `json:"type"`
+	Name          string     `json:"name"`
+	NameKey       string     `json:"name_key"`
+	NameArg       string     `json:"name_arg"`
+	WorkspaceID   *uuid.UUID `json:"workspace_id"`
+	ActorID       *uuid.UUID `json:"actor_id"`
+	Trigger       string     `json:"trigger"`
+	Status        string     `json:"status"`
+	Attempt       int32      `json:"attempt"`
+	MaxAttempts   int32      `json:"max_attempts"`
+	ProgressDone  int32      `json:"progress_done"`
+	ProgressTotal int32      `json:"progress_total"`
+	CreatedCount  int32      `json:"created_count"`
+	UpdatedCount  int32      `json:"updated_count"`
+	Steps         []byte     `json:"steps"`
+	LogTail       []byte     `json:"log_tail"`
+	LogLines      int32      `json:"log_lines"`
+	LogWarns      int32      `json:"log_warns"`
+	LogErrors     int32      `json:"log_errors"`
+	Meta          []byte     `json:"meta"`
+	Error         string     `json:"error"`
+	QueuedAt      time.Time  `json:"queued_at"`
+	StartedAt     *time.Time `json:"started_at"`
+	FinishedAt    *time.Time `json:"finished_at"`
+}
+
 type MemberGroup struct {
 	ID          uuid.UUID `json:"id"`
 	WorkspaceID uuid.UUID `json:"workspace_id"`

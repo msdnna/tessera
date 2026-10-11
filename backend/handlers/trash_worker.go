@@ -53,6 +53,8 @@ func (h *API) RunTrashWorker(ctx context.Context) {
 func (h *API) PurgeTrash(ctx context.Context) {
 	now := time.Now()
 	h.purgeTrashBefore(ctx, now.Add(-trashRetention), now.Add(-taskTrashRetention))
+	// The jobs window's history and the export files (#3067, #3068).
+	h.purgeJobHistory(ctx, now)
 }
 
 // purgeTrashBefore takes two cutoffs: containers (boards, columns) are kept a

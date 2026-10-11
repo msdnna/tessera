@@ -117,6 +117,9 @@ func (h *API) SetUserAdmin(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// The socket snapshots the admin flag at connect time (instance-level events,
+	// #3067): reconnect the user's sockets so the change applies to them now.
+	h.hub.DropUser(id)
 	c.Status(http.StatusNoContent)
 }
 

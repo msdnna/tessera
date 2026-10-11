@@ -39,6 +39,10 @@ type Client struct {
 	send   chan Event
 	userID uuid.UUID
 	scopes map[string]struct{}
+	// admin is the user's global-admin flag at connect time; it admits the
+	// instance-level events (Event.Admin). A changed flag drops the user's sockets
+	// (DropUser), so the reconnect picks the new one up.
+	admin bool
 	// needResync is set by the hub when it has to drop an event for this client
 	// (send buffer full). The write pump then emits a single resync marker at the
 	// next opportunity, so a recovered-but-still-connected client refills its view
@@ -74,10 +78,20 @@ func (c *Client) canSee(scope string) bool {
 // that person's sockets get the frame — clients filtering a broadcast by a
 // user_id field in the payload would be authorising at the wrong end of the wire.
 func (c *Client) shouldReceive(ev Event) bool {
+	if ev.Admin {
+		return c.admin
+	}
 	if !c.canSee(ev.Scope) {
 		return false
 	}
 	return ev.User == uuid.Nil || ev.User == c.userID
+}
+
+// WithAdmin marks the client as a global administrator's, so it receives the
+// instance-level events too. Call before Start.
+func (c *Client) WithAdmin(admin bool) *Client {
+	c.admin = admin
+	return c
 }
 
 // Start registers the client and launches its read/write pumps. A connection

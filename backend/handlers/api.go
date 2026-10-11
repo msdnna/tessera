@@ -276,10 +276,12 @@ func NewAPI(q *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, uploadDir, enc
 	// A TextHandler renders the background-task summary in logfmt (key=value), with
 	// the call site as source=… — the format the ops log asks for.
 	jobLog := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{AddSource: true}))
-	return &API{
+	h := &API{
 		q: q, pool: pool, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:],
 		mailer: mailer, publicURL: publicURL, senders: buildSenders(mailer, fcmCredentialsFile), jobs: jobs.New(jobLog),
 	}
+	h.wireJobs()
+	return h
 }
 
 // positionGap is the spacing used when appending to the end of a list.

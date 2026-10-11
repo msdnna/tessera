@@ -133,6 +133,7 @@ func TestMain(m *testing.M) {
 	var detached sync.WaitGroup
 	rh.WireBackgroundScope(workerCtx, &detached)
 	go rh.RunSyncWorker(workerCtx)
+	go rh.RunJobPublisher(workerCtx)
 	go rh.RunGitlabWriteBackWorker(workerCtx)
 	go rh.RunNotificationWorker(workerCtx)
 	go rh.RunNotificationScanner(workerCtx)
