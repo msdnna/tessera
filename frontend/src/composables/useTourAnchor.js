@@ -52,10 +52,16 @@ export const SURFACE_SEL = [
 // plain string so the store can compare "before" with "now" without holding on
 // to DOM nodes — the board re-renders its card list after every drop, so a node
 // reference would go stale exactly when it matters.
+//
+// `undefined` — the element is not on screen at all (the board has not drawn its
+// cards yet): no address, not even a baseline (#3104 — the first card to appear
+// was taken for a card that moved). `null` — it is there, outside any container
+// (a project at the root of the tree).
 export function placeOf(spec) {
-  if (!spec?.el || !spec.within || !spec.by) return null
+  if (!spec?.el || !spec.within || !spec.by) return undefined
   const el = document.querySelector(anchorSelector(spec.el))
-  const box = el?.closest(anchorSelector(spec.within))
+  if (!el) return undefined
+  const box = el.closest(anchorSelector(spec.within))
   return box?.getAttribute(spec.by) ?? null
 }
 
@@ -106,7 +112,7 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn, plac
   const rects = ref([])
   const els = ref([])
   const count = ref(0)
-  const place = ref(null)
+  const place = ref(undefined)
   const panels = ref([])
   const surfaces = ref([])
   let frame = 0

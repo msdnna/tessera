@@ -345,6 +345,18 @@ describe('tour store', () => {
         expect(t.current.id).toBe('after')
       })
 
+      it('waits for the card to be drawn before taking a baseline (#3104)', () => {
+        // The board draws its cards after the step opened: "no card yet" must not
+        // become the baseline, or the card's first appearance reads as a move.
+        const t = useTourStore()
+        t.start(MOVED_STEPS)
+        t.located('dnd-card', undefined)
+        t.located('dnd-card', 'К работе')
+        expect(t.current.id).toBe('dnd-card')
+        t.located('dnd-card', 'В процессе')
+        expect(t.current.id).toBe('after')
+      })
+
       it('ignores an empty address mid-drag', () => {
         // SortableJS lifts the node out of its list for a frame, so closest()
         // finds no container — advancing there would end the step while the card

@@ -409,6 +409,8 @@ export const useTourStore = defineStore('tour', () => {
     const step = current.value
     if (!active.value || step?.id !== stepId || step.mode !== 'action') return
     if (!step.advanceOn?.moved) return
+    // Nothing to locate yet (the board is still drawing) — wait, don't baseline.
+    if (place === undefined) return
     const at = place || null
     if (entryPlace === undefined) {
       entryPlace = at
