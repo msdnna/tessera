@@ -401,7 +401,7 @@
   "members": {
     "title": "На доске · {count}",
     "tasks": "задач",
-    "watching": "Кто сейчас смотрит"
+    "watching": "Сейчас смотрят · {count}"
   },
   "stage": {
     "title": "Фильтр по этапу",

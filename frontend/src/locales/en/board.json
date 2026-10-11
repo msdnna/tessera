@@ -401,7 +401,7 @@
   "members": {
     "title": "On the board · {count}",
     "tasks": "tasks",
-    "watching": "Who is looking now"
+    "watching": "Looking now · {count}"
   },
   "stage": {
     "title": "Filter by milestone",

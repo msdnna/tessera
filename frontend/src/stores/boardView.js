@@ -89,6 +89,9 @@ export const useBoardViewStore = defineStore('boardView', () => {
   // publishes how many tasks the current filter leaves so the header knows when
   // to fall back to a workspace-wide search (null = no board count yet).
   const searchQ = ref('')
+  // Who is looking at the open board right now (#3116): the board's sockets as the
+  // server last announced them (board.presence), me included.
+  const present = ref({ boardId: null, userIds: [] })
   const shownTasks = ref(null)
   // Its tooltip («показано 5 из 12…») — the count sits next to the board in the
   // sidebar (v2), not in the sub-toolbar.
@@ -181,6 +184,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
   }
 
   return {
+    present,
     active,
     searchQ,
     shownTasks,

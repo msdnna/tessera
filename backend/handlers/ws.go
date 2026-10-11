@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -45,6 +47,17 @@ type WSHandler struct {
 // credential alone.
 func NewWSHandler(hub *realtime.Hub, rooms *docroom.Rooms, confRooms *confroom.Rooms, q *db.Queries, secret string, allowedOrigins ...string) *WSHandler {
 	allowed, wildcard := originAllowlist(allowedOrigins)
+	// Presence on a board (#3116): a socket may stand only on a live board of a
+	// workspace it can see; the hub checks the scope, this finds the workspace.
+	hub.SetBoardResolver(func(boardID uuid.UUID) (string, bool) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		ws, err := q.GetLiveBoardWorkspace(ctx, boardID)
+		if err != nil {
+			return "", false
+		}
+		return ws.String(), true
+	})
 	return &WSHandler{
 		hub:       hub,
 		rooms:     rooms,

@@ -2396,87 +2396,106 @@ async function createInQuadrant({ title, quadrant }) {
   }
 }
 
-useRealtime((ev) => {
-  if (ev.scope !== wsStore.currentId) return
-  // Surface a freshly detected write-back conflict so the user knows to resolve it
-  // (the resolver lives in the GitLab modal's «Конфликты» entry).
-  if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
-    // A warning with its way out (#3117): «Разрешить» opens the resolver on it.
-    // A stage's conflict (#3025) names the stage instead of a task.
-    const taskId = ev.data?.task_id || null
-    const milestoneId = ev.data?.milestone_id || null
-    message.warning(t('board.toast.gitlabConflict'), {
-      action: {
-        label: () => t('toasts.act.resolve'),
-        run: () => useConflictsStore().openResolver(taskId, { milestoneId }),
-      },
-    })
-  }
-  // The open board was retired. DeleteBoard takes its columns, cards and uploads
-  // with it and announces a bare `board.deleted`, so there is nothing left to
-  // re-fetch: leave for Home, the way onProjectGone does one level up. Above the
-  // drag/suppress guard on purpose — this must not be swallowed by a drag in
-  // flight, and it fires for the deleter too: the sidebar's «Удалить» doesn't
-  // navigate, so whoever pressed it was left standing on a dead board where every
-  // card drag and every new task 404s (#2932).
-  if (boardGone(ev, props.boardId)) {
-    message.info(t('board.toast.boardGone'))
-    router.push('/')
-    return
-  }
-  // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
-  if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
-  // The board's shared views changed (#2988) → re-read the list.
-  if (ev.type === 'board_views.changed' && ev.data?.board_id === props.boardId) bv.load()
-  // Custom command dictionary edited elsewhere → the `/`-popup picks it up live.
-  if (ev.type === 'workspace_commands.updated') wsStore.setCustomCommands(ev.data?.commands || [])
-  // A link between two tasks changed → nudge the Gantt to re-read its edge list.
-  // Only pairs with an end on this board can move an arrow here, and only the
-  // Gantt draws them, so this costs nothing on the other layouts.
-  if (relationTouchesBoard(ev, props.boardId)) depsToken.value++
-  // Board-activity toast for create/move/delete on THIS board (the store
-  // decides whose actions show and folds bursts, #3117).
-  if (ev.type === 'task.created' || ev.type === 'task.moved' || ev.type === 'task.deleted')
-    pushActivity(ev)
-  // The trash panel re-reads its list when a task of this board goes in or out.
-  if (
-    (ev.type === 'task.deleted' || ev.type === 'task.restored' || ev.type === 'task.purged') &&
-    ev.data?.board_id === props.boardId
-  )
-    trashToken.value++
-  // A drag holds the board still (SortableJS needs a stable DOM), so the event
-  // cannot be acted on now — but it must not be forgotten either: remember what it
-  // would have cost and fetch that once the card lands (#2932).
-  if (dragging.value || layoutDragging.value) {
-    rememberMissed(ev)
-    return
-  }
-  if (Date.now() < suppressReloadUntil) return
-  // Route the event instead of reloading the whole board for every one of them.
-  const kind = classifyEvent(ev, { boardId: props.boardId, hasTask: taskOnBoard })
-  if (kind === 'ignore') return
-  if (kind === 'patch') {
-    // A full task payload can be merged into the card with no request at all —
-    // unless the card has to move or isn't here yet, in which case applyTaskPatch
-    // returns null and we fall back to re-fetching the lists.
-    // The merged row is a fresh plain object; markRaw keeps it consistent with
-    // the rest of the rows (see the shallowRef note above).
-    const patched = applyTaskPatch(allTasks.value, ev.data, patchScope())
-    if (patched) {
-      allTasks.value = patched.map(markRaw)
+// Presence on the board (#3116): the socket says which board it shows — on every
+// open and whenever the board changes; the server answers with board.presence.
+const presenceFrame = () => ({ type: 'presence', board_id: props.boardId || '' })
+const realtime = useRealtime(
+  (ev) => {
+    if (ev.scope !== wsStore.currentId) return
+    if (ev.type === 'board.presence') {
+      if (ev.data?.board_id === props.boardId)
+        boardViewStore.present = { boardId: props.boardId, userIds: ev.data.user_ids || [] }
       return
     }
-    const subs = applySubtaskPatch(subtasksByParent.value, ev.data)
-    if (subs) {
-      for (const arr of Object.values(subs)) arr.forEach(markRaw)
-      subtasksByParent.value = subs
+    // Surface a freshly detected write-back conflict so the user knows to resolve it
+    // (the resolver lives in the GitLab modal's «Конфликты» entry).
+    if (ev.type === 'gitlab.conflict' && !ev.data?.resolved) {
+      // A warning with its way out (#3117): «Разрешить» opens the resolver on it.
+      // A stage's conflict (#3025) names the stage instead of a task.
+      const taskId = ev.data?.task_id || null
+      const milestoneId = ev.data?.milestone_id || null
+      message.warning(t('board.toast.gitlabConflict'), {
+        action: {
+          label: () => t('toasts.act.resolve'),
+          run: () => useConflictsStore().openResolver(taskId, { milestoneId }),
+        },
+      })
+    }
+    // The open board was retired. DeleteBoard takes its columns, cards and uploads
+    // with it and announces a bare `board.deleted`, so there is nothing left to
+    // re-fetch: leave for Home, the way onProjectGone does one level up. Above the
+    // drag/suppress guard on purpose — this must not be swallowed by a drag in
+    // flight, and it fires for the deleter too: the sidebar's «Удалить» doesn't
+    // navigate, so whoever pressed it was left standing on a dead board where every
+    // card drag and every new task 404s (#2932).
+    if (boardGone(ev, props.boardId)) {
+      message.info(t('board.toast.boardGone'))
+      router.push('/')
       return
     }
-    schedulePartial('tasks')
-    return
-  }
-  for (const k of partialKinds(kind)) schedulePartial(k)
-}, scheduleReload)
+    // Milestone CRUD elsewhere → refresh the project's milestone list so chips/columns update.
+    if (typeof ev.type === 'string' && ev.type.startsWith('milestone.')) reloadMilestones()
+    // The board's shared views changed (#2988) → re-read the list.
+    if (ev.type === 'board_views.changed' && ev.data?.board_id === props.boardId) bv.load()
+    // Custom command dictionary edited elsewhere → the `/`-popup picks it up live.
+    if (ev.type === 'workspace_commands.updated') wsStore.setCustomCommands(ev.data?.commands || [])
+    // A link between two tasks changed → nudge the Gantt to re-read its edge list.
+    // Only pairs with an end on this board can move an arrow here, and only the
+    // Gantt draws them, so this costs nothing on the other layouts.
+    if (relationTouchesBoard(ev, props.boardId)) depsToken.value++
+    // Board-activity toast for create/move/delete on THIS board (the store
+    // decides whose actions show and folds bursts, #3117).
+    if (ev.type === 'task.created' || ev.type === 'task.moved' || ev.type === 'task.deleted')
+      pushActivity(ev)
+    // The trash panel re-reads its list when a task of this board goes in or out.
+    if (
+      (ev.type === 'task.deleted' || ev.type === 'task.restored' || ev.type === 'task.purged') &&
+      ev.data?.board_id === props.boardId
+    )
+      trashToken.value++
+    // A drag holds the board still (SortableJS needs a stable DOM), so the event
+    // cannot be acted on now — but it must not be forgotten either: remember what it
+    // would have cost and fetch that once the card lands (#2932).
+    if (dragging.value || layoutDragging.value) {
+      rememberMissed(ev)
+      return
+    }
+    if (Date.now() < suppressReloadUntil) return
+    // Route the event instead of reloading the whole board for every one of them.
+    const kind = classifyEvent(ev, { boardId: props.boardId, hasTask: taskOnBoard })
+    if (kind === 'ignore') return
+    if (kind === 'patch') {
+      // A full task payload can be merged into the card with no request at all —
+      // unless the card has to move or isn't here yet, in which case applyTaskPatch
+      // returns null and we fall back to re-fetching the lists.
+      // The merged row is a fresh plain object; markRaw keeps it consistent with
+      // the rest of the rows (see the shallowRef note above).
+      const patched = applyTaskPatch(allTasks.value, ev.data, patchScope())
+      if (patched) {
+        allTasks.value = patched.map(markRaw)
+        return
+      }
+      const subs = applySubtaskPatch(subtasksByParent.value, ev.data)
+      if (subs) {
+        for (const arr of Object.values(subs)) arr.forEach(markRaw)
+        subtasksByParent.value = subs
+        return
+      }
+      schedulePartial('tasks')
+      return
+    }
+    for (const k of partialKinds(kind)) schedulePartial(k)
+  },
+  scheduleReload,
+  { hello: presenceFrame },
+)
+watch(
+  () => props.boardId,
+  () => {
+    boardViewStore.present = { boardId: null, userIds: [] }
+    realtime.send(presenceFrame())
+  },
+)
 
 // Raise a live activity toast for a task create/move on the currently-open board.
 // The verb for a move is refined by comparing the event's completion state to the

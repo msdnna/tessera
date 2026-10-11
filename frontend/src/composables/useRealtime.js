@@ -21,7 +21,12 @@ const RECONNECT_MAX = 30000 // ms
 // because our buffer overflowed), or we just reconnected after an outage and
 // missed whatever happened while the socket was down. Live deltas alone can't
 // close either gap.
-export function useRealtime(onEvent, onResync) {
+//
+// `hello` (optional) returns a client→server frame to send on every open — the
+// board's presence (#3116): a reconnect re-announces it, since the server took
+// the old socket off the board when it closed. The returned `send` sends a
+// frame now if the socket is open (the next open sends `hello` anyway).
+export function useRealtime(onEvent, onResync, { hello = null } = {}) {
   let ws = null
   let retry = null
   let attempts = 0
@@ -82,6 +87,7 @@ export function useRealtime(onEvent, onResync) {
       // the initial load, which the caller already did.
       if (everConnected) onResync?.()
       everConnected = true
+      send(hello?.())
     }
     sock.onmessage = (e) => {
       try {
@@ -101,6 +107,15 @@ export function useRealtime(onEvent, onResync) {
       if (!closed) scheduleReconnect()
     }
     sock.onerror = () => sock.close()
+  }
+
+  function send(frame) {
+    if (!frame || !ws || ws.readyState !== WebSocket.OPEN) return
+    try {
+      ws.send(JSON.stringify(frame))
+    } catch {
+      // a closing socket — the reconnect's hello carries it
+    }
   }
 
   // The OS can silently kill the socket on sleep/hibernate (notably when the
@@ -133,4 +148,5 @@ export function useRealtime(onEvent, onResync) {
     discard(ws)
     ws = null
   })
+  return { send }
 }

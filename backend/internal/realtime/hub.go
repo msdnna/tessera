@@ -46,6 +46,8 @@ type Hub struct {
 	// shutdown parks nobody on an unread channel.
 	done      chan struct{}
 	closeOnce sync.Once
+	// presence: who is on which board right now (#3116, presence.go).
+	presence *presence
 }
 
 // NewHub returns an initialised Hub ready to Run.
@@ -57,6 +59,7 @@ func NewHub() *Hub {
 		dropUser:   make(chan uuid.UUID, 8),
 		broadcast:  make(chan Event, 64),
 		done:       make(chan struct{}),
+		presence:   newPresence(),
 	}
 }
 

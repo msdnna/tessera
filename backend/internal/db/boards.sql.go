@@ -377,6 +377,22 @@ func (q *Queries) GetColumnAny(ctx context.Context, id uuid.UUID) (BoardColumn, 
 	return i, err
 }
 
+const getLiveBoardWorkspace = `-- name: GetLiveBoardWorkspace :one
+SELECT p.workspace_id
+FROM boards b
+JOIN projects p ON p.id = b.project_id
+WHERE b.id = $1 AND b.deleted_at IS NULL
+`
+
+// Presence on a board (#3116): the workspace a live board belongs to — the
+// socket may only announce itself on a board of a workspace in its scope.
+func (q *Queries) GetLiveBoardWorkspace(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, getLiveBoardWorkspace, id)
+	var workspace_id uuid.UUID
+	err := row.Scan(&workspace_id)
+	return workspace_id, err
+}
+
 const listBoards = `-- name: ListBoards :many
 SELECT id, project_id, name, position, created_at, updated_at, done_column_id, slug, icon, color, icon_mode, deleted_at, default_layout FROM boards WHERE project_id = $1 AND deleted_at IS NULL ORDER BY position, created_at, id
 `

@@ -24,9 +24,10 @@ const (
 	pingPeriod = 25 * time.Second
 )
 
-// Client is one authenticated WebSocket connection. Clients are read-only
-// consumers of broadcasts; the read pump exists to process control frames
-// (pong) and detect disconnects.
+// Client is one authenticated WebSocket connection. Clients are consumers of
+// broadcasts; the read pump processes control frames (pong), detects
+// disconnects and takes the one client→server frame there is — presence on a
+// board (#3116, presence.go).
 //
 // scopes is the set of workspace ids the user belonged to at connect time and
 // is immutable for the life of the connection — Hub.DropUser closes the socket
@@ -98,6 +99,8 @@ func (c *Client) readPump() {
 	// unregister/close cleanup below still runs on the way out.
 	defer observability.Recover("ws-read")
 	defer func() {
+		// A closed socket is off its board at once, not after a timeout.
+		c.hub.setPresence(c, uuid.Nil)
 		select {
 		case c.hub.unregister <- c:
 		case <-c.hub.done:
@@ -111,8 +114,12 @@ func (c *Client) readPump() {
 		return c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 	for {
-		if _, _, err := c.conn.ReadMessage(); err != nil {
+		kind, msg, err := c.conn.ReadMessage()
+		if err != nil {
 			break
+		}
+		if kind == websocket.TextMessage {
+			c.hub.onFrame(c, msg)
 		}
 	}
 }
