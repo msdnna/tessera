@@ -161,6 +161,9 @@ type fakeGitlab struct {
 	// issues does MR !n close», keyed by MR iid. See gitlab_mr_flow_test.go.
 	mrs    []glMR
 	closes map[int64][]int64
+	// Projects whose single-MR read answers 403 — a repository the token sees
+	// MRs of through an issue but may not read (#2964 rework).
+	mrForbidden map[string]bool
 	// Project milestones by numeric id — the REST read/write surface of the stage
 	// write-back (#3010). An issue's Milestone points at the same struct, so an
 	// edit through REST is what the next pull sees. milestonePutStatus, when set,
@@ -635,6 +638,10 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusOK, []any{map[string]any{"id": 1, "name": "owner-pat", "token": f.token}})
 		return
 	}
+	// Merge requests of any project, read one at a time (#2964 rework).
+	if f.foreignMR(w, r) {
+		return
+	}
 	prefix := "/api/v4/projects/" + f.projectPath + "/"
 	if !strings.HasPrefix(r.URL.Path, prefix) {
 		http.NotFound(w, r)
@@ -644,6 +651,9 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 	switch {
 	case strings.HasPrefix(rest, "merge_requests/") && strings.HasSuffix(rest, "/closes_issues"):
 		f.closesIssues(w, rest)
+	case strings.HasPrefix(rest, "issues/") &&
+		(strings.HasSuffix(rest, "/related_merge_requests") || strings.HasSuffix(rest, "/closed_by")):
+		f.issueMRs(w, rest)
 	case strings.HasPrefix(rest, "issues/") && strings.HasSuffix(rest, "/links"):
 		f.mu.Lock()
 		f.linkCalls++

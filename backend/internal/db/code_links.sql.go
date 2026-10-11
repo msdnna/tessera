@@ -14,7 +14,7 @@ import (
 
 const codeChangesWithRunningCI = `-- name: CodeChangesWithRunningCI :many
 SELECT DISTINCT number FROM task_code_links
-WHERE provider = $1 AND source_id = $2 AND kind = $3 AND state = 'open' AND ci_status = 'running'
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo = $4 AND state = 'open' AND ci_status = 'running'
 ORDER BY number DESC
 LIMIT 100
 `
@@ -23,12 +23,18 @@ type CodeChangesWithRunningCIParams struct {
 	Provider string    `json:"provider"`
 	SourceID uuid.UUID `json:"source_id"`
 	Kind     string    `json:"kind"`
+	Repo     string    `json:"repo"`
 }
 
 // Open changes whose CI is still on its way to a verdict: the poll re-reads them,
 // because a finished pipeline does not show up as an updated change.
 func (q *Queries) CodeChangesWithRunningCI(ctx context.Context, arg CodeChangesWithRunningCIParams) ([]int64, error) {
-	rows, err := q.db.Query(ctx, codeChangesWithRunningCI, arg.Provider, arg.SourceID, arg.Kind)
+	rows, err := q.db.Query(ctx, codeChangesWithRunningCI,
+		arg.Provider,
+		arg.SourceID,
+		arg.Kind,
+		arg.Repo,
+	)
 	if err != nil {
 		return nil, err
 	}
@@ -64,8 +70,8 @@ func (q *Queries) DeleteCodeLinksForSource(ctx context.Context, arg DeleteCodeLi
 
 const deleteStaleCodeLinks = `-- name: DeleteStaleCodeLinks :many
 DELETE FROM task_code_links
-WHERE provider = $1 AND source_id = $2 AND kind = $3 AND number = $4
-  AND NOT (task_id = ANY($5::uuid[]))
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo = $4 AND number = $5
+  AND NOT (task_id = ANY($6::uuid[]))
 RETURNING task_id
 `
 
@@ -73,6 +79,7 @@ type DeleteStaleCodeLinksParams struct {
 	Provider string      `json:"provider"`
 	SourceID uuid.UUID   `json:"source_id"`
 	Kind     string      `json:"kind"`
+	Repo     string      `json:"repo"`
 	Number   int64       `json:"number"`
 	Keep     []uuid.UUID `json:"keep"`
 }
@@ -83,6 +90,7 @@ func (q *Queries) DeleteStaleCodeLinks(ctx context.Context, arg DeleteStaleCodeL
 		arg.Provider,
 		arg.SourceID,
 		arg.Kind,
+		arg.Repo,
 		arg.Number,
 		arg.Keep,
 	)
@@ -104,15 +112,108 @@ func (q *Queries) DeleteStaleCodeLinks(ctx context.Context, arg DeleteStaleCodeL
 	return items, nil
 }
 
+const deleteStaleForeignCodeLinks = `-- name: DeleteStaleForeignCodeLinks :many
+DELETE FROM task_code_links
+WHERE task_id = $1 AND provider = $2 AND source_id = $3 AND kind = $4 AND repo <> $5
+  AND NOT ((lower(repo) || '!' || number::text) = ANY($6::text[]))
+RETURNING task_id
+`
+
+type DeleteStaleForeignCodeLinksParams struct {
+	TaskID   uuid.UUID `json:"task_id"`
+	Provider string    `json:"provider"`
+	SourceID uuid.UUID `json:"source_id"`
+	Kind     string    `json:"kind"`
+	OwnRepo  string    `json:"own_repo"`
+	Keep     []string  `json:"keep"`
+}
+
+// A task's changes from other repositories that its issue no longer names: drop
+// every one outside keep ("repo!number", repo lower-cased).
+func (q *Queries) DeleteStaleForeignCodeLinks(ctx context.Context, arg DeleteStaleForeignCodeLinksParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, deleteStaleForeignCodeLinks,
+		arg.TaskID,
+		arg.Provider,
+		arg.SourceID,
+		arg.Kind,
+		arg.OwnRepo,
+		arg.Keep,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var task_id uuid.UUID
+		if err := rows.Scan(&task_id); err != nil {
+			return nil, err
+		}
+		items = append(items, task_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const foreignCodeChangesWithRunningCI = `-- name: ForeignCodeChangesWithRunningCI :many
+SELECT DISTINCT repo, number FROM task_code_links
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo <> $4
+  AND state = 'open' AND ci_status = 'running'
+ORDER BY repo, number DESC
+LIMIT 50
+`
+
+type ForeignCodeChangesWithRunningCIParams struct {
+	Provider string    `json:"provider"`
+	SourceID uuid.UUID `json:"source_id"`
+	Kind     string    `json:"kind"`
+	OwnRepo  string    `json:"own_repo"`
+}
+
+type ForeignCodeChangesWithRunningCIRow struct {
+	Repo   string `json:"repo"`
+	Number int64  `json:"number"`
+}
+
+// The same for the changes a binding collected from repositories other than its
+// own (#2964 rework): no hook of theirs ever reaches us, so the poll re-reads them.
+func (q *Queries) ForeignCodeChangesWithRunningCI(ctx context.Context, arg ForeignCodeChangesWithRunningCIParams) ([]ForeignCodeChangesWithRunningCIRow, error) {
+	rows, err := q.db.Query(ctx, foreignCodeChangesWithRunningCI,
+		arg.Provider,
+		arg.SourceID,
+		arg.Kind,
+		arg.OwnRepo,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ForeignCodeChangesWithRunningCIRow
+	for rows.Next() {
+		var i ForeignCodeChangesWithRunningCIRow
+		if err := rows.Scan(&i.Repo, &i.Number); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listCodeLinksForChange = `-- name: ListCodeLinksForChange :many
 SELECT task_id, provider, source_id, kind, number, external_id, repo, url, title, state, draft, source_branch, target_branch, ci_status, ci_url, ci_run_id, via, remote_updated_at, created_at, updated_at FROM task_code_links
-WHERE provider = $1 AND source_id = $2 AND kind = $3 AND number = $4
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo = $4 AND number = $5
 `
 
 type ListCodeLinksForChangeParams struct {
 	Provider string    `json:"provider"`
 	SourceID uuid.UUID `json:"source_id"`
 	Kind     string    `json:"kind"`
+	Repo     string    `json:"repo"`
 	Number   int64     `json:"number"`
 }
 
@@ -122,6 +223,7 @@ func (q *Queries) ListCodeLinksForChange(ctx context.Context, arg ListCodeLinksF
 		arg.Provider,
 		arg.SourceID,
 		arg.Kind,
+		arg.Repo,
 		arg.Number,
 	)
 	if err != nil {
@@ -217,13 +319,14 @@ func (q *Queries) ListTaskCodeLinks(ctx context.Context, taskID uuid.UUID) ([]Ta
 
 const openCodeChangesOnBranch = `-- name: OpenCodeChangesOnBranch :many
 SELECT DISTINCT number FROM task_code_links
-WHERE provider = $1 AND source_id = $2 AND kind = $3 AND source_branch = $4 AND state = 'open'
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo = $4 AND source_branch = $5 AND state = 'open'
 `
 
 type OpenCodeChangesOnBranchParams struct {
 	Provider     string    `json:"provider"`
 	SourceID     uuid.UUID `json:"source_id"`
 	Kind         string    `json:"kind"`
+	Repo         string    `json:"repo"`
 	SourceBranch string    `json:"source_branch"`
 }
 
@@ -233,6 +336,7 @@ func (q *Queries) OpenCodeChangesOnBranch(ctx context.Context, arg OpenCodeChang
 		arg.Provider,
 		arg.SourceID,
 		arg.Kind,
+		arg.Repo,
 		arg.SourceBranch,
 	)
 	if err != nil {
@@ -257,7 +361,7 @@ const setCodeChangeCI = `-- name: SetCodeChangeCI :many
 UPDATE task_code_links
 SET ci_status = $1, ci_url = $2, ci_run_id = $3, updated_at = now()
 WHERE provider = $4 AND source_id = $5 AND kind = $6
-  AND number = ANY($7::bigint[])
+  AND repo = $7 AND number = ANY($8::bigint[])
   AND ci_run_id <= $3
   AND (ci_status, ci_url, ci_run_id) IS DISTINCT FROM ($1::text, $2::text, $3::bigint)
 RETURNING task_id
@@ -270,6 +374,7 @@ type SetCodeChangeCIParams struct {
 	Provider string    `json:"provider"`
 	SourceID uuid.UUID `json:"source_id"`
 	Kind     string    `json:"kind"`
+	Repo     string    `json:"repo"`
 	Numbers  []int64   `json:"numbers"`
 }
 
@@ -284,6 +389,7 @@ func (q *Queries) SetCodeChangeCI(ctx context.Context, arg SetCodeChangeCIParams
 		arg.Provider,
 		arg.SourceID,
 		arg.Kind,
+		arg.Repo,
 		arg.Numbers,
 	)
 	if err != nil {
@@ -311,9 +417,8 @@ INSERT INTO task_code_links (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
 )
-ON CONFLICT (task_id, provider, source_id, kind, number) DO UPDATE SET
+ON CONFLICT (task_id, provider, source_id, kind, repo, number) DO UPDATE SET
     external_id = EXCLUDED.external_id,
-    repo = EXCLUDED.repo,
     url = EXCLUDED.url,
     title = EXCLUDED.title,
     state = EXCLUDED.state,
@@ -326,11 +431,11 @@ ON CONFLICT (task_id, provider, source_id, kind, number) DO UPDATE SET
 WHERE (task_code_links.remote_updated_at IS NULL
        OR EXCLUDED.remote_updated_at IS NULL
        OR EXCLUDED.remote_updated_at >= task_code_links.remote_updated_at)
-  AND (task_code_links.external_id, task_code_links.repo, task_code_links.url, task_code_links.title,
+  AND (task_code_links.external_id, task_code_links.url, task_code_links.title,
        task_code_links.state, task_code_links.draft, task_code_links.source_branch,
        task_code_links.target_branch, task_code_links.via)
       IS DISTINCT FROM
-      (EXCLUDED.external_id, EXCLUDED.repo, EXCLUDED.url, EXCLUDED.title, EXCLUDED.state,
+      (EXCLUDED.external_id, EXCLUDED.url, EXCLUDED.title, EXCLUDED.state,
        EXCLUDED.draft, EXCLUDED.source_branch, EXCLUDED.target_branch, EXCLUDED.via)
 RETURNING task_id
 `

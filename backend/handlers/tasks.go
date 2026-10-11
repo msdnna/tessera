@@ -309,9 +309,15 @@ func (h *API) GetTask(c *gin.Context) {
 		return
 	}
 	archived, _ := h.q.ProjectArchivedForBoard(c, t.BoardID)
+	glLink := h.gitlabLinkForTask(c, id)
+	if glLink != nil {
+		// MRs of other GitLab projects send us no hooks: look again, in the
+		// background, when the task is opened; the answer comes as task.code_links.
+		h.refreshCodeLinksSoon(id)
+	}
 	c.JSON(http.StatusOK, taskDetail{
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, GitlabAssignees: glAssignees,
-		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id), ProjectArchived: archived,
+		Subtasks: subtasks, GitLab: glLink, ProjectArchived: archived,
 		Subscribers: subs, Subscribed: subscribed,
 		CodeLinks: h.codeLinksForTask(c, id),
 	})

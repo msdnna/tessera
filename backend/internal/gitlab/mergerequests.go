@@ -69,6 +69,10 @@ type MergeRequest struct {
 	SourceBranch string
 	TargetBranch string
 	UpdatedAt    *time.Time
+	// ProjectPath is the full path of the project the MR lives in. Empty when
+	// the source doesn't say (the project poll and the project's own hooks: the
+	// bound project).
+	ProjectPath string
 	// Pipeline is the MR's head pipeline, nil when it has none or the source
 	// (a merge_request hook) does not report one.
 	Pipeline *Pipeline
@@ -128,6 +132,9 @@ var (
 	refRe = regexp.MustCompile(`(?:^|[^\w#&!/.\-])((?:[\w.\-]+/)*[\w.\-]+)?#(\d+)\b`)
 	// urlRe finds a full issue URL; the path in front of /-/issues/ is the project.
 	urlRe = regexp.MustCompile(`https?://[^\s/]+/([^\s]+?)/-/(?:issues|work_items)/(\d+)\b`)
+	// mrURLRe finds a merge request URL; the path in front of /-/merge_requests/
+	// is the project.
+	mrURLRe = regexp.MustCompile(`https?://[^\s/]+/([^\s]+?)/-/merge_requests/(\d+)\b`)
 	// branchRe is the branch GitLab cuts from an issue: "<iid>-<slug>". The slug
 	// has to carry a letter, so "release/2-0" is not issue 2.
 	branchRe = regexp.MustCompile(`^(\d+)-(.*[A-Za-z].*)$`)

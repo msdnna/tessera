@@ -3,6 +3,8 @@ package handlers
 import (
 	"context"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -40,12 +42,15 @@ const (
 	mrClosesBudget = 30
 )
 
-// codeLinkView is a linked code change as the task window reads it.
+// codeLinkView is a linked code change as the task window reads it. Ref is how
+// the change is named to a reader: "!418" for a change of the binding's own
+// repository, "group/proj!12" for one of another (#2964 rework).
 type codeLinkView struct {
 	Provider     string     `json:"provider"`
 	Kind         string     `json:"kind"`
 	Number       int64      `json:"number"`
 	Repo         string     `json:"repo"`
+	Ref          string     `json:"ref"`
 	URL          string     `json:"url"`
 	Title        string     `json:"title"`
 	State        string     `json:"state"`
@@ -58,13 +63,24 @@ type codeLinkView struct {
 	UpdatedAt    *time.Time `json:"updated_at"`
 }
 
-func codeLinkViewOf(l db.TaskCodeLink) codeLinkView {
+func codeLinkViewOf(l db.TaskCodeLink, ownRepo string) codeLinkView {
 	return codeLinkView{
 		Provider: l.Provider, Kind: l.Kind, Number: l.Number, Repo: l.Repo, URL: l.Url,
+		Ref:   changeRef(l.Repo, ownRepo, l.Number),
 		Title: l.Title, State: l.State, Draft: l.Draft,
 		SourceBranch: l.SourceBranch, TargetBranch: l.TargetBranch,
 		CIStatus: l.CiStatus, CIURL: l.CiUrl, Via: l.Via, UpdatedAt: l.RemoteUpdatedAt,
 	}
+}
+
+// changeRef names a change for a reader: the bare "!12" inside the binding's own
+// repository, the qualified "group/proj!12" for any other.
+func changeRef(repo, ownRepo string, number int64) string {
+	short := "!" + strconv.FormatInt(number, 10)
+	if repo == "" || strings.EqualFold(repo, ownRepo) {
+		return short
+	}
+	return repo + short
 }
 
 // codeLinksForTask lists a task's linked changes, never nil (the client reads an
@@ -75,8 +91,16 @@ func (h *API) codeLinksForTask(ctx context.Context, taskID uuid.UUID) []codeLink
 	if err != nil {
 		return out
 	}
+	own := map[uuid.UUID]string{}
 	for _, r := range rows {
-		out = append(out, codeLinkViewOf(r))
+		repo, ok := own[r.SourceID]
+		if !ok && r.Provider == codeProviderGitlab {
+			if integ, ierr := h.q.GetGitlabIntegrationByID(ctx, r.SourceID); ierr == nil {
+				repo = integ.ProjectPath
+			}
+			own[r.SourceID] = repo
+		}
+		out = append(out, codeLinkViewOf(r, repo))
 	}
 	return out
 }
@@ -114,7 +138,7 @@ func (h *API) applyMergeRequest(ctx context.Context, integ db.GitlabIntegration,
 	}
 
 	existing, err := h.q.ListCodeLinksForChange(ctx, db.ListCodeLinksForChangeParams{
-		Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Number: mr.IID,
+		Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Repo: integ.ProjectPath, Number: mr.IID,
 	})
 	if err != nil {
 		log.Printf("gitlab mr !%d: load links: %v", mr.IID, err)
@@ -177,7 +201,7 @@ func (h *API) applyMergeRequest(ctx context.Context, integ db.GitlabIntegration,
 			keep = append(keep, id)
 		}
 		gone, err := h.q.DeleteStaleCodeLinks(ctx, db.DeleteStaleCodeLinksParams{
-			Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Number: mr.IID, Keep: keep,
+			Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Repo: integ.ProjectPath, Number: mr.IID, Keep: keep,
 		})
 		if err != nil {
 			log.Printf("gitlab mr !%d: prune links: %v", mr.IID, err)
@@ -188,22 +212,22 @@ func (h *API) applyMergeRequest(ctx context.Context, integ db.GitlabIntegration,
 	}
 
 	if mr.Pipeline != nil {
-		for id := range h.applyCI(ctx, integ, []int64{mr.IID}, *mr.Pipeline) {
+		for id := range h.applyCI(ctx, integ, integ.ProjectPath, []int64{mr.IID}, *mr.Pipeline) {
 			touched[id] = true
 		}
 	}
 	return touched
 }
 
-// applyCI records a pipeline run on some MRs of a binding.
-func (h *API) applyCI(ctx context.Context, integ db.GitlabIntegration, numbers []int64, p gitlab.Pipeline) map[uuid.UUID]bool {
+// applyCI records a pipeline run on some MRs of one repository a binding sees.
+func (h *API) applyCI(ctx context.Context, integ db.GitlabIntegration, repo string, numbers []int64, p gitlab.Pipeline) map[uuid.UUID]bool {
 	touched := map[uuid.UUID]bool{}
 	if len(numbers) == 0 {
 		return touched
 	}
 	ids, err := h.q.SetCodeChangeCI(ctx, db.SetCodeChangeCIParams{
 		CiStatus: gitlab.CIState(p.Status), CiUrl: p.WebURL, CiRunID: p.ID,
-		Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Numbers: numbers,
+		Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Repo: repo, Numbers: numbers,
 	})
 	if err != nil {
 		log.Printf("gitlab pipeline %d: %v", p.ID, err)
@@ -223,14 +247,14 @@ func (h *API) applyPipelineEvent(ctx context.Context, integ db.GitlabIntegration
 		numbers = append(numbers, ev.MRIID)
 	} else if ev.Ref != "" {
 		ns, err := h.q.OpenCodeChangesOnBranch(ctx, db.OpenCodeChangesOnBranchParams{
-			Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, SourceBranch: ev.Ref,
+			Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Repo: integ.ProjectPath, SourceBranch: ev.Ref,
 		})
 		if err != nil {
 			log.Printf("gitlab pipeline %d: branch MRs: %v", ev.Pipeline.ID, err)
 		}
 		numbers = append(numbers, ns...)
 	}
-	return h.applyCI(ctx, integ, numbers, ev.Pipeline)
+	return h.applyCI(ctx, integ, integ.ProjectPath, numbers, ev.Pipeline)
 }
 
 // announceCodeLinks tells open task windows that their «Разработка» changed. The
@@ -264,7 +288,7 @@ func (h *API) syncMergeRequests(ctx context.Context, integ db.GitlabIntegration,
 		inDelta[mr.IID] = true
 	}
 	running, _ := h.q.CodeChangesWithRunningCI(ctx, db.CodeChangesWithRunningCIParams{
-		Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR,
+		Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Repo: integ.ProjectPath,
 	})
 	var stale []int64
 	for _, n := range running {

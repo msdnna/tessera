@@ -58,6 +58,7 @@ type API struct {
 	recTemplateURL string                   // internal url of our egress recording page (#2877); empty ⇒ egress's built-in grid
 	bgCtx          context.Context          // process lifetime for detached job runs (nil until WireBackgroundScope)
 	bgWG           *sync.WaitGroup          // shutdown waits on it, alongside the tick loops
+	mrRefresh      mrRefreshGate            // throttles the per-task refresh of other projects' MRs (#2964)
 }
 
 // WireBackgroundScope hands the handlers the process's shutdown context and the

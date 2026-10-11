@@ -11,7 +11,7 @@ ORDER BY (state = 'open') DESC, remote_updated_at DESC NULLS LAST, number DESC;
 -- name: ListCodeLinksForChange :many
 -- Every task one change is linked to.
 SELECT * FROM task_code_links
-WHERE provider = $1 AND source_id = $2 AND kind = $3 AND number = $4;
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo = $4 AND number = $5;
 
 -- name: UpsertTaskCodeLink :many
 -- Inserts or refreshes one (task, change) row and returns it only when something a
@@ -24,9 +24,8 @@ INSERT INTO task_code_links (
 ) VALUES (
     $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18
 )
-ON CONFLICT (task_id, provider, source_id, kind, number) DO UPDATE SET
+ON CONFLICT (task_id, provider, source_id, kind, repo, number) DO UPDATE SET
     external_id = EXCLUDED.external_id,
-    repo = EXCLUDED.repo,
     url = EXCLUDED.url,
     title = EXCLUDED.title,
     state = EXCLUDED.state,
@@ -39,11 +38,11 @@ ON CONFLICT (task_id, provider, source_id, kind, number) DO UPDATE SET
 WHERE (task_code_links.remote_updated_at IS NULL
        OR EXCLUDED.remote_updated_at IS NULL
        OR EXCLUDED.remote_updated_at >= task_code_links.remote_updated_at)
-  AND (task_code_links.external_id, task_code_links.repo, task_code_links.url, task_code_links.title,
+  AND (task_code_links.external_id, task_code_links.url, task_code_links.title,
        task_code_links.state, task_code_links.draft, task_code_links.source_branch,
        task_code_links.target_branch, task_code_links.via)
       IS DISTINCT FROM
-      (EXCLUDED.external_id, EXCLUDED.repo, EXCLUDED.url, EXCLUDED.title, EXCLUDED.state,
+      (EXCLUDED.external_id, EXCLUDED.url, EXCLUDED.title, EXCLUDED.state,
        EXCLUDED.draft, EXCLUDED.source_branch, EXCLUDED.target_branch, EXCLUDED.via)
 RETURNING task_id;
 
@@ -54,7 +53,7 @@ RETURNING task_id;
 UPDATE task_code_links
 SET ci_status = sqlc.arg(ci_status), ci_url = sqlc.arg(ci_url), ci_run_id = sqlc.arg(ci_run_id), updated_at = now()
 WHERE provider = sqlc.arg(provider) AND source_id = sqlc.arg(source_id) AND kind = sqlc.arg(kind)
-  AND number = ANY(sqlc.arg(numbers)::bigint[])
+  AND repo = sqlc.arg(repo) AND number = ANY(sqlc.arg(numbers)::bigint[])
   AND ci_run_id <= sqlc.arg(ci_run_id)
   AND (ci_status, ci_url, ci_run_id) IS DISTINCT FROM (sqlc.arg(ci_status)::text, sqlc.arg(ci_url)::text, sqlc.arg(ci_run_id)::bigint)
 RETURNING task_id;
@@ -62,22 +61,39 @@ RETURNING task_id;
 -- name: DeleteStaleCodeLinks :many
 -- The change no longer names these tasks: drop every row of it outside keep.
 DELETE FROM task_code_links
-WHERE provider = $1 AND source_id = $2 AND kind = $3 AND number = $4
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo = $4 AND number = $5
   AND NOT (task_id = ANY(sqlc.arg(keep)::uuid[]))
 RETURNING task_id;
 
 -- name: OpenCodeChangesOnBranch :many
 -- Open changes coming from a branch — where a branch pipeline lands.
 SELECT DISTINCT number FROM task_code_links
-WHERE provider = $1 AND source_id = $2 AND kind = $3 AND source_branch = $4 AND state = 'open';
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo = $4 AND source_branch = $5 AND state = 'open';
 
 -- name: CodeChangesWithRunningCI :many
 -- Open changes whose CI is still on its way to a verdict: the poll re-reads them,
 -- because a finished pipeline does not show up as an updated change.
 SELECT DISTINCT number FROM task_code_links
-WHERE provider = $1 AND source_id = $2 AND kind = $3 AND state = 'open' AND ci_status = 'running'
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo = $4 AND state = 'open' AND ci_status = 'running'
 ORDER BY number DESC
 LIMIT 100;
+
+-- name: ForeignCodeChangesWithRunningCI :many
+-- The same for the changes a binding collected from repositories other than its
+-- own (#2964 rework): no hook of theirs ever reaches us, so the poll re-reads them.
+SELECT DISTINCT repo, number FROM task_code_links
+WHERE provider = $1 AND source_id = $2 AND kind = $3 AND repo <> sqlc.arg(own_repo)
+  AND state = 'open' AND ci_status = 'running'
+ORDER BY repo, number DESC
+LIMIT 50;
+
+-- name: DeleteStaleForeignCodeLinks :many
+-- A task's changes from other repositories that its issue no longer names: drop
+-- every one outside keep ("repo!number", repo lower-cased).
+DELETE FROM task_code_links
+WHERE task_id = $1 AND provider = $2 AND source_id = $3 AND kind = $4 AND repo <> sqlc.arg(own_repo)
+  AND NOT ((lower(repo) || '!' || number::text) = ANY(sqlc.arg(keep)::text[]))
+RETURNING task_id;
 
 -- name: DeleteCodeLinksForSource :exec
 -- The provider binding is gone: its changes go with it.

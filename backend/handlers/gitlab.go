@@ -887,6 +887,8 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 	// Merge requests and their pipelines (#2964) last: they hang off the tasks the
 	// steps above just mirrored. Best-effort — never fails the pull.
 	h.syncMergeRequests(ctx, integ, client)
+	// …and the MRs of other projects that GitLab relates to the issues of this run.
+	h.syncForeignMergeRequests(ctx, integ, client, syncedIIDs)
 	// Stage writes that failed earlier go out again now that GitLab answered (#3010).
 	h.retryMilestonePushes(ctx, integ)
 

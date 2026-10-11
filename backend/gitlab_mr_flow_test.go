@@ -7,6 +7,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"slices"
 	"strconv"
 	"strings"
 	"testing"
@@ -27,6 +28,90 @@ type glMR struct {
 	// Head pipeline, if any.
 	PipelineID     int64
 	PipelineStatus string // GraphQL enum spelling: SUCCESS, RUNNING…
+	// Project is the MR's project path; empty — the fake's own project. Only
+	// own MRs are on the project's GraphQL list (#2964 rework).
+	Project string
+	// Issues of the fake project GitLab relates the MR to (related_merge_requests)
+	// and the ones it closes on merge (closed_by).
+	Related []int64
+	Closes  []int64
+}
+
+func (f *fakeGitlab) mrProject(mr glMR) string {
+	if mr.Project != "" {
+		return mr.Project
+	}
+	return f.projectPath
+}
+
+// restMRJSON is an MR in the REST v4 shape; the single-MR read adds its pipeline.
+func (f *fakeGitlab) restMRJSON(mr glMR, withPipeline bool) map[string]any {
+	proj := f.mrProject(mr)
+	out := map[string]any{
+		"id": mr.ID, "iid": mr.IID, "title": mr.Title, "description": mr.Description,
+		"state": mr.State, "draft": mr.Draft,
+		"source_branch": mr.SourceBranch, "target_branch": mr.TargetBranch,
+		"web_url":    f.srv.URL + "/" + proj + "/-/merge_requests/" + strconv.FormatInt(mr.IID, 10),
+		"updated_at": mr.UpdatedAt.Format(time.RFC3339),
+		"references": map[string]any{"full": fmt.Sprintf("%s!%d", proj, mr.IID)},
+	}
+	if withPipeline && mr.PipelineID > 0 {
+		out["head_pipeline"] = map[string]any{
+			"id": mr.PipelineID, "status": strings.ToLower(mr.PipelineStatus),
+			"web_url": f.srv.URL + "/" + proj + "/-/pipelines/" + strconv.FormatInt(mr.PipelineID, 10),
+		}
+	}
+	return out
+}
+
+// issueMRs serves issues/:iid/related_merge_requests and issues/:iid/closed_by.
+func (f *fakeGitlab) issueMRs(w http.ResponseWriter, rest string) {
+	closing := strings.HasSuffix(rest, "/closed_by")
+	num := strings.TrimPrefix(rest, "issues/")
+	num = num[:strings.Index(num, "/")]
+	iid, _ := strconv.ParseInt(num, 10, 64)
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	out := []any{}
+	for _, mr := range f.mrs {
+		names := slices.Contains(mr.Closes, iid)
+		if !closing {
+			names = names || slices.Contains(mr.Related, iid)
+		}
+		if names {
+			out = append(out, f.restMRJSON(mr, false))
+		}
+	}
+	writeJSON(w, http.StatusOK, out)
+}
+
+// foreignMR serves GET projects/:path/merge_requests/:iid of any project.
+// Reports whether the request was one.
+func (f *fakeGitlab) foreignMR(w http.ResponseWriter, r *http.Request) bool {
+	p := strings.TrimPrefix(r.URL.Path, "/api/v4/projects/")
+	i := strings.LastIndex(p, "/merge_requests/")
+	if r.Method != http.MethodGet || p == r.URL.Path || i < 0 {
+		return false
+	}
+	proj := p[:i]
+	iid, err := strconv.ParseInt(p[i+len("/merge_requests/"):], 10, 64)
+	if err != nil {
+		return false
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.mrForbidden[proj] {
+		writeJSON(w, http.StatusForbidden, map[string]any{"message": "403 Forbidden"})
+		return true
+	}
+	for _, mr := range f.mrs {
+		if mr.IID == iid && f.mrProject(mr) == proj {
+			writeJSON(w, http.StatusOK, f.restMRJSON(mr, true))
+			return true
+		}
+	}
+	writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Not found"})
+	return true
 }
 
 func (f *fakeGitlab) addMR(mr glMR) {
@@ -62,6 +147,9 @@ func (f *fakeGitlab) mergeRequestsQuery(w http.ResponseWriter, vars map[string]a
 	}
 	nodes := []any{}
 	for _, mr := range f.mrs {
+		if mr.Project != "" {
+			continue // another project's MR: not on this project's list
+		}
 		if len(want) > 0 && !want[mr.IID] {
 			continue
 		}
@@ -340,4 +428,142 @@ func TestGitlabMergeRequestRunningPipelineRefresh(t *testing.T) {
 	triggerSync(t, c, s.WS, integID)
 	waitSyncRuns(t, c, s.WS, 2)
 	waitCI("success")
+}
+
+// linkByRef finds a «Разработка» row by its reader-facing reference.
+func linkByRef(links []map[string]any, ref string) map[string]any {
+	for _, l := range links {
+		if l["ref"] == ref {
+			return l
+		}
+	}
+	return nil
+}
+
+// waitLinks polls a task's «Разработка» until ok accepts it.
+func waitLinks(t *testing.T, c *client, taskID, what string, ok func([]map[string]any) bool) []map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(10 * time.Second)
+	var l []map[string]any
+	for time.Now().Before(deadline) {
+		if l = codeLinks(t, c, taskID); ok(l) {
+			return l
+		}
+		time.Sleep(100 * time.Millisecond)
+	}
+	t.Fatalf("%s never happened: %v", what, l)
+	return nil
+}
+
+// The binding mirrors the scrum project's issues; the MRs working on them live in
+// other projects (#2964 rework). GitLab's issue side names them (related MRs,
+// closed_by), and they show in the task with their pipelines — one row per
+// project even when the numbers clash; a project the token can't read costs only
+// its pipeline, never the sync.
+func TestGitlabForeignMergeRequests(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	makeAdmin(t, c)
+	s := mkStack(t, c)
+	f := newFakeGitlab(t, "gl-mr-foreign", "scrum-fx")
+	f.mrForbidden = map[string]bool{"secret/c": true}
+	f.addIssue(glIssue{IID: 1, Title: "Login"})
+	f.addIssue(glIssue{IID: 2, Title: "Search"})
+
+	// The scrum project's own MR: the project poll's, related to #1 as well.
+	f.addMR(glMR{IID: 7, Title: "Own", Description: "See #1", SourceBranch: "own", TargetBranch: "main", Related: []int64{1}})
+	// team/api!12 closes #1 and its pipeline runs.
+	f.addMR(glMR{ID: 7001, IID: 12, Project: "team/api", Title: "API login", SourceBranch: "login", TargetBranch: "main",
+		Closes: []int64{1}, PipelineID: 501, PipelineStatus: "RUNNING"})
+	// team/web!12 — the same number in another project — mentions #1, merged, green.
+	f.addMR(glMR{ID: 7002, IID: 12, Project: "team/web", Title: "Web login", State: "merged", SourceBranch: "login",
+		TargetBranch: "main", Related: []int64{1}, PipelineID: 502, PipelineStatus: "SUCCESS"})
+	// secret/c!3 mentions #1, but the project refuses the MR read (403).
+	f.addMR(glMR{ID: 7003, IID: 3, Project: "secret/c", Title: "Secret", SourceBranch: "s", TargetBranch: "main",
+		Related: []int64{1}, PipelineID: 503, PipelineStatus: "FAILED"})
+
+	connectGitlab(t, c, f)
+	integID := createIntegration(t, c, s.WS, s.Board, f, nil)["id"].(string)
+	triggerSync(t, c, s.WS, integID)
+	for _, r := range waitSyncRuns(t, c, s.WS, 1) {
+		if r["status"] == "failed" || (r["error"] != nil && r["error"] != "") {
+			t.Fatalf("the sync failed: %v", r)
+		}
+	}
+	tasks := c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	t1 := taskByIid(t, tasks, 1)["id"].(string)
+	t2 := taskByIid(t, tasks, 2)["id"].(string)
+
+	l1 := waitLinks(t, c, t1, "four MRs on task #1", func(l []map[string]any) bool { return len(l) == 4 })
+	own := linkByRef(l1, "!7")
+	if own == nil || own["repo"] != "scrum-fx" || own["via"] != "mention" {
+		t.Fatalf("own !7 = %v (all: %v)", own, l1)
+	}
+	api := linkByRef(l1, "team/api!12")
+	if api == nil || api["repo"] != "team/api" || api["number"] != float64(12) || api["via"] != "closes" ||
+		api["state"] != "open" || api["ci_status"] != "running" || api["title"] != "API login" ||
+		!strings.HasSuffix(api["url"].(string), "/team/api/-/merge_requests/12") ||
+		!strings.HasSuffix(api["ci_url"].(string), "/team/api/-/pipelines/501") {
+		t.Fatalf("team/api!12 = %v", api)
+	}
+	web := linkByRef(l1, "team/web!12")
+	if web == nil || web["state"] != "merged" || web["via"] != "mention" || web["ci_status"] != "success" {
+		t.Fatalf("team/web!12 = %v", web)
+	}
+	secret := linkByRef(l1, "secret/c!3")
+	if secret == nil || secret["ci_status"] != "" || secret["state"] != "open" {
+		t.Fatalf("secret/c!3 (no MR read) = %v", secret)
+	}
+
+	// History names the foreign MR with its project.
+	var refs []string
+	for _, e := range c.get("/tasks/" + t1 + "/events").listBody(t) {
+		if e["kind"] == "code_change" {
+			if ref, _ := e["data"].(map[string]any)["ref"].(string); ref != "" {
+				refs = append(refs, ref)
+			}
+		}
+	}
+	if !slices.Contains(refs, "team/api!12") || !slices.Contains(refs, "team/web!12") {
+		t.Fatalf("code_change refs = %v", refs)
+	}
+
+	// The pipeline finishes. Neither the MR nor the issue changes, and the other
+	// project's hook never reaches us — the next pull re-reads the running one.
+	f.mu.Lock()
+	f.mrs[1].PipelineStatus = "SUCCESS"
+	f.mu.Unlock()
+	triggerSync(t, c, s.WS, integID)
+	waitSyncRuns(t, c, s.WS, 2)
+	waitLinks(t, c, t1, "team/api!12 going green", func(l []map[string]any) bool {
+		a := linkByRef(l, "team/api!12")
+		return a != nil && a["ci_status"] == "success"
+	})
+
+	// GitLab stops relating team/web!12 to #1; the issue changes, so the pull asks
+	// again and the row goes.
+	f.mu.Lock()
+	f.mrs[2].Related = nil
+	f.issues[0].UpdatedAt = time.Now().UTC().Add(time.Second)
+	f.mu.Unlock()
+	triggerSync(t, c, s.WS, integID)
+	waitSyncRuns(t, c, s.WS, 3)
+	waitLinks(t, c, t1, "team/web!12 dropped", func(l []map[string]any) bool {
+		return len(l) == 3 && linkByRef(l, "team/web!12") == nil && linkByRef(l, "!7") != nil
+	})
+
+	// A new MR in another project names #2 — the issue itself doesn't change, so
+	// no pull would look. Opening the task does, in the background.
+	f.addMR(glMR{ID: 7004, IID: 40, Project: "team/api", Title: "Search API", SourceBranch: "search",
+		TargetBranch: "main", Closes: []int64{2}, PipelineID: 504, PipelineStatus: "SUCCESS"})
+	l2 := waitLinks(t, c, t2, "team/api!40 on opening task #2", func(l []map[string]any) bool { return len(l) == 1 })
+	if l2[0]["ref"] != "team/api!40" || l2[0]["via"] != "closes" || l2[0]["ci_status"] != "success" {
+		t.Fatalf("task #2 = %v", l2)
+	}
+
+	// Deleting the binding takes the foreign MRs with it, too.
+	c.expect(t, c.del("/workspaces/"+s.WS+"/gitlab/integrations/"+integID), http.StatusNoContent)
+	if l := codeLinks(t, c, t1); len(l) != 0 {
+		t.Fatalf("links survived the binding: %v", l)
+	}
 }
