@@ -156,3 +156,18 @@
   поля конфликта assignees/labels, пакетный resolve, черновик «Отложить» — localStorage
   `tessera_conflict_drafts`. Полная сверка в две фазы (`NeedNotes`/`WithNotes`): при
   `Issue.NotesLoaded=false` комментарии не трогать.
+- **Фоновые задания и импорт/экспорт (#3067, #3068, миграция 0096):** история — `job_runs`, 30 дней;
+  реестр `internal/jobs`: `Start` (очередь + повторы), `BeginSpec`, `Steps`/`Step`/`Progress`/`Log`;
+  новый долгий раннер отчитывается через handle (`h.jobs.Live(key)`). Сокет `job.updated` — админам
+  (`Event.Admin`) и автору; web — стор `stores/jobs`. Экспорт/импорт: стор `boardTransfer`,
+  `useBoardExport`, `import/ImportWindow`, `utils/taskImport` (колонки файла — стабильные английские
+  ключи). Команда палитры без клавиш — запись каталога с `command` (+ `aliases` для поиска).
+- **Учёт времени (#2965, миграция 0098):** `task_time_entries`, `GET/POST/DELETE /tasks/:id/time`,
+  `spent`/`spent_total` в детали задачи, `/spend`; web — `task/TimeLogPop` у строки «Оценка».
+- **Команды-макросы и шаблоны задач (#3069, миграция 0099):** `workspace_macros` (общие — owner/admin,
+  личные — только владелец) и `task_templates`; исполнение на клиенте (`utils/macroRun`,
+  `stores/macros`) через обычные ручки; клавиши — `shortcuts/dynamic.js` (конфликт с каталогом =
+  совпадение префикса последовательности); пайплайн — `POST /boards/:id/ci/run` (нейтральный
+  `ciRunner`, GitLab-реализация).
+- **Присутствие на доске (#3116):** кадр `{type:"presence", board_id}` по сокету доски
+  (`useRealtime({ hello })`), событие `board.presence`, реестр в памяти хаба.

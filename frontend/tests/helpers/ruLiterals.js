@@ -29,6 +29,12 @@ export const ALLOWLIST = [
   // in either language — an English interface still has Russian-speaking hands
   // typing at it.
   'src/utils/docSlash.js',
+  // Palette search aliases of commands (#3068: «>экспорт» finds «Export»): search
+  // keys in both alphabets, like docSlash.js above — the labels are i18n.
+  'src/shortcuts/catalog.js',
+  // Import header synonyms (#3095): a CSV column called «Заголовок» or «Срок»
+  // maps onto our fields — matching what people's files say, not interface text.
+  'src/utils/taskImport.js',
   // Board-column status heuristic. Column names are user data seeded by the
   // server in Russian ("К работе", "На рассмотрении"), so this table matches
   // what the rows are actually called — translating it would stop it matching.
