@@ -18,6 +18,7 @@ import GitLabModal from './GitLabModal.vue'
 import EstimationPopover from './EstimationPopover.vue'
 import WorkspaceCommandsModal from './WorkspaceCommandsModal.vue'
 import BackgroundJobsModal from './BackgroundJobsModal.vue'
+import ImportWindow from './import/ImportWindow.vue'
 import WorkspaceFormPopover from './rail/WorkspaceFormPopover.vue'
 import WorkspaceDeletePopover from './rail/WorkspaceDeletePopover.vue'
 
@@ -101,6 +102,8 @@ const offset = computed(() => (onRail.value ? { x: 8, y: -8 } : { x: 0, y: 6 }))
   />
   <WorkspaceCommandsModal v-model:show="commands" :workspace-id="ws.currentId" />
   <BackgroundJobsModal v-if="auth.isAdmin" v-model:show="jobs" />
+  <!-- Task import onto a board (#3068): opened through stores/boardTransfer. -->
+  <ImportWindow />
   <WorkspaceFormPopover
     v-model:show="create"
     kind="create"

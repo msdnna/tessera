@@ -207,12 +207,13 @@ export function usePaletteResults() {
     const term = parsed.value.term
     const live = CATALOG.filter((e) => e.command && (e.to || e.form || isLive(e.id)))
     const label = (e) => t(`shell.keys.${e.id}`)
-    return rank(live, (e) => [label(e)], term).map((e) => ({
+    // `aliases` match besides the label (#3068: `>export` finds «Экспорт…»).
+    return rank(live, (e) => [label(e), ...(e.aliases || [])], term).map((e) => ({
       key: `cmd:${e.id}`,
       icon: ICONS[e.command],
       title: label(e),
       hl: term,
-      sub: e.form ? formSub(e.form) : t(`shell.keys.groups.${e.group || 'nav'}`),
+      sub: e.form ? formSub(e.form) : t(`shell.keys.groups.${e.group || e.section || 'nav'}`),
       keys: e.keys || e.display ? e.id : null,
       form: e.form || null,
       run: (ctx) => {

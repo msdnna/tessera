@@ -50,6 +50,8 @@ import { useBoardViews } from '@/composables/useBoardViews'
 import { useBoardFacets, CHIP_ICONS } from '@/composables/useBoardFacets'
 import { useFacetAddMenu, facetRows } from '@/composables/useFacetAddMenu'
 import { useBoardActions } from '@/composables/useBoardActions'
+import { useBoardExport } from '@/composables/useBoardExport'
+import { useBoardTransferStore } from '@/stores/boardTransfer'
 import { tagLaneLabel, tagInPrefix, metaPrefixesFromRules } from '@/utils/tagGroups'
 import { sumLaneEffort, formatEstimate } from '@/utils/estimation'
 import { countWithSubtasks } from '@/utils/boardCounts'
@@ -2168,6 +2170,30 @@ useShortcuts(
   },
   { when: () => !!board.value && !isMobile.value },
 )
+// Export and import of the board's tasks (#3068). The board answers the export
+// asked from «⋯ Действия доски» or the palette: it alone knows which cards the
+// current view shows. A view that hides nothing exports the whole board.
+const transfer = useBoardTransferStore()
+const { runExport } = useBoardExport()
+function exportBoard(format) {
+  if (!board.value) return
+  const shownCards = filteredTasks.value
+  const ids = shownCards.length === allTasks.value.length ? null : shownCards.map((x) => x.id)
+  runExport(board.value.id, format, ids)
+}
+watch(
+  () => transfer.exportRequest,
+  (r) => r && exportBoard(r.format),
+)
+useShortcuts(
+  {
+    'board.exportCsv': () => exportBoard('csv'),
+    'board.exportJson': () => exportBoard('json'),
+    'board.import': () => editable() && transfer.openImport(board.value),
+  },
+  { when: () => !!board.value },
+)
+
 // 1–9 / 0 pick a view while the panel is open (the chip's menu answers to the
 // digits on its own).
 useShortcuts(

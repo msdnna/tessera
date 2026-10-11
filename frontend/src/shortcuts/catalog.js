@@ -120,6 +120,28 @@ export const CATALOG = [
   { id: 'board.stageStrip', keys: 'shift+h', group: 'board' },
   // The star after the crumbs (#3115): the open board in / out of favourites.
   { id: 'board.favorite', keys: 'shift+f', group: 'board', command: 'StarOutline' },
+  // Export / import of the board's tasks (#3068): palette commands only
+  // (`>export`), no keys. `section` names the palette's subtitle without putting
+  // them in the cheat sheet; `aliases` are matched besides the label, so the
+  // English word finds the Russian row.
+  {
+    id: 'board.exportCsv',
+    command: 'DownloadOutline',
+    section: 'board',
+    aliases: ['export', 'csv', 'экспорт'],
+  },
+  {
+    id: 'board.exportJson',
+    command: 'DownloadOutline',
+    section: 'board',
+    aliases: ['export', 'json', 'экспорт'],
+  },
+  {
+    id: 'board.import',
+    command: 'CloudUploadOutline',
+    section: 'board',
+    aliases: ['import', 'csv', 'json', 'импорт'],
+  },
   // Six equal views (#2970): Канбан · Список · Таймлайн · Гант · Календарь · Матрица.
   { id: 'board.layout', keys: 'v digit', group: 'board', digit: '1–6' },
   // The column under the pointer, or the selected card's (#2969): F2 renames in
@@ -377,6 +399,8 @@ export const CATALOG = [
   // text is selected — see BackgroundJobsModal).
   { id: 'jobs.follow', keys: 'f', group: 'window', modal: true },
   { id: 'jobs.copyLog', keys: 'mod+c', group: 'window', modal: true },
+  // The import window (#3095): the mapping → the preview → «Импортировать».
+  { id: 'import.next', keys: 'mod+enter', group: 'window', modal: true, input: true },
   { id: 'members.invite', keys: 'i', group: 'window', modal: true },
   // The shared invitation link (#3062); only while it is on screen and no text
   // is selected — see MembersModal.

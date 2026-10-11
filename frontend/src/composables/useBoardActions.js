@@ -3,6 +3,8 @@ import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
 import {
   ArchiveOutline,
+  CloudUploadOutline,
+  DownloadOutline,
   LogoGitlab,
   PricetagsOutline,
   SettingsOutline,
@@ -19,6 +21,7 @@ import { humanizeError } from '@/utils/errors'
 import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useConflictsStore } from '@/stores/conflicts'
+import { useBoardTransferStore } from '@/stores/boardTransfer'
 import {
   archiveQuery,
   withoutArchiveQuery,
@@ -39,6 +42,7 @@ export function useBoardActions() {
   const dialogs = useWsDialogsStore()
   const conflicts = useConflictsStore()
   const favorites = useFavoritesStore()
+  const transfer = useBoardTransferStore()
   const ws = useWorkspacesStore()
   const message = useMessage()
   const route = useRoute()
@@ -101,6 +105,25 @@ export function useBoardActions() {
     // The trash (#3004) is a panel over the board (?trash=1): deleted tasks with
     // «Вернуть» / «Удалить навсегда».
     { key: 'trash', label: t('board.actions.trash'), icon: TrashOutline, checked: isTrash.value },
+    { gap: true },
+    // Export and import of the board's tasks (#3068): the export takes the cards
+    // the current view shows; the import opens its window.
+    {
+      key: 'export',
+      label: t('board.transfer.export'),
+      icon: DownloadOutline,
+      testid: 'board-action-export',
+      children: [
+        { key: 'export:csv', label: 'CSV', icon: DownloadOutline },
+        { key: 'export:json', label: 'JSON', icon: DownloadOutline },
+      ],
+    },
+    {
+      key: 'import',
+      label: t('board.transfer.import'),
+      icon: CloudUploadOutline,
+      testid: 'board-action-import',
+    },
   ])
 
   // Leaving the archive replaces rather than pushes, same as the board's own
@@ -126,6 +149,9 @@ export function useBoardActions() {
     else if (key === 'gitlab') dialogs.open('gitlab')
     else if (key === 'archive') toggleArchive()
     else if (key === 'trash') toggleTrash()
+    else if (key === 'export:csv' || key === 'export:json') transfer.requestExport(key.slice(7))
+    else if (key === 'import') transfer.openImport(store.board)
+    else if (key === 'export') return true
     else return false
     return true
   }

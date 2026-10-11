@@ -39,7 +39,11 @@ function sequenceOf(id) {
 }
 
 export function attach(id, run, when) {
-  if (!byId.get(id)?.keys) throw new Error(`unknown shortcut: ${id}`)
+  // A palette-only command (#3068: `board.exportCsv`) has no keys but still
+  // needs a live handler for the palette to offer it; an id the catalog doesn't
+  // know is a typo.
+  const entry = byId.get(id)
+  if (!entry || (!entry.keys && !entry.command)) throw new Error(`unknown shortcut: ${id}`)
   const h = { run, when }
   if (!handlers.has(id)) handlers.set(id, [])
   handlers.get(id).push(h)

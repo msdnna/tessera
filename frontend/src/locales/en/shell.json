@@ -423,7 +423,10 @@
       "select": "Select a card",
       "stage": "Pick a milestone in the sub-toolbar",
       "stageStrip": "Fold / unfold the milestone strip",
-      "favorite": "Board to / from favourites"
+      "favorite": "Board to / from favourites",
+      "exportCsv": "Export the board to CSV",
+      "exportJson": "Export the board to JSON",
+      "import": "Import tasks from CSV/JSON"
     },
     "card": {
       "open": "Open",
@@ -663,6 +666,9 @@
     },
     "help": {
       "tour": "The «Get started» tour"
+    },
+    "import": {
+      "next": "Import: next / import"
     }
   },
   "palette": {
