@@ -176,3 +176,37 @@ test('старые адреса /notes и /reminders открывают пане
   await page.goto('/reminders')
   await expect(page.locator('[data-filter="reminders"]')).toHaveAttribute('aria-selected', 'true')
 })
+
+// Offline capture (#3042): without a connection the capture waits on the device
+// («ждёт связи» in the panel) and goes out by itself once the connection is back.
+test('захват без связи: запись ждёт на устройстве и уходит при появлении связи', async ({
+  page,
+  backend,
+}) => {
+  const { ws, board } = await backend.freshBoard('inbox-offline')
+  const s = stamp()
+  await openBoard(page, board.id)
+
+  await page.context().setOffline(true)
+  await page.keyboard.press('n')
+  await page.keyboard.press('m')
+  const input = page.getByTestId('capture-input')
+  await input.fill(`без связи ${s}`)
+  await input.press('Enter')
+  await expect(input).toHaveCount(0)
+  await page.keyboard.press('g')
+  await page.keyboard.press('i')
+  await expect(page.getByTestId('inbox-pending')).toBeVisible()
+  expect((await feed(backend, ws.id)).notes.map((n) => n.title)).not.toContain(`Без связи ${s}`)
+
+  await page.context().setOffline(false)
+  await expect(page.getByTestId('inbox-pending')).toHaveCount(0)
+  await expect
+    .poll(async () =>
+      (await feed(backend, ws.id)).notes.filter((n) => n.title === `Без связи ${s}`),
+    )
+    .toHaveLength(1)
+  await expect(page.getByTestId('inbox-panel').locator('[data-group="notes"]')).toContainText(
+    `Без связи ${s}`,
+  )
+})

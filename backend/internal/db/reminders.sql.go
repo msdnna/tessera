@@ -13,8 +13,8 @@ import (
 )
 
 const createReminder = `-- name: CreateReminder :one
-INSERT INTO reminders (user_id, task_id, remind_at, message, body, workspace_id, tags, mentions)
-VALUES ($1, $2, $3, $4, $5, $6, $7::text[], $8::uuid[])
+INSERT INTO reminders (id, user_id, task_id, remind_at, message, body, workspace_id, tags, mentions)
+VALUES (COALESCE($7::uuid, gen_random_uuid()), $1, $2, $3, $4, $5, $6, $8::text[], $9::uuid[])
 RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id, tags, mentions
 `
 
@@ -25,10 +25,12 @@ type CreateReminderParams struct {
 	Message     string      `json:"message"`
 	Body        string      `json:"body"`
 	WorkspaceID *uuid.UUID  `json:"workspace_id"`
+	ClientID    *uuid.UUID  `json:"client_id"`
 	Tags        []string    `json:"tags"`
 	Mentions    []uuid.UUID `json:"mentions"`
 }
 
+// client_id (#3042): see CreateNote.
 func (q *Queries) CreateReminder(ctx context.Context, arg CreateReminderParams) (Reminder, error) {
 	row := q.db.QueryRow(ctx, createReminder,
 		arg.UserID,
@@ -37,6 +39,7 @@ func (q *Queries) CreateReminder(ctx context.Context, arg CreateReminderParams) 
 		arg.Message,
 		arg.Body,
 		arg.WorkspaceID,
+		arg.ClientID,
 		arg.Tags,
 		arg.Mentions,
 	)

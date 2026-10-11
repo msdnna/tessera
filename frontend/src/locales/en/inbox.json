@@ -24,8 +24,8 @@
     "saving": "Saving…",
     "saved": "Saved to the Inbox.",
     "openPanel": "Open · G I",
-    "offline": "Keep on this device",
-    "freeTag": "The record's own label — the project has no such tag"
+    "freeTag": "The record's own label — the project has no such tag",
+    "queued": "Offline — saved on this device, will be sent when the connection is back"
   },
   "panel": {
     "add": "Record",
@@ -168,5 +168,7 @@
   },
   "pill": {
     "tip": "Reminder {when} — click to snooze"
-  }
+  },
+  "pending": "{n} record waits for the connection | {n} records wait for the connection",
+  "pendingSend": "Send"
 }

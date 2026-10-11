@@ -10,9 +10,6 @@
 // Use: `stubTask('project.slugSuggest')` → 3013, and `isStub(key)` to branch.
 
 export const FEATURE_STUBS = {
-  // Capture without a connection: keep the record on the device and send it
-  // later — #3031.
-  'inbox.offline': 3031,
   // Settings (#3106): two-factor sign-in (#3081).
   'settings.twoFactor': 3081,
   'admin.roles': 3076,
@@ -28,11 +25,6 @@ export const FEATURE_STUBS = {
   'jobs.history': 3067,
   // Workspace commands: palette macros and task templates (#3069).
   'commands.macros': 3069,
-  // The phone (#2976, package G): «Отложить» a task by swiping its row on
-  // «Мои задачи» — a task has a due date, not a snooze (#3108).
-  // The editor (#3118): «Ссылка на фрагмент» in the bubble over read text — a
-  // link to a stretch of a description or a comment needs anchors the app
-  // doesn't keep yet (#3119).
 }
 
 export function stubTask(key) {

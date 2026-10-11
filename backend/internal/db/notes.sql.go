@@ -12,8 +12,8 @@ import (
 )
 
 const createNote = `-- name: CreateNote :one
-INSERT INTO notes (workspace_id, project_id, author_id, title, body, slug, task_id, visibility, tags, mentions)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::text[], $10::uuid[])
+INSERT INTO notes (id, workspace_id, project_id, author_id, title, body, slug, task_id, visibility, tags, mentions)
+VALUES (COALESCE($9::uuid, gen_random_uuid()), $1, $2, $3, $4, $5, $6, $7, $8, $10::text[], $11::uuid[])
 RETURNING id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug, task_id, visibility, tags, mentions
 `
 
@@ -26,10 +26,13 @@ type CreateNoteParams struct {
 	Slug        string      `json:"slug"`
 	TaskID      *uuid.UUID  `json:"task_id"`
 	Visibility  string      `json:"visibility"`
+	ClientID    *uuid.UUID  `json:"client_id"`
 	Tags        []string    `json:"tags"`
 	Mentions    []uuid.UUID `json:"mentions"`
 }
 
+// client_id (#3042): a capture queued offline names its record itself, so a
+// resend after a lost answer finds the first one instead of making a twin.
 func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, error) {
 	row := q.db.QueryRow(ctx, createNote,
 		arg.WorkspaceID,
@@ -40,6 +43,7 @@ func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, e
 		arg.Slug,
 		arg.TaskID,
 		arg.Visibility,
+		arg.ClientID,
 		arg.Tags,
 		arg.Mentions,
 	)

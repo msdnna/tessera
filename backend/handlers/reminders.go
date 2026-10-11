@@ -73,10 +73,23 @@ func (h *API) CreateReminder(c *gin.Context) {
 		WorkspaceID *uuid.UUID  `json:"workspace_id"`
 		Tags        []string    `json:"tags"`
 		Mentions    []uuid.UUID `json:"mentions"`
+		// ClientID (#3042): the id the client gave a capture queued offline.
+		ClientID *uuid.UUID `json:"client_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	if req.ClientID != nil {
+		// A resend of a capture that already landed: answer with it, no twin.
+		if prev, err := h.q.GetReminder(c, *req.ClientID); err == nil {
+			if prev.UserID != middleware.CurrentUser(c) {
+				c.JSON(http.StatusConflict, gin.H{"error": "client_id taken"})
+				return
+			}
+			c.JSON(http.StatusOK, prev)
+			return
+		}
 	}
 	ws, ok := h.reminderWorkspace(c, req.TaskID, req.WorkspaceID)
 	if !ok {
@@ -93,6 +106,7 @@ func (h *API) CreateReminder(c *gin.Context) {
 		return
 	}
 	r, err := h.q.CreateReminder(c, db.CreateReminderParams{
+		ClientID:    req.ClientID,
 		UserID:      middleware.CurrentUser(c),
 		TaskID:      req.TaskID,
 		RemindAt:    req.RemindAt,

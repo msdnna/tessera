@@ -10,6 +10,7 @@ import { firedCount, remindersByTask, tagsByProject } from '@/utils/inbox'
 import { buildMentionItems } from '@/utils/mentions'
 import { sGet, sSet } from '@/utils/serverStorage'
 import { tourEvent } from '@/utils/tourEvents'
+import { enqueue, flush, newClientId, queued } from '@/utils/captureQueue'
 
 // «Входящие» (#2972): the user's reminders and notes of the current workspace,
 // the panel's state and the capture popover's. One copy for the whole shell —
@@ -110,6 +111,8 @@ export const useInboxStore = defineStore('inbox', () => {
       notes.value = (data?.notes || []).map(tag('note'))
       loaded.value = true
       now.value = new Date()
+      // Reachable again: whatever waited on the device goes out now.
+      flushQueue()
     } catch (e) {
       if (mine === seq) error.value = e?.message || 'error'
     } finally {
@@ -199,16 +202,58 @@ export const useInboxStore = defineStore('inbox', () => {
   }
 
   // ── mutations: each answers with the saved record, already in the feed ──
+  // Creating names the record on the client (client_id, #3042): without a
+  // connection the capture waits on the device ({ queued: true }) and goes out
+  // when the connection is back — a resend can't make a twin.
   async function createNote(data) {
-    const res = await notesApi.create(wsId.value, data)
-    tourEvent('inbox.captured')
-    return putNote(res.data)
+    const body = { client_id: newClientId(), ...data }
+    try {
+      const res = await notesApi.create(wsId.value, body)
+      tourEvent('inbox.captured')
+      return putNote(res.data)
+    } catch (e) {
+      if (!e?.offline) throw e
+      pending.value = enqueue({ kind: 'note', wsId: wsId.value, data: body })
+      return { queued: true }
+    }
   }
   async function createReminder(data) {
-    const res = await remApi.create({ workspace_id: wsId.value, ...data })
-    tourEvent('inbox.captured')
-    return putReminder(res.data)
+    const body = { client_id: newClientId(), workspace_id: wsId.value, ...data }
+    try {
+      const res = await remApi.create(body)
+      tourEvent('inbox.captured')
+      return putReminder(res.data)
+    } catch (e) {
+      if (!e?.offline) throw e
+      pending.value = enqueue({ kind: 'reminder', wsId: wsId.value, data: body })
+      return { queued: true }
+    }
   }
+
+  // ── the offline queue (#3042) ──
+  const pending = ref(queued().length)
+  const dropped = ref(0)
+  let flushing = null
+  function flushQueue() {
+    if (flushing || !queued().length) return flushing
+    flushing = flush((item) =>
+      item.kind === 'reminder' ? remApi.create(item.data) : notesApi.create(item.wsId, item.data),
+    )
+      .then((r) => {
+        for (const { item, res } of r.sent) {
+          if (item.wsId !== wsId.value) continue
+          if (item.kind === 'reminder') putReminder(res.data)
+          else putNote(res.data)
+        }
+        if (r.sent.length) tourEvent('inbox.captured')
+        dropped.value += r.dropped.length
+        pending.value = r.left
+        return r
+      })
+      .finally(() => (flushing = null))
+    return flushing
+  }
+  if (typeof window !== 'undefined') window.addEventListener('online', () => flushQueue())
   async function updateReminder(r, patch) {
     const res = await remApi.update(r.id, patch)
     return putReminder(res.data)
@@ -305,6 +350,9 @@ export const useInboxStore = defineStore('inbox', () => {
   }
 
   return {
+    pending,
+    dropped,
+    flushQueue,
     wsId,
     reminders,
     notes,

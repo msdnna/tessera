@@ -408,6 +408,13 @@ const subtitle = computed(() => {
         </button>
       </div>
 
+      <!-- Captured without a connection (#3042): waiting on the device. -->
+      <div v-if="inbox.pending" class="ib-pending" data-testid="inbox-pending">
+        <span>{{ t('inbox.pending', { n: inbox.pending }, inbox.pending) }}</span>
+        <button type="button" class="ib-pending-b" @click="inbox.flushQueue()">
+          {{ t('inbox.pendingSend') }}
+        </button>
+      </div>
       <div ref="listEl" class="ib-list" tabindex="0" data-testid="inbox-list" @keydown="onListKey">
         <template v-if="!inbox.loaded && inbox.loading">
           <div v-for="i in 5" :key="i" class="ib-skel">
@@ -786,5 +793,27 @@ const subtitle = computed(() => {
 }
 .ib-skel-lines span + span {
   width: 60%;
+}
+.ib-pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #f0a020 14%, var(--t-pop));
+  font-size: 12.5px;
+  color: var(--t-text2);
+}
+.ib-pending span {
+  flex: 1;
+}
+.ib-pending-b {
+  border: 0;
+  background: transparent;
+  color: var(--t-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
 </style>

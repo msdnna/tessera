@@ -1,6 +1,8 @@
 -- name: CreateNote :one
-INSERT INTO notes (workspace_id, project_id, author_id, title, body, slug, task_id, visibility, tags, mentions)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, @tags::text[], @mentions::uuid[])
+-- client_id (#3042): a capture queued offline names its record itself, so a
+-- resend after a lost answer finds the first one instead of making a twin.
+INSERT INTO notes (id, workspace_id, project_id, author_id, title, body, slug, task_id, visibility, tags, mentions)
+VALUES (COALESCE(sqlc.narg(client_id)::uuid, gen_random_uuid()), $1, $2, $3, $4, $5, $6, $7, $8, @tags::text[], @mentions::uuid[])
 RETURNING *;
 
 -- ListNotes lists the notes of a workspace the viewer may read: the shared ones

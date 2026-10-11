@@ -16,7 +16,7 @@
 // names (its @-chips) are mentioned too.
 import { computed, nextTick, onBeforeUnmount, ref, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
   AlarmOutline,
@@ -41,7 +41,6 @@ import { useInboxFormat } from '@/composables/useInboxFormat'
 import { pushBlocker } from '@/shortcuts/dispatcher'
 import { parseCapture } from '@/utils/quickParse'
 import { CAPS } from '@/utils/keyCaps'
-import { stubTask } from '@/utils/featureStubs'
 import { humanizeError } from '@/utils/errors'
 import { mentionIdsIn } from '@/utils/mentions'
 
@@ -193,8 +192,9 @@ async function save() {
         ...mentionIdsIn(body.value, inbox.mentionItems),
       ]),
     ]
+    let res
     if (kind.value === 'reminder') {
-      await inbox.createReminder({
+      res = await inbox.createReminder({
         message: heading,
         body: body.value,
         remind_at: remindAt.value,
@@ -203,7 +203,7 @@ async function save() {
         mentions,
       })
     } else {
-      await inbox.createNote({
+      res = await inbox.createNote({
         title: heading,
         body: body.value,
         task_id: taskId,
@@ -214,6 +214,11 @@ async function save() {
     }
     inbox.lastCaptured = line
     close()
+    // No connection (#3042): kept on the device, sent when it is back.
+    if (res?.queued) {
+      message.info(t('inbox.capture.queued'))
+      return
+    }
     message.success(() =>
       h('span', { class: 'cap-toast' }, [
         t('inbox.capture.saved'),
@@ -288,7 +293,6 @@ const status = computed(() => (taskHit.value ? taskStatus(taskHit.value) : null)
 const AT = '@'
 // A free label (no project tag of that name) — the mockup's neutral tag hue.
 const FREE_TAG = '#9aa0aa'
-const offlineStub = stubTask('inbox.offline')
 const sheetShow = computed({
   get: () => show.value && isMobile.value,
   set: (v) => {
@@ -449,12 +453,6 @@ const sheetShow = computed({
         <div v-if="failed" class="cap-failed" data-testid="capture-failed">
           <n-icon :component="AlertCircleOutline" :size="14" />
           <span class="cap-failed-t">{{ failed }}</span>
-          <n-tooltip :delay="300">
-            <template #trigger>
-              <span class="cap-offline">{{ t('inbox.capture.offline') }}</span>
-            </template>
-            {{ t('common.stub.soon', { n: offlineStub }) }}
-          </n-tooltip>
         </div>
 
         <div v-if="!isMobile || inline" class="cap-foot">
@@ -747,11 +745,6 @@ const sheetShow = computed({
 .cap-failed-t {
   flex: 1;
   min-width: 0;
-}
-.cap-offline {
-  color: var(--t-text3);
-  opacity: 0.7;
-  cursor: default;
 }
 .cap-foot {
   display: flex;
