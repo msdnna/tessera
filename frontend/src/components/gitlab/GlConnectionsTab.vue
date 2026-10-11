@@ -341,7 +341,8 @@ defineExpose({ addNew, escape })
               · {{ t('gitlab.window.importOnly', { labels: b.import_labels.join(', ') }) }}
             </template>
             <template v-if="b.token_expires_at && !b.paused_at">
-              · <span :class="{ 'gc-err': expired(b.token_expires_at) }">{{
+              ·
+              <span :class="{ 'gc-err': expired(b.token_expires_at) }">{{
                 expiryText(b.token_expires_at)
               }}</span>
             </template>

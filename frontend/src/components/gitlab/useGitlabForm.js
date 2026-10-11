@@ -765,7 +765,8 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
       rules: rules.value.map((rule) => {
         const out = { match: rule.match, match_type: rule.match_type, action: rule.action }
         if (rule.action === 'tag') out.keep_prefix = rule.keep_prefix
-        if (rule.action === 'milestone' && rule.template?.trim()) out.template = rule.template.trim()
+        if (rule.action === 'milestone' && rule.template?.trim())
+          out.template = rule.template.trim()
         if (rule.enabled === false) out.disabled = true
         if (mapActions.includes(rule.action)) {
           out.value_map = Object.fromEntries(

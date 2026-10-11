@@ -257,7 +257,7 @@ func parseImportPriority(s string) (int32, bool) {
 	case "urgent", "critical", "срочный", "критический":
 		return 4, true
 	}
-	if n, err := strconv.Atoi(s); err == nil && n >= 0 && n <= 4 {
+	if n, err := strconv.ParseInt(s, 10, 32); err == nil && n >= 0 && n <= 4 {
 		return int32(n), true
 	}
 	return 0, false

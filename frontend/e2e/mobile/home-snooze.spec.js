@@ -27,9 +27,11 @@ async function swipeLeft(page, selector) {
 
 test('«Отложить» свайпом переносит срок задачи', async ({ page, seed, backend }) => {
   const title = `Отложить ${seed.runId}`
-  const today = new Date()
+  // Overdue by five days: «Завтра» moves it to tomorrow — of the profile's
+  // calendar, which need not be the browser's, so the check below is zone-free.
+  const now = new Date()
   const due = new Date(
-    Date.UTC(today.getFullYear(), today.getMonth(), today.getDate()),
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() - 5),
   ).toISOString()
   const task = await backend.createTask(seed.columns[0].id, title, { due_date: due })
   await api.post(`/tasks/${task.id}/assignees`, { user_id: seed.userId }, seed.token)
@@ -51,5 +53,7 @@ test('«Отложить» свайпом переносит срок задач
   const d = new Date(got)
   // Tomorrow, still a date without a clock (UTC midnight).
   expect(d.getUTCHours() + d.getUTCMinutes()).toBe(0)
-  expect(Math.round((d.getTime() - Date.parse(due)) / 864e5)).toBe(1)
+  // Tomorrow in some zone: later than the old due, within the next two days.
+  expect(d.getTime()).toBeGreaterThan(Date.now() - 864e5)
+  expect(d.getTime()).toBeLessThan(Date.now() + 2 * 864e5)
 })

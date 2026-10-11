@@ -446,7 +446,9 @@ const detectedText = computed(() =>
           <span class="cr-dot" :class="{ done: !leftOf(c) }" />
           {{ leftOf(c) ? t('gitlab.conflicts.left', leftOf(c)) : t('gitlab.conflicts.readyShort') }}
           · {{ kindLabel(c.change_kind) }}
-          <template v-if="store.isPostponed(c.id)"> · {{ t('gitlab.conflicts.postponed') }}</template>
+          <template v-if="store.isPostponed(c.id)">
+            · {{ t('gitlab.conflicts.postponed') }}</template
+          >
         </span>
       </button>
     </template>

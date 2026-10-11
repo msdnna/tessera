@@ -107,16 +107,12 @@ function schedulePreview() {
   clearTimeout(previewTimer)
   previewTimer = setTimeout(runPreview, 350)
 }
-watch(
-  () => [JSON.stringify(f.rulesPayload()), f.currentId, checkLabel.value],
-  schedulePreview,
-  { immediate: true },
-)
+watch(() => [JSON.stringify(f.rulesPayload()), f.currentId, checkLabel.value], schedulePreview, {
+  immediate: true,
+})
 onBeforeUnmount(() => clearTimeout(previewTimer))
 const hitsOf = (i) => (f.currentId ? (hits.value[i] ?? 0) : null)
-const partial = computed(
-  () => !!f.currentId && recorded.value.recorded < recorded.value.linked,
-)
+const partial = computed(() => !!f.currentId && recorded.value.recorded < recorded.value.linked)
 // What the checked label turns into, in words.
 const checkText = computed(() => {
   const c = check.value
@@ -129,7 +125,8 @@ const checkText = computed(() => {
   const head = t('gitlab.window.rules.checkRule', { n: o.rule + 1, action: actionName(o.action) })
   let tail
   if (o.action === 'priority' && o.result !== '' && o.result != null)
-    tail = f.priorityLevelOptions.find((p) => String(p.value) === String(o.result))?.label || o.result
+    tail =
+      f.priorityLevelOptions.find((p) => String(p.value) === String(o.result))?.label || o.result
   else if (o.action === 'board')
     tail = f.boardOptions.find((b) => b.value === o.result)?.label || o.result || ''
   else if (o.action === 'status')

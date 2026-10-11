@@ -642,7 +642,12 @@ func noRedirect(t *testing.T, path string) (int, string) {
 // OAuth endpoints without config, then the admin config round-trip (secret is
 // write-only) and the configured authorize redirect.
 func TestOAuthProvidersAndAdminConfig(t *testing.T) {
-	t.Parallel()
+	// Not parallel: it seeds the instance-wide service token, which every GitLab
+	// sync running beside it would pick up (and, refused with 401, pause on — #3084).
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(),
+			`UPDATE oauth_providers SET service_token_enc = '', sudo_writeback = false, gl_base_url = '', enabled = false WHERE provider = 'gitlab'`)
+	})
 	c := signup(t)
 
 	// Unconfigured: providers reports gitlab=false; authorize/callback bounce to

@@ -28,19 +28,11 @@ test('встреча: длительность, повтор и этап — в 
   await page.getByTestId('conference-title').fill(title)
   // Repeat needs a start: the button is off until a time is picked.
   await expect(page.getByTestId('conference-repeat')).toBeDisabled()
-  // The picker's own panel: «Сейчас», then confirm — typing depends on the
-  // profile's date format.
-  await page.locator('.when-at input').click()
-  const panel = page.locator('.n-date-panel')
-  await panel
-    .locator('.n-date-panel-actions .n-button')
-    .filter({ hasText: /Сейчас|Now/ })
-    .click()
-  // «Сейчас» may close the panel by itself; a confirm button, if still there.
-  await panel
-    .locator('.n-date-panel-actions .n-button--primary-type')
-    .click({ timeout: 1500 })
-    .catch(() => {})
+  // The v2 date field (#3034): a day of the grid and a time chip.
+  await page.getByTestId('conference-at').click()
+  await page.getByTestId('conference-at-cal').locator('button', { hasText: /^20$/ }).click()
+  await page.locator('.df-chip[data-time="18:00"]').click()
+  await page.getByTestId('conference-at-done').click()
   await expect(page.getByTestId('conference-repeat')).toBeEnabled()
 
   // Length: 45 minutes.

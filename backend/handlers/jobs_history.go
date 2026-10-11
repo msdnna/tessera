@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"math"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -78,10 +79,10 @@ func (h *API) saveJobRun(e jobs.Entry, tail []jobs.LogLine) {
 	if err := h.q.SaveJobRun(ctx, db.SaveJobRunParams{
 		ID: id, JobKey: e.Key, Kind: e.Kind, Type: e.Type, Name: e.Name, NameKey: e.NameKey, NameArg: e.NameArg,
 		WorkspaceID: optUUID(e.WorkspaceID), ActorID: optUUID(e.ActorID), Trigger: e.Trigger,
-		Status: string(e.Status), Attempt: int32(e.Attempt), MaxAttempts: int32(e.MaxAttempts),
-		ProgressDone: int32(e.ProgressDone), ProgressTotal: int32(e.ProgressTotal),
-		CreatedCount: int32(e.Created), UpdatedCount: int32(e.Updated),
-		Steps: steps, LogTail: logTail, LogLines: int32(e.LogLines), LogWarns: int32(e.LogWarns), LogErrors: int32(e.LogErrors),
+		Status: string(e.Status), Attempt: clampInt32(e.Attempt), MaxAttempts: clampInt32(e.MaxAttempts),
+		ProgressDone: clampInt32(e.ProgressDone), ProgressTotal: clampInt32(e.ProgressTotal),
+		CreatedCount: clampInt32(e.Created), UpdatedCount: clampInt32(e.Updated),
+		Steps: steps, LogTail: logTail, LogLines: clampInt32(e.LogLines), LogWarns: clampInt32(e.LogWarns), LogErrors: clampInt32(e.LogErrors),
 		Meta: meta, Error: e.Error, QueuedAt: queued, StartedAt: e.StartedAt, FinishedAt: e.FinishedAt,
 	}); err != nil {
 		slog.Warn("jobs: save run", "run", e.RunID, "err", err)
@@ -187,4 +188,16 @@ func (h *API) publishJobUpdates() {
 			h.hub.Broadcast(realtime.Event{Scope: ws.String(), Type: "job.updated", Data: data, User: *actor})
 		}
 	}
+}
+
+// clampInt32 narrows a counter for an int4 column: past the range it pins to the
+// bound instead of wrapping (counters never get there; the bound keeps it honest).
+func clampInt32(v int) int32 {
+	if v > math.MaxInt32 {
+		return math.MaxInt32
+	}
+	if v < math.MinInt32 {
+		return math.MinInt32
+	}
+	return int32(v)
 }

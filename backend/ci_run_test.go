@@ -42,6 +42,7 @@ func TestRunCI(t *testing.T) {
 		}
 		return false
 	}
+	makeAdmin(t, owner) // binding a project to a board is instance-admin work
 	connectGitlab(t, owner, f)
 	createIntegration(t, owner, st.WS, st.Board, f, nil)
 
