@@ -229,6 +229,15 @@ RETURNING *;
 -- name: LinkedIidsForIntegration :many
 SELECT gl_iid FROM gitlab_links WHERE integration_id = $1;
 
+-- LinkSnapshotsForIntegration reads the last-synced GitLab state of every live
+-- task a binding mirrors — the label rule counters and «Проверить лейбл» count
+-- by the labels recorded there (#3087).
+-- name: LinkSnapshotsForIntegration :many
+SELECT l.gl_snapshot
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.deleted_at IS NULL AND t.archived_at IS NULL;
+
 -- GitlabTasksForIids resolves issue iids of a binding to the tasks mirroring them
 -- — how a merge request that names issues finds its tasks (#2964).
 -- name: GitlabTasksForIids :many

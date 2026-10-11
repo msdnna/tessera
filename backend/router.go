@@ -820,6 +820,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// once, delete wipes it. Admin-only, like the other binding mutations.
 			protected.POST("/workspaces/:id/gitlab/integrations/:integrationId/webhook", rh.EnableGitlabWebhook)
 			protected.DELETE("/workspaces/:id/gitlab/integrations/:integrationId/webhook", rh.DisableGitlabWebhook)
+			// Label rules (#3087): counters by rule + «Проверить лейбл», on the edited rules.
+			protected.POST("/workspaces/:id/gitlab/rules/preview", rh.PreviewGitlabRules)
 			protected.GET("/workspaces/:id/gitlab/members", rh.ListGitlabMembers)
 			protected.GET("/workspaces/:id/gitlab/issue-templates", rh.ListGitlabIssueTemplates)
 			// Sync journal: run/action history + retry of failed pushes.
@@ -829,6 +831,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/workspaces/:id/gitlab/sync-runs/:runId/actions/:actionId/retry", rh.RetryGitlabWriteback)
 			// Write-back conflicts: inbox + interactive ours/theirs/manual resolution.
 			protected.GET("/workspaces/:id/gitlab/conflicts", rh.ListGitlabConflicts)
+			// Several decisions in one go (#3089): «Применить ⌘↵» over the resolver.
+			protected.POST("/workspaces/:id/gitlab/conflicts/resolve", rh.ResolveGitlabConflicts)
 			protected.POST("/tasks/:id/gitlab/conflicts/:conflictId/resolve", rh.ResolveGitlabConflict)
 
 			// Reminders (personal).

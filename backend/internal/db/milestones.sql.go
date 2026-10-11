@@ -155,6 +155,40 @@ func (q *Queries) GetMilestoneInProjectBySlug(ctx context.Context, arg GetMilest
 	return i, err
 }
 
+const getMilestoneInProjectByTitle = `-- name: GetMilestoneInProjectByTitle :one
+SELECT id, project_id, title, description, start_date, due_date, state, position, created_at, updated_at, slug, closed_at FROM milestones
+WHERE project_id = $1 AND lower(title) = lower($2::text)
+ORDER BY created_at, id
+LIMIT 1
+`
+
+type GetMilestoneInProjectByTitleParams struct {
+	ProjectID uuid.UUID `json:"project_id"`
+	Title     string    `json:"title"`
+}
+
+// GetMilestoneInProjectByTitle finds the stage a GitLab «лейбл → этап» rule
+// names (#3086), case-insensitively; the oldest wins when titles repeat.
+func (q *Queries) GetMilestoneInProjectByTitle(ctx context.Context, arg GetMilestoneInProjectByTitleParams) (Milestone, error) {
+	row := q.db.QueryRow(ctx, getMilestoneInProjectByTitle, arg.ProjectID, arg.Title)
+	var i Milestone
+	err := row.Scan(
+		&i.ID,
+		&i.ProjectID,
+		&i.Title,
+		&i.Description,
+		&i.StartDate,
+		&i.DueDate,
+		&i.State,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Slug,
+		&i.ClosedAt,
+	)
+	return i, err
+}
+
 const listMilestones = `-- name: ListMilestones :many
 
 SELECT m.id, m.project_id, m.title, m.description, m.start_date, m.due_date, m.state, m.position, m.created_at, m.updated_at, m.slug, m.closed_at, l.gl_web_url AS gl_url, l.gl_global_id AS gl_global_id, l.gl_iid AS gl_iid,

@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -41,6 +43,14 @@ type glSnapshot struct {
 	Due          string `json:"due"`           // YYYY-MM-DD, "" when unset
 	TimeEstimate int64  `json:"time_estimate"` // minutes, 0 when unset
 	Priority     int32  `json:"priority"`      // resolved priority level the GL labels imply
+	// Labels are the issue's label titles as GitLab ordered them. The rule
+	// counters and «Проверить лейбл» (#3087) count by them, and they are the
+	// baseline of the labels conflict (#3089). Absent in a snapshot taken before
+	// they were recorded — the next pull of the issue fills them in.
+	Labels []string `json:"labels"`
+	// Assignees are the issue's assignee logins, sorted — the baseline of the
+	// assignees conflict (#3089).
+	Assignees []string `json:"assignees"`
 }
 
 // buildGlSnapshot captures the conflict-relevant fields of a freshly fetched issue.
@@ -53,12 +63,34 @@ func buildGlSnapshot(issue gitlab.Issue, rules gitlab.Rules) []byte {
 		Due:          dateStr(issue.DueDate),
 		TimeEstimate: issue.TimeEstimate / 60,
 		Priority:     rules.Resolve(issue.Labels).Priority,
+		Labels:       labelTitles(issue.Labels),
+		Assignees:    assigneeLogins(issue.Assignees),
 	}
 	b, err := json.Marshal(snap)
 	if err != nil {
 		return []byte("{}")
 	}
 	return b
+}
+
+// labelTitles lists label titles in GitLab's order (never nil, so the snapshot
+// records "no labels" rather than "not recorded").
+func labelTitles(labels []gitlab.Label) []string {
+	out := make([]string, 0, len(labels))
+	for _, l := range labels {
+		out = append(out, l.Title)
+	}
+	return out
+}
+
+// assigneeLogins lists assignee logins sorted (never nil).
+func assigneeLogins(people []gitlab.Person) []string {
+	out := make([]string, 0, len(people))
+	for _, p := range people {
+		out = append(out, p.Login)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // snapshotPresence parses the snapshot both as typed values and as a presence map,
@@ -150,7 +182,9 @@ const (
 // detection. Other kinds push directly (current behaviour).
 func conflictCheckedKind(kind string) bool {
 	switch kind {
-	case "due", "estimate", "title_desc", "completion", "state", "priority":
+	case "due", "estimate", "title_desc", "completion", "state", "priority",
+		// The assignee set and the tag labels (#3089), compared as sorted lists.
+		"assignees", "labels":
 		// "state" is the legacy alias for "completion" (in-flight rows across upgrade).
 		return true
 	default:
@@ -197,6 +231,21 @@ func (h *API) conflictTriples(ctx context.Context, kind string, raw []byte, issu
 			Field: "priority", Base: prioStr(snap.Priority), Ours: prioStr(task.Priority),
 			Theirs: prioStr(rules.Resolve(issue.Labels).Priority), basePresent: ok,
 		}}
+	case "assignees":
+		return []conflictField{{
+			Field: "assignees", Base: joinList(snap.Assignees), Ours: joinList(h.taskGitlabLogins(ctx, task.ID)),
+			Theirs: joinList(assigneeLogins(issue.Assignees)), basePresent: recorded(present, "assignees"),
+		}}
+	case "labels":
+		// Tag labels only (status/priority labels have pushes of their own), and
+		// only when a tag name spells its label — the push needs the same.
+		if !rules.TagsInvertible() {
+			return nil
+		}
+		return []conflictField{{
+			Field: "labels", Base: joinList(tagLabels(rules, snap.Labels)), Ours: joinList(tagLabels(rules, h.taskTagNames(ctx, task.ID))),
+			Theirs: joinList(tagLabels(rules, labelTitles(issue.Labels))), basePresent: recorded(present, "labels"),
+		}}
 	case "title_desc":
 		_, titleOK := present["title"]
 		_, descOK := present["description"]
@@ -208,6 +257,91 @@ func (h *API) conflictTriples(ctx context.Context, kind string, raw []byte, issu
 	default:
 		return nil
 	}
+}
+
+// recorded reports whether a snapshot field holds a value — present and not null.
+// Labels and assignees were added to the snapshot later (#3089); a snapshot taken
+// before that, re-marshalled through the typed struct, carries them as null, which
+// is "no baseline yet", not "empty".
+func recorded(present map[string]json.RawMessage, key string) bool {
+	v, ok := present[key]
+	return ok && string(v) != "null"
+}
+
+// listSep joins the items of a list-valued conflict field. The resolver shows it
+// as is and a manual value comes back in the same shape.
+const listSep = ", "
+
+// joinList renders a set as its sorted, deduplicated items — the comparable form
+// of a list-valued conflict field.
+func joinList(items []string) string {
+	set := map[string]bool{}
+	out := make([]string, 0, len(items))
+	for _, it := range items {
+		it = strings.TrimSpace(it)
+		if it == "" || set[it] {
+			continue
+		}
+		set[it] = true
+		out = append(out, it)
+	}
+	sort.Strings(out)
+	return strings.Join(out, listSep)
+}
+
+// splitList is the inverse of joinList.
+func splitList(s string) []string {
+	var out []string
+	for _, it := range strings.Split(s, ",") {
+		if it = strings.TrimSpace(it); it != "" {
+			out = append(out, it)
+		}
+	}
+	return out
+}
+
+// tagLabels keeps the titles that are tag labels under the rules.
+func tagLabels(rules gitlab.Rules, titles []string) []string {
+	out := make([]string, 0, len(titles))
+	for _, t := range titles {
+		if t = strings.TrimSpace(t); rules.TagLabelClass(t) {
+			out = append(out, t)
+		}
+	}
+	return out
+}
+
+// taskGitlabLogins is the task's assignee set as GitLab would hold it: the GitLab
+// login of every Tessera assignee that has one, plus the GitLab-only assignees.
+// Someone without a GitLab identity is left out — the push drops them too.
+func (h *API) taskGitlabLogins(ctx context.Context, taskID uuid.UUID) []string {
+	var out []string
+	if tas, err := h.q.ListTaskAssignees(ctx, taskID); err == nil {
+		for _, a := range tas {
+			if login := h.actorGitlabUsername(ctx, a.ID); login != "" {
+				out = append(out, login)
+			}
+		}
+	}
+	if gas, err := h.q.ListTaskGitlabAssignees(ctx, taskID); err == nil {
+		for _, g := range gas {
+			out = append(out, g.GlUsername)
+		}
+	}
+	return out
+}
+
+// taskTagNames lists the names of the task's tags.
+func (h *API) taskTagNames(ctx context.Context, taskID uuid.UUID) []string {
+	tags, err := h.q.ListTaskTags(ctx, taskID)
+	if err != nil {
+		return nil
+	}
+	out := make([]string, 0, len(tags))
+	for _, t := range tags {
+		out = append(out, t.Name)
+	}
+	return out
 }
 
 func ptrFloat(v int64) *float64 {
@@ -390,82 +524,157 @@ func (h *API) ResolveGitlabConflict(c *gin.Context) {
 	if !ok {
 		return
 	}
-	var req struct {
-		Resolution string            `json:"resolution"`
-		Value      map[string]string `json:"value"`
-	}
+	var req conflictDecisionReq
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
-	w, err := h.q.GetGitlabWriteback(c, conflictID)
-	if err != nil {
-		if notFound(c, err) {
+	if !validResolution(req.Resolution) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "resolution must be ours|theirs|manual"})
+		return
+	}
+	w, integ, ok := h.loadConflict(c, taskID, conflictID)
+	if !ok {
+		return
+	}
+	h.applyConflictDecision(c, w, integ, req.Resolution, req.Value)
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "resolution": req.Resolution})
+}
+
+// conflictDecisionReq is one decision: the resolution and, for manual, the merged
+// value per field.
+type conflictDecisionReq struct {
+	Resolution string            `json:"resolution"`
+	Value      map[string]string `json:"value"`
+}
+
+func validResolution(r string) bool {
+	return r == "ours" || r == "theirs" || r == "manual"
+}
+
+// ResolveGitlabConflicts applies a batch of decisions at once (#3089) — the
+// resolver's «Применить ⌘↵» over every conflict on screen. All of them are checked
+// before any is applied, so a stale one (resolved elsewhere a moment ago) fails
+// the batch with nothing half-done; the re-armed pushes then leave in the worker's
+// next drain together.
+func (h *API) ResolveGitlabConflicts(c *gin.Context) {
+	wsID, ok := parseID(c, "id")
+	if !ok || !h.requireMember(c, wsID) {
+		return
+	}
+	var req struct {
+		Items []struct {
+			TaskID     uuid.UUID `json:"task_id"`
+			ConflictID uuid.UUID `json:"conflict_id"`
+			conflictDecisionReq
+		} `json:"items"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil || len(req.Items) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	type loaded struct {
+		w     db.GitlabWriteback
+		integ db.GitlabIntegration
+		d     conflictDecisionReq
+	}
+	batch := make([]loaded, 0, len(req.Items))
+	for _, it := range req.Items {
+		if !validResolution(it.Resolution) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "resolution must be ours|theirs|manual"})
 			return
 		}
-		fail(c, err)
-		return
+		w, integ, ok := h.loadConflict(c, it.TaskID, it.ConflictID)
+		if !ok {
+			return
+		}
+		if integ.WorkspaceID != wsID {
+			c.JSON(http.StatusNotFound, gin.H{"error": "conflict not found"})
+			return
+		}
+		batch = append(batch, loaded{w: w, integ: integ, d: it.conflictDecisionReq})
+	}
+	for _, b := range batch {
+		h.applyConflictDecision(c, b.w, b.integ, b.d.Resolution, b.d.Value)
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "resolved": len(batch)})
+}
+
+// loadConflict resolves one open conflict of a task, authorising the caller
+// through its binding's workspace and the task itself. Writes the error response
+// and returns ok=false when it can't.
+func (h *API) loadConflict(c *gin.Context, taskID, conflictID uuid.UUID) (db.GitlabWriteback, db.GitlabIntegration, bool) {
+	w, err := h.q.GetGitlabWriteback(c, conflictID)
+	if err != nil {
+		if !notFound(c, err) {
+			fail(c, err)
+		}
+		return w, db.GitlabIntegration{}, false
 	}
 	if w.Status != "conflict" || w.TaskID != taskID {
 		c.JSON(http.StatusNotFound, gin.H{"error": "conflict not found"})
-		return
+		return w, db.GitlabIntegration{}, false
 	}
 	integ, err := h.q.GetGitlabIntegrationByID(c, w.IntegrationID)
 	if err != nil {
 		fail(c, err)
-		return
+		return w, integ, false
 	}
 	if !h.requireMember(c, integ.WorkspaceID) {
-		return
+		return w, integ, false
 	}
 	// The conflict is authorized through its binding, so the task's own board is
 	// asked separately: a task on a soft-deleted board (0078) is gone, and
 	// resolving its conflict would push it to GitLab from the trash.
 	if _, _, ok := h.loadTask(c, taskID); !ok {
-		return
+		return w, integ, false
 	}
+	return w, integ, true
+}
+
+// applyConflictDecision carries out one validated decision (see
+// ResolveGitlabConflict) and tells the workspace.
+func (h *API) applyConflictDecision(c *gin.Context, w db.GitlabWriteback, integ db.GitlabIntegration, resolution string, value map[string]string) {
+	taskID := w.TaskID
 	uid := middleware.CurrentUser(c)
 	link, err := h.q.GetGitlabLinkByTask(c, taskID)
 	if err != nil {
 		fail(c, err)
 		return
 	}
+	rules := parseRules(integ.LabelRules)
 	snap, _ := snapshotPresence(link.GlSnapshot)
 	cd := parseConflict(w.Conflict)
 
-	switch req.Resolution {
+	switch resolution {
 	case "theirs":
 		for _, f := range cd.Fields {
 			h.applyConflictValue(c, taskID, f.Field, f.Theirs)
-			setSnapshotField(&snap, f.Field, f.Theirs)
+			setSnapshotField(&snap, f.Field, f.Theirs, rules)
 		}
 		soft(c, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(c, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)}))
 		soft(c, "ResolveConflictSettled", h.q.ResolveConflictSettled(c, db.ResolveConflictSettledParams{ID: w.ID, Resolution: "theirs", ResolvedBy: &uid}))
 	case "ours":
 		for _, f := range cd.Fields {
-			setSnapshotField(&snap, f.Field, f.Theirs) // acknowledge GitLab's value as baseline
+			setSnapshotField(&snap, f.Field, f.Theirs, rules) // acknowledge GitLab's value as baseline
 		}
 		soft(c, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(c, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)}))
 		soft(c, "ReArmConflict", h.q.ReArmConflict(c, db.ReArmConflictParams{ID: w.ID, Resolution: "ours", ResolvedBy: &uid}))
 	case "manual":
 		for _, f := range cd.Fields {
-			h.applyConflictValue(c, taskID, f.Field, req.Value[f.Field])
-			setSnapshotField(&snap, f.Field, f.Theirs)
+			h.applyConflictValue(c, taskID, f.Field, value[f.Field])
+			setSnapshotField(&snap, f.Field, f.Theirs, rules)
 		}
 		soft(c, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(c, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)}))
 		soft(c, "ReArmConflict", h.q.ReArmConflict(c, db.ReArmConflictParams{ID: w.ID, Resolution: "manual", ResolvedBy: &uid}))
-	default:
-		c.JSON(http.StatusBadRequest, gin.H{"error": "resolution must be ours|theirs|manual"})
-		return
 	}
 
 	if t, terr := h.q.GetTask(c, taskID); terr == nil {
 		h.broadcast(integ.WorkspaceID, "task.updated", t)
 	}
 	h.broadcast(integ.WorkspaceID, "gitlab.conflict", map[string]any{
-		"task_id": taskID, "resolved": true, "resolution": req.Resolution,
+		"task_id": taskID, "resolved": true, "resolution": resolution,
 	})
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "resolution": req.Resolution})
 }
 
 // applyConflictValue writes a resolved string value into the task's field (the
@@ -499,7 +708,80 @@ func (h *API) applyConflictValue(ctx context.Context, taskID uuid.UUID, field, v
 		}
 	case "state":
 		h.applyTaskState(ctx, taskID, value)
+	case "assignees":
+		h.applyTaskAssignees(ctx, taskID, splitList(value))
+	case "labels":
+		h.applyTaskTagLabels(ctx, taskID, splitList(value))
 	}
+}
+
+// applyTaskAssignees makes the task's assignee set the given GitLab logins
+// (#3089): a Tessera assignee whose GitLab login is not among them is taken off,
+// and the logins go through the sync's own reconciliation — a member of the
+// workspace by their account, anybody else as a GitLab-only assignee.
+func (h *API) applyTaskAssignees(ctx context.Context, taskID uuid.UUID, logins []string) {
+	task, err := h.q.GetTask(ctx, taskID)
+	if err != nil {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForBoard(ctx, task.BoardID)
+	if err != nil {
+		return
+	}
+	want := map[string]bool{}
+	people := make([]gitlab.Person, 0, len(logins))
+	for _, l := range logins {
+		want[l] = true
+		people = append(people, gitlab.Person{Login: l})
+	}
+	if tas, lerr := h.q.ListTaskAssignees(ctx, taskID); lerr == nil {
+		for _, a := range tas {
+			if login := h.actorGitlabUsername(ctx, a.ID); login != "" && !want[login] {
+				_, rerr := h.q.RemoveTaskAssignee(ctx, db.RemoveTaskAssigneeParams{TaskID: taskID, UserID: a.ID})
+				soft(ctx, "RemoveTaskAssignee", rerr)
+			}
+		}
+	}
+	h.reconcileAssignees(ctx, wsID, taskID, people)
+}
+
+// applyTaskTagLabels makes the task's tag labels exactly the given titles
+// (#3089): the titles become the GitLab-sourced tags, and a hand-made tag that is
+// a tag label under the binding's rules but not among them comes off. Tags no rule
+// reads as a label (the user's own vocabulary) are left alone.
+func (h *API) applyTaskTagLabels(ctx context.Context, taskID uuid.UUID, titles []string) {
+	task, err := h.q.GetTask(ctx, taskID)
+	if err != nil {
+		return
+	}
+	link, err := h.q.GetGitlabLinkByTask(ctx, taskID)
+	if err != nil {
+		return
+	}
+	integ, err := h.q.GetGitlabIntegrationByID(ctx, link.IntegrationID)
+	if err != nil {
+		return
+	}
+	projectID, err := h.q.ProjectIDForBoard(ctx, task.BoardID)
+	if err != nil {
+		return
+	}
+	rules := parseRules(integ.LabelRules)
+	want := map[string]bool{}
+	tags := make([]gitlab.Tag, 0, len(titles))
+	for _, t := range titles {
+		want[t] = true
+		tags = append(tags, gitlab.Tag{Name: t})
+	}
+	if current, lerr := h.q.ListTaskTags(ctx, taskID); lerr == nil {
+		for _, tg := range current {
+			if rules.TagLabelClass(tg.Name) && !want[tg.Name] {
+				_, rerr := h.q.RemoveTaskTag(ctx, db.RemoveTaskTagParams{TaskID: taskID, TagID: tg.ID})
+				soft(ctx, "RemoveTaskTag", rerr)
+			}
+		}
+	}
+	h.reconcileTags(ctx, taskID, integ.WorkspaceID, projectID, tags)
 }
 
 // applyTaskState makes the task match a GitLab open/closed state: "closed" moves it
@@ -536,8 +818,10 @@ func (h *API) applyTaskState(ctx context.Context, taskID uuid.UUID, state string
 	soft(ctx, "SetTaskColumnCompleted", h.q.SetTaskColumnCompleted(ctx, db.SetTaskColumnCompletedParams{ID: taskID, ColumnID: col, CompletedAt: completed}))
 }
 
-// setSnapshotField writes a resolved string back into the typed snapshot.
-func setSnapshotField(snap *glSnapshot, field, value string) {
+// setSnapshotField writes a resolved string back into the typed snapshot. rules
+// tell the tag labels from the rest: a resolved "labels" value replaces only the
+// tag labels of the recorded set, keeping the issue's status and priority labels.
+func setSnapshotField(snap *glSnapshot, field, value string, rules gitlab.Rules) {
 	switch field {
 	case "due":
 		snap.Due = value
@@ -557,6 +841,17 @@ func setSnapshotField(snap *glSnapshot, field, value string) {
 		if n, err := strconv.ParseInt(value, 10, 32); err == nil {
 			snap.Priority = int32(n)
 		}
+	case "assignees":
+		snap.Assignees = append([]string{}, splitList(value)...)
+	case "labels":
+		kept := []string{}
+		for _, l := range snap.Labels {
+			if !rules.TagLabelClass(l) {
+				kept = append(kept, l)
+			}
+		}
+		kept = append(kept, splitList(value)...)
+		snap.Labels = kept
 	}
 }
 

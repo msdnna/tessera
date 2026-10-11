@@ -27,9 +27,24 @@ func TestNeedNotes(t *testing.T) {
 	known := map[string]SyncKey{
 		"g1": {UpdatedAt: &t0}, "g2": {UpdatedAt: &t0}, "g5": {UpdatedAt: &t0}, "g6": {UpdatedAt: &t0},
 	}
-	got := NeedNotes(issues, known, func(is Issue) bool { return is.State == "closed" })
+	got := NeedNotes(issues, known, nil, func(is Issue) bool { return is.State == "closed" })
 	if fmt.Sprint(got) != "[2 3 5]" {
 		t.Fatalf("NeedNotes = %v, want [2 3 5]", got)
+	}
+}
+
+// updatedAt has one-second precision: an issue touched since the recent cutoff
+// gets its discussions even when the stored updatedAt still matches.
+func TestNeedNotes_RecentWindow(t *testing.T) {
+	t0 := time.Date(2026, 10, 8, 10, 0, 0, 0, time.UTC)
+	issues := []Issue{{GlobalID: "g1", IID: 1, UpdatedAt: &t0}}
+	known := map[string]SyncKey{"g1": {UpdatedAt: &t0}}
+	if got := NeedNotes(issues, known, nil, nil); len(got) != 0 {
+		t.Fatalf("no window: %v", got)
+	}
+	cut := t0.Add(-time.Minute)
+	if got := NeedNotes(issues, known, &cut, nil); fmt.Sprint(got) != "[1]" {
+		t.Fatalf("inside the window: %v, want [1]", got)
 	}
 }
 

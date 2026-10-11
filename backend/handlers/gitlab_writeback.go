@@ -462,7 +462,7 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	// Conflict gate: for three-way-checked triggers, fetch the current issue and decide
 	// whether to push (baseline clean), no-op (already in sync), or park as a conflict.
 	if conflictCheckedKind(w.ChangeKind) {
-		issues, ferr := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+		issues, ferr := client.IssuesByIIDsLight(ctx, path, []string{strconv.FormatInt(iid, 10)})
 		if ferr != nil {
 			return res, ferr
 		}
@@ -478,12 +478,23 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 			res.result = "уже синхронно с GitLab"
 			return res, nil
 		case conflictParked:
-			if perr := h.parkConflict(ctx, w, fields); perr != nil {
-				return res, perr
+			// The binding's conflict policy (#3088) may settle it without asking.
+			switch wb.EffectiveConflictPolicy() {
+			case gitlab.ConflictTessera:
+				h.acknowledgeTheirs(ctx, link, fields, rules)
+				res.result = "конфликт — Tessera важнее; "
+			case gitlab.ConflictGitlab:
+				h.takeTheirs(ctx, w.TaskID, link, fields, integ.WorkspaceID, rules)
+				res.result = "конфликт — GitLab важнее, значение взято из GitLab"
+				return res, nil
+			default:
+				if perr := h.parkConflict(ctx, w, fields); perr != nil {
+					return res, perr
+				}
+				res.conflict, res.fields = true, fields
+				res.result = "конфликт — ожидает решения"
+				return res, nil
 			}
-			res.conflict, res.fields = true, fields
-			res.result = "конфликт — ожидает решения"
-			return res, nil
 		}
 		// conflictProceed: fall through to the push.
 	}
@@ -500,8 +511,34 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 			results = append(results, out)
 		}
 	}
-	res.result = strings.Join(results, "; ")
+	res.result += strings.Join(results, "; ")
 	return res, nil
+}
+
+// acknowledgeTheirs is «Tessera важнее» (#3088) before the push goes out: GitLab's
+// diverged values become the baseline, so the push that follows overwrites them
+// as a clean change — the same bookkeeping an interactive «ours» does.
+func (h *API) acknowledgeTheirs(ctx context.Context, link db.GitlabLink, fields []conflictField, rules gitlab.Rules) {
+	snap, _ := snapshotPresence(link.GlSnapshot)
+	for _, f := range fields {
+		setSnapshotField(&snap, f.Field, f.Theirs, rules)
+	}
+	soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: marshalSnapshot(snap)}))
+}
+
+// takeTheirs is «GitLab важнее» (#3088): GitLab's diverged values go into the
+// task and become the baseline, and nothing is pushed — an interactive «theirs»,
+// decided by the binding instead of a person.
+func (h *API) takeTheirs(ctx context.Context, taskID uuid.UUID, link db.GitlabLink, fields []conflictField, wsID uuid.UUID, rules gitlab.Rules) {
+	snap, _ := snapshotPresence(link.GlSnapshot)
+	for _, f := range fields {
+		h.applyConflictValue(ctx, taskID, f.Field, f.Theirs)
+		setSnapshotField(&snap, f.Field, f.Theirs, rules)
+	}
+	soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)}))
+	if t, err := h.q.GetTask(ctx, taskID); err == nil {
+		h.broadcast(wsID, "task.updated", t)
+	}
 }
 
 // tesseraCommentMarker is the optional footer appended to a pushed comment when the
@@ -635,7 +672,7 @@ func (h *API) performReconcileLabels(ctx context.Context, client *gitlab.Client,
 	if !rules.TagsInvertible() {
 		return "", notify.Permanent(errors.New("tag labels are not invertible (prefix stripped)"))
 	}
-	issues, err := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+	issues, err := client.IssuesByIIDsLight(ctx, path, []string{strconv.FormatInt(iid, 10)})
 	if err != nil {
 		return "", err
 	}
@@ -953,7 +990,7 @@ func (h *API) performSetTitleDesc(ctx context.Context, client *gitlab.Client, in
 // sees nothing remote-changed and doesn't echo our own change back. Best-effort:
 // the push already succeeded, so a refresh failure isn't fatal.
 func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) {
-	issues, err := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+	issues, err := client.IssuesByIIDsLight(ctx, path, []string{strconv.FormatInt(iid, 10)})
 	if err != nil || len(issues) == 0 {
 		return
 	}

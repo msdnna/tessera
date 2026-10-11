@@ -812,6 +812,36 @@ func (q *Queries) GitlabTasksForIids(ctx context.Context, arg GitlabTasksForIids
 	return items, nil
 }
 
+const linkSnapshotsForIntegration = `-- name: LinkSnapshotsForIntegration :many
+SELECT l.gl_snapshot
+FROM gitlab_links l
+JOIN tasks t ON t.id = l.task_id
+WHERE l.integration_id = $1 AND t.deleted_at IS NULL AND t.archived_at IS NULL
+`
+
+// LinkSnapshotsForIntegration reads the last-synced GitLab state of every live
+// task a binding mirrors — the label rule counters and «Проверить лейбл» count
+// by the labels recorded there (#3087).
+func (q *Queries) LinkSnapshotsForIntegration(ctx context.Context, integrationID uuid.UUID) ([][]byte, error) {
+	rows, err := q.db.Query(ctx, linkSnapshotsForIntegration, integrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items [][]byte
+	for rows.Next() {
+		var gl_snapshot []byte
+		if err := rows.Scan(&gl_snapshot); err != nil {
+			return nil, err
+		}
+		items = append(items, gl_snapshot)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const linkedIidsForIntegration = `-- name: LinkedIidsForIntegration :many
 SELECT gl_iid FROM gitlab_links WHERE integration_id = $1
 `

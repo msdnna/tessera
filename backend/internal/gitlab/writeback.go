@@ -55,6 +55,31 @@ type Writeback struct {
 	// Bindings is the customizable trigger→action table. Empty = fall back to the
 	// legacy-flag defaults (effectiveBindings). Non-empty = admin took control.
 	Bindings []Binding `json:"bindings,omitempty"`
+
+	// ConflictPolicy decides a write-back conflict — a field changed on both sides
+	// since the last sync (#3088): ConflictAsk parks it for a person (the default,
+	// and the only behaviour before the policy existed), ConflictTessera pushes
+	// Tessera's value over GitLab's, ConflictGitlab takes GitLab's value into the
+	// task and pushes nothing.
+	ConflictPolicy string `json:"conflict_policy,omitempty"`
+}
+
+// Conflict policies (#3088).
+const (
+	ConflictAsk     = "ask"
+	ConflictTessera = "tessera"
+	ConflictGitlab  = "gitlab"
+)
+
+// EffectiveConflictPolicy is the stored policy, with anything unknown read as
+// ConflictAsk — the one that never loses a value.
+func (w Writeback) EffectiveConflictPolicy() string {
+	switch w.ConflictPolicy {
+	case ConflictTessera, ConflictGitlab:
+		return w.ConflictPolicy
+	default:
+		return ConflictAsk
+	}
 }
 
 // EffectiveGroupLabel is the label the "make this a grouped task" button writes.
@@ -356,7 +381,7 @@ func (w Writeback) Allows(kind string) bool {
 // priorityRule returns the first "priority" action rule, or nil.
 func (rs Rules) priorityRule() *Rule {
 	for i := range rs.Rules {
-		if rs.Rules[i].Action == "priority" {
+		if rs.Rules[i].Action == "priority" && !rs.Rules[i].Disabled {
 			return &rs.Rules[i]
 		}
 	}

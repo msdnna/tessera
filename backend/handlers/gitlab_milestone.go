@@ -35,8 +35,9 @@ func gidNumericID(gid string) int64 {
 }
 
 // reconcileTaskMilestone points a synced task at the milestone its GitLab issue
-// carries (creating/refreshing the native milestone + link), or clears it when the
-// issue has none. Skipped when the user overrode the task's milestone locally.
+// carries (creating/refreshing the native milestone + link), or — when it has none —
+// at the stage a «лейбл → этап» rule named (labelStage, #3086), or clears it when
+// neither says anything. Skipped when the user overrode the task's milestone locally.
 //
 // A change on a task the sync already knew is journalled (#2992) with the sync's
 // actor, like every other field the sync moves: the stage page counts its scope
@@ -45,7 +46,7 @@ func gidNumericID(gid string) int64 {
 // (`fresh`) is not: its first import says nothing about when it joined the stage,
 // and journalling it would book every task of a sprint imported mid-way as
 // "added after the start".
-func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegration, projectID, taskID uuid.UUID, issue gitlab.Issue, overridden, fresh bool, actorID uuid.UUID) {
+func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegration, projectID, taskID uuid.UUID, issue gitlab.Issue, labelStage string, overridden, fresh bool, actorID uuid.UUID) {
 	if overridden {
 		return
 	}
@@ -54,6 +55,23 @@ func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegra
 		if t, err := h.q.GetTask(ctx, taskID); err == nil {
 			before = t.MilestoneID
 		}
+	}
+	if issue.MilestoneGID == "" && labelStage != "" {
+		// No native milestone, but a «лейбл → этап» rule names one (#3086): the
+		// stage of that title in the project, created on first sight. A native
+		// GitLab milestone, when the issue has one, wins over the label.
+		mID, err := h.ensureLabelStage(ctx, projectID, labelStage)
+		if err != nil {
+			return
+		}
+		if before != nil && *before == mID {
+			return
+		}
+		soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: &mID}))
+		if !fresh {
+			h.journalMilestoneActor(ctx, taskID, actorID, before, &mID, labelStage)
+		}
+		return
 	}
 	if issue.MilestoneGID == "" {
 		// GitLab removed the milestone — clear the (GitLab-sourced) one on the task.
@@ -71,6 +89,27 @@ func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegra
 	if !fresh {
 		h.journalMilestoneActor(ctx, taskID, actorID, before, &mID, issue.MilestoneTitle)
 	}
+}
+
+// ensureLabelStage returns the project's stage of the given title, creating it when
+// the project has none (#3086). Such a stage is Tessera's own — no GitLab link: the
+// label named it, no GitLab milestone stands behind it, so a milestone write-back
+// leaves it alone (performSetMilestone treats it as native).
+func (h *API) ensureLabelStage(ctx context.Context, projectID uuid.UUID, title string) (uuid.UUID, error) {
+	m, err := h.q.GetMilestoneInProjectByTitle(ctx, db.GetMilestoneInProjectByTitleParams{ProjectID: projectID, Title: title})
+	if err == nil {
+		return m.ID, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, err
+	}
+	created, cerr := h.q.CreateMilestone(ctx, db.CreateMilestoneParams{
+		ProjectID: projectID, Title: title, Slug: h.uniqueMilestoneSlug(ctx, projectID, title),
+	})
+	if cerr != nil {
+		return uuid.Nil, cerr
+	}
+	return created.ID, nil
 }
 
 // ensureGitlabMilestone upserts the native milestone + link for a GitLab milestone,

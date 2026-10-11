@@ -60,6 +60,14 @@ SELECT * FROM milestones WHERE id = $1;
 -- name: GetMilestoneInProjectBySlug :one
 SELECT * FROM milestones WHERE project_id = $1 AND slug = $2;
 
+-- GetMilestoneInProjectByTitle finds the stage a GitLab «лейбл → этап» rule
+-- names (#3086), case-insensitively; the oldest wins when titles repeat.
+-- name: GetMilestoneInProjectByTitle :one
+SELECT * FROM milestones
+WHERE project_id = $1 AND lower(title) = lower(sqlc.arg('title')::text)
+ORDER BY created_at, id
+LIMIT 1;
+
 -- name: MilestoneSlugExistsInProject :one
 SELECT EXISTS(SELECT 1 FROM milestones WHERE project_id = $1 AND slug = $2);
 

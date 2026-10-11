@@ -998,7 +998,12 @@ func (r *syncRun) hydrateNotes(ctx context.Context, issues []gitlab.Issue) ([]gi
 		known[k.GlGlobalID] = gitlab.SyncKey{UpdatedAt: k.GlUpdatedAt, TitleHash: k.TitleHash, LabelsHash: k.LabelsHash}
 	}
 	archives := r.integ.ClosedPolicy == "archive_closed_sprints"
-	iids := gitlab.NeedNotes(issues, known, func(is gitlab.Issue) bool {
+	var recent *time.Time
+	if r.integ.LastSyncedAt != nil {
+		v := r.integ.LastSyncedAt.Add(-syncOverlap)
+		recent = &v
+	}
+	iids := gitlab.NeedNotes(issues, known, recent, func(is gitlab.Issue) bool {
 		return archives && is.State == "closed" && is.MilestoneState == "closed"
 	})
 	if len(iids) == 0 {
@@ -1653,8 +1658,8 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		if res.Group {
 			soft(ctx, "SetGitlabLinkGroup", h.q.SetGitlabLinkGroup(ctx, db.SetGitlabLinkGroupParams{TaskID: t.ID, GlIsGroup: true}))
 		}
-		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false, true, actorID)
-		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
+		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, res.Milestone, false, true, actorID)
+		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags, nil)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 		// No per-task broadcast during sync: a full import would flood every watcher
 		// with thousands of "created" activity toasts. runSync emits one board-level
@@ -1769,7 +1774,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		if link.GlIsGroup != res.Group {
 			soft(ctx, "SetGitlabLinkGroup", h.q.SetGitlabLinkGroup(ctx, db.SetGitlabLinkGroupParams{TaskID: link.TaskID, GlIsGroup: res.Group}))
 		}
-		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden, false, actorID)
+		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, res.Milestone, link.MilestoneOverridden, false, actorID)
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
 		dueApplied := false
 		if !link.DueOverridden && !frozen["due"] && dueDate != nil {
@@ -1790,7 +1795,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			soft(ctx, "UpdateTaskEstimate", h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: link.TaskID, Estimate: estimate}))
 			t.Estimate = estimate
 		}
-		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
+		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags, frozen)
 		// No per-task broadcast during sync (see the create branch) — one reload
 		// event is emitted at the end of runSync.
 
@@ -1920,10 +1925,17 @@ func journalNoun(entity string, created bool) string {
 // reconcileTaskMeta applies a synced issue's tags, assignees and comments to its
 // Tessera task. Each is "mixed": the sync owns the gitlab-sourced set (added,
 // refreshed and pruned to match GitLab) and never touches what the user added
-// manually. Returns what changed, for the sync journal.
-func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID, projectID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) metaDelta {
-	added, removed := h.reconcileTags(ctx, taskID, wsID, projectID, tags)
-	h.reconcileAssignees(ctx, wsID, taskID, issue.Assignees)
+// manually. Returns what changed, for the sync journal. frozen holds the kinds
+// with an open write-back conflict (#3089): their side stays as the user left it
+// until the conflict is decided.
+func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID, projectID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag, frozen map[string]bool) metaDelta {
+	var added, removed []string
+	if !frozen["labels"] {
+		added, removed = h.reconcileTags(ctx, taskID, wsID, projectID, tags)
+	}
+	if !frozen["assignees"] {
+		h.reconcileAssignees(ctx, wsID, taskID, issue.Assignees)
+	}
 	// A light issue (#3105) came without its discussions: nothing to reconcile.
 	var commentsAdded int
 	var newBodies []string

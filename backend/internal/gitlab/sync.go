@@ -67,14 +67,21 @@ func (k SyncKey) Unchanged(is Issue) bool {
 // The updatedAt comparison is enough because GitLab touches the issue when a note
 // is added or edited on it (a note save touches its issue) — the same property the
 // incremental pull's `updatedAfter` filter already relies on to pick up comments.
-func NeedNotes(issues []Issue, known map[string]SyncKey, skip func(Issue) bool) []string {
+//
+// GitLab's updatedAt has one-second precision, so a note added in the same second
+// the last sync read the issue leaves updatedAt equal. recent closes that gap:
+// an issue touched at or after it gets its discussions whatever the stored value
+// says — the caller passes the last sync minus the overlap window, which is a few
+// minutes' worth of issues, not the project.
+func NeedNotes(issues []Issue, known map[string]SyncKey, recent *time.Time, skip func(Issue) bool) []string {
 	var out []string
 	for _, is := range issues {
 		if is.NotesLoaded || (skip != nil && skip(is)) {
 			continue
 		}
 		k, linked := known[is.GlobalID]
-		if linked && k.UpdatedAt != nil && is.UpdatedAt != nil && is.UpdatedAt.Equal(*k.UpdatedAt) {
+		fresh := recent != nil && is.UpdatedAt != nil && !is.UpdatedAt.Before(*recent)
+		if linked && !fresh && k.UpdatedAt != nil && is.UpdatedAt != nil && is.UpdatedAt.Equal(*k.UpdatedAt) {
 			continue
 		}
 		out = append(out, strconv.FormatInt(is.IID, 10))
