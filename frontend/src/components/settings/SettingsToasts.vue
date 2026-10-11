@@ -7,7 +7,7 @@
 // the toast object rides in `prefs.toasts`.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NCheckbox, NIcon, NSwitch, NTooltip } from 'naive-ui'
+import { NCheckbox, NIcon, NSwitch } from 'naive-ui'
 import { AddOutline, ChatbubblesOutline, RemoveOutline } from '@vicons/ionicons5'
 import {
   ACTIVITY_KINDS,
