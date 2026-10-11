@@ -1,5 +1,4 @@
 <script setup>
-import { vLayer } from '@/utils/layerZ'
 // A swatch row in a small popover at its anchor (#2990): the tag table's colour
 // cell and «Перекрасить» on a selection. ←/→ walk the swatches, ↵ picks, Esc
 // closes.
@@ -8,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
 import { PICKER_COLORS } from '@/utils/pickerColors'
 import { hueGrad } from '@/utils/gradient'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },

@@ -1,5 +1,4 @@
 <script setup>
-import { vLayer } from '@/utils/layerZ'
 // The v2 row menu (#2969, mockup MenuA): rows with their key on the right, a
 // colour row, a switch row and a two-step danger item.
 //
@@ -62,6 +61,7 @@ import { byId } from '@/shortcuts/catalog'
 import { matchChord, parseKeys } from '@/shortcuts/keymap'
 import { hueGrad } from '@/utils/gradient'
 import { PICKER_COLORS } from '@/utils/pickerColors'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },

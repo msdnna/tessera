@@ -1,5 +1,4 @@
 <script setup>
-import { vLayer } from '@/utils/layerZ'
 // Tier 0 of the v2 interaction model (#2969): the text of a row or a header
 // turns into a field in place — renaming, or typing the name of a new row.
 //
@@ -18,6 +17,7 @@ import { AlertCircleOutline } from '@vicons/ionicons5'
 import Kbd from '@/components/Kbd.vue'
 import { CAPS } from '@/utils/keyCaps'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },

@@ -1,5 +1,4 @@
 <script setup>
-import { vLayer } from '@/utils/layerZ'
 // The stage selector of the board's sub-toolbar (#2994, mockup StageMenu): «Этап:
 // Спринт 42 ▬ 58% ⌄» next to the grouping, in place of the old removable chip.
 // The menu lists the active stages with their progress, the planned ones, «Бэклог»
@@ -34,6 +33,7 @@ import {
 import ShortcutKeys from '../ShortcutKeys.vue'
 import Kbd from '../Kbd.vue'
 import { tourEvent } from '@/utils/tourEvents'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   stages: { type: Array, default: () => [] },

@@ -1,5 +1,4 @@
 <script setup>
-import { vLayer } from '@/utils/layerZ'
 // The phone form of tier 1 (v2, #2969): a popover form becomes a sheet sliding
 // up from the bottom, with a handle, over a scrim. No key caps on touch.
 // `full` is tier 2 — a sheet that takes the whole height under the status bar.
@@ -21,6 +20,7 @@ import { vLayer } from '@/utils/layerZ'
 // for when what it talks about sits where the sheet would be.
 import { computed, ref, toRef, watch, onBeforeUnmount } from 'vue'
 import { useOverlayBack } from '@/composables/useOverlayBack'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },

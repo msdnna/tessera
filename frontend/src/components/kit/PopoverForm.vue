@@ -1,5 +1,4 @@
 <script setup>
-import { vLayer } from '@/utils/layerZ'
 // Tier 1 of the v2 interaction model (#2969): a small form at its anchor —
 // create or change something with one to three fields — instead of a centred
 // modal. No scrim; focus is kept inside; on a phone it becomes a BottomSheet.
@@ -25,6 +24,7 @@ import BottomSheet from './BottomSheet.vue'
 import './kit.css'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
 import { useResponsive } from '@/composables/useResponsive'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },

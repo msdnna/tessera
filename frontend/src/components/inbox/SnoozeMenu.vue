@@ -1,5 +1,4 @@
 <script setup>
-import { vLayer } from '@/utils/layerZ'
 // «Отложить» (#2997, mockup SnoozeMenu): a small menu under a reminder. Every
 // option is counted from now; a digit picks one without the arrows, D opens a
 // line for a moment in words («чт 15:30», «через 3 дня»). Esc closes.
@@ -22,6 +21,7 @@ import { useFormat } from '@/composables/useFormat'
 import { snoozeOptions } from '@/utils/inbox'
 import { parseCapture } from '@/utils/quickParse'
 import { cap } from '@/utils/keyCaps'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },

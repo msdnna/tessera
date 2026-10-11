@@ -1,5 +1,4 @@
 <script setup>
-import { vLayer } from '@/utils/layerZ'
 // A floating layer at an anchor that can live INSIDE a Naive modal (#3113).
 //
 // The kit popovers teleport to <body>, which is right on a page and wrong inside
@@ -18,6 +17,7 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
 import { useResponsive } from '@/composables/useResponsive'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
