@@ -2490,7 +2490,7 @@ const realtime = useRealtime(
   { hello: presenceFrame },
 )
 watch(
-  () => props.boardId,
+  () => props.boardId || '',
   () => {
     boardViewStore.present = { boardId: null, userIds: [] }
     realtime.send(presenceFrame())

@@ -11,6 +11,7 @@
     "remove_start": { "description": "Clear the start date", "example": "/remove_start" },
     "estimate": { "description": "Set the estimate", "example": "/estimate 2h30m" },
     "remove_estimate": { "description": "Clear the estimate", "example": "/remove_estimate" },
+    "spend": { "description": "Log time spent", "example": "/spend 1h30m" },
     "priority": { "description": "Set the priority", "example": "/priority high" },
     "title": { "description": "Change the title", "example": "/title New title" },
     "tag": { "description": "Add a tag (comma-separated)", "example": "/tag backend, urgent" },

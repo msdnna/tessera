@@ -67,6 +67,8 @@ var Registry = []Command{
 	{Key: "remove_start", Arg: ArgNone, Description: "Убрать дату начала", Example: "/remove_start"},
 	{Key: "estimate", Arg: ArgEstimate, Description: "Установить оценку", Example: "/estimate 2h30m"},
 	{Key: "remove_estimate", Arg: ArgNone, Description: "Убрать оценку", Example: "/remove_estimate"},
+	{Key: "spend", Aliases: []string{"spent"}, Arg: ArgEstimate,
+		Description: "Записать потраченное время", Example: "/spend 1h30m"},
 
 	// Plain fields
 	{Key: "priority", Arg: ArgPriority, Description: "Установить приоритет", Example: "/priority высокий"},

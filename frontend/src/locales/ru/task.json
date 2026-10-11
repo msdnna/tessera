@@ -518,7 +518,8 @@
     "codeMerged": "смержен {ref}",
     "codeClosed": "закрыт {ref}",
     "trashed": "удалил(а) в корзину",
-    "untrashed": "вернул(а) из корзины"
+    "untrashed": "вернул(а) из корзины",
+    "timeSpent": "потратил(а) {v}"
   },
   "ref": {
     "notFound": "Задача #{number} не найдена"
@@ -570,5 +571,23 @@
     "deletedUntitled": "Задача «{title}» в корзине",
     "restored": "Задача #{number} возвращена",
     "restoredUntitled": "Задача «{title}» возвращена"
+  },
+  "time": {
+    "title": "Потрачено",
+    "log": "Записать",
+    "amount": "Сколько",
+    "amountPlaceholder": "1ч 30м",
+    "note": "Что делали",
+    "notePlaceholder": "необязательно",
+    "unreadable": "Не понимаю время — например «1ч 30м» или «45м»",
+    "none": "Пока ничего не записано",
+    "total": "Всего {all}",
+    "totalWithSub": "Своё {own} · с подзадачами {all}",
+    "remove": "Удалить запись",
+    "removeConfirm": "Удалить?",
+    "more": "и ещё {n}",
+    "spentShort": "· потрачено {v}",
+    "add": "+ время",
+    "spentAlone": "потрачено {v}"
   }
 }

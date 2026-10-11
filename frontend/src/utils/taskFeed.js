@@ -159,6 +159,14 @@ export function eventText(e) {
       return d.title
         ? t('task.journal.milestoneNamed', { name: d.title })
         : t('task.journal.milestone')
+    // Учёт времени (#2965): minutes as hours and minutes («1 ч 30 м»).
+    case 'time_spent': {
+      const m = Math.round(Number(d.minutes) || 0)
+      const parts = []
+      if (m >= 60) parts.push(t('task.estimate.short.hour', { n: Math.floor(m / 60) }))
+      if (m % 60 || !parts.length) parts.push(t('task.estimate.short.minute', { n: m % 60 }))
+      return t('task.journal.timeSpent', { v: parts.join(' ') })
+    }
     case 'milestone_removed':
       return d.title
         ? t('task.journal.milestoneRemovedNamed', { name: d.title })

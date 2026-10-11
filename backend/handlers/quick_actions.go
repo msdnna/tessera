@@ -77,6 +77,8 @@ func (h *API) runQuickAction(c *gin.Context, t *db.Task, wsID uuid.UUID, cmd qui
 		return h.qaAssign(c, *t, wsID, cmd)
 	case "due", "start", "remove_due", "remove_start", "estimate", "remove_estimate", "priority", "title":
 		return h.qaPatch(c, t, wsID, cmd)
+	case "spend":
+		return h.qaSpend(c, *t, wsID, cmd)
 	case "tag", "untag":
 		return h.qaTag(c, *t, wsID, cmd)
 	case "milestone":
@@ -831,6 +833,11 @@ func (h *API) previewCommand(c *gin.Context, t db.Task, wsID uuid.UUID, cmd quic
 		return "оценка " + cmd.Arg, nil
 	case "remove_estimate":
 		return "убрать оценку", nil
+	case "spend":
+		if _, err := h.spendMinutes(c, t, wsID, cmd.Arg); err != nil {
+			return "", err
+		}
+		return "потрачено " + strings.TrimSpace(cmd.Arg), nil
 
 	case "priority":
 		if _, err := quickact.ParsePriority(cmd.Arg); err != nil {

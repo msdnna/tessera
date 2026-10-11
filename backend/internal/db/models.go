@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Board struct {
@@ -774,6 +775,16 @@ type TaskTag struct {
 	TaskID uuid.UUID `json:"task_id"`
 	TagID  uuid.UUID `json:"tag_id"`
 	Source string    `json:"source"`
+}
+
+type TaskTimeEntry struct {
+	ID        uuid.UUID   `json:"id"`
+	TaskID    uuid.UUID   `json:"task_id"`
+	UserID    *uuid.UUID  `json:"user_id"`
+	Minutes   int32       `json:"minutes"`
+	Note      string      `json:"note"`
+	SpentOn   pgtype.Date `json:"spent_on"`
+	CreatedAt time.Time   `json:"created_at"`
 }
 
 type User struct {

@@ -518,7 +518,8 @@
     "codeMerged": "merged {ref}",
     "codeClosed": "closed {ref}",
     "trashed": "moved it to the trash",
-    "untrashed": "restored it from the trash"
+    "untrashed": "restored it from the trash",
+    "timeSpent": "logged {v}"
   },
   "ref": {
     "notFound": "Task #{number} not found"
@@ -570,5 +571,23 @@
     "deletedUntitled": "Task «{title}» moved to the trash",
     "restored": "Task #{number} restored",
     "restoredUntitled": "Task «{title}» restored"
+  },
+  "time": {
+    "title": "Time spent",
+    "log": "Log",
+    "amount": "How long",
+    "amountPlaceholder": "1h 30m",
+    "note": "On what",
+    "notePlaceholder": "optional",
+    "unreadable": "Can't read the time — e.g. «1h 30m» or «45m»",
+    "none": "Nothing logged yet",
+    "total": "Total {all}",
+    "totalWithSub": "Own {own} · with subtasks {all}",
+    "remove": "Remove the entry",
+    "removeConfirm": "Remove?",
+    "more": "and {n} more",
+    "spentShort": "· spent {v}",
+    "add": "+ time",
+    "spentAlone": "spent {v}"
   }
 }

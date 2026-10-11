@@ -11,6 +11,7 @@
     "remove_start": { "description": "Убрать дату начала", "example": "/remove_start" },
     "estimate": { "description": "Установить оценку", "example": "/estimate 2h30m" },
     "remove_estimate": { "description": "Убрать оценку", "example": "/remove_estimate" },
+    "spend": { "description": "Записать потраченное время", "example": "/spend 1h30m" },
     "priority": { "description": "Установить приоритет", "example": "/priority высокий" },
     "title": { "description": "Изменить заголовок", "example": "/title Новый заголовок" },
     "tag": { "description": "Добавить тег (через запятую)", "example": "/tag backend, срочно" },

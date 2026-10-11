@@ -612,6 +612,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/comments/:id", rh.UpdateComment)
 			protected.DELETE("/comments/:id", rh.DeleteComment)
 			protected.GET("/tasks/:id/relations", rh.ListRelations)
+			// Учёт времени (#2965).
+			protected.GET("/tasks/:id/time", rh.ListTimeEntries)
+			protected.POST("/tasks/:id/time", rh.AddTimeEntry)
+			protected.DELETE("/tasks/:id/time/:entryId", rh.DeleteTimeEntry)
 			protected.POST("/tasks/:id/relations", rh.AddRelation)
 			protected.DELETE("/relations/:id", rh.DeleteRelation)
 			protected.GET("/tasks/:id/attachments", rh.ListAttachments)

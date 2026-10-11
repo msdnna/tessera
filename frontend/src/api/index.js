@@ -882,6 +882,10 @@ export const tasks = {
     api.patch(`/comments/${commentId}`, { body, mentions }),
   removeComment: (commentId) => api.delete(`/comments/${commentId}`),
   relations: (id) => api.get(`/tasks/${id}/relations`),
+  // Учёт времени (#2965).
+  time: (id) => api.get(`/tasks/${id}/time`),
+  addTime: (id, body) => api.post(`/tasks/${id}/time`, body),
+  deleteTime: (id, entryId) => api.delete(`/tasks/${id}/time/${entryId}`),
   addRelation: (id, number, kind) => api.post(`/tasks/${id}/relations`, { number, kind }),
   removeRelation: (relationId) => api.delete(`/relations/${relationId}`),
   // The document side of the same link table (#2732). Unlinking is done through

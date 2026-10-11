@@ -1846,6 +1846,7 @@
     <string name="cmd_remove_start_desc">Clear the start date</string>
     <string name="cmd_estimate_desc">Set the estimate</string>
     <string name="cmd_remove_estimate_desc">Clear the estimate</string>
+    <string name="cmd_spend_desc">Log time spent</string>
     <string name="cmd_priority_desc">Set the priority</string>
     <string name="cmd_title_desc">Change the title</string>
     <string name="cmd_tag_desc">Add a tag (comma-separated)</string>

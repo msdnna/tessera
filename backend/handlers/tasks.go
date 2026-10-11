@@ -36,6 +36,10 @@ type taskDetail struct {
 	// ProjectArchived: the task's project is in the archive (0086) — every
 	// client opens it read-only; the server refuses writes with 409.
 	ProjectArchived bool `json:"project_archived"`
+	// Spent / SpentTotal — minutes logged on the task itself and on its whole
+	// subtree (#2965, «потрачено»).
+	Spent      int64 `json:"spent"`
+	SpentTotal int64 `json:"spent_total"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -309,6 +313,7 @@ func (h *API) GetTask(c *gin.Context) {
 		return
 	}
 	archived, _ := h.q.ProjectArchivedForBoard(c, t.BoardID)
+	spent, _ := h.q.TaskSpentMinutes(c, id)
 	glLink := h.gitlabLinkForTask(c, id)
 	if glLink != nil {
 		// MRs of other GitLab projects send us no hooks: look again, in the
@@ -320,6 +325,7 @@ func (h *API) GetTask(c *gin.Context) {
 		Subtasks: subtasks, GitLab: glLink, ProjectArchived: archived,
 		Subscribers: subs, Subscribed: subscribed,
 		CodeLinks: h.codeLinksForTask(c, id),
+		Spent:     spent.Own, SpentTotal: spent.Total,
 	})
 }
 

@@ -76,6 +76,8 @@ import TaskFilesTab from './task/TaskFilesTab.vue'
 import TaskDocumentsTab from './task/TaskDocumentsTab.vue'
 import TagPicker from './task/TagPicker.vue'
 import TaskPropPickers from './task/TaskPropPickers.vue'
+import TimeLogPop from './task/TimeLogPop.vue'
+import AnchorLayer from './kit/AnchorLayer.vue'
 import CodeLinkCard from './task/CodeLinkCard.vue'
 import { useCodeLinksStore } from '@/stores/codeLinks'
 import { sortCodeLinks } from '@/utils/codeLinks'
@@ -355,6 +357,15 @@ function manageTags(typed = '') {
 const estCfg = computed(() => store.estimationFor(projectId.value || boardInfo.value?.projectId))
 // Full spelled-out estimate ("8 недель"), shown as the row's value.
 const estFull = computed(() => formatEstimateFull(estimate.value, estCfg.value))
+// «Потрачено» (#2965): minutes logged on the task and on its whole subtree; the
+// row says the subtree's, the time popover tells the two apart.
+const spent = ref({ spent: 0, spent_total: 0 })
+const timeShow = ref(false)
+const spentLabel = computed(() =>
+  spent.value.spent_total
+    ? formatEstimate(spent.value.spent_total, { ...(estCfg.value || {}), unit: 'time' })
+    : '',
+)
 // Projected window from start_date, free-form ("18 мая → 13 июл."), shown inline.
 const estRange = computed(() =>
   estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value, formatters.value),
@@ -493,6 +504,7 @@ async function loadDetail() {
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
     startTs.value = t.start_date ? new Date(t.start_date).getTime() : null
     estimate.value = t.estimate ?? null
+    spent.value = { spent: t.spent || 0, spent_total: t.spent_total || 0 }
     recurrence.value = t.recurrence || null
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
@@ -1741,9 +1753,12 @@ useShortcuts(
                       <span class="plabel">{{ t('task.field.estimate') }}</span>
                       <button class="val" @click.stop="toggleField('estimate')">
                         <n-icon :component="TimeOutline" :size="14" class="vico" />
-                        <span :class="{ muted: !estFull }">{{
-                          estFull || t('task.value.estimateUnset')
-                        }}</span>
+                        <span
+                          v-if="estFull || !spentLabel"
+                          class="est-v"
+                          :class="{ muted: !estFull }"
+                          >{{ estFull || t('task.value.estimateUnset') }}</span
+                        >
                         <span v-if="estRange" class="est-range">· {{ estRange }}</span>
                         <span
                           v-if="subtaskEstimateLabel"
@@ -1751,6 +1766,24 @@ useShortcuts(
                           :title="t('task.estimate.rollupHint')"
                           >Σ {{ subtaskEstimateLabel }}</span
                         >
+                        <span
+                          v-if="spentLabel || !ro"
+                          role="button"
+                          tabindex="0"
+                          class="est-spent"
+                          :class="{ empty: !spentLabel }"
+                          data-testid="task-spent"
+                          @click.stop="timeShow = !timeShow"
+                          @keydown.enter.stop.prevent="timeShow = !timeShow"
+                        >
+                          {{
+                            spentLabel
+                              ? t(estFull ? 'task.time.spentShort' : 'task.time.spentAlone', {
+                                  v: spentLabel,
+                                })
+                              : t('task.time.add')
+                          }}
+                        </span>
                       </button>
                       <ShortcutKeys id="task.estimate" class="pkey" />
                     </div>
@@ -1976,6 +2009,21 @@ useShortcuts(
                 :ctx="propCtx"
                 :ops="propOps"
               />
+              <AnchorLayer
+                :show="timeShow"
+                :anchor="() => rowAnchor('estimate')"
+                :title="t('task.time.title')"
+                placement="bottom-end"
+                testid="time-log-layer"
+                @update:show="timeShow = $event"
+              >
+                <TimeLogPop
+                  v-model:show="timeShow"
+                  :task-id="taskId"
+                  :cfg="estCfg"
+                  @changed="spent = $event"
+                />
+              </AnchorLayer>
 
               <TaskDescriptionTab
                 ref="descTab"
@@ -2729,6 +2777,33 @@ useShortcuts(
   padding: 4px;
 }
 /* estimate rollup hint on the value + popover editor */
+.est-v {
+  flex: none;
+}
+.est-spent {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 5px;
+  border-radius: 6px;
+  color: var(--t-text3);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.est-spent:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+/* Nothing logged yet: the way in shows on the row's hover (or focus). */
+.est-spent.empty {
+  opacity: 0;
+}
+.prow:hover .est-spent.empty,
+.est-spent.empty:focus-visible {
+  opacity: 1;
+}
 .est-rollup,
 .est-range {
   color: var(--t-text3);

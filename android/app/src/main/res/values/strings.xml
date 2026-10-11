@@ -1919,6 +1919,7 @@
     <string name="cmd_remove_start_desc">Убрать дату начала</string>
     <string name="cmd_estimate_desc">Установить оценку</string>
     <string name="cmd_remove_estimate_desc">Убрать оценку</string>
+    <string name="cmd_spend_desc">Записать потраченное время</string>
     <string name="cmd_priority_desc">Установить приоритет</string>
     <string name="cmd_title_desc">Изменить заголовок</string>
     <string name="cmd_tag_desc">Добавить тег (через запятую)</string>
