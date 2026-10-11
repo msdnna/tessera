@@ -172,6 +172,19 @@ type fakeGitlab struct {
 	milestones         map[int64]*glMilestone
 	milestonePutStatus int
 	milestonePuts      []url.Values
+
+	// The issues queries as they arrived (#3105): whether each asked for the
+	// discussions, which iids it named (nil = a list query) and the label filter
+	// it carried (#3085). A test reads them to see which issues a sweep paid the
+	// heavy half for.
+	issueQueries []fakeIssueQuery
+}
+
+// fakeIssueQuery is one issues request the fake served.
+type fakeIssueQuery struct {
+	withNotes bool
+	iids      []int64
+	labels    []string
 }
 
 // fakeUpload is one attachment the fake instance hands back, declared type and
@@ -398,7 +411,7 @@ func (f *fakeGitlab) graphql(w http.ResponseWriter, r *http.Request) {
 	case strings.Contains(req.Query, "workItems"):
 		f.childItemsQuery(w, req.Variables)
 	default:
-		f.issuesQuery(w, req.Variables)
+		f.issuesQuery(w, req.Variables, strings.Contains(req.Query, "discussions("))
 	}
 }
 
@@ -496,8 +509,16 @@ func (f *fakeGitlab) linksFor(srcIID int64) []glLink {
 
 // issuesQuery serves the paginated issues query with optional iids / assignee
 // username filters (mirroring the real GraphQL filter semantics).
-func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any) {
+func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any, withNotes bool) {
 	f.mu.Lock()
+	q := fakeIssueQuery{withNotes: withNotes}
+	if raw, ok := vars["labels"].([]any); ok {
+		for _, v := range raw {
+			if s, ok := v.(string); ok {
+				q.labels = append(q.labels, s)
+			}
+		}
+	}
 	var filtered []*glIssue
 	if raw, ok := vars["iids"].([]any); ok && raw != nil {
 		want := map[int64]bool{}
@@ -505,6 +526,7 @@ func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any) {
 			if s, ok := v.(string); ok {
 				n, _ := strconv.ParseInt(s, 10, 64)
 				want[n] = true
+				q.iids = append(q.iids, n)
 			}
 		}
 		for _, is := range f.issues {
@@ -524,6 +546,25 @@ func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any) {
 	} else {
 		filtered = append(filtered, f.issues...)
 	}
+	// labelName: every listed label must be on the issue (GitLab's AND).
+	if len(q.labels) > 0 {
+		var kept []*glIssue
+		for _, is := range filtered {
+			has := map[string]bool{}
+			for _, l := range is.Labels {
+				has[l.Title] = true
+			}
+			all := true
+			for _, l := range q.labels {
+				all = all && has[l]
+			}
+			if all {
+				kept = append(kept, is)
+			}
+		}
+		filtered = kept
+	}
+	f.issueQueries = append(f.issueQueries, q)
 	f.mu.Unlock()
 
 	start := 0
@@ -539,7 +580,11 @@ func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any) {
 	}
 	nodes := make([]any, 0, end-start)
 	for _, is := range filtered[start:end] {
-		nodes = append(nodes, f.issueNode(is))
+		node := f.issueNode(is)
+		if !withNotes {
+			delete(node, "discussions") // the light query never asked for them
+		}
+		nodes = append(nodes, node)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
 		"project": map[string]any{"issues": map[string]any{

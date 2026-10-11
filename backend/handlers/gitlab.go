@@ -872,6 +872,11 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		return 0, 0, ferr
 	}
 	issues = filterClosedPolicy(integ, issues, linkedIids)
+	if !r.incremental {
+		if issues, ferr = r.hydrateNotes(ctx, issues); ferr != nil {
+			return 0, 0, ferr
+		}
+	}
 	r.refreshMembers(ctx)
 	if _, berr := r.loadBoard(ctx, integ.BoardID); berr != nil {
 		return 0, 0, fmt.Errorf("integration board has no columns")
@@ -925,21 +930,21 @@ func (h *API) syncClient(ctx context.Context, cred db.GitlabCredential) (*gitlab
 // GraphQL page instead of a few thousand. A full pull leaves the filter off and
 // additionally refetches every already-linked issue (to catch a reassignment away
 // from the owner and to detect deletes).
+//
+// A full pull is the first of two phases (#3105): it lists the issues WITHOUT their
+// discussions — the part GitLab times out on — and hydrateNotes then fetches the
+// discussions of only the issues that are new or changed.
 func (r *syncRun) fetchIssues(ctx context.Context) ([]gitlab.Issue, []int64, error) {
 	var since *time.Time
 	if r.incremental && r.integ.LastSyncedAt != nil {
 		s := r.integ.LastSyncedAt.Add(-syncOverlap)
 		since = &s
 	}
-	var (
-		assigned []gitlab.Issue
-		err      error
-	)
-	if r.integ.Scope == "all" || r.assignUser == "" {
-		assigned, err = r.client.AllIssuesSince(ctx, r.integ.ProjectPath, since)
-	} else {
-		assigned, err = r.client.AssignedIssuesSince(ctx, r.integ.ProjectPath, r.assignUser, since)
+	filter := gitlab.IssueFilter{Since: since, Light: !r.incremental}
+	if r.integ.Scope != "all" && r.assignUser != "" {
+		filter.Assignee = r.assignUser
 	}
+	assigned, err := r.client.ListIssues(ctx, r.integ.ProjectPath, filter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -966,11 +971,44 @@ func (r *syncRun) fetchIssues(ctx context.Context) ([]gitlab.Issue, []int64, err
 	if len(iidStrs) == 0 {
 		return assigned, linkedIids, nil
 	}
-	linked, lerr := r.client.IssuesByIIDs(ctx, r.integ.ProjectPath, iidStrs)
+	linked, lerr := r.client.IssuesByIIDsLight(ctx, r.integ.ProjectPath, iidStrs)
 	if lerr != nil {
 		return nil, nil, lerr
 	}
 	return gitlab.MergeIssues(assigned, linked), linkedIids, nil
+}
+
+// hydrateNotes is the second phase of a full sweep (#3105): the discussions of the
+// issues the light list says are new or changed since their link's last sync. An
+// unchanged issue keeps NotesLoaded=false, and the comment sync leaves its task
+// alone. A closed issue the closed-issue policy archives right away gets none
+// either — nobody reads a thread on an archived mirror, and a later reopen
+// changes updatedAt anyway.
+//
+// A failure fails the run rather than mirroring the changed issues without their
+// comments: the run stores their new updatedAt, so the next sweep would read them
+// as unchanged and their new comments would never arrive.
+func (r *syncRun) hydrateNotes(ctx context.Context, issues []gitlab.Issue) ([]gitlab.Issue, error) {
+	keys, err := r.h.q.LinkedSyncKeysForIntegration(ctx, r.integ.ID)
+	if err != nil {
+		return nil, err
+	}
+	known := make(map[string]gitlab.SyncKey, len(keys))
+	for _, k := range keys {
+		known[k.GlGlobalID] = gitlab.SyncKey{UpdatedAt: k.GlUpdatedAt, TitleHash: k.TitleHash, LabelsHash: k.LabelsHash}
+	}
+	archives := r.integ.ClosedPolicy == "archive_closed_sprints"
+	iids := gitlab.NeedNotes(issues, known, func(is gitlab.Issue) bool {
+		return archives && is.State == "closed" && is.MilestoneState == "closed"
+	})
+	if len(iids) == 0 {
+		return issues, nil
+	}
+	full, err := r.client.IssuesByIIDs(ctx, r.integ.ProjectPath, iids)
+	if err != nil {
+		return nil, fmt.Errorf("fetch discussions: %w", err)
+	}
+	return gitlab.WithNotes(issues, full), nil
 }
 
 // filterClosedPolicy applies closed_policy=period: don't import NEW closed issues
@@ -1886,7 +1924,12 @@ func journalNoun(entity string, created bool) string {
 func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID, projectID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) metaDelta {
 	added, removed := h.reconcileTags(ctx, taskID, wsID, projectID, tags)
 	h.reconcileAssignees(ctx, wsID, taskID, issue.Assignees)
-	commentsAdded, newBodies := h.syncComments(ctx, taskID, wsID, issue.Notes)
+	// A light issue (#3105) came without its discussions: nothing to reconcile.
+	var commentsAdded int
+	var newBodies []string
+	if issue.NotesLoaded {
+		commentsAdded, newBodies = h.syncComments(ctx, taskID, wsID, issue.Notes)
+	}
 	names := make([]string, 0, len(issue.Assignees))
 	for _, p := range issue.Assignees {
 		if p.Name != "" {
