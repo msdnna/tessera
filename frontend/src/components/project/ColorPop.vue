@@ -1,4 +1,5 @@
 <script setup>
+import { vLayer } from '@/utils/layerZ'
 // A swatch row in a small popover at its anchor (#2990): the tag table's colour
 // cell and «Перекрасить» on a selection. ←/→ walk the swatches, ↵ picks, Esc
 // closes.
@@ -64,6 +65,7 @@ function pick(hex) {
     <div
       v-if="show"
       ref="panel"
+      v-layer
       class="cpop"
       :style="style"
       role="dialog"

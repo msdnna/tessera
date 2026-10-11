@@ -1,4 +1,5 @@
 <script setup>
+import { vLayer } from '@/utils/layerZ'
 // The v2 row menu (#2969, mockup MenuA): rows with their key on the right, a
 // colour row, a switch row and a two-step danger item.
 //
@@ -362,10 +363,11 @@ function stubTitle(item) {
 
 <template>
   <Teleport to="body" :disabled="inline || inPlace">
-    <div v-if="show && sheet" class="am-scrim" aria-hidden="true" />
+    <div v-if="show && sheet" v-layer class="am-scrim" aria-hidden="true" />
     <div
       v-if="show"
       ref="panel"
+      v-layer
       class="am kit-menu"
       :class="{ inline, sheet }"
       role="menu"

@@ -1,4 +1,5 @@
 <script setup>
+import { vLayer } from '@/utils/layerZ'
 // «Отложить» (#2997, mockup SnoozeMenu): a small menu under a reminder. Every
 // option is counted from now; a digit picks one without the arrows, D opens a
 // line for a moment in words («чт 15:30», «через 3 дня»). Esc closes.
@@ -155,10 +156,11 @@ function onKey(e) {
 
 <template>
   <Teleport to="body">
-    <div v-if="show && sheet" class="sz-scrim" aria-hidden="true" />
+    <div v-if="show && sheet" v-layer class="sz-scrim" aria-hidden="true" />
     <div
       v-if="show"
       ref="panel"
+      v-layer
       class="sz kit-menu"
       :class="{ sheet }"
       :style="sheet ? null : style"

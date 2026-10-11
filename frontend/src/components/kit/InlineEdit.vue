@@ -1,4 +1,5 @@
 <script setup>
+import { vLayer } from '@/utils/layerZ'
 // Tier 0 of the v2 interaction model (#2969): the text of a row or a header
 // turns into a field in place — renaming, or typing the name of a new row.
 //
@@ -173,6 +174,7 @@ const keysHint = computed(() => {
     <Teleport to="body" :disabled="!teleportHint">
       <span
         v-if="showHint && (error || keysHint.length)"
+        v-layer
         class="ie-tip"
         :class="{ err: !!error, local: !teleportHint }"
         :style="teleportHint ? tipPos : { left: `${hintLeft}px` }"

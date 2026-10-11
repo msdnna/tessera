@@ -1,4 +1,5 @@
 <script setup>
+import { vLayer } from '@/utils/layerZ'
 // The phone form of tier 1 (v2, #2969): a popover form becomes a sheet sliding
 // up from the bottom, with a handle, over a scrim. No key caps on touch.
 // `full` is tier 2 — a sheet that takes the whole height under the status bar.
@@ -117,9 +118,9 @@ const sheetStyle = computed(() =>
     <transition name="bs">
       <div
         v-if="open"
+        v-layer="{ zIndex: z || undefined }"
         class="bs-scrim"
         :class="{ page, bare }"
-        :style="z ? { zIndex: z } : null"
         @click.self="!page && !bare && close()"
       >
         <div

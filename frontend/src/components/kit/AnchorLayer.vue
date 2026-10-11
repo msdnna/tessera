@@ -1,4 +1,5 @@
 <script setup>
+import { vLayer } from '@/utils/layerZ'
 // A floating layer at an anchor that can live INSIDE a Naive modal (#3113).
 //
 // The kit popovers teleport to <body>, which is right on a page and wrong inside
@@ -89,6 +90,7 @@ defineExpose({ place })
     <div
       v-if="desktopShow"
       ref="panel"
+      v-layer
       class="al kit-layer"
       :style="style"
       :data-testid="testid"

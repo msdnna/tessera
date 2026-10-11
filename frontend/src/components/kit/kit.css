@@ -43,14 +43,10 @@
   }
 }
 
-/* A Naive select inside a kit popover or sheet (#3106 — the notification
-   channel and rule forms): Naive teleports its menu to <body> at its own
-   stacking level (~2000), which is under PopoverForm (2050) and BottomSheet
-   (2100) — the options were drawn behind the form that opened them. A menu is
-   always the topmost thing on screen, so lift every select menu above both. */
-.v-binder-follower-container:has(.n-base-select-menu) {
-  z-index: 2200 !important;
-}
+/* Naive menus over kit layers: no z-index pin here any more — kit layers take
+   their z-index from the same vdirs manager as Naive (`utils/layerZ`), so a
+   select opened from a PopoverForm or sheet is above it by opening order. A
+   fixed 2200 lost to modals once the manager's counter outgrew it (#3063). */
 
 /* A plain v2 button with an optional key cap at its end (#3107): the actions of
    an empty state, the 404, the reconnect overlay, a notification row. Quiet by

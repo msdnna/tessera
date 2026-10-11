@@ -1,4 +1,5 @@
 <script setup>
+import { vLayer } from '@/utils/layerZ'
 // The due picker (v2, #3118 — mockups DuePicker, PackageJ «Срок»): one 560px
 // popover for the start, the due, the repeat and the due notification, opened
 // from the task modal's «Срок» row (D) and from a card's due pill. Replaces the
@@ -488,6 +489,7 @@ defineExpose({ model, pane, openPane })
     <div
       v-if="desktopShow"
       ref="panel"
+      v-layer
       class="dp-layer kit-layer"
       :style="panelStyle"
       :data-testid="testid"

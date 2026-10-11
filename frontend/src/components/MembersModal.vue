@@ -155,7 +155,11 @@ const invitationRows = computed(() =>
     const until = inv.expires_at ? new Date(inv.expires_at) : null
     const expired = !!until && until.getTime() <= Date.now()
     const declined = !!inv.declined_at
-    const rel = inv.sent_at ? formatRelative(inv.sent_at) : ''
+    // formatRelative is silent past this week (sent last Saturday, read on a
+    // Monday) — the row then fell back to no «отправлено» at all; a date says it.
+    const rel = inv.sent_at
+      ? formatRelative(inv.sent_at) || formatDate(inv.sent_at, { day: 'numeric', month: 'short' })
+      : ''
     return {
       ...inv,
       expired,

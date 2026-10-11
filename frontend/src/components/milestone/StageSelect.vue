@@ -1,4 +1,5 @@
 <script setup>
+import { vLayer } from '@/utils/layerZ'
 // The stage selector of the board's sub-toolbar (#2994, mockup StageMenu): «Этап:
 // Спринт 42 ▬ 58% ⌄» next to the grouping, in place of the old removable chip.
 // The menu lists the active stages with their progress, the planned ones, «Бэклог»
@@ -175,6 +176,7 @@ const sub = (m) => {
     <div
       v-if="open"
       ref="panel"
+      v-layer
       class="ss-menu"
       :style="style"
       role="listbox"

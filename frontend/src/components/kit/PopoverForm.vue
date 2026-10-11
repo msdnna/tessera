@@ -1,4 +1,5 @@
 <script setup>
+import { vLayer } from '@/utils/layerZ'
 // Tier 1 of the v2 interaction model (#2969): a small form at its anchor —
 // create or change something with one to three fields — instead of a centred
 // modal. No scrim; focus is kept inside; on a phone it becomes a BottomSheet.
@@ -175,6 +176,7 @@ const sheetShow = computed({
     <div
       v-if="showDesktop || (inline && show)"
       ref="panel"
+      v-layer
       class="pf kit-form"
       :class="{ inline }"
       role="dialog"
