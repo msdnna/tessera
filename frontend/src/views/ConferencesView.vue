@@ -14,7 +14,8 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NDatePicker, NPopconfirm, NSelect, NSpin, NTooltip } from 'naive-ui'
+import { NIcon, NPopconfirm, NSelect, NSpin, NTooltip } from 'naive-ui'
+import DateField from '@/components/kit/DateField.vue'
 import { useMessage } from '@/composables/useMessage'
 import {
   VideocamOutline,
@@ -77,8 +78,7 @@ const ws = useWorkspacesStore()
 const auth = useAuthStore()
 const session = useConferenceSession()
 const message = useMessage()
-const { firstDayOfWeek, dateTimePattern, formatDateTime, formatTime, formatDate, formatters } =
-  useFormat()
+const { formatDateTime, formatTime, formatDate, formatters } = useFormat()
 
 const list = ref([])
 const loading = ref(false)
@@ -1337,14 +1337,12 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
       <FormField :label="$t('conferences.create.at')" :message="$t('conferences.create.atHint')">
         <!-- «Когда»: the start and, beside it, how long it runs (#3052). -->
         <div class="when-row">
-          <n-date-picker
+          <DateField
             v-model:value="dlg.at"
             class="when-at"
             type="datetime"
-            clearable
-            :first-day-of-week="firstDayOfWeek"
-            :format="dateTimePattern"
             :placeholder="$t('conferences.create.at')"
+            testid="conference-at"
           />
           <n-select
             v-model:value="dlg.duration"

@@ -103,7 +103,7 @@ export function useAnchoredPanel({
     // in teleported layers: clicking them is not "outside".
     const el = target instanceof Element ? target : target.parentElement
     const layer = el?.closest(
-      '.n-popover, .n-dropdown-menu, .n-modal-container, .n-base-select-menu, .v-binder-follower-container',
+      '.n-popover, .n-dropdown-menu, .n-modal-container, .n-base-select-menu, .v-binder-follower-container, .kit-layer',
     )
     if (!layer) return false
     // …unless that layer is the popover's own ground: opened from inside a modal

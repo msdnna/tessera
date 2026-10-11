@@ -8,7 +8,8 @@
 // expiry are #3065 — drawn, not wired.
 import { computed, inject, nextTick, ref } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NInput, NSelect, NSwitch, NDatePicker, NTooltip } from 'naive-ui'
+import { NIcon, NInput, NSelect, NSwitch, NTooltip } from 'naive-ui'
+import DateField from '@/components/kit/DateField.vue'
 import {
   LogoGitlab,
   AddOutline,
@@ -394,18 +395,15 @@ defineExpose({ addNew, escape })
                 :options="f.closedPolicyOptions"
                 :disabled="ro"
               />
-              <!-- Naive formats and parses by its own pattern; without these two
-                   the field showed `yyyy-MM-dd` and started the week by interface
-                   language, ignoring both settings (#2932). -->
-              <n-date-picker
+              <!-- The v2 date field formats by the user's preset and starts the
+                   week where they chose (#2932, #3034). -->
+              <DateField
                 v-if="f.closedPolicy === 'period'"
                 v-model:value="f.closedAfter"
-                :format="f.datePattern"
-                :first-day-of-week="f.firstDayOfWeek"
                 :placeholder="t('gitlab.modal.binding.closedAfter')"
                 type="date"
-                clearable
                 :disabled="ro"
+                testid="gl-closed-after"
               />
             </div>
           </div>

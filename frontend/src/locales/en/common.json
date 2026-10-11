@@ -276,5 +276,10 @@
     "boards": "{n} board | {n} boards",
     "tasks": "{n} task | {n} tasks",
     "join": "{list} and {last}"
+  },
+  "date": {
+    "clear": "Clear",
+    "pickStart": "Pick the first day",
+    "pickEnd": "Now the last day"
   }
 }

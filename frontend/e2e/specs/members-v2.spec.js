@@ -54,6 +54,7 @@ test('группы, роли и передача владения', async ({ pag
   await expect(row.getByTestId('member-groups-cell')).toHaveText('Фронтенд')
   if (process.env.F3063_SHOT) await page.screenshot({ path: process.env.F3063_SHOT })
   await row.getByTestId('member-role').click()
+  if (process.env.F3063_MENU_SHOT) await page.screenshot({ path: process.env.F3063_MENU_SHOT })
   await page.getByTestId('member-transfer').click()
   const submit = page.getByTestId('transfer-owner').locator('.pf-primary')
   const name = page.getByTestId('transfer-owner-name')

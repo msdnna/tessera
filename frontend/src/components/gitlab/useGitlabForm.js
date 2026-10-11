@@ -21,7 +21,7 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
   const { t } = useI18n()
   const message = useMessage()
   const gl = useGitlabStore()
-  const { formatDateTime, datePattern, firstDayOfWeek } = useFormat()
+  const { formatDateTime } = useFormat()
   const ws = useWorkspacesStore()
 
   // ── connection (per-user) ──
@@ -1052,8 +1052,6 @@ export function useGitlabForm({ wsId, onSyncStarted } = {}) {
     open,
     gl,
     ws,
-    datePattern,
-    firstDayOfWeek,
     formatDateTime,
   }
 }

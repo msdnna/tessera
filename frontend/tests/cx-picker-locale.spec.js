@@ -28,6 +28,8 @@ vi.mock('@/api', () => ({
 }))
 
 const DuePicker = (await import('@/components/due/DuePicker.vue')).default
+const DateField = (await import('@/components/kit/DateField.vue')).default
+const DueCalendar = (await import('@/components/due/DueCalendar.vue')).default
 // The «Проект» window's stage tab (#2971) took over from MilestoneManager: its
 // new-stage row carries the range picker.
 const ProjectStagesTab = (await import('@/components/project/ProjectStagesTab.vue')).default
@@ -90,43 +92,51 @@ describe('due picker clock', () => {
   })
 })
 
-describe('stage tab date pickers', () => {
-  it('follow the date preset and the first day of the week', async () => {
-    const theme = useThemeStore()
-    theme.dateFormat = 'iso'
-    theme.weekStart = 0 // Sunday → Naive's firstDayOfWeek 6
-    const w = mountWith(ProjectStagesTab, {
-      project: { id: '11111111-1111-1111-1111-111111111111', slug: 'tessera' },
-    })
-    await nextTick()
-    w.findComponent(ProjectStagesTab).vm.startAdd()
-    await nextTick()
-    await nextTick()
-    const pickers = w.findAllComponents(NDatePicker)
-    expect(pickers.length).toBeGreaterThan(0)
-    for (const p of pickers) {
-      expect(p.props('format')).toBe('yyyy-MM-dd')
-      expect(p.props('firstDayOfWeek')).toBe(6)
-    }
+// The stage tab's dates are the v2 DateField (#3034) on the due picker's grid:
+// the calendar starts the week where the user chose, the label follows the preset.
+async function openStageDates() {
+  const w = mountWith(ProjectStagesTab, {
+    project: { id: '11111111-1111-1111-1111-111111111111', slug: 'tessera' },
+  })
+  await nextTick()
+  w.findComponent(ProjectStagesTab).vm.startAdd()
+  await nextTick()
+  await nextTick()
+  expect(w.findAllComponents(NDatePicker)).toHaveLength(0)
+  const field = w.findComponent(DateField)
+  field.vm.open()
+  await nextTick()
+  await nextTick()
+  return field
+}
+
+describe('stage tab date field', () => {
+  it('starts the week on Sunday when that is the preference', async () => {
+    useThemeStore().weekStart = 0
+    const field = await openStageDates()
+    expect(field.findComponent(DueCalendar).props('weekStart')).toBe(0)
   })
 
-  it('render the chosen preset, not Naive’s ISO default', async () => {
+  it('starts the week on Monday by default and labels by the preset', async () => {
     const theme = useThemeStore()
     theme.language = 'ru'
     theme.dateFormat = 'short' // 31.12.2026
     theme.weekStart = 1
-    const w = mountWith(ProjectStagesTab, {
-      project: { id: '11111111-1111-1111-1111-111111111111', slug: 'tessera' },
-    })
+    const field = await openStageDates()
+    expect(field.findComponent(DueCalendar).props('weekStart')).toBe(1)
+    // Two picks make the range; days 15–20 never repeat in a six-week grid.
+    const day = (n) =>
+      [...document.querySelectorAll('[data-testid="stage-new-dates-cal"] button')].find(
+        (b) => b.textContent.trim() === String(n),
+      )
+    day(15).click()
     await nextTick()
-    w.findComponent(ProjectStagesTab).vm.startAdd()
+    day(20).click()
     await nextTick()
-    await nextTick()
-    const pickers = w.findAllComponents(NDatePicker)
-    expect(pickers.length).toBeGreaterThan(0)
-    for (const p of pickers) {
-      expect(p.props('format')).toBe('dd.MM.yyyy')
-      expect(p.props('firstDayOfWeek')).toBe(0)
-    }
+    const now = new Date()
+    const mm = String(now.getMonth() + 1).padStart(2, '0')
+    expect(field.find('.df-text').text()).toBe(
+      `15.${mm}.${now.getFullYear()} – 20.${mm}.${now.getFullYear()}`,
+    )
   })
 })

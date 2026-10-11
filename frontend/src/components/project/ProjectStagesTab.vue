@@ -10,7 +10,8 @@
 import { computed, nextTick, onMounted, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { CAPS, cap } from '@/utils/keyCaps'
-import { NIcon, NDatePicker } from 'naive-ui'
+import { NIcon } from 'naive-ui'
+import DateField from '@/components/kit/DateField.vue'
 import { useMessage } from '@/composables/useMessage'
 import {
   AddOutline,
@@ -59,7 +60,7 @@ const emit = defineEmits(['count', 'changed', 'open-stage'])
 const { t } = useI18n()
 const message = useMessage()
 const ws = useWorkspacesStore()
-const { formatters, datePattern, firstDayOfWeek } = useFormat()
+const { formatters } = useFormat()
 
 const list = ref([])
 const loading = ref(true)
@@ -509,14 +510,12 @@ defineExpose({ focusFirst, escape })
           />
         </div>
         <div class="st-new-dates">
-          <n-date-picker
+          <DateField
             ref="newDatesEl"
             v-model:value="newRange"
             type="daterange"
-            size="small"
-            clearable
-            :format="datePattern"
-            :first-day-of-week="firstDayOfWeek"
+            :placeholder="t('milestones.stage.dates')"
+            testid="stage-new-dates"
             @keydown.enter.prevent="createStage"
           />
         </div>
