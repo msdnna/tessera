@@ -84,6 +84,11 @@ const (
 	// MAX_BODY_BYTES doesn't silently start dropping crash reports at the
 	// transport, where nothing would report the loss.
 	routeSentryTunnel = "/api/sentry-tunnel"
+	// A CSV/JSON file of tasks imported onto a board (#3095). Registered with its
+	// budget from the start, so it doesn't become the seventh repeat above: the
+	// handler's own ceiling (MaxBoardImportBytes) plus the framing and the mapping
+	// fields that travel beside the file.
+	routeBoardImport = "/api/boards/:id/import"
 )
 
 // docContentEnvelope is the slack the content route's budget carries on top of
@@ -182,6 +187,7 @@ func bodyLimitRoutes(cfg *config.Config) map[string]int64 {
 		routeWS:           middleware.NoBodyLimit,
 
 		routeSentryTunnel: handlers.MaxEnvelopeBytes,
+		routeBoardImport:  handlers.MaxBoardImportBytes + docContentEnvelope,
 	}
 }
 
@@ -480,6 +486,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/admin/jobs/:key/cancel", rh.CancelJob)
 			// A member's own export/import run: its state, its file, its stop (#3068).
 			protected.GET("/jobs/:id", rh.GetMyJob)
+			protected.GET("/jobs/:id/download", rh.DownloadJobFile)
 			protected.POST("/jobs/:id/cancel", rh.CancelMyJob)
 
 			// Project groups & projects (nested under a workspace).
@@ -561,6 +568,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/boards/:id/columns", rh.CreateColumn)
 			protected.GET("/boards/:id/columns", rh.ListColumns)
 			protected.POST("/boards/:id/tasks", rh.CreateTask)
+			// Export and import of a board's tasks, as background jobs (#3068).
+			protected.POST("/boards/:id/export", rh.ExportBoard)
+			protected.POST("/boards/:id/import", rh.ImportBoard)
 			protected.GET("/boards/:id/tasks", rh.ListBoardTasks)
 			protected.GET("/boards/:id/subtasks", rh.ListBoardSubtasks)
 			protected.GET("/boards/:id/archive", rh.ListBoardArchived)
