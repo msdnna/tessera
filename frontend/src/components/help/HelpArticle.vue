@@ -28,15 +28,13 @@ const theme = useThemeStore()
 // Text of a heading as the TOC sees it: the builder slugifies the plain
 // Markdown text, so tags stripped and entities decoded must produce the same
 // string here. Both sides then run it through uniqueHeadingId.
+//
+// Parsed, not regexed: a DOMParser document is inert (no scripts run, nothing
+// loads), and its textContent drops every tag and decodes every entity exactly
+// once. A replace chain did neither reliably — a tag split by another survived
+// the strip, and "&amp;lt;" (the text "&lt;") came out as "<".
 function headingText(inner) {
-  return inner
-    .replace(/<[^>]*>/g, '')
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .trim()
+  return new DOMParser().parseFromString(inner, 'text/html').body.textContent.trim()
 }
 
 const html = computed(() => {
