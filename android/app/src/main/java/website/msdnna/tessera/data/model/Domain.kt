@@ -67,6 +67,15 @@ data class Project(
     @SerializedName("estimation") val estimation: EstimationConfig? = null,
 )
 
+/** What deleting a project or a workspace takes with it (#3014) — the answer of
+ *  `GET /projects/{id}/counts` (boards, tasks) and `GET /workspaces/{id}/counts`
+ *  (projects too). Live boards only; every task on them, subtasks and archived. */
+data class DeleteCounts(
+    @SerializedName("projects") val projects: Int = 0,
+    @SerializedName("boards") val boards: Int = 0,
+    @SerializedName("tasks") val tasks: Int = 0,
+)
+
 /** A board within a project. Mirrors sqlc `Board`. */
 data class Board(
     @SerializedName("id") val id: String = "",
@@ -78,6 +87,31 @@ data class Board(
     @SerializedName("icon") val icon: String = "",
     @SerializedName("color") val color: String = "",
     @SerializedName("icon_mode") val iconMode: String = "badge",
+)
+
+/** One of the reader's favourite boards (#3115): the board, what its sidebar row
+ *  draws and where it sits in the list (`GET /workspaces/:id/favorites`). */
+data class BoardFavorite(
+    @SerializedName("board_id") val boardId: String = "",
+    @SerializedName("position") val position: Double = 0.0,
+    @SerializedName("name") val name: String = "",
+    @SerializedName("slug") val slug: String = "",
+    @SerializedName("icon") val icon: String = "",
+    @SerializedName("color") val color: String = "",
+    @SerializedName("icon_mode") val iconMode: String = "badge",
+    @SerializedName("project_id") val projectId: String = "",
+    @SerializedName("project_name") val projectName: String = "",
+) {
+    /** The board to open from the row. */
+    fun toBoard(): Board = Board(
+        id = boardId, projectId = projectId, name = name, icon = icon, color = color, iconMode = iconMode,
+    )
+}
+
+/** Neighbours of a moved favourite — the board ids above and below its new place. */
+data class FavoriteMoveRequest(
+    @SerializedName("before_id") val beforeId: String? = null,
+    @SerializedName("after_id") val afterId: String? = null,
 )
 
 /** Board update: [name] required; icon/colour/mode are tri-state — a null field is

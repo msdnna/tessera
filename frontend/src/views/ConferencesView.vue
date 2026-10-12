@@ -14,7 +14,8 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NDatePicker, NPopconfirm, NSpin, NTooltip } from 'naive-ui'
+import { NIcon, NPopconfirm, NSelect, NSpin, NTooltip } from 'naive-ui'
+import DateField from '@/components/kit/DateField.vue'
 import { useMessage } from '@/composables/useMessage'
 import {
   VideocamOutline,
@@ -30,9 +31,15 @@ import {
   TrashOutline,
   RepeatOutline,
   TrailSignOutline,
+  DocumentTextOutline,
+  CheckmarkOutline,
+  CloseOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
-import { conferences as confApi, workspaces as wsApi } from '@/api'
+import { conferences as confApi, documents as docsApi, workspaces as wsApi } from '@/api'
+import { builtinCards, builtinContent } from '@/utils/docTemplates'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useNotificationsStore } from '@/stores/notifications'
 import { useAuthStore } from '@/stores/auth'
 import { useConferenceSession } from '@/stores/conference'
 import { useFormat } from '@/composables/useFormat'
@@ -43,7 +50,17 @@ import { hueGrad, tagPillBg } from '@/utils/gradient'
 import { canModerateConference } from '@/utils/confLobby'
 import { groupConferences, nearestScheduled } from '@/utils/confList'
 import { leaveCallView } from '@/utils/confNav'
-import { stubTask } from '@/utils/featureStubs'
+import {
+  DURATIONS,
+  DEFAULT_DURATION,
+  durationLabel,
+  planAt,
+  planBody,
+  recurrenceLabel,
+  recurrenceMenuItems,
+  stageHref,
+  stageMenuItems,
+} from '@/utils/confPlan'
 import { copyText } from '@/utils/clipboard'
 import EmptyState from '@/components/EmptyState.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
@@ -61,8 +78,7 @@ const ws = useWorkspacesStore()
 const auth = useAuthStore()
 const session = useConferenceSession()
 const message = useMessage()
-const { firstDayOfWeek, dateTimePattern, formatDateTime, formatTime, formatDate, formatters } =
-  useFormat()
+const { formatDateTime, formatTime, formatDate, formatters } = useFormat()
 
 const list = ref([])
 const loading = ref(false)
@@ -120,6 +136,51 @@ async function load() {
   } finally {
     // Only the request that lit the spinner puts it out.
     if (mine === loadSeq) loading.value = false
+  }
+}
+
+// ── agendas (#3046) ─────────────────────────────────────────────────────
+// Documents pinned to a meeting — its agenda, its protocol — as a chip on the
+// row. One read for the whole list (conference_id → documents), refreshed when
+// the list's workspace changes and when a document moves on the socket.
+const agendas = ref({})
+let agendaSeq = 0
+async function loadAgendas() {
+  const mine = ++agendaSeq
+  const wsId = ws.currentId
+  if (!wsId) {
+    agendas.value = {}
+    return
+  }
+  try {
+    const { data } = await docsApi.byConferences(wsId)
+    if (mine !== agendaSeq) return
+    const out = {}
+    for (const d of data || []) (out[d.conference_id] ||= []).push(d)
+    agendas.value = out
+  } catch {
+    // The chips are a convenience; the list stands without them.
+  }
+}
+const agendaOf = (c) => agendas.value[c.id]?.[0] || null
+function openAgenda(doc) {
+  router.push(`/documents/${doc.slug || doc.id}`)
+}
+// «Создать повестку» from a row's «⋯»: the built-in agenda, pinned to the
+// meeting and named after it — the same document the gallery would make.
+async function createAgenda(c) {
+  const card = builtinCards().find((x) => x.key === 'meeting')
+  try {
+    const { data: doc } = await docsApi.create(ws.currentId, {
+      title: `${card.title}: ${c.title}`,
+      icon: card.icon,
+      conference_id: c.id,
+    })
+    const content = builtinContent('meeting')
+    if (content) await docsApi.updateContent(doc.id, content, doc.updated_at)
+    openAgenda(doc)
+  } catch (e) {
+    message.error(e.message)
   }
 }
 
@@ -271,25 +332,85 @@ async function inviteOne(userId) {
 // becomes 30 is how people find out about a retention policy by losing a file.
 const RECORDING_TTL_DEFAULT = 30
 const scheduleBtn = ref(null)
-const dlg = ref({
-  show: false,
-  saving: false,
-  title: '',
-  description: '',
-  at: null,
-  ttl: RECORDING_TTL_DEFAULT,
-})
-
-function openDialog() {
-  dlg.value = {
-    show: true,
+// One form for both: «Запланировать» (editId '') and «Изменить» from a row's
+// menu (#3034) — the plan is the same fields either way. `anchor` is where the
+// form floats: the header button, or the row's «⋯».
+function blankDialog() {
+  return {
+    show: false,
     saving: false,
+    editId: '',
+    taskId: null,
+    anchor: null,
     title: '',
     description: '',
     at: null,
     ttl: RECORDING_TTL_DEFAULT,
+    // The meeting's length (#3052): the mockup's 30 minutes unless said otherwise.
+    duration: DEFAULT_DURATION,
+    recurrence: '',
+    milestoneId: null,
   }
 }
+const dlg = ref(blankDialog())
+
+function openDialog() {
+  dlg.value = { ...blankDialog(), show: true }
+  loadStages()
+}
+
+function openEdit(c, anchor) {
+  dlg.value = {
+    ...blankDialog(),
+    show: true,
+    editId: c.id,
+    // The PATCH is a full replace of task_id: carried over, or the edit would
+    // unpin the task the meeting is about.
+    taskId: c.task_id || null,
+    anchor,
+    title: c.title || '',
+    description: c.description || '',
+    at: c.scheduled_at ? Date.parse(c.scheduled_at) : null,
+    ttl: c.recording_ttl_days ?? RECORDING_TTL_DEFAULT,
+    duration: c.duration_minutes || null,
+    recurrence: c.recurrence || '',
+    milestoneId: c.milestone_id || null,
+  }
+  loadStages()
+}
+
+// The workspace's stages for «К этапу» (#3053), fetched when the form opens.
+const stages = ref([])
+async function loadStages() {
+  if (!ws.currentId) return
+  try {
+    const { data } = await wsApi.milestones(ws.currentId)
+    stages.value = data || []
+  } catch {
+    // Non-fatal: the menu then says there are no stages.
+    stages.value = []
+  }
+}
+const stageBtn = ref(null)
+const repeatBtn = ref(null)
+const stageMenu = ref(false)
+const repeatMenu = ref(false)
+const stageItems = computed(() => stageMenuItems(stages.value, dlg.value.milestoneId, t))
+const repeatItems = computed(() => recurrenceMenuItems(dlg.value.recurrence, t))
+const dlgStageTitle = computed(
+  () => stages.value.find((m) => m.id === dlg.value.milestoneId)?.title || '',
+)
+function pickStage(key) {
+  dlg.value.milestoneId = key || null
+  stageMenu.value = false
+}
+function pickRepeat(key) {
+  dlg.value.recurrence = key === 'none' ? '' : key
+  repeatMenu.value = false
+}
+const durationOptions = computed(() =>
+  DURATIONS.map((n) => ({ value: n, label: durationLabel(n, t) })),
+)
 
 async function submit() {
   const title = dlg.value.title.trim()
@@ -298,16 +419,27 @@ async function submit() {
     return
   }
   dlg.value.saving = true
+  const d = dlg.value
+  const body = {
+    title,
+    description: d.description.trim(),
+    scheduled_at: d.at ? new Date(d.at).toISOString() : null,
+    // A cleared field (v-model.number answers '') falls back to the server's
+    // own default rather than being sent as 0 — «хранить вечно» is a decision,
+    // not something an empty box should make on the user's behalf.
+    recording_ttl_days: Number.isFinite(d.ttl) ? d.ttl : RECORDING_TTL_DEFAULT,
+    ...planBody(d),
+  }
   try {
-    const { data } = await confApi.create(ws.currentId, {
-      title,
-      description: dlg.value.description.trim(),
-      scheduled_at: dlg.value.at ? new Date(dlg.value.at).toISOString() : null,
-      // A cleared field (v-model.number answers '') falls back to the server's
-      // own default rather than being sent as 0 — «хранить вечно» is a decision,
-      // not something an empty box should make on the user's behalf.
-      recording_ttl_days: Number.isFinite(dlg.value.ttl) ? dlg.value.ttl : RECORDING_TTL_DEFAULT,
-    })
+    if (d.editId) {
+      await confApi.update(d.editId, { ...body, task_id: d.taskId })
+      dlg.value.show = false
+      message.success(t('conferences.edit.saved'))
+      await load()
+      if (openId.value === d.editId) loadDetail(d.editId)
+      return
+    }
+    const { data } = await confApi.create(ws.currentId, body)
     dlg.value.show = false
     message.success(t('conferences.create.created'))
     await load()
@@ -427,22 +559,58 @@ function runningFor(c) {
     ? t('conferences.list.runningMin', { n: mins })
     : t('conferences.list.runningH', { h: Math.floor(mins / 60), m: mins % 60 })
 }
-// The time column of a row: the planned time, the day a finished one ended, a
-// dash for a plan without a time.
+// The time column of a row: the planned time (the next occurrence of a repeat,
+// #3052), the day a finished one ended, a dash for a plan without a time.
 function rowTime(c) {
   if (c.status === 'ended')
     return c.ended_at ? formatDate(c.ended_at, { day: 'numeric', month: 'short' }) : '—'
-  if (c.scheduled_at) return formatTime(c.scheduled_at)
+  if (planAt(c)) return formatTime(planAt(c))
   return '—'
 }
+const dur = (c) => (c.status === 'ended' ? '' : durationLabel(c.duration_minutes, t))
+const repeatOf = (c) => (c.recurrence ? recurrenceLabel(c.recurrence, t) : '')
+// Who may change a meeting's plan from the list: its author or a workspace
+// manager (a host is only known inside the call; the server has the last word).
+const canEditRow = (c) => !!c && (c.created_by === me.value || ws.canManage)
 
 // The row's «⋯»: copy the link, delete (irreversible → a two-step item).
 const menu = ref({ show: false, conf: null, anchor: null })
 function openMenu(c, e) {
   menu.value = { show: true, conf: c, anchor: e.currentTarget }
 }
+// «Принять / Отклонить» (#3051) in the row's menu too — the way to change an
+// answer once the row only shows it.
+const rsvpItems = (c) =>
+  c && c.my_rsvp && c.status !== 'ended'
+    ? [
+        c.my_rsvp !== 'accepted' && {
+          key: 'accept',
+          label: t('conferences.rsvp.acceptItem'),
+          icon: CheckmarkOutline,
+        },
+        c.my_rsvp !== 'declined' && {
+          key: 'decline',
+          label: t('conferences.rsvp.declineItem'),
+          icon: CloseOutline,
+        },
+      ].filter(Boolean)
+    : []
 const menuItems = computed(() => [
+  ...(canEditRow(menu.value.conf)
+    ? [
+        {
+          key: 'edit',
+          label: t('conferences.edit.action'),
+          icon: CreateOutline,
+          testid: 'conference-edit',
+        },
+      ]
+    : []),
   { key: 'link', label: t('conferences.list.copyLink'), icon: LinkOutline },
+  menu.value.conf && agendaOf(menu.value.conf)
+    ? { key: 'agenda', label: t('conferences.agenda.open'), icon: DocumentTextOutline }
+    : { key: 'agenda-new', label: t('conferences.agenda.create'), icon: DocumentTextOutline },
+  ...rsvpItems(menu.value.conf),
   { gap: true },
   {
     key: 'delete',
@@ -457,7 +625,50 @@ function onMenu(key) {
   menu.value.show = false
   if (!c) return
   if (key === 'link') copyLink(c)
+  else if (key === 'agenda') openAgenda(agendaOf(c))
+  else if (key === 'agenda-new') createAgenda(c)
+  else if (key === 'accept') respond(c, 'accepted')
+  else if (key === 'decline') respond(c, 'declined')
+  else if (key === 'edit') openEdit(c, menu.value.anchor)
   else if (key === 'delete') remove(c)
+}
+
+// The reader's answer to an invitation (#3051), from a row, its menu or the
+// lobby. Optimistic: the row shows it at once and a refusal puts it back. The
+// server closes the invitation in the feed; the bell's copy follows here.
+const notes = useNotificationsStore()
+async function respond(c, response) {
+  if (!c || c.my_rsvp === response) return
+  const prev = c.my_rsvp
+  c.my_rsvp = response
+  const mine = detail.value?.participants?.find((p) => p.user_id === me.value)
+  const prevMine = mine?.rsvp
+  if (mine && detail.value?.conference?.id === c.id) mine.rsvp = response
+  try {
+    await confApi.rsvp(c.id, response)
+    const now = new Date().toISOString()
+    for (const n of notes.items)
+      if (n.kind === 'conference_invite' && n.payload?.conference_id === c.id) {
+        n.rsvp = response
+        if (!n.read_at) n.read_at = now
+      }
+  } catch (e) {
+    c.my_rsvp = prev
+    if (mine) mine.rsvp = prevMine
+    message.error(e.message)
+  }
+}
+// The lobby's answer: the reader's own seat in the call, when there is one.
+const myRsvp = computed(
+  () => detail.value?.participants?.find((p) => p.user_id === me.value)?.rsvp || null,
+)
+function respondHere(response) {
+  const c = detail.value?.conference
+  if (!c) return
+  const row = list.value.find((x) => x.id === c.id) || { ...c, my_rsvp: myRsvp.value }
+  respond(row, response)
+  const mine = detail.value.participants.find((p) => p.user_id === me.value)
+  if (mine) mine.rsvp = response
 }
 async function copyLink(c) {
   const ok = await copyText(`${location.origin}/conferences/${c.id}`)
@@ -513,8 +724,11 @@ function minimize() {
   if (detail.value) leaveCallView(router, detail.value.conference.id)
 }
 
-const recurrenceTask = stubTask('meet.recurrence')
-const stageTask = stubTask('meet.stage')
+// The stage pill of the call (#3053): its title and the stage page.
+const callStage = computed(() => {
+  const c = detail.value?.conference
+  return c?.milestone_title ? { title: c.milestone_title, href: stageHref(c) } : null
+})
 
 useShortcuts({
   'meet.schedule': () => ws.currentId && !openId.value && openDialog(),
@@ -561,6 +775,7 @@ watch(
       router.push('/conferences')
     }
     load()
+    loadAgendas()
   },
 )
 
@@ -568,6 +783,8 @@ watch(
 // reload, since «идёт сейчас» is the whole reason to open this section.
 useRealtime(
   (ev) => {
+    // A document pinned to (or unpinned from) a meeting moves a row's chip.
+    if (ev.scope === ws.currentId && ev.type?.startsWith('document')) loadAgendas()
     if (ev.scope !== ws.currentId || !ev.type?.startsWith('conference')) return
     // A recording starting or finishing changes one panel, not the page: the
     // conference itself is untouched, so refetching it (and the list behind it)
@@ -610,6 +827,7 @@ onMounted(() => {
     mq.addEventListener?.('change', onMq)
   }
   load()
+  loadAgendas()
   if (openId.value) loadDetail(openId.value)
 })
 onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
@@ -688,6 +906,14 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               </div>
               <div class="live-title">{{ c.title }}</div>
               <div class="meta">
+                <router-link
+                  v-if="c.milestone_title && stageHref(c)"
+                  class="stage-pill"
+                  :to="stageHref(c)"
+                  @click.stop
+                >
+                  <n-icon :component="TrailSignOutline" :size="12" />{{ c.milestone_title }}
+                </router-link>
                 <span>{{ timeLine(c) }}</span>
                 <span>{{
                   $t('conferences.row.participantCount', { count: c.participant_count })
@@ -695,6 +921,17 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
                 <span v-if="c.active_count">{{
                   $t('conferences.row.activeCount', { count: c.active_count })
                 }}</span>
+                <button
+                  v-if="agendaOf(c)"
+                  type="button"
+                  class="agenda-chip"
+                  :title="$t('conferences.agenda.open')"
+                  data-testid="conference-agenda"
+                  @click.stop="openAgenda(agendaOf(c))"
+                >
+                  <n-icon :component="DocumentTextOutline" :size="12" />
+                  <span class="agenda-chip-t">{{ agendaOf(c).title }}</span>
+                </button>
               </div>
             </div>
             <button
@@ -720,6 +957,9 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
             >
               <div class="when" :class="{ next: nearest && nearest.id === c.id }">
                 <span class="when-t">{{ rowTime(c) }}</span>
+                <span v-if="dur(c)" class="when-d" data-testid="conference-row-duration">{{
+                  dur(c)
+                }}</span>
               </div>
               <div class="row-body">
                 <div class="row-title">
@@ -734,6 +974,18 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
                 </div>
                 <div class="meta">
                   <span v-if="c.status === 'ended'">{{ timeLine(c) }}</span>
+                  <span v-if="repeatOf(c)" data-testid="conference-row-repeat">
+                    <n-icon :component="RepeatOutline" :size="12" />{{ repeatOf(c) }}
+                  </span>
+                  <router-link
+                    v-if="c.milestone_title && stageHref(c)"
+                    class="stage-pill"
+                    :to="stageHref(c)"
+                    data-testid="conference-row-stage"
+                    @click.stop
+                  >
+                    <n-icon :component="TrailSignOutline" :size="12" />{{ c.milestone_title }}
+                  </router-link>
                   <span>
                     <n-icon :component="PeopleOutline" :size="12" />
                     {{ $t('conferences.row.participantCount', { count: c.participant_count }) }}
@@ -746,8 +998,54 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
                       ? $t('conferences.row.author', { name: c.created_by_name })
                       : $t('conferences.row.authorUnknown')
                   }}</span>
+                  <button
+                    v-if="agendaOf(c)"
+                    type="button"
+                    class="agenda-chip"
+                    :title="$t('conferences.agenda.open')"
+                    data-testid="conference-agenda"
+                    @click.stop="openAgenda(agendaOf(c))"
+                  >
+                    <n-icon :component="DocumentTextOutline" :size="12" />
+                    <span class="agenda-chip-t">{{ agendaOf(c).title }}</span>
+                  </button>
                 </div>
               </div>
+              <!-- «Принять / Отклонить» an invitation still unanswered (#3051);
+                   once answered the row says how, and its menu changes it. -->
+              <span
+                v-if="c.my_rsvp === 'pending' && c.status !== 'ended'"
+                class="row-rsvp"
+                data-testid="conference-row-rsvp"
+              >
+                <button
+                  type="button"
+                  class="kit-btn small primary"
+                  data-testid="conference-row-accept"
+                  @click.stop="respond(c, 'accepted')"
+                >
+                  {{ $t('conferences.rsvp.accept') }}
+                </button>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  data-testid="conference-row-decline"
+                  @click.stop="respond(c, 'declined')"
+                >
+                  {{ $t('conferences.rsvp.decline') }}
+                </button>
+              </span>
+              <span
+                v-else-if="
+                  (c.my_rsvp === 'accepted' || c.my_rsvp === 'declined') &&
+                  c.status !== 'ended' &&
+                  !(c.created_by && c.created_by === me)
+                "
+                class="row-answer"
+                :class="c.my_rsvp"
+                data-testid="conference-row-answer"
+                >{{ $t(`conferences.rsvp.${c.my_rsvp}`) }}</span
+              >
               <button
                 v-if="nearest && nearest.id === c.id"
                 type="button"
@@ -908,7 +1206,19 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               <div class="meta">
                 <span>
                   <n-icon :component="TimeOutline" :size="12" />{{ timeLine(detail.conference) }}
+                  <template v-if="dur(detail.conference)">· {{ dur(detail.conference) }}</template>
                 </span>
+                <span v-if="repeatOf(detail.conference)">
+                  <n-icon :component="RepeatOutline" :size="12" />{{ repeatOf(detail.conference) }}
+                </span>
+                <router-link
+                  v-if="callStage && callStage.href"
+                  class="stage-pill"
+                  :to="callStage.href"
+                  data-testid="conference-lobby-stage"
+                >
+                  <n-icon :component="TrailSignOutline" :size="12" />{{ callStage.title }}
+                </router-link>
                 <span>{{
                   $t('conferences.row.participantCount', {
                     count: detail.participants.length,
@@ -921,6 +1231,36 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               <p v-if="detail.conference.description" class="desc">
                 {{ detail.conference.description }}
               </p>
+              <!-- The reader's answer to the invitation (#3051). -->
+              <div
+                v-if="myRsvp && detail.conference.status !== 'ended'"
+                class="lobby-rsvp"
+                data-testid="conference-rsvp"
+                :data-rsvp="myRsvp"
+              >
+                <span class="lobby-rsvp-l">{{ $t('conferences.rsvp.title') }}</span>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  :class="{ chosen: myRsvp === 'accepted' }"
+                  :aria-pressed="myRsvp === 'accepted'"
+                  data-testid="conference-rsvp-accept"
+                  @click="respondHere('accepted')"
+                >
+                  <n-icon v-if="myRsvp === 'accepted'" :component="CheckmarkOutline" :size="13" />
+                  {{ $t('conferences.rsvp.accepted') }}
+                </button>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  :class="{ chosen: myRsvp === 'declined' }"
+                  :aria-pressed="myRsvp === 'declined'"
+                  data-testid="conference-rsvp-decline"
+                  @click="respondHere('declined')"
+                >
+                  {{ $t('conferences.rsvp.declined') }}
+                </button>
+              </div>
             </div>
             <!-- Always enabled: a conference is a reusable room (#2879), so even
                  a legacy "ended" one is joined rather than being a dead end. -->
@@ -947,6 +1287,9 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               :can-invite="canInvite"
               :invitable="invitable"
               :invited="invited"
+              :stage="callStage"
+              :members="members"
+              :default-board-id="detail.conference.default_board_id || ''"
               @hangup="leave"
               @invite="inviteOne"
               @minimize="minimize"
@@ -969,13 +1312,13 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
          #2969 / #2983) — it replaced the modal. -->
     <PopoverForm
       v-model:show="dlg.show"
-      :anchor="() => scheduleBtn || null"
+      :anchor="() => dlg.anchor || scheduleBtn || null"
       placement="bottom-end"
       :offset="{ x: 0, y: 6 }"
       :width="400"
-      :title="$t('conferences.create.title')"
-      :subtitle="$t('conferences.create.subtitle')"
-      :primary="$t('conferences.create.submit')"
+      :title="dlg.editId ? $t('conferences.edit.title') : $t('conferences.create.title')"
+      :subtitle="dlg.editId ? $t('conferences.edit.subtitle') : $t('conferences.create.subtitle')"
+      :primary="dlg.editId ? $t('conferences.edit.submit') : $t('conferences.create.submit')"
       :busy-label="$t('common.form.saving')"
       :busy="dlg.saving"
       :disabled="!dlg.title.trim()"
@@ -992,14 +1335,25 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
         />
       </FormField>
       <FormField :label="$t('conferences.create.at')" :message="$t('conferences.create.atHint')">
-        <n-date-picker
-          v-model:value="dlg.at"
-          type="datetime"
-          clearable
-          :first-day-of-week="firstDayOfWeek"
-          :format="dateTimePattern"
-          :placeholder="$t('conferences.create.at')"
-        />
+        <!-- «Когда»: the start and, beside it, how long it runs (#3052). -->
+        <div class="when-row">
+          <DateField
+            v-model:value="dlg.at"
+            class="when-at"
+            type="datetime"
+            :placeholder="$t('conferences.create.at')"
+            testid="conference-at"
+          />
+          <n-select
+            v-model:value="dlg.duration"
+            class="when-len"
+            :options="durationOptions"
+            :placeholder="$t('conferences.plan.duration')"
+            :aria-label="$t('conferences.plan.duration')"
+            clearable
+            data-testid="conference-duration"
+          />
+        </div>
       </FormField>
       <FormField>
         <textarea
@@ -1021,26 +1375,59 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
           data-testid="conference-ttl"
         />
       </FormField>
-      <!-- A stage and a repeat are #3053 / #3052: visible, inactive. -->
-      <div class="form-stubs">
-        <n-tooltip :delay="300">
-          <template #trigger>
-            <span class="form-stub" data-testid="conference-stage-stub">
-              <n-icon :component="TrailSignOutline" :size="13" />
-              {{ $t('conferences.create.stage') }}
-            </span>
-          </template>
-          {{ $t('common.stub.soon', { n: stageTask }) }}
-        </n-tooltip>
-        <n-tooltip :delay="300">
-          <template #trigger>
-            <span class="form-stub" data-testid="conference-repeat-stub">
-              <n-icon :component="RepeatOutline" :size="13" />
-              {{ $t('conferences.create.repeat') }}
-            </span>
-          </template>
-          {{ $t('common.stub.soon', { n: recurrenceTask }) }}
-        </n-tooltip>
+      <!-- The mockup's last line (#3053 / #3052): «К этапу [Спринт 43]» and
+           «не повторять», each a menu — in place, inside the form: a menu
+           teleported to <body> would read as a click outside and close it. -->
+      <div class="form-plan">
+        <button
+          ref="stageBtn"
+          type="button"
+          class="plan-btn"
+          data-testid="conference-stage"
+          @click="stageMenu = !stageMenu"
+        >
+          <n-icon :component="LinkOutline" :size="13" />
+          {{ $t('conferences.plan.stage') }}
+          <span v-if="dlgStageTitle" class="stage-pill">
+            <n-icon :component="TrailSignOutline" :size="12" />{{ dlgStageTitle }}
+          </span>
+          <span v-else class="plan-none">{{ $t('conferences.plan.noStage') }}</span>
+        </button>
+        <span class="grow" />
+        <button
+          ref="repeatBtn"
+          type="button"
+          class="plan-btn"
+          :disabled="!dlg.at"
+          :title="!dlg.at ? $t('conferences.create.atHint') : ''"
+          data-testid="conference-repeat"
+          @click="repeatMenu = !repeatMenu"
+        >
+          <n-icon :component="RepeatOutline" :size="13" />
+          {{ recurrenceLabel(dlg.at ? dlg.recurrence : '', $t) }}
+        </button>
+        <ActionMenu
+          v-model:show="stageMenu"
+          in-place
+          :anchor="() => stageBtn"
+          placement="bottom-start"
+          :width="260"
+          :header="$t('conferences.plan.stageTitle')"
+          :items="stageItems"
+          testid="conference-stage-menu"
+          @select="pickStage"
+        />
+        <ActionMenu
+          v-model:show="repeatMenu"
+          in-place
+          :anchor="() => repeatBtn"
+          placement="bottom-end"
+          :width="220"
+          :header="$t('conferences.plan.repeatTitle')"
+          :items="repeatItems"
+          testid="conference-repeat-menu"
+          @select="pickRepeat"
+        />
       </div>
     </PopoverForm>
   </div>
@@ -1281,6 +1668,69 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   align-items: center;
   gap: 4px;
 }
+/* The meeting's agenda (задача 3046): a pill in the meta line, a door to it. */
+.agenda-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  height: 20px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-radius: var(--t-r-pill);
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.agenda-chip:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.agenda-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--t-primary);
+}
+.agenda-chip-t {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* «Принять / Отклонить» (#3051): the unanswered invitation's two buttons, and
+   once answered a quiet word — accented for «иду», muted for «не иду». */
+.row-rsvp {
+  flex: none;
+  display: inline-flex;
+  gap: 6px;
+}
+.row-answer {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-text3);
+}
+.row-answer.accepted {
+  color: var(--t-primary);
+}
+.lobby-rsvp {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.lobby-rsvp-l {
+  font-size: 12.5px;
+  color: var(--t-text3);
+  margin-right: 4px;
+}
+.lobby-rsvp .kit-btn.chosen {
+  background: color-mix(in srgb, var(--t-primary) 14%, var(--t-card));
+  color: var(--t-primary);
+  font-weight: 600;
+}
 .row-icon {
   flex: none;
   display: inline-flex;
@@ -1430,19 +1880,83 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
   color: var(--t-text2);
   white-space: pre-wrap;
 }
-.form-stubs {
+.when-row {
   display: flex;
-  gap: 14px;
+  gap: 8px;
+}
+.when-at {
+  flex: 1;
+  min-width: 0;
+}
+.when-len {
+  flex: none;
+  width: 116px;
+}
+/* «К этапу [пилл]» · «не повторять» — the mockup's quiet last line. */
+.form-plan {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
   padding-top: 2px;
 }
-.form-stub {
+.plan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.plan-btn:hover:not(:disabled) {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.plan-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.plan-btn:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+.plan-btn :deep(.n-icon) {
+  color: var(--t-text3);
+}
+.plan-none {
+  color: var(--t-text3);
+}
+/* The stage pill (#3053): the mockup's pill chip with the trail sign. */
+.stage-pill {
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  font-size: 12.5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.stage-pill:hover {
+  color: var(--t-text1);
+  background: color-mix(in srgb, var(--t-pill) 70%, var(--t-hover));
+}
+.meta .stage-pill {
+  height: 20px;
+}
+.when-d {
+  display: block;
+  font-size: 11.5px;
   color: var(--t-text3);
-  opacity: 0.75;
-  cursor: default;
 }
 /* No keyboard on a touch screen — no key caps either. */
 @media (hover: none) and (pointer: coarse) {

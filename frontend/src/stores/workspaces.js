@@ -14,6 +14,9 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   const currentId = ref(sGet('tessera_ws') || '')
   const groups = ref([])
   const projects = ref([])
+  // «Архив проектов» (#3005): the tree leaves archived projects out; this list
+  // is the sidebar's archive row and lets the «Проект» window open one of them.
+  const archivedProjects = ref([])
   const boardsByProject = ref({}) // projectId -> board[]
   // Quick-action registry for the editor popup — loaded once per workspace, not
   // per opened task. `customCommands` keeps the raw dictionary for the settings
@@ -85,10 +88,11 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     currentId.value = id
     sSet('tessera_ws', id)
     boardsByProject.value = {}
-    const [g, p] = await Promise.all([wsApi.groups(id), wsApi.projects(id)])
+    const [g, p, a] = await Promise.all([wsApi.groups(id), wsApi.projects(id), fetchArchived(id)])
     if (seq !== selectSeq) return // superseded by a later switch — leave its tree alone
     groups.value = g.data || []
     projects.value = p.data || []
+    archivedProjects.value = a
     await loadCommands(id)
     await prefetchExpandedBoards()
   }
@@ -149,7 +153,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
   async function refresh() {
     const id = currentId.value
     if (!id) return
-    const [g, p] = await Promise.all([wsApi.groups(id), wsApi.projects(id)])
+    const [g, p, a] = await Promise.all([wsApi.groups(id), wsApi.projects(id), fetchArchived(id)])
     // The switch away is what this guards, not another refresh: a rename or a
     // resync can leave this request in flight while the reader moves on, and
     // the tree it answers with belongs to the workspace they left — a sidebar
@@ -158,6 +162,26 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     if (id !== currentId.value) return
     groups.value = g.data || []
     projects.value = p.data || []
+    archivedProjects.value = a
+  }
+
+  // The archive list is a side read: a failure leaves the row out, not the tree.
+  async function fetchArchived(id) {
+    try {
+      const res = await wsApi.archivedProjects?.(id)
+      return res?.data || []
+    } catch {
+      return []
+    }
+  }
+
+  // A project, live or archived — the «Проект» window opens both.
+  function projectById(id) {
+    return (
+      projects.value.find((p) => p.id === id) ||
+      archivedProjects.value.find((p) => p.id === id) ||
+      null
+    )
   }
 
   // What a reconnect has to re-read: the workspace *set* first, then the tree.
@@ -197,6 +221,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     // projects every click 403s on.
     groups.value = []
     projects.value = []
+    archivedProjects.value = []
     boardsByProject.value = {}
   }
 
@@ -422,6 +447,7 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     list.value = []
     groups.value = []
     projects.value = []
+    archivedProjects.value = []
     boardsByProject.value = {}
     builtinCommands.value = []
     customCommands.value = []
@@ -437,6 +463,8 @@ export const useWorkspacesStore = defineStore('workspaces', () => {
     canManage,
     groups,
     projects,
+    archivedProjects,
+    projectById,
     boardsByProject,
     commands,
     customCommands,

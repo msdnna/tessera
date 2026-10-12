@@ -25,6 +25,10 @@ data class Document(
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("updated_at") val updatedAt: String = "",
     @SerializedName("content") val content: JsonElement? = null,
+    /** The stage the document is pinned to (#3044) — a chip over the text. */
+    @SerializedName("milestone_id") val milestoneId: String? = null,
+    /** The meeting it is the agenda of (#3046). */
+    @SerializedName("conference_id") val conferenceId: String? = null,
 )
 
 /**
@@ -167,6 +171,8 @@ data class DocumentTemplate(
     @SerializedName("updated_at") val updatedAt: String = "",
     @SerializedName("author_name") val authorName: String? = null,
     @SerializedName("content") val content: JsonElement? = null,
+    /** Gallery category (#3045): sprint · product · engineering · meetings, "" — none. */
+    @SerializedName("category") val category: String = "",
 )
 
 /**
@@ -179,6 +185,7 @@ data class CreateDocumentTemplateRequest(
     @SerializedName("icon") val icon: String = "",
     @SerializedName("content") val content: JsonElement? = null,
     @SerializedName("document_id") val documentId: String? = null,
+    @SerializedName("category") val category: String = "",
 )
 
 data class UpdateDocumentTemplateRequest(

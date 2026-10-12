@@ -26,6 +26,17 @@ type adminUserView struct {
 	EmailVerified bool      `json:"email_verified"`
 	CreatedAt     time.Time `json:"created_at"`
 	AvatarURL     string    `json:"avatar_url,omitempty"`
+	// When the person was last in the app (token issue, socket) — «Последний
+	// вход» (#3078). Nil: never since the column appeared.
+	LastSeenAt *time.Time `json:"last_seen_at"`
+	// The workspaces they belong to, by name — «Пространства» (#3078).
+	Workspaces []adminUserSpace `json:"workspaces"`
+}
+
+type adminUserSpace struct {
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Role string `json:"role"`
 }
 
 // requireGlobalAdmin resolves the caller and ensures they're a global admin,
@@ -50,11 +61,27 @@ func (h *API) ListAllUsers(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	members, err := h.q.ListAllMemberships(c)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	spaces := map[string][]adminUserSpace{}
+	for _, m := range members {
+		k := m.UserID.String()
+		spaces[k] = append(spaces[k], adminUserSpace{
+			ID: m.WorkspaceID.String(), Name: m.WorkspaceName, Role: m.Role,
+		})
+	}
 	out := make([]adminUserView, 0, len(rows))
 	for _, u := range rows {
 		v := adminUserView{
 			ID: u.ID.String(), Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin,
 			Active: u.Active, EmailVerified: u.EmailVerified, CreatedAt: u.CreatedAt,
+			LastSeenAt: u.LastSeenAt, Workspaces: spaces[u.ID.String()],
+		}
+		if v.Workspaces == nil {
+			v.Workspaces = []adminUserSpace{}
 		}
 		if has, herr := h.q.UserHasAvatar(c, u.ID); herr == nil && has {
 			v.AvatarURL = "/api/users/" + u.ID.String() + "/avatar"
@@ -90,6 +117,9 @@ func (h *API) SetUserAdmin(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// The socket snapshots the admin flag at connect time (instance-level events,
+	// #3067): reconnect the user's sockets so the change applies to them now.
+	h.hub.DropUser(id)
 	c.Status(http.StatusNoContent)
 }
 
@@ -131,4 +161,50 @@ func (h *API) CreateUserResetLink(c *gin.Context) {
 	})
 	mail.SendAsync(h.mailer, user.Email, subject, body)
 	c.JSON(http.StatusOK, gin.H{"link": link})
+}
+
+// AdminListInvitations lists every invitation not yet accepted, across all
+// workspaces (global admin only) — the admin panel's «Приглашения» (#3079).
+// Expired and declined ones are listed too: the panel tells them apart.
+func (h *API) AdminListInvitations(c *gin.Context) {
+	if _, ok := h.requireGlobalAdmin(c); !ok {
+		return
+	}
+	rows, err := h.q.ListAllInvitations(c)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	out := make([]gin.H, 0, len(rows))
+	for _, r := range rows {
+		out = append(out, gin.H{
+			"id": r.ID, "workspace_id": r.WorkspaceID, "workspace_name": r.WorkspaceName,
+			"email": r.Email, "role": r.Role, "created_at": r.CreatedAt,
+			"expires_at": r.ExpiresAt, "sent_at": r.SentAt, "send_count": r.SendCount,
+			"declined_at": r.DeclinedAt, "invited_by_name": r.InvitedByName,
+		})
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// AdminDeleteInvitation revokes an invitation of any workspace (global admin
+// only, #3079). An accepted one is not an open invitation any more — 404.
+func (h *API) AdminDeleteInvitation(c *gin.Context) {
+	if _, ok := h.requireGlobalAdmin(c); !ok {
+		return
+	}
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	n, err := h.q.DeleteInvitationAny(c, id)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if n == 0 {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found"})
+		return
+	}
+	c.Status(http.StatusNoContent)
 }

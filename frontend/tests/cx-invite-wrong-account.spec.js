@@ -5,15 +5,33 @@
 // адресу», а из выходов — только ссылка «На главную». Токен при этом уже
 // потрачен на визит, второй ссылки в интерфейсе нет — за ней надо возвращаться в
 // почту (#2932).
+//
+// v2 (#3059): страница сначала показывает превью приглашения, принимается оно
+// кнопкой «Принять приглашение» — отказы и выходы из них прежние.
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 import * as naive from 'naive-ui'
 
 const acceptInvitation = vi.fn()
+const lookupInvitation = vi.fn()
 vi.mock('@/api', () => ({
-  accountFlows: { acceptInvitation: (...a) => acceptInvitation(...a) },
+  accountFlows: {
+    acceptInvitation: (...a) => acceptInvitation(...a),
+    lookupInvitation: (...a) => lookupInvitation(...a),
+  },
 }))
+
+const PREVIEW = {
+  kind: 'email',
+  state: 'pending',
+  role: 'member',
+  email: 'me@example.com',
+  workspace: { name: 'Студия', name_key: null, color: '' },
+  projects: 2,
+  members: 3,
+  inviter: { name: 'Илья Петров' },
+}
 
 const replace = vi.fn()
 const push = vi.fn()
@@ -33,6 +51,9 @@ vi.mock('@/stores/auth', () => ({
   useAuthStore: () => ({
     get isAuthenticated() {
       return authed
+    },
+    get user() {
+      return authed ? { email: 'me@example.com' } : null
     },
     logout,
   }),
@@ -63,8 +84,11 @@ function refusal(raw, status) {
   return e
 }
 
+// Opens the page on its preview and presses «Принять приглашение».
 async function open() {
   const w = mount(AcceptInviteView, { global: { stubs } })
+  await flushPromises()
+  await w.find('[data-testid="invite-accept"]').trigger('click')
   await flushPromises()
   return w
 }
@@ -73,6 +97,8 @@ describe('accepting an invitation under the wrong account', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
     acceptInvitation.mockReset()
+    lookupInvitation.mockReset()
+    lookupInvitation.mockResolvedValue({ data: PREVIEW })
     replace.mockReset()
     push.mockReset()
     logout.mockReset()
@@ -120,7 +146,7 @@ describe('accepting an invitation under the wrong account', () => {
   it('a signed-out visitor still goes to the register form with the token', async () => {
     authed = false
     await open()
-    expect(replace).toHaveBeenCalledWith({ path: '/register', query: { invite: 'inv-tok' } })
+    expect(push).toHaveBeenCalledWith({ path: '/register', query: { invite: 'inv-tok' } })
     expect(acceptInvitation).not.toHaveBeenCalled()
   })
 

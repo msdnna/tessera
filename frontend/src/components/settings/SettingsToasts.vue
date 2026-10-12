@@ -7,17 +7,18 @@
 // the toast object rides in `prefs.toasts`.
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NCheckbox, NIcon, NSwitch, NTooltip } from 'naive-ui'
+import { NCheckbox, NIcon, NSwitch } from 'naive-ui'
 import { AddOutline, ChatbubblesOutline, RemoveOutline } from '@vicons/ionicons5'
 import {
   ACTIVITY_KINDS,
   ACTIVITY_MODES,
+  SOUND_MODES,
   BATCH_MAX,
   BATCH_MIN,
   ME_CATEGORIES,
   normalizePrefs,
 } from '@/utils/toastModel'
-import { stubTask } from '@/utils/featureStubs'
+import { playChime, resetChime } from '@/utils/chime'
 
 const props = defineProps({ prefs: { type: Object, required: true } })
 const { t } = useI18n()
@@ -44,7 +45,14 @@ function step(d) {
   const n = Math.min(BATCH_MAX, Math.max(BATCH_MIN, cfg.value.batchMin + d))
   set({ batchMin: n })
 }
-const soundTask = stubTask('toasts.sound')
+// «Звук» (#3121): picking a mode that rings plays the chime once, as a sample.
+function setSound(m) {
+  set({ sound: m })
+  if (m !== 'off') {
+    resetChime()
+    playChime()
+  }
+}
 </script>
 
 <template>
@@ -169,20 +177,30 @@ const soundTask = stubTask('toasts.sound')
             @update:value="(v) => set({ phone: v })"
           />
         </label>
-        <n-tooltip :delay="300">
-          <template #trigger>
-            <div class="tst-row stub">
-              <span class="tst-row-t">
-                <span>{{ t('settings.notifications.toasts.behavior.sound') }}</span>
-                <span class="tst-fine">{{
-                  t('settings.notifications.toasts.behavior.soundHint')
-                }}</span>
-              </span>
-              <span class="tst-soon">{{ t('settings.notifications.toasts.behavior.soon') }}</span>
-            </div>
-          </template>
-          {{ t('common.stub.soon', { n: soundTask }) }}
-        </n-tooltip>
+        <div class="tst-row">
+          <span class="tst-row-t">
+            <span>{{ t('settings.notifications.toasts.behavior.sound') }}</span>
+            <span class="tst-fine">{{
+              t('settings.notifications.toasts.behavior.soundHint')
+            }}</span>
+          </span>
+          <div class="tst-seg" role="radiogroup">
+            <button
+              v-for="m in SOUND_MODES"
+              :key="m"
+              type="button"
+              role="radio"
+              class="tst-seg-b"
+              :class="{ on: cfg.sound === m }"
+              :aria-checked="cfg.sound === m"
+              :disabled="!enabled"
+              :data-testid="`notif-toasts-sound-${m}`"
+              @click="setSound(m)"
+            >
+              {{ t(`settings.notifications.toasts.behavior.soundMode.${m}`) }}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </section>
@@ -315,10 +333,6 @@ const soundTask = stubTask('toasts.sound')
   gap: 10px;
   cursor: pointer;
 }
-.tst-row.stub {
-  opacity: 0.55;
-  cursor: default;
-}
 .tst-row-t {
   flex: 1;
   min-width: 0;
@@ -372,16 +386,6 @@ const soundTask = stubTask('toasts.sound')
 .tst-num button:disabled {
   opacity: 0.45;
   cursor: default;
-}
-.tst-soon {
-  height: 20px;
-  display: flex;
-  align-items: center;
-  padding: 0 8px;
-  border-radius: 999px;
-  background: var(--t-pill);
-  font-size: 11.5px;
-  color: var(--t-text2);
 }
 @media (max-width: 1100px) {
   .tst-grid {

@@ -18,11 +18,12 @@
 // URL, the way inline media works — is a weaker guarantee than a private
 // meeting deserves. Blob URLs are revoked on unmount; leaking them would pin
 // every screenshot of every call in memory for the life of the tab.
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
+import { computed, getCurrentInstance, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NButton, NIcon, NInput, NModal, NPopconfirm, NSpin, NTooltip } from 'naive-ui'
+import { NButton, NIcon, NInput, NModal, NPopconfirm, NSelect, NSpin, NTooltip } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
+  AddCircleOutline,
   AttachOutline,
   CloseOutline,
   DownloadOutline,
@@ -30,8 +31,21 @@ import {
   SendOutline,
   TrashOutline,
 } from '@vicons/ionicons5'
-import { conferences as confApi } from '@/api'
+import { conferences as confApi, projects as projApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
+import { useWorkspacesStore } from '@/stores/workspaces'
+import { sGet } from '@/utils/serverStorage'
+import {
+  commandMatches,
+  defaultTaskBoard,
+  mentionIds,
+  mentionMatches,
+  mentionQuery,
+  parseTaskCommand,
+  slashQuery,
+  splitMentions,
+  taskLineHref,
+} from '@/utils/confChatCommands'
 import { useFormat } from '@/composables/useFormat'
 import {
   CONF_CHAT_MAX_BODY,
@@ -62,11 +76,21 @@ const props = defineProps({
   // cannot move and "scroll to the newest" silently does nothing. Without this
   // the chat opens at the oldest message every time.
   visible: { type: Boolean, default: true },
+  // The workspace's members — whom «@» offers and whose names the lines draw as
+  // chips (#3055). [{ user_id, name, email }]
+  members: { type: Array, default: () => [] },
+  // The board «/задача» puts a task on unless the reader picks another: the
+  // call's linked task's board, else its stage's project's (server-side).
+  defaultBoardId: { type: String, default: '' },
 })
 
 const { t } = useI18n()
 const auth = useAuthStore()
+const ws = useWorkspacesStore()
 const message = useMessage()
+// The router through the app rather than useRouter(): the rail is also mounted
+// bare in unit tests, where an inject would only warn.
+const router = getCurrentInstance()?.appContext.config.globalProperties.$router
 const { formatDateTime } = useFormat()
 
 const PAGE = 50
@@ -237,18 +261,183 @@ function dropPending(i) {
 // over-long message is a 400, and by then the text has already been typed.
 const tooLong = computed(() => confChatBodyTooLong(draft.value))
 
-const canSend = computed(() => confChatCanSend(draft.value, pending.value.length, sending.value))
+// ── «/» and «@» (#3055) ───────────────────────────────────────────────
+// «/задача Название» turns the composer into a task form: a strip above the
+// input names the board, ↵ creates the task (POST /conferences/:id/tasks) and
+// the server writes the chat line. «@» opens the roster; the chips the line will
+// draw are what the server is told to notify.
+const composer = ref(null)
+const caret = ref(0)
+const dismissed = ref(null)
+const cursor = ref(0)
+const taskCmd = computed(() => parseTaskCommand(draft.value))
+
+function textarea() {
+  return composer.value?.$el?.querySelector?.('textarea') || null
+}
+function trackCaret() {
+  const el = textarea()
+  caret.value = el ? el.selectionStart : draft.value.length
+}
+
+const suggest = computed(() => {
+  if (dismissed.value === draft.value) return null
+  const sq = slashQuery(draft.value)
+  if (sq !== null) {
+    const rows = commandMatches(sq).map((key) => ({ key, kind: 'cmd' }))
+    return rows.length ? { kind: 'cmd', rows } : null
+  }
+  const mq = mentionQuery(draft.value.slice(0, caret.value))
+  if (!mq) return null
+  const rows = mentionMatches(props.members, mq.query, { me: me.value }).map((m) => ({
+    key: m.user_id,
+    kind: 'mention',
+    member: m,
+  }))
+  return rows.length ? { kind: 'mention', start: mq.start, rows } : null
+})
+watch(suggest, () => (cursor.value = 0))
+
+async function setDraft(text, at) {
+  draft.value = text
+  await nextTick()
+  const el = textarea()
+  if (!el) return
+  el.focus()
+  el.setSelectionRange(at, at)
+  caret.value = at
+}
+
+function pick(row) {
+  if (!row) return
+  if (row.kind === 'cmd') {
+    const text = `/${t('conferences.chat.cmd.task')} `
+    setDraft(text, text.length)
+    return
+  }
+  const s = suggest.value
+  const before = draft.value.slice(0, s.start)
+  const after = draft.value.slice(caret.value)
+  const insert = `@${row.member.name} `
+  setDraft(before + insert + after.replace(/^\s+/, ''), before.length + insert.length)
+}
+
+function onKey(e) {
+  const s = suggest.value
+  if (s) {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault()
+      const n = s.rows.length
+      cursor.value = (cursor.value + (e.key === 'ArrowDown' ? 1 : n - 1)) % n
+      return
+    }
+    if ((e.key === 'Enter' && !e.shiftKey) || e.key === 'Tab') {
+      e.preventDefault()
+      pick(s.rows[cursor.value])
+      return
+    }
+    if (e.key === 'Escape') {
+      e.preventDefault()
+      e.stopPropagation()
+      dismissed.value = draft.value
+      return
+    }
+  }
+  // Enter sends, Shift+Enter breaks the line: this is a chat, not the
+  // description editor.
+  if (e.key === 'Enter' && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && !e.isComposing) {
+    e.preventDefault()
+    send()
+  }
+}
+
+// The boards of the workspace for the task strip, grouped by project — fetched
+// the first time the command is typed.
+const boards = ref([])
+const boardId = ref(null)
+let boardsLoaded = false
+async function loadBoards() {
+  boardsLoaded = true
+  const projects = ws.projects || []
+  const lists = await Promise.allSettled(projects.map((p) => projApi.boards(p.id)))
+  boards.value = projects.flatMap((p, i) =>
+    (lists[i].status === 'fulfilled' ? lists[i].value.data || [] : []).map((b) => ({
+      id: b.id,
+      name: b.name,
+      project: p.name,
+    })),
+  )
+  if (!boardId.value || !boards.value.some((b) => b.id === boardId.value))
+    boardId.value = defaultTaskBoard(
+      boards.value.map((b) => b.id),
+      { preferred: [props.defaultBoardId, sGet('tessera_last_board_id')] },
+    )
+}
+watch(taskCmd, (cmd) => {
+  if (cmd && !boardsLoaded) loadBoards()
+})
+const boardOptions = computed(() => {
+  const groups = []
+  for (const b of boards.value) {
+    let g = groups.find((x) => x.label === b.project)
+    if (!g)
+      groups.push((g = { type: 'group', key: `p:${b.project}`, label: b.project, children: [] }))
+    g.children.push({ value: b.id, label: b.name })
+  }
+  return groups
+})
+
+async function createTask() {
+  const cmd = taskCmd.value
+  const id = props.conferenceId
+  if (!cmd?.title || !boardId.value || sending.value) return
+  sending.value = true
+  try {
+    const { data } = await confApi.createTask(id, { title: cmd.title, board_id: boardId.value })
+    if (stale(id)) return
+    draft.value = ''
+    const line = data?.message
+    if (line?.id && !messages.value.some((m) => m.id === line.id)) messages.value.push(line)
+    await scrollToEnd(true)
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    sending.value = false
+  }
+}
+
+const canSend = computed(() =>
+  taskCmd.value
+    ? !!taskCmd.value.title && !!boardId.value && !sending.value
+    : confChatCanSend(draft.value, pending.value.length, sending.value),
+)
+
+// The chips of a line, and whether it names the reader.
+const partsOf = (body) => splitMentions(body, props.members)
+
+function openTask(e, task) {
+  const href = taskLineHref(task)
+  if (!href || !router) return
+  e.preventDefault()
+  router.push(href)
+}
 
 async function send() {
   if (!canSend.value) return
+  if (taskCmd.value) return createTask()
   const id = props.conferenceId
   sending.value = true
   const body = draft.value.trim()
   const files = pending.value
+  const mentions = mentionIds(body, props.members)
   try {
     const { data } = files.length
-      ? await confApi.postMessageWithFiles(id, body, files)
-      : await confApi.postMessage(id, body)
+      ? mentions.length
+        ? await confApi.postMessageWithFiles(id, body, files, mentions)
+        : await confApi.postMessageWithFiles(id, body, files)
+      : mentions.length
+        ? await confApi.postMessage(id, body, mentions)
+        : await confApi.postMessage(id, body)
     // Sent to the call we have since left: it is stored and the people still in
     // that room will see it, but appending it here would put it in a conversation
     // it was never part of.
@@ -386,71 +575,106 @@ onBeforeUnmount(() => {
         {{ $t('conferences.chat.empty') }}
       </div>
 
-      <div v-for="m in messages" :key="m.id" class="msg" data-testid="conference-chat-message">
-        <user-avatar :user-id="m.user_id || ''" :name="m.user_name || '?'" class="av" />
-        <div class="msg-body">
-          <div class="msg-head">
+      <template v-for="m in messages" :key="m.id">
+        <!-- A task line (#3055): «Мария создала задачу #2978 Прогноз» — a
+             system line, not a bubble. The link opens the task on its board;
+             the call goes on in the mini-window. -->
+        <div v-if="m.kind === 'task'" class="sys" data-testid="conference-chat-task">
+          <n-icon :component="AddCircleOutline" :size="15" class="sys-ic" />
+          <span class="sys-t">
             <span class="who">{{ m.user_name || $t('conferences.chat.unknownAuthor') }}</span>
-            <span class="at">{{ when(m.created_at) }}</span>
-            <!-- Behind a confirmation like every other destructive action in a
+            {{ $t('conferences.chat.taskCreated') }}
+            <a
+              v-if="taskLineHref(m.task)"
+              class="task-ref"
+              :href="taskLineHref(m.task)"
+              data-testid="conference-chat-task-link"
+              @click="openTask($event, m.task)"
+              ><span class="task-n">#{{ m.task.number }}</span
+              >{{ m.task.title }}</a
+            >
+            <span v-else class="task-ref gone" :title="$t('conferences.chat.taskGone')">{{
+              m.body
+            }}</span>
+          </span>
+          <span class="at">{{ when(m.created_at) }}</span>
+        </div>
+        <div v-else class="msg" data-testid="conference-chat-message">
+          <user-avatar :user-id="m.user_id || ''" :name="m.user_name || '?'" class="av" />
+          <div class="msg-body">
+            <div class="msg-head">
+              <span class="who">{{ m.user_name || $t('conferences.chat.unknownAuthor') }}</span>
+              <span class="at">{{ when(m.created_at) }}</span>
+              <!-- Behind a confirmation like every other destructive action in a
                  call (recording, kick, end) and like the same bin on Android:
                  the server drops the line for everyone in the room and nudges
                  them to refetch, so a misclick on a 12px icon is not undoable. -->
-            <n-popconfirm
-              v-if="canRemove(m)"
-              :positive-button-props="{ type: 'error' }"
-              :positive-text="$t('conferences.chat.delete')"
-              @positive-click="remove(m)"
-            >
-              <template #trigger>
-                <n-button
-                  text
-                  size="tiny"
-                  class="del"
-                  :title="$t('conferences.chat.delete')"
-                  data-testid="conference-chat-delete"
-                >
-                  <n-icon :component="TrashOutline" />
-                </n-button>
-              </template>
-              {{ $t('conferences.chat.confirmDelete') }}
-            </n-popconfirm>
-          </div>
-          <div v-if="m.body" class="text">{{ m.body }}</div>
-
-          <div v-if="m.attachments?.length" class="atts">
-            <template v-for="a in m.attachments" :key="a.id">
-              <!-- A picture opens over the call rather than in a new tab: the
-                   whole point is not having to leave the room to look at it. -->
-              <button
-                v-if="a.is_image"
-                type="button"
-                class="thumb"
-                data-testid="conference-chat-image"
-                @click="lightbox = a"
+              <n-popconfirm
+                v-if="canRemove(m)"
+                :positive-button-props="{ type: 'error' }"
+                :positive-text="$t('conferences.chat.delete')"
+                @positive-click="remove(m)"
               >
-                <img v-if="previews[a.id]" :src="previews[a.id]" :alt="a.filename" />
-                <span v-else class="thumb-wait"><n-spin :size="14" /></span>
-              </button>
-              <n-tooltip v-else>
                 <template #trigger>
-                  <button
-                    type="button"
-                    class="file"
-                    data-testid="conference-chat-file"
-                    @click="download(a)"
+                  <n-button
+                    text
+                    size="tiny"
+                    class="del"
+                    :title="$t('conferences.chat.delete')"
+                    data-testid="conference-chat-delete"
                   >
-                    <n-icon :component="DocumentOutline" :size="14" />
-                    <span class="fname">{{ a.filename }}</span>
-                    <span class="fsize">{{ formatFileSize(a.size) }}</span>
-                  </button>
+                    <n-icon :component="TrashOutline" />
+                  </n-button>
                 </template>
-                {{ $t('conferences.chat.download') }}
-              </n-tooltip>
-            </template>
+                {{ $t('conferences.chat.confirmDelete') }}
+              </n-popconfirm>
+            </div>
+            <div v-if="m.body" class="text">
+              <template v-for="(p, i) in partsOf(m.body)" :key="i"
+                ><span
+                  v-if="p.mention"
+                  class="mention"
+                  :class="{ me: p.mention.user_id === me }"
+                  data-testid="conference-chat-mention"
+                  >{{ p.text }}</span
+                ><template v-else>{{ p.text }}</template></template
+              >
+            </div>
+
+            <div v-if="m.attachments?.length" class="atts">
+              <template v-for="a in m.attachments" :key="a.id">
+                <!-- A picture opens over the call rather than in a new tab: the
+                   whole point is not having to leave the room to look at it. -->
+                <button
+                  v-if="a.is_image"
+                  type="button"
+                  class="thumb"
+                  data-testid="conference-chat-image"
+                  @click="lightbox = a"
+                >
+                  <img v-if="previews[a.id]" :src="previews[a.id]" :alt="a.filename" />
+                  <span v-else class="thumb-wait"><n-spin :size="14" /></span>
+                </button>
+                <n-tooltip v-else>
+                  <template #trigger>
+                    <button
+                      type="button"
+                      class="file"
+                      data-testid="conference-chat-file"
+                      @click="download(a)"
+                    >
+                      <n-icon :component="DocumentOutline" :size="14" />
+                      <span class="fname">{{ a.filename }}</span>
+                      <span class="fsize">{{ formatFileSize(a.size) }}</span>
+                    </button>
+                  </template>
+                  {{ $t('conferences.chat.download') }}
+                </n-tooltip>
+              </template>
+            </div>
           </div>
         </div>
-      </div>
+      </template>
     </div>
 
     <div v-if="readonly" class="none ro">{{ $t('conferences.chat.closed') }}</div>
@@ -466,16 +690,74 @@ onBeforeUnmount(() => {
       <div v-if="tooLong" class="too-long" data-testid="conference-chat-too-long">
         {{ $t('conferences.chat.tooLong', { count: CONF_CHAT_MAX_BODY }) }}
       </div>
+      <!-- «/» and «@» (#3055): the list over the composer, in place — the
+           rail is the call's own layer, nothing to teleport out of. -->
+      <div
+        v-if="suggest"
+        class="suggest"
+        role="listbox"
+        data-testid="conference-chat-suggest"
+        @mousedown.prevent
+      >
+        <div class="suggest-head">
+          {{
+            suggest.kind === 'cmd'
+              ? $t('conferences.chat.cmd.head')
+              : $t('conferences.chat.mentionHead')
+          }}
+        </div>
+        <button
+          v-for="(r, i) in suggest.rows"
+          :key="r.key"
+          type="button"
+          class="suggest-row"
+          :class="{ on: i === cursor }"
+          role="option"
+          :aria-selected="i === cursor"
+          data-testid="conference-chat-suggest-row"
+          @mouseenter="cursor = i"
+          @click="pick(r)"
+        >
+          <template v-if="r.kind === 'cmd'">
+            <span class="cmd">/{{ $t('conferences.chat.cmd.task') }}</span>
+            <span class="cmd-d">{{ $t('conferences.chat.cmd.taskHint') }}</span>
+          </template>
+          <template v-else>
+            <user-avatar :user-id="r.member.user_id" :name="r.member.name" class="av sm" />
+            <span class="cmd-name">{{ r.member.name }}</span>
+            <span class="cmd-d">{{ r.member.email }}</span>
+          </template>
+        </button>
+      </div>
+      <!-- «/задача …»: the strip that says where the task goes. -->
+      <div v-if="taskCmd" class="task-strip" data-testid="conference-chat-task-strip">
+        <n-icon :component="AddCircleOutline" :size="14" />
+        <span>{{ $t('conferences.chat.taskIn') }}</span>
+        <n-select
+          v-model:value="boardId"
+          size="tiny"
+          class="task-board"
+          :options="boardOptions"
+          :placeholder="$t('conferences.chat.pickBoard')"
+          filterable
+          data-testid="conference-chat-task-board"
+        />
+        <span v-if="!taskCmd.title" class="task-wait">{{ $t('conferences.chat.taskTitle') }}</span>
+      </div>
       <div class="row">
         <!-- Enter sends, Shift+Enter breaks the line: this is a chat, not the
-             description editor. -->
+             description editor. With the list open, Enter picks a row. -->
         <n-input
+          ref="composer"
           v-model:value="draft"
           type="textarea"
           :autosize="{ minRows: 1, maxRows: 4 }"
           :placeholder="$t('conferences.chat.placeholder')"
           data-testid="conference-chat-input"
-          @keydown.enter.exact.prevent="send"
+          @keydown="onKey"
+          @keyup="trackCaret"
+          @click="trackCaret"
+          @input="trackCaret"
         />
         <n-button
           quaternary
@@ -651,9 +933,142 @@ onBeforeUnmount(() => {
   flex: none;
 }
 .composer {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+/* «@» chips in a line (#3055); the reader's own name a shade stronger. */
+.mention {
+  padding: 0 3px;
+  border-radius: 5px;
+  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
+  color: var(--t-primary);
+  font-weight: 600;
+}
+.mention.me {
+  background: color-mix(in srgb, var(--t-primary) 26%, transparent);
+}
+/* A task line: the mockup's AddCircle row, no bubble. */
+.sys {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 6px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--t-primary) 8%, transparent);
+  font-size: 12.5px;
+  color: var(--t-text2);
+}
+.sys-ic {
+  flex: none;
+  margin-top: 1px;
+  color: var(--t-primary);
+}
+.sys-t {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.sys .at {
+  flex: none;
+  font-size: 11px;
+  color: var(--t-text3);
+}
+.task-ref {
+  margin-left: 2px;
+  color: var(--t-text1);
+  font-weight: 600;
+  text-decoration: none;
+}
+a.task-ref:hover {
+  text-decoration: underline;
+}
+.task-ref.gone {
+  color: var(--t-text3);
+  font-weight: 400;
+  text-decoration: line-through;
+}
+.task-n {
+  margin-right: 4px;
+  color: var(--t-text3);
+  font-weight: 500;
+}
+/* The «/» and «@» list over the composer. */
+.suggest {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  padding: 4px;
+  border-radius: 12px;
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
+}
+.suggest-head {
+  padding: 4px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--t-text3);
+}
+.suggest-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.suggest-row.on {
+  background: var(--t-hover);
+}
+.cmd {
+  font-weight: 600;
+}
+.cmd-name {
+  flex: none;
+}
+.cmd-d {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--t-text3);
+  font-size: 12px;
+}
+.av.sm {
+  width: 20px;
+  height: 20px;
+  font-size: 9px;
+}
+/* «Задача в [доска]» while the draft is «/задача …». */
+.task-strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--t-text2);
+}
+.task-strip > .n-icon {
+  color: var(--t-primary);
+}
+.task-board {
+  flex: 1;
+  min-width: 0;
+  max-width: 200px;
+}
+.task-wait {
+  color: var(--t-text3);
 }
 .pending {
   display: flex;

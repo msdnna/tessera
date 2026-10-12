@@ -58,6 +58,7 @@ type API struct {
 	recTemplateURL string                   // internal url of our egress recording page (#2877); empty ⇒ egress's built-in grid
 	bgCtx          context.Context          // process lifetime for detached job runs (nil until WireBackgroundScope)
 	bgWG           *sync.WaitGroup          // shutdown waits on it, alongside the tick loops
+	mrRefresh      mrRefreshGate            // throttles the per-task refresh of other projects' MRs (#2964)
 }
 
 // WireBackgroundScope hands the handlers the process's shutdown context and the
@@ -275,10 +276,12 @@ func NewAPI(q *db.Queries, pool *pgxpool.Pool, hub *realtime.Hub, uploadDir, enc
 	// A TextHandler renders the background-task summary in logfmt (key=value), with
 	// the call site as source=… — the format the ops log asks for.
 	jobLog := slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{AddSource: true}))
-	return &API{
+	h := &API{
 		q: q, pool: pool, hub: hub, uploadDir: uploadDir, sealer: sealer, assetKey: ak[:],
 		mailer: mailer, publicURL: publicURL, senders: buildSenders(mailer, fcmCredentialsFile), jobs: jobs.New(jobLog),
 	}
+	h.wireJobs()
+	return h
 }
 
 // positionGap is the spacing used when appending to the end of a list.
@@ -370,9 +373,25 @@ func (h *API) lookupMembership(c *gin.Context, workspaceID uuid.UUID) membership
 	if err == nil {
 		res.role = m.Role
 		res.ok = true
+		h.touchActive(c, workspaceID)
 	}
 	c.Set(key, res)
 	return res
+}
+
+// touchActive stamps the member's "last action" in this workspace (#3073) on a
+// request that changes something. Here because every workspace-scoped write
+// passes through this lookup, so no handler has to remember it; reads don't
+// count (opening a board is not an action), and the UPDATE itself is throttled
+// to once a minute. Best-effort: activity is a hint, never a reason to fail.
+func (h *API) touchActive(c *gin.Context, workspaceID uuid.UUID) {
+	switch c.Request.Method {
+	case http.MethodGet, http.MethodHead, http.MethodOptions:
+		return
+	}
+	soft(c, "touch membership activity", h.q.TouchMembershipActive(c, db.TouchMembershipActiveParams{
+		WorkspaceID: workspaceID, UserID: middleware.CurrentUser(c),
+	}))
 }
 
 // requireMember authorizes the current user against a workspace. It writes a

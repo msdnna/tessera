@@ -3,7 +3,7 @@ title: First steps
 category: Getting started
 order: 10
 keywords: start, sign up, workspace, project, board, app, android, menu
-updated: 2026-08-24
+updated: 2026-10-10
 ---
 
 Tessera is a task tracker: boards with tasks, documents, notes and reminders. This article walks the path from an empty account to your first task on a board — the way it looks in the Android app.
@@ -19,6 +19,8 @@ To invite a colleague: the workspace menu (“…” next to its name) → “Me
 ## Projects and groups
 
 The project tree is in the same side menu, below the sections. Projects are filed into **groups**, and groups nest inside one another. The “＋” button in the “PROJECTS” heading creates a project or a group at the root; every node in the tree has the same button. To move a project into a group, **press and hold** its row and drag — the tree scrolls on its own as you carry the project to the edge of the screen.
+
+Above the tree is **FAVOURITES**: the boards you marked with “Add to favourites” in the board's ⋮ menu (“Remove from favourites” is there too). It shows up once it holds at least one board, and everyone has their own — the same list as on the web. Tap a row to open the board; its “⋯” menu has “Move up”, “Move down” and “Remove from favourites”.
 
 Tapping a project opens its board and closes the menu.
 

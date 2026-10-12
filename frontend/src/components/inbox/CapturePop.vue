@@ -8,9 +8,15 @@
 // Keys: ↵ save · ⇧↵ open the body (Markdown) · ⌘↵ save from the body · Tab
 // switch the type (a manual choice sticks: «вручную ×») · ↑ in the empty field
 // brings the last record back · Esc close.
+//
+// «#тег» and «@человек» (#3040) become chips and are saved with the record: a
+// tag the named task's project has takes its colour (the record wears the
+// project's tag), any other is a free label; a handle that names one member
+// is a mention, one that names nobody stays in the title. The people the body
+// names (its @-chips) are mentioned too.
 import { computed, nextTick, onBeforeUnmount, ref, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
   AlarmOutline,
@@ -25,6 +31,7 @@ import Kbd from '@/components/Kbd.vue'
 import MarkdownEditor from '@/components/MarkdownEditor.vue'
 import TesseraIcon from '@/components/TesseraIcon.vue'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
+import TagPill from '@/components/TagPill.vue'
 import BottomSheet from '@/components/kit/BottomSheet.vue'
 import { taskStatus } from '@/components/palette/rows'
 import { useInboxStore } from '@/stores/inbox'
@@ -34,8 +41,8 @@ import { useInboxFormat } from '@/composables/useInboxFormat'
 import { pushBlocker } from '@/shortcuts/dispatcher'
 import { parseCapture } from '@/utils/quickParse'
 import { CAPS } from '@/utils/keyCaps'
-import { stubTask } from '@/utils/featureStubs'
 import { humanizeError } from '@/utils/errors'
+import { mentionIdsIn } from '@/utils/mentions'
 
 const { t } = useI18n()
 const message = useMessage()
@@ -88,7 +95,17 @@ watch(
 )
 onBeforeUnmount(() => release?.())
 
-const parsed = computed(() => parseCapture(text.value, { now: now.value }))
+const taskHit = ref(null)
+const taskMissing = ref('')
+const taskBusy = ref(false)
+// The members a handle may name; the named task's project tags colour a tag.
+const people = computed(() => inbox.members.map((m) => ({ ...m, id: m.user_id })))
+const projectTags = computed(
+  () => (taskHit.value?.project_id && inbox.tagsOf.get(taskHit.value.project_id)) || [],
+)
+const parsed = computed(() =>
+  parseCapture(text.value, { now: now.value, people: people.value, tags: projectTags.value }),
+)
 const kind = computed(() => manual.value || parsed.value.kind)
 // The next whole hour — a hand-picked reminder without a time in the text.
 function nextHour() {
@@ -104,9 +121,6 @@ const dateStruck = computed(() => kind.value === 'note' && !!parsed.value.remind
 const title = computed(() => parsed.value.title)
 
 // ── the task named by «/…» ──
-const taskHit = ref(null)
-const taskMissing = ref('')
-const taskBusy = ref(false)
 let taskSeq = 0
 let taskTimer = 0
 watch(
@@ -171,23 +185,40 @@ async function save() {
   const heading = title.value || body.value.trim().split('\n')[0].slice(0, 120)
   try {
     const taskId = taskHit.value?.id || undefined
+    const tags = parsed.value.tags.map((tg) => tg.tag?.name || tg.name)
+    const mentions = [
+      ...new Set([
+        ...parsed.value.people.map((p) => p.user_id),
+        ...mentionIdsIn(body.value, inbox.mentionItems),
+      ]),
+    ]
+    let res
     if (kind.value === 'reminder') {
-      await inbox.createReminder({
+      res = await inbox.createReminder({
         message: heading,
         body: body.value,
         remind_at: remindAt.value,
         task_id: taskId,
+        tags,
+        mentions,
       })
     } else {
-      await inbox.createNote({
+      res = await inbox.createNote({
         title: heading,
         body: body.value,
         task_id: taskId,
         visibility: 'private',
+        tags,
+        mentions,
       })
     }
     inbox.lastCaptured = line
     close()
+    // No connection (#3042): kept on the device, sent when it is back.
+    if (res?.queued) {
+      message.info(t('inbox.capture.queued'))
+      return
+    }
     message.success(() =>
       h('span', { class: 'cap-toast' }, [
         t('inbox.capture.saved'),
@@ -260,8 +291,8 @@ onBeforeUnmount(() => document.removeEventListener('pointerdown', onDocDown, tru
 
 const status = computed(() => (taskHit.value ? taskStatus(taskHit.value) : null))
 const AT = '@'
-const tagStub = stubTask('inbox.tags')
-const offlineStub = stubTask('inbox.offline')
+// A free label (no project tag of that name) — the mockup's neutral tag hue.
+const FREE_TAG = '#9aa0aa'
 const sheetShow = computed({
   get: () => show.value && isMobile.value,
   set: (v) => {
@@ -361,18 +392,22 @@ const sheetShow = computed({
               <n-icon :component="AlarmOutline" :size="14" />
               <span>{{ whenLong(dateStruck ? parsed.remindAt : remindAt, now) }}</span>
             </span>
-            <n-tooltip v-for="tg in parsed.tags" :key="`t-${tg.name}`" :delay="300">
-              <template #trigger>
-                <span class="cap-chip stub">#{{ tg.name }}</span>
-              </template>
-              {{ t('common.stub.soon', { n: tagStub }) }}
-            </n-tooltip>
-            <n-tooltip v-for="m in parsed.mentions" :key="`m-${m}`" :delay="300">
-              <template #trigger>
-                <span class="cap-chip stub">{{ AT }}{{ m }}</span>
-              </template>
-              {{ t('common.stub.soon', { n: tagStub }) }}
-            </n-tooltip>
+            <TagPill
+              v-for="tg in parsed.tags"
+              :key="`t-${tg.name}`"
+              :tag="tg.tag || { name: tg.name, color: FREE_TAG }"
+              class="cap-chip tag"
+              data-testid="capture-tag"
+              :title="tg.tag ? '' : t('inbox.capture.freeTag')"
+            />
+            <span
+              v-for="p in parsed.people"
+              :key="`m-${p.user_id}`"
+              class="cap-chip who"
+              data-testid="capture-mention"
+              :title="p.email"
+              ><span class="accent-grad-text">{{ AT }}{{ p.name || p.email }}</span></span
+            >
           </div>
           <div v-if="parsed.taskRef" class="cap-chips">
             <span v-if="taskBusy" class="cap-chip task busy">
@@ -406,6 +441,7 @@ const sheetShow = computed({
             v-model="body"
             variant="boxed"
             :min-rows="4"
+            :mention-items="inbox.mentionItems"
             :placeholder="t('inbox.capture.bodyPlaceholder')"
           />
         </div>
@@ -417,12 +453,6 @@ const sheetShow = computed({
         <div v-if="failed" class="cap-failed" data-testid="capture-failed">
           <n-icon :component="AlertCircleOutline" :size="14" />
           <span class="cap-failed-t">{{ failed }}</span>
-          <n-tooltip :delay="300">
-            <template #trigger>
-              <span class="cap-offline">{{ t('inbox.capture.offline') }}</span>
-            </template>
-            {{ t('common.stub.soon', { n: offlineStub }) }}
-          </n-tooltip>
         </div>
 
         <div v-if="!isMobile || inline" class="cap-foot">
@@ -651,9 +681,8 @@ const sheetShow = computed({
 .cap-chip.when.struck :deep(.n-icon) {
   color: var(--t-text3);
 }
-.cap-chip.stub {
-  opacity: 0.6;
-  cursor: default;
+.cap-chip.who {
+  font-weight: 600;
 }
 .cap-chip.task {
   min-width: 0;
@@ -716,11 +745,6 @@ const sheetShow = computed({
 .cap-failed-t {
   flex: 1;
   min-width: 0;
-}
-.cap-offline {
-  color: var(--t-text3);
-  opacity: 0.7;
-  cursor: default;
 }
 .cap-foot {
   display: flex;

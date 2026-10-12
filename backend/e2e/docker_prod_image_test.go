@@ -108,7 +108,7 @@ func TestProdImageOwnsFreshUploadsVolume(t *testing.T) {
 	// builder's base image. Only stdout is read: a pull would otherwise land in
 	// the middle of the value.
 	owner, err := exec.Command("docker", "run", "--rm", "-v", volume+":/d",
-		"golang:1.25-alpine", "stat", "-c", "%u:%g", "/d").Output()
+		"golang:1.26-alpine", "stat", "-c", "%u:%g", "/d").Output()
 	if err != nil {
 		t.Fatalf("stat the uploads volume: %v", err)
 	}

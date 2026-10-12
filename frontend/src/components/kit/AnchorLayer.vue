@@ -17,6 +17,7 @@ import { computed, inject, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import BottomSheet from './BottomSheet.vue'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
 import { useResponsive } from '@/composables/useResponsive'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -89,6 +90,7 @@ defineExpose({ place })
     <div
       v-if="desktopShow"
       ref="panel"
+      v-layer
       class="al kit-layer"
       :style="style"
       :data-testid="testid"

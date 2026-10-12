@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import {
   handleKeydown,
   attach,
+  isLive,
   resetShortcuts,
   pendingCaps,
   pushBlocker,
@@ -76,6 +77,15 @@ describe('keymap', () => {
 })
 
 describe('dispatcher', () => {
+  // #3068: a palette-only command (no keys) takes a handler — the palette offers
+  // only commands somebody on screen answers — while a typo still throws.
+  it('attaches a keyless palette command, refuses an unknown id', () => {
+    const run = vi.fn()
+    expect(() => attach('board.exportCsv', run)).not.toThrow()
+    expect(isLive('board.exportCsv')).toBe(true)
+    expect(() => attach('board.nope', run)).toThrow()
+  })
+
   it('runs a single-key shortcut', () => {
     const run = vi.fn()
     attach('card.complete', run)

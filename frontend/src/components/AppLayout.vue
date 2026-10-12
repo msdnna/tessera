@@ -2,6 +2,7 @@
 import { ref, computed, onMounted, onBeforeUnmount, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { withProjectSlug } from '@/utils/projectRoute'
 import {
   NLayout,
   NLayoutSider,
@@ -44,8 +45,13 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
 import { useInboxStore } from '@/stores/inbox'
+import { useFavoritesStore } from '@/stores/favorites'
+import { useMacrosStore } from '@/stores/macros'
+import { useMembersStore } from '@/stores/members'
 import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
+import { useCodeLinksStore } from '@/stores/codeLinks'
+import { useJobsStore } from '@/stores/jobs'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useTourStore } from '@/stores/tour'
 import { useOnboardingStore } from '@/stores/onboarding'
@@ -76,8 +82,13 @@ const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
 const inbox = useInboxStore()
+const favorites = useFavoritesStore()
+const macrosStore = useMacrosStore()
+const membersStore = useMembersStore()
 const toasts = useToastsStore()
 const conflicts = useConflictsStore()
+const codeLinks = useCodeLinksStore()
+const jobsStore = useJobsStore()
 const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
 const onboarding = useOnboardingStore()
@@ -168,9 +179,20 @@ useRealtime(
     // …and the same record as a toast «про меня» (#3117).
     toasts.onSocket(ev, authStore.user?.id)
     inbox.onEvent(ev)
+    // Favourite boards (#3115): the reader's own `favorites.changed` from another
+    // tab, and the board/project events that rename or drop a starred board.
+    favorites.onEvent(ev)
+    // Palette commands and task templates edited elsewhere (#3069).
+    macrosStore.onEvent(ev)
+    // Roster, access requests and member groups changed elsewhere (#3063).
+    membersStore.onSocket(ev)
     // The «Начало работы» checklist counts what the user did themselves (#3102).
     onboarding.onSocket(ev, authStore.user?.id)
     conflicts.onEvent(ev)
+    // A merge request or its pipeline moved in GitLab → the open task window (#2964).
+    codeLinks.onEvent(ev)
+    // Background jobs (#3067): the jobs window, and a member's own export/import.
+    jobsStore.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
     // A renamed or recoloured workspace repaints its rail tile everywhere.
@@ -204,6 +226,7 @@ useRealtime(
     resyncShell({ workspaces: ws, notifications: notes, conflicts })
     // The «Входящие» feed is socket-fed as well (#2972).
     inbox.load()
+    favorites.load()
   },
 )
 
@@ -217,7 +240,7 @@ function onProjectSlugChanged(ev) {
   if (!known || !ev.data?.slug || known.slug === ev.data.slug) return
   const viewing = route.params.projectSlug === known.slug
   if (viewing) {
-    router.replace({ ...route, params: { ...route.params, projectSlug: ev.data.slug } })
+    router.replace(withProjectSlug(route, ev.data.slug))
   }
 }
 
@@ -353,6 +376,18 @@ watch(
   (id) => id && inbox.load(id),
   { immediate: true },
 )
+// Favourite boards (#3115): the sidebar section, the crumbs' star, the palette.
+watch(
+  () => ws.currentId,
+  (id) => id && favorites.load(id),
+  { immediate: true },
+)
+// Palette commands, their keys and task templates (#3069).
+watch(
+  () => ws.currentId,
+  (id) => id && macrosStore.load(id),
+  { immediate: true },
+)
 const inboxClock = setInterval(() => inbox.tick(), 30000)
 // `?inbox=notes|reminders[&note=<slug|id>]` — where the old /notes and
 // /reminders addresses redirect (#2999), and what a search result names.
@@ -413,6 +448,20 @@ watch(
 watch(
   () => wsDialogs.current,
   (v) => v === 'gitlab' && onboarding.note('gitlab.opened'),
+)
+// `?members=<workspace id>` — a members notification (#3063: a transfer, an
+// access request) opens the «Участники» window of that workspace.
+watch(
+  () => route.query.members,
+  async (id) => {
+    if (!id) return
+    const query = { ...route.query }
+    delete query.members
+    await router.replace({ ...route, query })
+    await ws.ensureWorkspace(String(id))
+    wsDialogs.open('members')
+  },
+  { immediate: true },
 )
 // `?tour=<chapter>|start` — ⌘K «Обучение», links from the help articles.
 const { launch: launchTour } = useTourLauncher()
@@ -571,6 +620,7 @@ watch(
       v-model:show="conflicts.resolverOpen"
       :ws-id="ws.currentId"
       :focus-task-id="conflicts.focusTaskId"
+      :focus-milestone-id="conflicts.focusMilestoneId"
       @resolved="conflicts.load()"
     />
 

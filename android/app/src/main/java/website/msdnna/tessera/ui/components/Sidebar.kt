@@ -69,6 +69,7 @@ import kotlin.math.roundToInt
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.model.Board
+import website.msdnna.tessera.data.model.DeleteCounts
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.User
@@ -85,6 +86,7 @@ import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.WhatsNewSpotlight
+import website.msdnna.tessera.util.deleteCountsPhrase
 import website.msdnna.tessera.util.workspaceCaption
 
 // ── Layout metrics ────────────────────────────────────────────────────────────
@@ -346,6 +348,17 @@ fun Sidebar(
                 )
             }
 
+            // «Избранное» (#3115): the reader's starred boards, over «Проекты».
+            SidebarFavorites(
+                favorites = state.favorites,
+                onOpen = { board ->
+                    focus.clearFocus()
+                    onOpenBoard(board)
+                },
+                onRemove = { vm.removeFavorite(it) },
+                onStep = { id, delta -> vm.stepFavorite(id, delta) },
+            )
+
             // "ПРОЕКТЫ" section header + add project/group (inline creators).
             Row(
                 Modifier.fillMaxWidth().padding(start = 14.dp, end = 6.dp, top = 8.dp, bottom = 2.dp),
@@ -467,9 +480,15 @@ fun Sidebar(
             )
         }
         if (confirmDeleteWs) {
+            // Projects, boards and tasks that go with the space (#3014).
+            var counts by remember { mutableStateOf<DeleteCounts?>(null) }
+            LaunchedEffect(ws.id) { counts = vm.workspaceCounts(ws.id) }
             TConfirmByNameDialog(
                 title = stringResource(R.string.sidebar_ws_delete),
-                message = stringResource(R.string.sidebar_ws_delete_message, workspaceCaption(res, ws)),
+                message = withCountsLine(
+                    stringResource(R.string.sidebar_ws_delete_message, workspaceCaption(res, ws)),
+                    counts,
+                ),
                 name = workspaceCaption(res, ws),
                 onConfirm = {
                     confirmDeleteWs = false
@@ -728,6 +747,7 @@ private fun ProjectNode(project: Project, depth: Int, ctx: TreeCtx) {
             ctx.host.onProjectGone(project.id)
         },
         confirmName = project.name,
+        loadCounts = { ctx.vm.projectCounts(project.id) },
         tourKey = TourKeys.projectRow(project.id),
         tourPlace = project.groupId,
         tourMenuKey = TourKeys.boardAdd(project.id),
@@ -979,6 +999,8 @@ private fun TreeRow(
     deleteMessage: String,
     onDelete: () -> Unit,
     confirmName: String? = null,
+    // Counts for the delete-by-name confirmation (#3014); null — no counts line.
+    loadCounts: (suspend () -> DeleteCounts?)? = null,
     // The guide's anchor for this row, and — for the project row the `dnd-project`
     // step tracks — the group it currently sits in, which is what tells that step
     // the drag actually landed somewhere new.
@@ -1043,9 +1065,12 @@ private fun TreeRow(
             // quick popconfirm.
             if (confirmName != null) {
                 if (confirmDelete) {
+                    // What goes with the project (#3014), asked when the dialog opens.
+                    var counts by remember { mutableStateOf<DeleteCounts?>(null) }
+                    LaunchedEffect(node.id) { counts = loadCounts?.invoke() }
                     TConfirmByNameDialog(
                         title = stringResource(R.string.sidebar_project_delete_title),
-                        message = deleteMessage,
+                        message = withCountsLine(deleteMessage, counts),
                         name = confirmName,
                         onConfirm = {
                             confirmDelete = false
@@ -1067,6 +1092,14 @@ private fun TreeRow(
             }
         }
     }
+}
+
+/** [message] with «Будут удалены: 3 доски и 148 задач.» under it once the counts
+ *  arrived (#3014); the bare message until then, or when there is nothing to name. */
+@Composable
+private fun withCountsLine(message: String, counts: DeleteCounts?): String {
+    val phrase = deleteCountsPhrase(LocalResources.current, counts)
+    return if (phrase.isEmpty()) message else message + "\n\n" + stringResource(R.string.delete_counts_line, phrase)
 }
 
 private fun commitRename(ctx: TreeCtx, node: SbNode, name: String) {

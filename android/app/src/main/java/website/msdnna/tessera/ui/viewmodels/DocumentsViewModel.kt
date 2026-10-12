@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.model.Conference
 import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.data.model.DocumentApproval
 import website.msdnna.tessera.data.model.DocumentComment
@@ -20,9 +21,12 @@ import website.msdnna.tessera.data.model.DocumentTaskLink
 import website.msdnna.tessera.data.model.DocumentTemplate
 import website.msdnna.tessera.data.model.DocumentVersion
 import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.WorkspaceMilestone
 import website.msdnna.tessera.data.model.WorkspaceTask
+import website.msdnna.tessera.data.repository.ConferenceRepository
 import website.msdnna.tessera.data.repository.DocContentSave
 import website.msdnna.tessera.data.repository.DocumentRepository
+import website.msdnna.tessera.data.repository.MilestoneRepository
 import website.msdnna.tessera.data.repository.TaskRepository
 import website.msdnna.tessera.data.repository.WorkspaceRepository
 import website.msdnna.tessera.ui.UiText
@@ -33,6 +37,7 @@ import website.msdnna.tessera.util.DocCrumb
 import website.msdnna.tessera.util.DocFileFormatException
 import website.msdnna.tessera.util.DocImportRoute
 import website.msdnna.tessera.util.DocPage
+import website.msdnna.tessera.util.DocPins
 import website.msdnna.tessera.util.DocThread
 import website.msdnna.tessera.util.DocThreadGroups
 import website.msdnna.tessera.util.buildDocThreads
@@ -40,9 +45,11 @@ import website.msdnna.tessera.util.canRaiseApproval
 import website.msdnna.tessera.util.docBlockIdsInOrder
 import website.msdnna.tessera.util.docChildCount
 import website.msdnna.tessera.util.docExportFormats
+import website.msdnna.tessera.util.docHasPins
 import website.msdnna.tessera.util.docImportLimit
 import website.msdnna.tessera.util.docImportRoute
 import website.msdnna.tessera.util.docOpenThreadCount
+import website.msdnna.tessera.util.docPins
 import website.msdnna.tessera.util.docTiles
 import website.msdnna.tessera.util.documentApprovalState
 import website.msdnna.tessera.util.errorMessage
@@ -83,6 +90,8 @@ data class DocumentsUiState(
     val templates: DocTemplatesState = DocTemplatesState(),
     /** A converted file waiting for the editor to parse it — see [DocPendingImport]. */
     val pendingImport: DocPendingImport? = null,
+    /** The open document's stage and meeting chips (#3044, #3046). */
+    val pins: DocPins = DocPins(),
 )
 
 /**
@@ -339,6 +348,9 @@ class DocumentsViewModel(
     // documents: the workspace's tasks and its members.
     private val taskRepo: TaskRepository = TaskRepository(),
     private val wsRepo: WorkspaceRepository = WorkspaceRepository(),
+    // The captions of the head's chips (#3032): the workspace's stages and meetings.
+    private val milestoneRepo: MilestoneRepository = MilestoneRepository(),
+    private val conferenceRepo: ConferenceRepository = ConferenceRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(DocumentsUiState())
     val state: StateFlow<DocumentsUiState> = _state.asStateFlow()
@@ -416,6 +428,7 @@ class DocumentsViewModel(
                 comments = DocCommentsState(),
                 history = DocHistoryState(),
                 links = DocLinksState(tasks = it.links.tasks, members = it.links.members),
+                pins = DocPins(),
             )
         }
         viewModelScope.launch {
@@ -434,6 +447,7 @@ class DocumentsViewModel(
                         )
                     }
                     loadComments(doc.id)
+                    loadPins(full)
                     // Loaded with the body, not with the panel: the button over
                     // the document carries the number of linked tasks, and a
                     // count that only appears once the panel has been opened is
@@ -447,6 +461,37 @@ class DocumentsViewModel(
                     }
                 },
             )
+        }
+    }
+
+    /**
+     * Resolves the open document's chips (#3044, #3046). The lists are fetched
+     * only when the document has a pin, and kept per workspace — opening the
+     * next document of the same sprint costs nothing.
+     */
+    private var pinStages: Pair<String, List<WorkspaceMilestone>>? = null
+    private var pinMeetings: Pair<String, List<Conference>>? = null
+
+    private fun loadPins(doc: Document) {
+        if (!docHasPins(doc) || workspaceId.isBlank()) return
+        val requested = workspaceId
+        viewModelScope.launch {
+            val stages = if (doc.milestoneId == null) {
+                emptyList()
+            } else {
+                pinStages?.takeIf { it.first == requested }?.second
+                    ?: runCatching { milestoneRepo.workspaceList(requested) }.getOrDefault(emptyList())
+                        .also { pinStages = requested to it }
+            }
+            val meetings = if (doc.conferenceId == null) {
+                emptyList()
+            } else {
+                pinMeetings?.takeIf { it.first == requested }?.second
+                    ?: runCatching { conferenceRepo.list(requested) }.getOrDefault(emptyList())
+                        .also { pinMeetings = requested to it }
+            }
+            if (stale(requested) || _state.value.openId != doc.id) return@launch
+            _state.update { it.copy(pins = docPins(doc, stages, meetings)) }
         }
     }
 

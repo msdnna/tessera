@@ -5,11 +5,13 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
+	"tessera/internal/gitlab"
 )
 
 // oauthConfigView is the admin-facing OAuth config. The client secret is never
@@ -128,6 +130,20 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	if err != nil {
 		fail(c, err)
 		return
+	}
+	// A new or removed service token (#3084): record when it runs out and lift the
+	// pauses the old one caused.
+	if s := strings.TrimSpace(req.ServiceToken); s != "" || req.ClearServiceToken {
+		var exp *time.Time
+		if s != "" && p.GlBaseUrl != "" {
+			exp = tokenExpiryDate(c, gitlab.New(p.GlBaseUrl, s))
+		}
+		soft(c, "SetServiceTokenExpiry", h.q.SetServiceTokenExpiry(c, db.SetServiceTokenExpiryParams{
+			Provider: "gitlab", ServiceTokenExpiresAt: exp,
+		}))
+		if s != "" {
+			h.resumeAfterReconnect(c, nil)
+		}
 	}
 	om := p.OrgMap
 	if len(om) == 0 {

@@ -1,5 +1,5 @@
 import { test, expect, signIn } from '../fixtures.js'
-import { newCredentials, register } from '../api.js'
+import { api, newCredentials, register } from '../api.js'
 
 // Conferences, end to end (#2864, subtask #2876).
 //
@@ -270,4 +270,39 @@ test('конференция: мгновенная встреча создаёт
 
   await page.getByTestId('conference-leave').click()
   await expect(page.getByTestId('conference-join')).toBeVisible()
+})
+
+// «Начало» is the v2 date field (#3034): its calendar opens ABOVE the popover
+// form (it used to be NDatePicker's panel, drawn under the form), and a day + a
+// time chip reach the server as one instant.
+test('конференция: начало через v2-календарь поверх формы', async ({ page, seed }) => {
+  await openConferences(page, seed.workspaceId)
+  await page.getByTestId('conference-schedule').click()
+  await page.getByTestId('conference-title').fill(`E2E начало ${seed.runId}`)
+  await page.getByTestId('conference-at').click()
+  const cal = page.getByTestId('conference-at-cal')
+  await expect(cal).toBeVisible()
+  // On top: the point at the middle of day 17 belongs to the calendar, not the form.
+  const d17 = cal.locator('button', { hasText: /^17$/ })
+  const onTop = await d17.evaluate((b) => {
+    const r = b.getBoundingClientRect()
+    return b.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2))
+  })
+  expect(onTop).toBe(true)
+  await d17.click()
+  await page.locator('.df-chip[data-time="18:00"]').click()
+  if (process.env.F3034_SHOT) await page.screenshot({ path: process.env.F3034_SHOT })
+  await page.getByTestId('conference-at-done').click()
+  await expect(cal).toHaveCount(0)
+  // Picking inside the calendar did not close the form it belongs to.
+  await expect(page.getByTestId('conference-title')).toBeVisible()
+  await page.getByTestId('conference-submit').click()
+  await page.waitForURL(/\/conferences\/[0-9a-f-]{36}$/)
+  const id = new URL(page.url()).pathname.split('/').pop()
+  const { conference: conf } = await api.get(`/conferences/${id}`, seed.token)
+  const at = await page.evaluate((iso) => {
+    const d = new Date(iso)
+    return [d.getDate(), d.getHours(), d.getMinutes()]
+  }, conf.scheduled_at)
+  expect(at).toEqual([17, 18, 0])
 })

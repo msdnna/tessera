@@ -31,7 +31,6 @@ import (
 	"tessera/handlers"
 	"tessera/internal/database"
 	"tessera/internal/db"
-	"tessera/internal/mail"
 	"tessera/internal/realtime"
 	"tessera/internal/testutil"
 	"tessera/migrations"
@@ -116,7 +115,9 @@ func TestMain(m *testing.M) {
 		// production ceilings, so the rest of the suite runs against them.
 		RateLimitEnabled: false,
 	}
-	router, rh := newRouter(cfg, testQueries, testPool, hub, mail.New(mail.Config{}))
+	// The no-op mailer's contract (Enabled false, letters only logged), plus a
+	// copy of every letter so the code flows (#3035) can read their codes.
+	router, rh := newRouter(cfg, testQueries, testPool, hub, testMail)
 	testAPI = rh
 	testRouter = router
 	testServer = httptest.NewServer(router)
@@ -132,6 +133,7 @@ func TestMain(m *testing.M) {
 	var detached sync.WaitGroup
 	rh.WireBackgroundScope(workerCtx, &detached)
 	go rh.RunSyncWorker(workerCtx)
+	go rh.RunJobPublisher(workerCtx)
 	go rh.RunGitlabWriteBackWorker(workerCtx)
 	go rh.RunNotificationWorker(workerCtx)
 	go rh.RunNotificationScanner(workerCtx)

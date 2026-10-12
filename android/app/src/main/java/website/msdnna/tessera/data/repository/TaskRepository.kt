@@ -49,6 +49,10 @@ class TaskRepository {
         api.updateComment(commentId, UpdateCommentRequest(body, mentions))
     suspend fun deleteComment(commentId: String) = api.deleteComment(commentId)
 
+    /** Follow ([subscribed] = true) or unfollow a task (#2963). */
+    suspend fun setSubscription(taskId: String, subscribed: Boolean) =
+        api.setTaskSubscription(taskId, website.msdnna.tessera.data.model.SetSubscriptionRequest(subscribed))
+
     suspend fun relations(taskId: String): List<Relation> = api.relations(taskId).orEmpty()
     suspend fun addRelation(taskId: String, number: Long, kind: String) =
         api.addRelation(taskId, AddRelationRequest(number, kind))

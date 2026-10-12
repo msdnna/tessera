@@ -25,6 +25,7 @@ import RichContent from '../RichContent.vue'
 import MarkdownEditor from '../MarkdownEditor.vue'
 import ShortcutKeys from '../ShortcutKeys.vue'
 import EdReadBubble from '../editor/EdReadBubble.vue'
+import { findText, markRange } from '@/utils/fragmentLink'
 import { toggleTaskMarker } from '@/utils/markdown'
 import { isEditClick } from '@/utils/descEdit'
 import { useConflictsStore } from '@/stores/conflicts'
@@ -128,7 +129,18 @@ function onToggle(i) {
   emit('persist')
 }
 
-defineExpose({ startEdit, editing })
+// A link to a fragment of the description (#3119): bring the text into view and
+// mark it for a moment.
+function reveal(q) {
+  const el = proseEl.value
+  if (!el) return false
+  const range = findText(el, q)
+  ;(range?.startContainer?.parentElement || el).scrollIntoView({ block: 'center' })
+  markRange(range)
+  return true
+}
+
+defineExpose({ startEdit, editing, reveal })
 </script>
 
 <template>
@@ -187,7 +199,12 @@ defineExpose({ startEdit, editing })
           @toggle="onToggle"
         />
       </div>
-      <EdReadBubble :target="() => proseEl" :task-id="taskId" :can-quote="!readonly" />
+      <EdReadBubble
+        :target="() => proseEl"
+        :task-id="taskId"
+        :task="editorTask"
+        :can-quote="!readonly"
+      />
     </template>
     <button
       v-else-if="!readonly"

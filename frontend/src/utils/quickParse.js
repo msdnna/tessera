@@ -179,8 +179,13 @@ export function parseQuick(text, { now = new Date(), people = [], tags = [] } = 
 // ── «Входящие» capture (#2996) ──
 //
 //   «завтра 10:00 созвон по релизу #frontend /2951»
-//   → a reminder tomorrow at 10:00 titled «Созвон по релизу», tag «frontend»
-//     (not stored yet, #3040), tied to task #2951.
+//   → a reminder tomorrow at 10:00 titled «Созвон по релизу», tag «frontend»,
+//     tied to task #2951.
+//
+// «#тег» is a tag of the record (#3040); «@человек» a member it mentions, read
+// the way the quick entry reads a person (a word of the name, the e-mail login,
+// the GitLab login). A handle that names nobody — or more than one person —
+// stays in the title as typed rather than vanishing.
 //
 // A date or a time makes the line a reminder, anything else a note. A date
 // without a time means 09:00; a bare time already past today means tomorrow.
@@ -209,7 +214,7 @@ function unitMs(word) {
  *   remindAt: string|null,  // ISO, when the line names a moment
  *   day: Date|null, time: string|null, relative: boolean,
  *   tags: Array<{ name: string, tag: object|null }>,
- *   people: object[], mentions: string[],
+ *   people: object[],       // the members the line mentions
  *   taskRef: { number: number } | { word: string } | null,
  * }}
  */
@@ -221,7 +226,6 @@ export function parseCapture(text, { now = new Date(), people = [], tags = [] } 
   let taskRef = null
   let offset = null
   const kept = []
-  const mentions = []
   for (let i = 0; i < words.length; i++) {
     const w = words[i]
     // «через 2 ч» / «через 2ч» / «in 30 min»
@@ -241,16 +245,10 @@ export function parseCapture(text, { now = new Date(), people = [], tags = [] } 
       taskRef = /^#?\d+$/.test(ref) ? { number: Number(ref.replace('#', '')) } : { word: ref }
       continue
     }
-    if (w.length > 1 && w.startsWith('@')) mentions.push(w.slice(1))
     kept.push(w)
   }
   const base = parseQuick(kept.join(' '), { now, people, tags })
-  // parseQuick keeps an unknown @handle in the title; the capture's people are
-  // a stub (#3040), so a handle never lands in the title either way.
-  for (const w of base.title.split(/\s+/).filter(Boolean)) {
-    if (w.length > 1 && w.startsWith('@')) continue
-    rest.push(w)
-  }
+  rest.push(...base.title.split(/\s+/).filter(Boolean))
 
   let remindAt = null
   let day = base.day
@@ -277,7 +275,6 @@ export function parseCapture(text, { now = new Date(), people = [], tags = [] } 
     relative: offset != null,
     tags: base.tags,
     people: base.people,
-    mentions,
     taskRef,
   }
 }

@@ -51,7 +51,7 @@
       "copy": "Копировать",
       "copied": "Скопировано",
       "copyFailed": "Не удалось скопировать — выделите и скопируйте вручную",
-      "onceWarning": "Секрет показывается один раз. Вставьте URL и токен в GitLab: Settings → Webhooks, события «Issues» и «Comments». Потеряли — сгенерируйте заново.",
+      "onceWarning": "Секрет показывается один раз. Вставьте URL и токен в GitLab: Settings → Webhooks, события «Issues», «Comments», «Merge request events» и «Pipeline events» (последние два — для блока «Разработка» в задаче). Потеряли — сгенерируйте заново.",
       "lastEvent": "Последнее событие: {at}",
       "never": "не было",
       "failed": "Не удалось изменить вебхук"
@@ -189,7 +189,8 @@
         "board": "Доска (роутинг)",
         "tag": "Тег",
         "group": "Группировка (подзадачи)",
-        "ignore": "Игнорировать"
+        "ignore": "Игнорировать",
+        "milestone": "Этап"
       },
       "matchType": {
         "prefix": "Префикс",
@@ -289,14 +290,20 @@
       "due": "Срок (ГГГГ-ММ-ДД)",
       "estimate": "Оценка (минуты)",
       "state": "Статус",
-      "priority": "Приоритет"
+      "priority": "Приоритет",
+      "start": "Начало (ГГГГ-ММ-ДД)",
+      "assignees": "Исполнители",
+      "labels": "Лейблы"
     },
     "kind": {
       "title_desc": "Заголовок и описание",
       "due": "Срок",
       "estimate": "Оценка",
       "state": "Статус",
-      "priority": "Приоритет"
+      "priority": "Приоритет",
+      "milestone": "этап",
+      "assignees": "Исполнители",
+      "labels": "Лейблы"
     },
     "state": {
       "open": "Открыта",
@@ -320,7 +327,16 @@
     "keyVersion": "версия",
     "postpone": "Отложить",
     "apply": "Применить и отправить",
-    "keyFieldHint": "↑↓ — поле, B / T / G — версия, M — объединить вручную"
+    "keyFieldHint": "↑↓ — поле, B / T / G — версия, M — объединить вручную",
+    "stageWord": "Этап",
+    "openStage": "Открыть этап",
+    "fromMilestone": "milestone %{iid} · {at}",
+    "hintStage": "Этап изменён и в Tessera, и в GitLab после последней синхронизации. Выберите версию для каждого поля.",
+    "onePushStage": "Решение сразу уйдёт в milestone GitLab",
+    "resolvedN": "Разрешён {n} конфликт | Разрешено {n} конфликта | Разрешено {n} конфликтов",
+    "applyN": "Применить {n} и отправить",
+    "postponeHint": "Сохранить выбор черновиком и перейти к следующей задаче",
+    "postponed": "отложено"
   },
   "window": {
     "crumb": "Интеграции",
@@ -350,7 +366,6 @@
     "connectProject": "Подключить проект",
     "connected": "Подключено",
     "pat": "личный токен",
-    "tokenExpiry": "срок токена",
     "noAccount": "Личный аккаунт не подключён",
     "noAccountSub": "Нужен для записи от вашего имени — URL и токен ниже",
     "oauth": "Войти через GitLab",
@@ -362,7 +377,8 @@
     "state": {
       "on": "Подключено",
       "off": "Выключено",
-      "noCreds": "Нет доступа"
+      "noCreds": "Нет доступа",
+      "paused": "Токен истёк · синхронизация на паузе"
     },
     "webhookOn": "вебхук",
     "noBoard": "доска не выбрана",
@@ -376,7 +392,6 @@
     "rules": {
       "note": "сверху вниз, срабатывает первое подходящее",
       "all": "Все",
-      "stage": "Этап",
       "colLabel": "Лейбл GitLab",
       "colMatch": "Сравнение",
       "colAction": "Во что",
@@ -395,7 +410,23 @@
       "keyOrder": "порядок",
       "keyOpen": "детали",
       "keyDelete": "удалить с отменой",
-      "check": "Проверить лейбл"
+      "check": "Проверить лейбл",
+      "template": "Название этапа",
+      "templatePlaceholder": "Спринт {'{'}value{'}'}",
+      "templateHint": "{'{'}value{'}'} — значение лейбла: sprint::42 → «Спринт 42». Нативная веха issue важнее.",
+      "templateValue": "значение лейбла",
+      "tasks": "{n} задача | {n} задачи | {n} задач",
+      "tasksTitle": "Задач привязки, у которых правило что-то решило",
+      "toggle": "Включить / выключить правило",
+      "keyToggle": "вкл/выкл",
+      "checkDefaultTag": "ни одно правило не подошло → тег «{tag}»",
+      "checkDefaultIgnore": "ни одно правило не подошло → лейбл пропускается",
+      "checkRule": "правило {n} · {action}",
+      "checkIgnored": "пропускается",
+      "checkGroup": "задача станет группой",
+      "checkNoValue": "значения нет в карте",
+      "checkTasks": "у {n} задачи | у {n} задач | у {n} задач",
+      "partial": "Счётчики — по {recorded} из {linked} задач; остальные посчитаются после их следующей синхронизации"
     },
     "wb": {
       "note": "событие в Tessera → действие в GitLab, уходит с ближайшим push",
@@ -414,7 +445,9 @@
       "schedule": "Синхронизация",
       "scheduleSub": "pull по расписанию",
       "now": "Сейчас",
-      "notInGitlab": "Напоминания, заметки и документы в GitLab не уходят — там нет таких сущностей."
+      "notInGitlab": "Напоминания, заметки и документы в GitLab не уходят — там нет таких сущностей.",
+      "tesseraWinsHint": "значение из Tessera уйдёт в GitLab поверх",
+      "gitlabWinsHint": "значение из GitLab запишется в задачу, push не уйдёт"
     },
     "journal": {
       "lastPull": "Последний pull",
@@ -432,6 +465,21 @@
       "keyResolve": "разрешить конфликт",
       "resolve": "Разрешить конфликт",
       "changes": "Изменения"
-    }
+    },
+    "tokenUntil": "токен до {date}",
+    "tokenExpired": "токен истёк",
+    "oauthKind": "OAuth",
+    "oauthReconnect": "Переподключить через GitLab",
+    "reconnect": "Переподключить",
+    "reconnectService": "Синхронизация идёт под сервисным токеном — обновить его может администратор",
+    "reconnectServiceShort": "нужен новый сервисный токен",
+    "importOnly": "только с лейблом «{labels}»",
+    "importLabels": "Только issues с лейблами",
+    "importLabelsHint": "через запятую, нужны все; пусто — без фильтра",
+    "oauthResult": {
+      "connected": "GitLab подключён через OAuth",
+      "failed": "Не удалось подключить GitLab: {reason}"
+    },
+    "chooseProject": "Проект GitLab"
   }
 }

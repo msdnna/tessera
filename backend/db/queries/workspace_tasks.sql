@@ -21,8 +21,11 @@ LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 WHERE p.workspace_id = @workspace_id
     AND b.deleted_at IS NULL
+    -- An archived project (0086) is out of «Мои задачи» and every cross-project list.
+    AND p.archived_at IS NULL
     AND (@include_subtasks::bool OR t.parent_id IS NULL)
     AND t.archived_at IS NULL
+    AND t.deleted_at IS NULL
 GROUP BY t.id, b.name, p.name, p.color, c.name, c.name_key, c.color
 ORDER BY t.due_date NULLS LAST, t.created_at DESC;
 
@@ -65,8 +68,10 @@ WITH scoped AS (
     JOIN projects p ON p.id = b.project_id
     WHERE p.workspace_id = @workspace_id
         AND b.deleted_at IS NULL
+        AND p.archived_at IS NULL
         AND t.parent_id IS NULL
         AND t.archived_at IS NULL
+        AND t.deleted_at IS NULL
 )
 SELECT
     count(*) AS total,

@@ -48,6 +48,7 @@ import {
   PersonOutline,
   ContractOutline as MinimizeOutline,
   ChevronForwardOutline,
+  TrailSignOutline,
 } from '@vicons/ionicons5'
 import { conferences as confApi } from '@/api'
 import { mediaSupported, CONNECTING, ERROR, UNAVAILABLE } from '@/composables/useConfTransport'
@@ -59,7 +60,7 @@ import DeviceMenu from './DeviceMenu.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
 import ShortcutKeys from '@/components/ShortcutKeys.vue'
 import { useShortcuts } from '@/composables/useShortcuts'
-import { stubTask } from '@/utils/featureStubs'
+import { REACTIONS } from '@/utils/confReactions'
 import '@/components/kit/kit.css'
 
 const props = defineProps({
@@ -80,6 +81,13 @@ const props = defineProps({
   // now lives only in this rail, so without listing them here an invitation would
   // show nowhere. [{ user_id, user_name, role }]
   invited: { type: Array, default: () => [] },
+  // The stage the meeting is tied to (#3053): { title, href } — the bar says
+  // «привязано к [Спринт 42]», a link to the stage page.
+  stage: { type: Object, default: null },
+  // For the chat's «@» and «/задача» (#3055): the workspace's members and the
+  // board a task goes to by default.
+  members: { type: Array, default: () => [] },
+  defaultBoardId: { type: String, default: '' },
 })
 // `hangup` asks the parent to leave the roster too; the parent flipping `active`
 // is what actually drops the media session, through the watcher below. One
@@ -123,6 +131,8 @@ const {
   togglePeerMute,
   selectDevice,
   unblockAudio,
+  reactions,
+  sendReaction,
 } = session.transport
 
 const room = session.room
@@ -441,8 +451,13 @@ function railTab(tab) {
   }
 }
 
-// Reactions in the call are #3054 — a visible, inactive button until then.
-const reactionsTask = stubTask('meet.reactions')
+// Reactions (#3054): a picker on the dock, bubbles over the stage. Sent over the
+// SFU's data channel by the transport; nothing is stored.
+const reactOpen = ref(false)
+function react(emoji) {
+  sendReaction(emoji)
+  reactOpen.value = false
+}
 
 // ⌘D microphone, ⌘E camera, ⌘⇧H leave — while this call is on screen.
 useShortcuts(
@@ -529,6 +544,20 @@ function onInviteShow(show) {
               named: { count: room.participants.value.length },
             })
           }}
+          <template v-if="stage">
+            · {{ $t('conferences.plan.linked') }}
+            <router-link
+              v-if="stage.href"
+              class="bar-stage"
+              :to="stage.href"
+              data-testid="conference-bar-stage"
+            >
+              <n-icon :component="TrailSignOutline" :size="12" />{{ stage.title }}
+            </router-link>
+            <span v-else class="bar-stage">
+              <n-icon :component="TrailSignOutline" :size="12" />{{ stage.title }}
+            </span>
+          </template>
         </span>
         <span class="bar-spacer" />
         <div class="seg" role="group" :aria-label="$t('conferences.call.layout')">
@@ -605,6 +634,21 @@ function onInviteShow(show) {
       <div class="body">
         <n-spin :show="busy" class="stage-col">
           <div ref="stageWrapEl" class="stage-wrap" :class="{ grid: gridMode }">
+            <!-- Reactions (#3054): bubbles rising from the stage's bottom edge,
+                 one lane each so a burst spreads out. Inside the stage, so they
+                 survive fullscreen too. Transform/opacity only (no blur). -->
+            <div class="reactions" aria-live="polite" data-testid="conference-reactions-feed">
+              <span
+                v-for="r in reactions"
+                :key="r.id"
+                class="reaction"
+                :style="{ left: `${6 + r.lane * 18}%` }"
+                data-testid="conference-reaction-bubble"
+              >
+                <span class="reaction-e">{{ r.emoji }}</span>
+                <span v-if="r.name" class="reaction-n">{{ r.name }}</span>
+              </span>
+            </div>
             <!-- «Идёт запись», for everyone in the call and not only for whoever
                  may stop it (#2877). Overlaid on the stage so it survives
                  fullscreen — where a shared screen is watched. -->
@@ -804,10 +848,22 @@ function onInviteShow(show) {
                  roster above so «в комнате» stays an honest count. -->
             <div v-if="invited.length" class="invited" data-testid="conference-invited">
               <div class="invited-h">{{ $t('conferences.panel.invitedTitle') }}</div>
-              <div v-for="p in invited" :key="p.user_id" class="invited-row">
+              <div
+                v-for="p in invited"
+                :key="p.user_id"
+                class="invited-row"
+                :class="{ declined: p.rsvp === 'declined' }"
+                :data-rsvp="p.rsvp || 'pending'"
+              >
                 <user-avatar :user-id="p.user_id" :name="p.user_name" class="iav" />
                 <span class="iname">{{ p.user_name }}</span>
-                <span class="itag">{{ $t('conferences.presence.invited') }}</span>
+                <!-- The answer to the invitation (#3051): «иду» / «не иду», or
+                     still «приглашён» while there is none. -->
+                <span class="itag">{{
+                  p.rsvp === 'accepted' || p.rsvp === 'declined'
+                    ? $t(`conferences.rsvp.${p.rsvp}`)
+                    : $t('conferences.presence.invited')
+                }}</span>
               </div>
             </div>
           </div>
@@ -820,6 +876,8 @@ function onInviteShow(show) {
             :readonly="ended"
             :can-moderate="room.canModerate.value"
             :visible="rail === 'chat'"
+            :members="members"
+            :default-board-id="defaultBoardId"
           />
         </aside>
       </div>
@@ -937,17 +995,47 @@ function onInviteShow(show) {
           {{ recording ? $t('conferences.rec.stop') : $t('conferences.rec.start') }}
         </n-tooltip>
 
-        <!-- Reactions are #3054: visible, inactive. -->
-        <n-tooltip>
+        <!-- Reactions (#3054): a row of emoji above the button. -->
+        <n-popover
+          v-model:show="reactOpen"
+          trigger="click"
+          placement="top"
+          :show-arrow="false"
+          raw
+          :disabled="!connected"
+        >
           <template #trigger>
-            <span class="cb-stub wide-only">
-              <button type="button" class="cb" disabled data-testid="conference-reactions">
-                <n-icon :component="HappyOutline" />
-              </button>
-            </span>
+            <button
+              type="button"
+              class="cb wide-only"
+              :class="{ on: reactOpen }"
+              :disabled="!connected"
+              :title="$t('conferences.reactions.button')"
+              :aria-label="$t('conferences.reactions.button')"
+              data-testid="conference-reactions"
+            >
+              <n-icon :component="HappyOutline" />
+            </button>
           </template>
-          {{ $t('common.stub.soon', { n: reactionsTask }) }}
-        </n-tooltip>
+          <div
+            class="react-pop"
+            role="menu"
+            :aria-label="$t('conferences.reactions.title')"
+            data-testid="conference-reactions-pop"
+          >
+            <button
+              v-for="e in REACTIONS"
+              :key="e"
+              type="button"
+              class="react-btn"
+              role="menuitem"
+              data-testid="conference-reaction"
+              @click="react(e)"
+            >
+              {{ e }}
+            </button>
+          </div>
+        </n-popover>
 
         <n-tooltip>
           <template #trigger>
@@ -1069,8 +1157,28 @@ function onInviteShow(show) {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
   font-size: 12.5px;
   color: var(--t-text2);
+  white-space: nowrap;
+}
+/* «привязано к [Спринт 42]» (#3053): the mockup's pill with the trail sign. */
+.bar-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  min-width: 0;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+a.bar-stage:hover {
+  color: var(--t-text1);
 }
 .bar-spacer {
   flex: 1;
@@ -1286,6 +1394,10 @@ function onInviteShow(show) {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
+}
+/* Declined (#3051): still listed, so the host sees who said no — dimmed. */
+.invited-row.declined {
+  opacity: 0.55;
 }
 .iav {
   flex: none;
@@ -1507,8 +1619,85 @@ function onInviteShow(show) {
 .cb.rec.live {
   background: color-mix(in srgb, #e0533d 26%, var(--t-ctl));
 }
-.cb-stub {
+/* Reactions (#3054): the picker above the dock button… */
+.react-pop {
+  display: flex;
+  gap: 2px;
+  padding: 5px;
+  border-radius: 14px;
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
+}
+.react-btn {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.react-btn:hover,
+.react-btn:focus-visible {
+  background: var(--t-hover);
+  transform: scale(1.12);
+  outline: none;
+}
+/* …and the bubbles over the stage: rise and fade, transform/opacity only. */
+.reactions {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+.reaction {
+  position: absolute;
+  bottom: 12px;
   display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  animation: reaction-rise 4s ease-out forwards;
+}
+.reaction-e {
+  font-size: 34px;
+  line-height: 1;
+}
+.reaction-n {
+  max-width: 120px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes reaction-rise {
+  0% {
+    transform: translateY(12px) scale(0.6);
+    opacity: 0;
+  }
+  12% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-180px) scale(1);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reaction {
+    animation: none;
+  }
 }
 .cb-gap {
   width: 6px;
@@ -1583,7 +1772,7 @@ function onInviteShow(show) {
     width: 0;
   }
 }
-/* A phone: no screen share in a mobile browser, no reactions yet — the dock
+/* A phone: no screen share in a mobile browser, no reactions picker — the dock
    keeps what fits one thumb-row. */
 @media (max-width: 600px) {
   .wide-only {

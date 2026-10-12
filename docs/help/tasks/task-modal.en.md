@@ -2,8 +2,9 @@
 title: The task window
 category: Tasks
 order: 30
+keywords: task, window, modal, estimate, milestone, priority, due, recurrence, assignees, status, parent, tabs, link, side panel, development, merge request, pipeline, gitlab
 keywords: task, window, modal, estimate, milestone, priority, due, recurrence, assignees, status, parent, tabs, link, side panel
-updated: 2026-10-09
+updated: 2026-10-10
 ---
 
 A card on the board shows a task in two lines. Everything else — the estimate, the milestone, the author, the relations, the files, the history — lives in the **task window**. It opens with a click on the card and closes with `Esc` or a click outside it.
@@ -66,6 +67,20 @@ The **Due** row (key **D**) opens the due popover to the left of the properties 
 
 Everything is saved at once, so **↵ “done”** only closes the popover, **⌫** on an empty field clears the date, **Esc** closes. The same popover opens from the due pill on a board card. In the ⌘K palette the Due field takes words and presets, and **Tab** opens the calendar right under the field. On a phone the due date is a full-height sheet; the calendar, the repeat and the reminder are its next pages.
 
+### Development
+
+If the board is linked to GitLab, a **Development** block sits under the fields. It lists the **merge requests** working on the task: the number `!418`, the title and a state pill — **open**, **draft**, **merged** or **closed**. Below them are the branches `source → target` and the status of the latest pipeline: **passed**, **running**, **failed**, **canceled** or **awaiting start**. Clicking the card opens the MR in GitLab, clicking the status opens the pipeline. Open MRs come first.
+
+An MR reaches the task through its issue, on its own — there is nothing to link by hand. Any one of three is enough:
+
+- the MR **closes** the issue — `Closes #12` in the description, or whatever GitLab itself counts as closing (an MR created with the button on the issue, say);
+- the MR **mentions** the issue — `#12`, `group/project#12` or a link to the issue in the title or description;
+- the MR's branch is named after the issue — `12-…` (the way GitLab names a branch made from an issue), a prefix is fine: `feat/12-…`.
+
+References to other projects don't count. One MR may work on several tasks, and a task may have several MRs. With the [webhook](/help/admin-gitlab-project) changes arrive within seconds, without it — with the next sync. The task's [history](/help/task-history) keeps lines such as “GitLab · opened !418 on feat/board-v2” and “merged !418”.
+
+Until there is an MR, the block shows the link to the GitLab issue or the **Create issue** button.
+
 ## The tabs on the right
 
 Every tab label carries a counter, so a closed tab still tells you whether there is anything inside.
@@ -78,9 +93,15 @@ Every tab label carries a counter, so a closed tab still tells you whether there
 - **[Documents](/help/task-documents)** — documents that point at this task.
 - **[History](/help/task-history)** — the journal of changes.
 
+## Following a task
+
+At the foot of the properties panel is the **Following** row: who gets notified about the task's life — comments, moves between columns, completion, edits and archiving. The author, the assignees and everyone who commented follow it on their own, nothing to press.
+
+**Unfollow** takes you off the list: the task's notifications stop, even while you stay an assignee. **Follow** does the opposite and lets you keep an eye on someone else's task. Notifications addressed to you — you were assigned, mentioned, the task was deleted — always arrive, following has nothing to do with them.
+
 ## The bottom of the window
 
-At the bottom: **Archive** and **Delete**. The difference matters: [the archive](/help/archive) keeps the task whole and lets you bring it back, deleting is irreversible.
+At the bottom: **Archive** and **Delete**. The difference matters: [the archive](/help/archive) keeps a finished task for as long as you like, while deleting sends it to the [board's trash](/help/trash) for 30 days — right after the delete, Undo in the message at the bottom brings it back.
 
 If the task has subtasks, archiving asks what to do with them: archive them along with the parent, or detach them and leave them on the board.
 

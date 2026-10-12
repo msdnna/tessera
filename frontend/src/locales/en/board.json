@@ -106,7 +106,15 @@
       "todo": "To do",
       "in_progress": "In progress",
       "review": "In review",
-      "done": "Done"
+      "done": "Done",
+      "backlog": "Sprint backlog",
+      "new": "New",
+      "confirmed": "Confirmed",
+      "verify": "Verifying",
+      "closed": "Closed",
+      "ideas": "Ideas",
+      "planned": "Planned",
+      "shipped": "Shipped"
     },
     "color": "Colour",
     "doneToggle": "“Done” column",
@@ -150,6 +158,7 @@
     "tags": "Tags",
     "milestones": "Milestones",
     "archive": "Archive",
+    "trash": "Trash",
     "menu": "Board menu",
     "more": "Board actions"
   },
@@ -392,7 +401,7 @@
   "members": {
     "title": "On the board · {count}",
     "tasks": "tasks",
-    "watching": "Who is looking now"
+    "watching": "Looking now · {count}"
   },
   "stage": {
     "title": "Filter by milestone",
@@ -430,11 +439,81 @@
   "crumbs": {
     "projectSettings": "Project settings",
     "boards": "Project boards",
-    "favorite": "Add to favourites"
+    "favorite": "Add to favourites",
+    "unfavorite": "Remove from favourites"
   },
   "empty": {
     "title": "No tasks on the board yet",
     "text": "The columns are set up — add the first task.",
     "create": "Create a task"
+  },
+  "trash": {
+    "title": "Trash",
+    "count": "{n} task · kept for 30 days | {n} tasks · kept for 30 days",
+    "keep": "Deleted tasks are kept for {days} days",
+    "by": "deleted by {name}",
+    "left": "{n} day left | {n} days left",
+    "subtasks": "{n} subtask | {n} subtasks",
+    "restore": "Restore",
+    "purge": "Delete forever",
+    "purgeArmed": "Delete forever?",
+    "emptyTitle": "The trash is empty",
+    "emptyText": "Tasks deleted from this board stay here for {days} days and can be restored."
+  },
+  "transfer": {
+    "export": "Export",
+    "import": "Import tasks…",
+    "exporting": "Exporting the board to {format}…",
+    "exportFiltered": "tasks of the current view: {n}",
+    "exportFailed": "The export failed",
+    "importTitle": "Import tasks",
+    "dropTitle": "Drop a file or choose one",
+    "dropSub": "CSV (comma, semicolon, tab) or JSON — up to 10 MB, up to 5000 rows",
+    "rows": "rows: {n}",
+    "defaultColumn": "Default column",
+    "defaultColumnHint": "the board's first column",
+    "createTags": "Create new tags",
+    "needFile": "Choose a file first",
+    "mappingLead": "Which column of the file becomes which task field. Only the title is required.",
+    "skipField": "— don't import",
+    "next": "Next",
+    "previewLead": "The first {n} of {total} rows, as the import will read them",
+    "importN": "Import: {n}",
+    "notStarted": "The import hasn't started yet",
+    "queued": "Queued, place {n}",
+    "done": "Done: tasks created — {created}, rows skipped — {skipped}",
+    "cancelled": "Stopped: tasks created — {created}",
+    "failed": "The import failed",
+    "again": "Import more",
+    "step": {
+      "file": "File",
+      "mapping": "Mapping",
+      "preview": "Preview",
+      "run": "Import"
+    },
+    "field": {
+      "title": "Title",
+      "description": "Description",
+      "column": "Column",
+      "tags": "Tags",
+      "assignees": "Assignees",
+      "priority": "Priority",
+      "start_date": "Start",
+      "due_date": "Due"
+    },
+    "warn": {
+      "title": "Empty title — the row will be skipped",
+      "column": "No such column on the board — the task goes to the default column",
+      "priority": "Unknown priority — left unset",
+      "date": "Unknown date — left empty (formats: YYYY-MM-DD, DD.MM.YYYY)",
+      "assignee": "Not a member of the workspace — won't be assigned"
+    },
+    "err": {
+      "empty": "The file is empty",
+      "json": "Couldn't read the JSON",
+      "jsonShape": "The JSON must be an array of tasks or an object with a tasks field",
+      "noRows": "The file has no task rows",
+      "noTitle": "Choose the column with the task title"
+    }
   }
 }

@@ -152,7 +152,7 @@ SELECT l.id, l.document_id, l.task_id, l.block_id, l.quote, l.created_by, l.crea
        t.title AS task_title, t.board_id AS task_board_id, t.priority AS task_priority,
        t.completed_at AS task_completed_at
 FROM document_task_links l
-JOIN tasks t ON t.id = l.task_id
+JOIN tasks t ON t.id = l.task_id AND t.deleted_at IS NULL
 JOIN boards b ON b.id = t.board_id AND b.deleted_at IS NULL
 WHERE l.document_id = $1
 ORDER BY l.created_at
@@ -213,7 +213,7 @@ SELECT l.id, l.document_id, l.task_id, l.block_id, l.quote, l.created_by, l.crea
        d.title AS document_title, d.icon AS document_icon, d.slug AS document_slug,
        d.workspace_id AS document_workspace_id
 FROM document_task_links l
-JOIN documents d ON d.id = l.document_id
+JOIN documents d ON d.id = l.document_id AND d.deleted_at IS NULL
 WHERE l.task_id = $1
 ORDER BY l.created_at
 `
@@ -234,6 +234,8 @@ type ListTaskDocumentLinksRow struct {
 
 // ListTaskDocumentLinks is the same relation read from the task side, for the
 // "Документы" section of the task modal.
+// A document in the trash (0086) keeps its links — they come back with it — but
+// is out of the task's «Документы» meanwhile.
 func (q *Queries) ListTaskDocumentLinks(ctx context.Context, taskID uuid.UUID) ([]ListTaskDocumentLinksRow, error) {
 	rows, err := q.db.Query(ctx, listTaskDocumentLinks, taskID)
 	if err != nil {

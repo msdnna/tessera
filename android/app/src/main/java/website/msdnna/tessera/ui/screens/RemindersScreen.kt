@@ -51,6 +51,7 @@ import website.msdnna.tessera.ui.viewmodels.ReminderViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.localDateTimeLabel
 import website.msdnna.tessera.util.parseInstantMillis
+import website.msdnna.tessera.util.recordTagLine
 
 /**
  * Personal reminders list + composer (web `RemindersView`). Adding/toggling/
@@ -180,6 +181,10 @@ private fun ReminderRow(reminder: Reminder, onToggle: () -> Unit, onDelete: () -
                 color = if (overdue) TesseraDanger else c.text3,
                 fontSize = 12.sp,
             )
+            // Tags only: a reminder's mentions are a reference for its owner, and
+            // this list spans every workspace, so there is no one roster to name
+            // them from (#3040).
+            RecordLabelsRow(recordTagLine(reminder.tags), emptyList())
         }
         Box {
             IonIconButton(Ion.TRASH, onClick = { confirmDelete = true }, boxSize = 30.dp, iconSize = 18.dp, tint = c.text3)

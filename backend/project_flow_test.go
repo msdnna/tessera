@@ -215,14 +215,18 @@ func TestProjectSlugChoiceAndRename(t *testing.T) {
 		map[string]any{"name": "Доска"}), http.StatusCreated)
 	bSlug := b["slug"].(string)
 
-	// Renaming the address: the new one resolves, the old one is gone.
+	// Renaming the address: the new one resolves, and the old one still leads
+	// here for a while (#3012), naming the current address.
 	upd := owner.expect(t, owner.patch("/projects/"+pID+"/slug",
 		map[string]any{"slug": "Новый Слаг"}), http.StatusOK)
 	if upd["slug"] != "novyy-slag" {
 		t.Fatalf("renamed slug = %v, want novyy-slag", upd["slug"])
 	}
 	owner.expect(t, owner.get("/board-by-slug?project=novyy-slag&board="+bSlug), http.StatusOK)
-	owner.expect(t, owner.get("/board-by-slug?project=custom-address&board="+bSlug), http.StatusNotFound)
+	old := owner.expect(t, owner.get("/board-by-slug?project=custom-address&board="+bSlug), http.StatusOK)
+	if old["project_slug"] != "novyy-slag" {
+		t.Fatalf("old address resolved with project_slug = %v, want novyy-slag", old["project_slug"])
+	}
 
 	// Re-submitting the current address is a no-op, not a conflict with itself.
 	same := owner.expect(t, owner.patch("/projects/"+pID+"/slug",

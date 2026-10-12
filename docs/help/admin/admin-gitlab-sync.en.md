@@ -18,7 +18,7 @@ All the settings below are sections of the GitLab window (the workspace menu →
 
 ## Write-back to GitLab
 
-The window's **Write-back** section. The top card **“Write-back to GitLab”** with its toggle is the master switch: while it is off, nothing goes out to GitLab no matter how the pairs below are set. The toggles about tasks and attachments are gathered in the **“Tasks and attachments”** block of the same section.
+The window's **Write-back** section. The top card **“Write-back to GitLab”** with its toggle is the master switch: while it is off, nothing goes out to GitLab no matter how the pairs below are set. It also lets milestones linked to GitLab milestones be edited in Tessera: with write-back on, an edit of such a milestone (goals, dates, closing) goes to GitLab at once; with it off, the milestone is read-only in Tessera. The toggles about tasks and attachments are gathered in the **“Tasks and attachments”** block of the same section.
 
 **Create an issue from a task** adds a **“Create a GitLab issue”** button to the task modal (under the “Parent” property). The issue is opened from the task's title, description and properties, after which the task counts as synced. This is a separate capability: it works even if change write-back is not configured for any field.
 
@@ -107,6 +107,8 @@ An unresolved conflict is visible right away: an orange **“Conflict”** badge
 The **Resolve conflicts** window opens on top — from the GitLab window's sections column, from the journal (“Resolve the conflict”, <kbd>C</kbd>) or from the badge on a card. On the left is the queue of tasks in conflict and how many fields each still needs; on the right the fields in a grid: **Base** (the value as of the last sync), **Tessera** and **GitLab**; for the title and description the differences are highlighted. A field changed on one side only is taken automatically and drawn quieter.
 
 A version is picked **per field** — with a click on a cell or the keys <kbd>B</kbd> / <kbd>T</kbd> / <kbd>G</kbd> (the field — <kbd>↑</kbd> <kbd>↓</kbd>). <kbd>M</kbd> merges a text or numeric field by hand (for status and priority the choice is binary anyway). <kbd>⌘</kbd> <kbd>[</kbd> and <kbd>⌘</kbd> <kbd>]</kbd> go to the neighbouring task, **Open the task** takes you to it on the board.
+
+**Milestones** join the queue too (marked «stage»): if the goals, name or dates of a milestone linked to a GitLab milestone were changed both in Tessera and in GitLab, the edit does not overwrite GitLab but waits for a decision here. The window opens by itself right after such an edit; **Open the stage** leads to the milestone page. A decision on a milestone is written to the GitLab milestone at once. More in [Milestones](/help/milestones).
 
 The decisions go to GitLab in one push, so here, unlike the other windows, there is an explicit **Apply and push** button (<kbd>⌘</kbd> <kbd>↵</kbd>); while any field has no version it stays disabled. <kbd>Esc</kbd> closes the window, and the choices stay a draft until the page reloads. “Postpone” is marked “soon” for now. After applying, the base snapshot is updated so the next edit is not treated as a discrepancy again.
 

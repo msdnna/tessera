@@ -48,7 +48,8 @@ func TestGitlabSyncRefusesParentRing(t *testing.T) {
 	triggerSync(t, c, s.WS, integID)
 	waitSyncRuns(t, c, s.WS, 1)
 
-	cards := c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	// A finished run is not yet a visible import under load (#3123).
+	cards := waitBoardTaskCount(t, c, s.Board, 2)
 	taskA := taskByIid(t, cards, 50)["id"].(string)
 	taskB := taskByIid(t, cards, 51)["id"].(string)
 	plain := taskByIid(t, cards, 53)["id"].(string)

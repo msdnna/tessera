@@ -447,7 +447,6 @@ private fun CardMenu(
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     var confirmArchive by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
     Box {
         IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 24.dp, iconSize = 16.dp, tint = c.text3)
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
@@ -478,9 +477,10 @@ private fun CardMenu(
                 menu = false
                 confirmArchive = true
             })
+            // Into the board's trash at once; the undo is in the toast (#3004).
             TMenuItem(stringResource(R.string.common_delete), icon = Ion.TRASH, danger = true, onClick = {
                 menu = false
-                confirmDelete = true
+                vm.delete(task.id)
             })
         }
         TConfirmPopover(
@@ -493,16 +493,6 @@ private fun CardMenu(
                 vm.archive(task.id)
             },
             onDismiss = { confirmArchive = false },
-        )
-        TConfirmPopover(
-            expanded = confirmDelete,
-            message = stringResource(R.string.task_card_delete_confirm, task.title),
-            confirmText = stringResource(R.string.common_delete),
-            onConfirm = {
-                confirmDelete = false
-                vm.delete(task.id)
-            },
-            onDismiss = { confirmDelete = false },
         )
     }
 }

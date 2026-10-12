@@ -237,6 +237,12 @@ api.interceptors.response.use(
     // day that sentinel joins the catalogue (#2932). Mirrors the phone's
     // `rawErrorText` (android util/Errors.kt).
     wrapped.raw = raw
+    // The refusal body as the server sent it, for the few answers that carry
+    // more than a sentence — a taken project address names its holder and a
+    // free variant (#3013), a 429 its `retry_after`, a wrong code its
+    // `attempts_left` (#3035).
+    wrapped.data =
+      err.response?.data && typeof err.response.data === 'object' ? err.response.data : null
     // Distinguish "server unreachable" (network/DNS/timeout — no response at all)
     // from an HTTP error the server answered with. Callers that retry (e.g. the
     // comment composer) only retry when offline; a 4xx/5xx is not a connectivity
@@ -336,6 +342,16 @@ export const accountFlows = {
   resetPassword: (token, newPassword) =>
     api.post('/auth/reset-password', { token, new_password: newPassword }),
   acceptInvitation: (token) => api.post('/invitations/accept', { token }),
+  // v2 (#3035). The code screen's state, the code itself, the address change.
+  verification: () => api.get('/auth/verification'),
+  verifyCode: (code) => api.post('/auth/verify-code', { code }),
+  startEmailChange: (email, password) => api.post('/auth/email-change', { email, password }),
+  cancelEmailChange: () => api.delete('/auth/email-change'),
+  // A recovery link's deadline, without spending it (#3060).
+  checkResetToken: (token) => api.post('/auth/reset-password/check', { token }),
+  // The invitation page's preview and «Отклонить» (#3059) — no session needed.
+  lookupInvitation: (token) => api.post('/invitations/lookup', { token }),
+  declineInvitation: (token) => api.post('/invitations/decline', { token }),
 }
 
 export const users = {
@@ -379,14 +395,20 @@ export const acknowledgements = {
 // Global-admin panel (every endpoint re-checks is_admin server-side).
 export const admin = {
   listUsers: () => api.get('/admin/users'),
+  listInvitations: () => api.get('/admin/invitations'),
+  deleteInvitation: (id) => api.delete(`/admin/invitations/${id}`),
   setActive: (id, active) => api.patch(`/admin/users/${id}/active`, { active }),
   setAdmin: (id, isAdmin) => api.patch(`/admin/users/${id}/admin`, { admin: isAdmin }),
   resetLink: (id) => api.post(`/admin/users/${id}/reset-link`),
   // GitLab OAuth app config.
   getOAuth: () => api.get('/admin/oauth/gitlab'),
   setOAuth: (data) => api.put('/admin/oauth/gitlab', data),
-  // Background jobs panel (instance-level).
-  jobs: () => api.get('/admin/jobs', { skipLoader: true }),
+  // Background jobs panel (instance-level): live jobs + the 30-day history
+  // (#3067); params.type narrows to one family.
+  jobs: (params) => api.get('/admin/jobs', { params, skipLoader: true }),
+  // One job with its log; `after` — only the lines past that seq.
+  job: (key, after = 0) =>
+    api.get(`/admin/jobs/${encodeURIComponent(key)}`, { params: { after }, skipLoader: true }),
   runJob: (key) =>
     api.post(`/admin/jobs/${encodeURIComponent(key)}/run`, null, { skipLoader: true }),
   cancelJob: (key) =>
@@ -402,6 +424,8 @@ export const workspaces = {
   update: (id, data) => api.patch(`/workspaces/${id}`, data), // { name }
   // Dangerous: delete a workspace with everything in it (owner only, 403 otherwise).
   remove: (id) => api.delete(`/workspaces/${id}`),
+  // What that delete takes with it: { projects, boards, tasks } (#3014).
+  counts: (id) => api.get(`/workspaces/${id}/counts`),
   members: (id) => sharedGet(`/workspaces/${id}/members`),
   gitlabMembers: (id) => sharedGet(`/workspaces/${id}/gitlab/members`),
   addMember: (id, data) => api.post(`/workspaces/${id}/members`, data),
@@ -411,9 +435,28 @@ export const workspaces = {
   invitations: (id) => api.get(`/workspaces/${id}/invitations`),
   createInvitation: (id, data) => api.post(`/workspaces/${id}/invitations`, data),
   deleteInvitation: (id, invId) => api.delete(`/workspaces/${id}/invitations/${invId}`),
+  // «Ещё раз» / «Продлить» (#3061): a new link, a fresh week, a new letter.
+  resendInvitation: (id, invId) => api.post(`/workspaces/${id}/invitations/${invId}/resend`),
+  // The shared invitation link (#3062): its URL comes back only from create.
+  inviteLink: (id) => api.get(`/workspaces/${id}/invite-link`),
+  createInviteLink: (id, data) => api.post(`/workspaces/${id}/invite-link`, data),
+  revokeInviteLink: (id) => api.delete(`/workspaces/${id}/invite-link`),
+  // Members v2 (#3063): hand the workspace to a member (owner only), leave it
+  // (everyone but the owner), the managers' queue of access requests, and the
+  // member groups («Фронтенд», «Бэкенд»…) — names for sets of members.
+  transferOwner: (id, userId) => api.post(`/workspaces/${id}/owner`, { user_id: userId }),
+  leave: (id) => api.post(`/workspaces/${id}/leave`),
+  accessRequests: (id) => api.get(`/workspaces/${id}/access-requests`),
+  approveAccess: (id, reqId, role = 'member') =>
+    api.post(`/workspaces/${id}/access-requests/${reqId}/approve`, { role }),
+  declineAccess: (id, reqId) => api.post(`/workspaces/${id}/access-requests/${reqId}/decline`),
+  memberGroups: (id) => sharedGet(`/workspaces/${id}/member-groups`),
+  createMemberGroup: (id, data) => api.post(`/workspaces/${id}/member-groups`, data),
   groups: (id) => api.get(`/workspaces/${id}/groups`),
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),
   projects: (id) => api.get(`/workspaces/${id}/projects`),
+  // «Архив проектов» (#3005): the tree above leaves archived projects out.
+  archivedProjects: (id) => api.get(`/workspaces/${id}/projects`, { params: { archived: 1 } }),
   createProject: (id, data) => api.post(`/workspaces/${id}/projects`, data),
   // Tile of the workspace on the rail (#2955): { color, icon, icon_mode }.
   setAppearance: (id, data) => api.put(`/workspaces/${id}/appearance`, data),
@@ -441,18 +484,36 @@ export const workspaces = {
   commands: (id) => api.get(`/workspaces/${id}/commands`),
   // Full desired state of the custom dictionary (owner/admin only).
   setCommands: (id, commands) => api.put(`/workspaces/${id}/commands`, { commands }),
+  // Команды-макросы палитры и шаблоны задач (#3069).
+  macros: (id) => api.get(`/workspaces/${id}/macros`),
+  createMacro: (id, data) => api.post(`/workspaces/${id}/macros`, data),
+  updateMacro: (macroId, data) => api.patch(`/macros/${macroId}`, data),
+  deleteMacro: (macroId) => api.delete(`/macros/${macroId}`),
+  taskTemplates: (id) => api.get(`/workspaces/${id}/task-templates`),
+  createTaskTemplate: (id, data) => api.post(`/workspaces/${id}/task-templates`, data),
+  updateTaskTemplate: (tplId, data) => api.patch(`/task-templates/${tplId}`, data),
+  deleteTaskTemplate: (tplId) => api.delete(`/task-templates/${tplId}`),
 }
 
 export const projects = {
   get: (id) => api.get(`/projects/${id}`),
   update: (id, data) => api.patch(`/projects/${id}`, data),
-  // Change the project's URL address (owner/admin only). Links already handed
-  // out with the old address stop resolving — warn before calling.
+  // Change the project's URL address (owner/admin only). The old address keeps
+  // leading here for 30 days (#3012). A taken one answers 409 with
+  // { suggestion, taken_by? } — see utils/slugTaken.
   setSlug: (id, slug) => api.patch(`/projects/${id}/slug`, { slug }),
+  // A project by its address — a former one included; the answer carries the
+  // current `slug` (#3012).
+  bySlug: (slug) => api.get('/project-by-slug', { params: { slug } }),
   move: (id, data) => api.patch(`/projects/${id}/move`, data),
   // Dangerous: move a project (with all boards/tasks) to another workspace.
   transfer: (id, data) => api.post(`/projects/${id}/transfer`, data),
   remove: (id) => api.delete(`/projects/${id}`),
+  // What that delete takes with it: { boards, tasks } (#3014).
+  counts: (id) => api.get(`/projects/${id}/counts`),
+  // Archive (#3005): reversible, no expiry; owner/admin only.
+  archive: (id) => api.post(`/projects/${id}/archive`),
+  unarchive: (id) => api.post(`/projects/${id}/restore`),
   boards: (id) => api.get(`/projects/${id}/boards`),
   createBoard: (id, data) => api.post(`/projects/${id}/boards`, data),
   tags: (id) => sharedGet(`/projects/${id}/tags`),
@@ -483,12 +544,37 @@ export const milestones = {
   pushToGitlab: (id) => api.post(`/milestones/${id}/gitlab`),
   // Everything the stage page draws (#2992): progress, burn-up, scope, pace.
   metrics: (id) => api.get(`/milestones/${id}/metrics`),
+  // GitLab stage write-back (#3010): re-send a write GitLab refused («повторить»),
+  // and settle a stage's conflict — { resolution: ours|theirs|manual, value? }.
+  retryGitlab: (id) => api.post(`/milestones/${id}/gitlab/sync`),
+  resolveConflict: (id, data) => api.post(`/milestones/${id}/gitlab/conflict/resolve`, data),
 }
 
 export const groups = {
   update: (id, data) => api.patch(`/groups/${id}`, data),
   move: (id, data) => api.patch(`/groups/${id}/move`, data),
   remove: (id) => api.delete(`/groups/${id}`),
+}
+
+// Member groups (#3074) — not the project groups above. { name?, color?, member_ids? }
+export const memberGroups = {
+  update: (id, data) => api.patch(`/member-groups/${id}`, data),
+  remove: (id) => api.delete(`/member-groups/${id}`),
+}
+
+// A request to be let into a workspace one is not in (#3077): by the workspace's
+// own link ({ workspace_id }) or a board's ({ project_slug, board_slug } /
+// { board_id }). The answer is { status: 'pending' } and nothing about the space.
+export const accessRequests = {
+  create: (data) => api.post('/access-requests', data),
+}
+
+// A member's own background run — an export or an import (#3068).
+export const jobs = {
+  get: (id, after = 0) => api.get(`/jobs/${id}`, { params: { after }, skipLoader: true }),
+  cancel: (id) => api.post(`/jobs/${id}/cancel`, null, { skipLoader: true }),
+  // responseType blob: the response is the exported file.
+  download: (id) => api.get(`/jobs/${id}/download`, { responseType: 'blob', skipLoader: true }),
 }
 
 export const boards = {
@@ -510,9 +596,22 @@ export const boards = {
   tasks: (id, params) => api.get(`/boards/${id}/tasks`, params ? { params } : undefined),
   subtasks: (id) => api.get(`/boards/${id}/subtasks`),
   archive: (id) => api.get(`/boards/${id}/archive`),
+  // The board's trash (#3004): tasks deleted as entries of their own, newest first.
+  trash: (id) => api.get(`/boards/${id}/trash`),
   // Whole-board blocking dependency graph for the Gantt view (raw edge rows).
   dependencies: (id) => api.get(`/boards/${id}/dependencies`),
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
+  // «>deploy» / «>ci» (#3099): { mode: run|retry_failed, ref?, variables?, integration_id? }.
+  runCI: (id, data) => api.post(`/boards/${id}/ci/run`, data),
+  // Export / import of the board's tasks as background jobs (#3068): both
+  // answer 202 with `{ job }`. data: { format: 'csv'|'json', task_ids? }.
+  exportTasks: (id, data) => api.post(`/boards/${id}/export`, data, { skipLoader: true }),
+  // formData: file, mapping (JSON), options (JSON).
+  importTasks: (id, formData) =>
+    api.post(`/boards/${id}/import`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      skipLoader: true,
+    }),
   // Saved board views (#2970): the reader's own + the board's shared ones.
   views: (id) => api.get(`/boards/${id}/views`),
   // { name, config, scope?: 'user' | 'board', is_default? } — upserts by name.
@@ -520,6 +619,17 @@ export const boards = {
   // Partial: { name?, config?, scope?, is_default?, before_id?, after_id? }.
   updateView: (viewId, data) => api.patch(`/views/${viewId}`, data),
   deleteView: (viewId) => api.delete(`/views/${viewId}`),
+}
+
+// Favourite boards (#3115): the reader's own starred boards, per workspace.
+// skipLoader — the star and the sidebar section are quiet, instant actions.
+export const favorites = {
+  list: (wsId) => api.get(`/workspaces/${wsId}/favorites`, { skipLoader: true }),
+  add: (boardId) => api.put(`/boards/${boardId}/favorite`, null, { skipLoader: true }),
+  remove: (boardId) => api.delete(`/boards/${boardId}/favorite`, { skipLoader: true }),
+  // { before_id?, after_id? } — the neighbours' board ids.
+  move: (boardId, data) =>
+    api.patch(`/boards/${boardId}/favorite/move`, data, { skipLoader: true }),
 }
 
 export const notes = {
@@ -577,15 +687,21 @@ export const documents = {
   // text corrupts it in a way that only shows up when the download is opened.
   exportFile: (id, format) =>
     api.get(`/documents/${id}/export?format=${format}`, { responseType: 'blob' }),
+  // DELETE puts the document (and, recursive, its nested ones) in the trash
+  // (#3006); the trash lists, restores and purges.
   remove: (id, recursive = false) =>
     api.delete(`/documents/${id}${recursive ? '?recursive=true' : ''}`),
+  trash: (wsId) => api.get(`/workspaces/${wsId}/documents/trash`),
+  untrash: (id) => api.post(`/documents/${id}/restore`),
+  purge: (id) => api.delete(`/documents/${id}/purge`),
   // Block-anchored annotations (#2730). Roots and replies come back in one list
   // and are threaded on the client — it groups them by block to place them next
   // to the text anyway. skipLoader: the panel refetches on a socket nudge, and a
   // colleague resolving a thread must not flash the global progress bar.
   comments: (id) => api.get(`/documents/${id}/comments`, { skipLoader: true }),
   addComment: (id, data) => api.post(`/documents/${id}/comments`, data),
-  updateComment: (commentId, body) => api.patch(`/document-comments/${commentId}`, { body }),
+  updateComment: (commentId, body, mentions = []) =>
+    api.patch(`/document-comments/${commentId}`, { body, mentions }),
   resolveComment: (commentId, resolved = true) =>
     api.patch(`/document-comments/${commentId}/resolve`, { resolved }),
   removeComment: (commentId) => api.delete(`/document-comments/${commentId}`),
@@ -616,6 +732,17 @@ export const documents = {
   createApproval: (id, data) => api.post(`/documents/${id}/approvals`, data),
   decideApproval: (approvalId, data) => api.post(`/document-approvals/${approvalId}/decide`, data),
   cancelApproval: (approvalId) => api.post(`/document-approvals/${approvalId}/cancel`),
+  // A document's stage and meeting (#3044, #3046) — null unpins.
+  setMilestone: (id, milestoneId) =>
+    api.put(`/documents/${id}/milestone`, { milestone_id: milestoneId || null }),
+  setConference: (id, conferenceId) =>
+    api.put(`/documents/${id}/conference`, { conference_id: conferenceId || null }),
+  // The documents pinned to a stage (its page) and to the workspace's meetings
+  // (an agenda chip per row of the meetings list).
+  byMilestone: (milestoneId) =>
+    api.get(`/milestones/${milestoneId}/documents`, { skipLoader: true }),
+  byConferences: (wsId) =>
+    api.get(`/workspaces/${wsId}/conference-documents`, { skipLoader: true }),
 }
 
 // Conferences (#2864). Media never comes through here — it goes to the LiveKit
@@ -638,6 +765,9 @@ export const conferences = {
   leave: (id) => api.post(`/conferences/${id}/leave`),
   end: (id) => api.post(`/conferences/${id}/end`),
   invite: (id, userIds, role) => api.post(`/conferences/${id}/invite`, { user_ids: userIds, role }),
+  // «Принять / Отклонить» an invitation (#3051): response is 'accepted' or
+  // 'declined'; answers the caller's participant row.
+  rsvp: (id, response) => api.put(`/conferences/${id}/rsvp`, { response }, { skipLoader: true }),
   participants: (id) => api.get(`/conferences/${id}/participants`, { skipLoader: true }),
   // Conferences held about a task — for the task page's "discussed in" link.
   byTask: (taskId) => api.get(`/tasks/${taskId}/conferences`, { skipLoader: true }),
@@ -653,17 +783,26 @@ export const conferences = {
   // would skip or repeat a line every time somebody sends one.
   messages: (id, params) => api.get(`/conferences/${id}/messages`, { params, skipLoader: true }),
   // Text only — the common case, and it should not pay for a multipart encoder.
-  postMessage: (id, body) =>
-    api.post(`/conferences/${id}/messages`, { body }, { skipLoader: true }),
+  // `mentions` are the user ids the composer resolved @-handles to (#3055): the
+  // server notifies them, as for a comment.
+  postMessage: (id, body, mentions = []) =>
+    api.post(`/conferences/${id}/messages`, mentions.length ? { body, mentions } : { body }, {
+      skipLoader: true,
+    }),
   // With files. FormData, so the browser sets its own multipart boundary — do
   // not add a Content-Type header here, an explicit one arrives without it and
   // the server cannot parse the form.
-  postMessageWithFiles: (id, body, files) => {
+  postMessageWithFiles: (id, body, files, mentions = []) => {
     const fd = new FormData()
     fd.append('body', body)
+    for (const m of mentions) fd.append('mentions', m)
     for (const f of files) fd.append('files', f)
+    for (const m of mentions) fd.append('mentions', m)
     return api.post(`/conferences/${id}/messages`, fd, { skipLoader: true })
   },
+  // «/» in the chat (#3055): a task on `board_id` plus the chat line that
+  // announces it, in one request. Answers { task, message }.
+  createTask: (id, data) => api.post(`/conferences/${id}/tasks`, data, { skipLoader: true }),
   removeMessage: (messageId) => api.delete(`/conference-messages/${messageId}`),
   // The bytes of one attachment, fetched with our bearer credential. Images are
   // rendered from the blob this returns rather than through an <img src> at the
@@ -719,13 +858,20 @@ export const tasks = {
   // Board cards ship without the description (see backend task_list_dto.go); the
   // card fetches it lazily on hover. Background call — no global progress bar.
   description: (id) => api.get(`/tasks/${id}/description`, { skipLoader: true }),
+  // Follow / unfollow a task (#2963): returns { subscribers, subscribed }.
+  setSubscription: (id, subscribed) => api.put(`/tasks/${id}/subscription`, { subscribed }),
   update: (id, data) => api.patch(`/tasks/${id}`, data),
   move: (id, data) => api.patch(`/tasks/${id}/move`, data),
   setParent: (id, parentId) => api.patch(`/tasks/${id}/parent`, { parent_id: parentId }),
   transfer: (id, data) => api.patch(`/tasks/${id}/transfer`, data),
   archive: (id, opts) => api.patch(`/tasks/${id}/archive`, null, { params: opts }),
   restore: (id) => api.patch(`/tasks/${id}/restore`),
+  // DELETE puts the task (and its subtasks) in the board's trash (#3004);
+  // `untrash` is its undo — POST, unlike the archive's PATCH …/restore above —
+  // and `purge` deletes a trashed task for good.
   remove: (id, opts) => api.delete(`/tasks/${id}`, { params: opts }),
+  untrash: (id) => api.post(`/tasks/${id}/restore`),
+  purge: (id) => api.delete(`/tasks/${id}/purge`),
   addTag: (id, tagId) => api.post(`/tasks/${id}/tags`, { tag_id: tagId }),
   removeTag: (id, tagId) => api.delete(`/tasks/${id}/tags/${tagId}`),
   addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { user_id: userId }),
@@ -768,6 +914,10 @@ export const tasks = {
     api.patch(`/comments/${commentId}`, { body, mentions }),
   removeComment: (commentId) => api.delete(`/comments/${commentId}`),
   relations: (id) => api.get(`/tasks/${id}/relations`),
+  // Учёт времени (#2965).
+  time: (id) => api.get(`/tasks/${id}/time`),
+  addTime: (id, body) => api.post(`/tasks/${id}/time`, body),
+  deleteTime: (id, entryId) => api.delete(`/tasks/${id}/time/${entryId}`),
   addRelation: (id, number, kind) => api.post(`/tasks/${id}/relations`, { number, kind }),
   removeRelation: (relationId) => api.delete(`/relations/${relationId}`),
   // The document side of the same link table (#2732). Unlinking is done through
@@ -802,6 +952,10 @@ export const notifications = {
   unreadCount: () => api.get('/notifications/unread-count'),
   markRead: (id) => api.post(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/read-all'),
+  // The page of all notifications (#3049): { items, next_cursor } — the
+  // server filters (all · unread · mentions · assigned · gitlab) and pages by
+  // a keyset cursor; next_cursor is null on the last page.
+  page: (params) => api.get('/notifications/page', { params, skipLoader: true }),
 }
 
 // Notification router: per-user delivery channels + Alertmanager-style routing
@@ -840,6 +994,8 @@ export const gitlab = {
   getConnection: () => api.get('/gitlab/connection'),
   connect: (data) => api.post('/gitlab/connection', data), // { base_url, token }
   disconnect: () => api.delete('/gitlab/connection'),
+  // Connect through GitLab OAuth instead of a PAT (#3083) → { url } to navigate to.
+  connectOAuth: (returnTo) => api.post('/gitlab/connection/oauth', { return_to: returnTo }),
   // Per-workspace integration bindings (multi-binding: several GL project → board).
   listIntegrations: (wsId) => sharedGet(`/workspaces/${wsId}/gitlab/integrations`),
   createIntegration: (wsId, data) => api.post(`/workspaces/${wsId}/gitlab/integrations`, data),
@@ -901,10 +1057,19 @@ export const gitlab = {
   setGroup: (taskId) => api.post(`/tasks/${taskId}/gitlab-group`),
   clearGroup: (taskId) => api.delete(`/tasks/${taskId}/gitlab-group`),
   pushChild: (taskId) => api.post(`/tasks/${taskId}/gitlab-child`),
-  // Write-back conflicts: open-conflict inbox + interactive resolution.
-  conflicts: (wsId) => api.get(`/workspaces/${wsId}/gitlab/conflicts`),
+  // Write-back conflicts: open-conflict inbox + interactive resolution. The
+  // stages' conflicts (#3025) come along on request — entity: 'milestone'.
+  conflicts: (wsId) =>
+    api.get(`/workspaces/${wsId}/gitlab/conflicts`, { params: { include: 'milestones' } }),
   resolveConflict: (taskId, conflictId, data) =>
     api.post(`/tasks/${taskId}/gitlab/conflicts/${conflictId}/resolve`, data), // { resolution, value? }
+  // Several decisions at once (#3089): items = [{ task_id, conflict_id, resolution, value? }].
+  resolveConflicts: (wsId, items) =>
+    api.post(`/workspaces/${wsId}/gitlab/conflicts/resolve`, { items }),
+  // Label rules (#3087): counters by rule and «Проверить лейбл», on the edited
+  // rules → { hits: [n…], linked, recorded, check?: { outcome, tasks } }.
+  previewRules: (wsId, data) =>
+    api.post(`/workspaces/${wsId}/gitlab/rules/preview`, data, { skipLoader: true }),
 }
 
 export default api

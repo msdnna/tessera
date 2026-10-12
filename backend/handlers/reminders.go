@@ -66,27 +66,55 @@ func (h *API) broadcastReminder(c *gin.Context, r db.Reminder, eventType string,
 // CreateReminder schedules a personal reminder, optionally linked to a task.
 func (h *API) CreateReminder(c *gin.Context) {
 	var req struct {
-		TaskID      *uuid.UUID `json:"task_id"`
-		RemindAt    time.Time  `json:"remind_at" binding:"required"`
-		Message     string     `json:"message"`
-		Body        string     `json:"body"`
-		WorkspaceID *uuid.UUID `json:"workspace_id"`
+		TaskID      *uuid.UUID  `json:"task_id"`
+		RemindAt    time.Time   `json:"remind_at" binding:"required"`
+		Message     string      `json:"message"`
+		Body        string      `json:"body"`
+		WorkspaceID *uuid.UUID  `json:"workspace_id"`
+		Tags        []string    `json:"tags"`
+		Mentions    []uuid.UUID `json:"mentions"`
+		// ClientID (#3042): the id the client gave a capture queued offline.
+		ClientID *uuid.UUID `json:"client_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if req.ClientID != nil {
+		// A resend of a capture that already landed: answer with it, no twin.
+		if prev, err := h.q.GetReminder(c, *req.ClientID); err == nil {
+			if prev.UserID != middleware.CurrentUser(c) {
+				c.JSON(http.StatusConflict, gin.H{"error": "client_id taken"})
+				return
+			}
+			c.JSON(http.StatusOK, prev)
+			return
+		}
+	}
 	ws, ok := h.reminderWorkspace(c, req.TaskID, req.WorkspaceID)
 	if !ok {
 		return
 	}
+	tags, ok := normalizeRecordTags(c, req.Tags)
+	if !ok {
+		return
+	}
+	// A reminder is its owner's alone: the people it names are a reference,
+	// never notified (#3040).
+	mentions, ok := h.recordMentions(c, ws, req.Mentions)
+	if !ok {
+		return
+	}
 	r, err := h.q.CreateReminder(c, db.CreateReminderParams{
+		ClientID:    req.ClientID,
 		UserID:      middleware.CurrentUser(c),
 		TaskID:      req.TaskID,
 		RemindAt:    req.RemindAt,
 		Message:     req.Message,
 		Body:        req.Body,
 		WorkspaceID: ws,
+		Tags:        h.canonRecordTags(c, h.taskProjectID(c, req.TaskID), tags),
+		Mentions:    mentions,
 	})
 	if err != nil {
 		fail(c, err)
@@ -123,6 +151,8 @@ func (h *API) UpdateReminder(c *gin.Context) {
 		Body        *string         `json:"body"`
 		TaskID      json.RawMessage `json:"task_id"`
 		SnoozedFrom json.RawMessage `json:"snoozed_from"`
+		Tags        *[]string       `json:"tags"`
+		Mentions    *[]uuid.UUID    `json:"mentions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -131,6 +161,12 @@ func (h *API) UpdateReminder(c *gin.Context) {
 	p := db.UpdateReminderParams{
 		ID: r.ID, RemindAt: r.RemindAt, Message: r.Message, Done: r.Done, Body: r.Body,
 		TaskID: r.TaskID, WorkspaceID: r.WorkspaceID, SnoozedFrom: r.SnoozedFrom,
+		Tags: r.Tags, Mentions: r.Mentions,
+	}
+	if req.Tags != nil {
+		if p.Tags, ok = normalizeRecordTags(c, *req.Tags); !ok {
+			return
+		}
 	}
 	if req.Message != nil {
 		p.Message = *req.Message
@@ -174,6 +210,12 @@ func (h *API) UpdateReminder(c *gin.Context) {
 			p.WorkspaceID = ws
 		}
 	}
+	if req.Mentions != nil {
+		if p.Mentions, ok = h.recordMentions(c, p.WorkspaceID, *req.Mentions); !ok {
+			return
+		}
+	}
+	p.Tags = h.canonRecordTags(c, h.taskProjectID(c, p.TaskID), p.Tags)
 	h.saveReminder(c, r, p)
 }
 
@@ -199,10 +241,18 @@ func (h *API) SnoozeReminder(c *gin.Context) {
 	h.saveReminder(c, r, db.UpdateReminderParams{
 		ID: r.ID, RemindAt: req.RemindAt, Message: r.Message, Done: false, Body: r.Body,
 		TaskID: r.TaskID, WorkspaceID: r.WorkspaceID, SnoozedFrom: from,
+		Tags: r.Tags, Mentions: r.Mentions,
 	})
 }
 
 func (h *API) saveReminder(c *gin.Context, before db.Reminder, p db.UpdateReminderParams) {
+	// The columns are NOT NULL and pgx sends a nil slice as NULL.
+	if p.Tags == nil {
+		p.Tags = []string{}
+	}
+	if p.Mentions == nil {
+		p.Mentions = []uuid.UUID{}
+	}
 	updated, err := h.q.UpdateReminder(c, p)
 	if err != nil {
 		fail(c, err)

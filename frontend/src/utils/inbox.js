@@ -33,13 +33,86 @@ export const FILTERS = ['all', 'reminders', 'notes', 'board']
 export const GROUPS = ['fired', 'today', 'later', 'notes']
 
 // Does the record pass the segment filter? «К этой доске» keeps the records
-// tied to a task of the open board.
-export function passes(r, filter, boardId) {
+// tied to a task of the open board. `tag` (a tagKey) narrows any segment to the
+// records wearing that tag (#3040).
+export function passes(r, filter, boardId, tag = '') {
+  if (tag && !hasTag(r, tag)) return false
   if (filter === 'reminders') return r.kind === 'reminder'
   if (filter === 'notes') return r.kind === 'note'
   if (filter === 'board') return !!boardId && r.task?.board_id === boardId
   return true
 }
+
+// ── tags and mentions of a record (#3040) ──
+//
+// A record's `tags` are names. Tied to a task (or, a note, to a project) it
+// wears that project's tags — the server already spells a matching name the
+// project's way, and the pill takes the tag's colour here; any other name is
+// the record's free label, drawn neutral. `mentions` are member ids.
+
+// How tag names compare everywhere: trimmed, «#» optional, case-insensitive.
+export const tagKey = (name) =>
+  String(name || '')
+    .trim()
+    .replace(/^#+/, '')
+    .toLowerCase()
+
+export function hasTag(r, key) {
+  return (r?.tags || []).some((n) => tagKey(n) === key)
+}
+
+// The project whose tags the record wears: its task's, else its own.
+export function recordProjectId(r) {
+  return r?.task?.project_id || r?.project_id || null
+}
+
+// The workspace's tags (GET /workspaces/:id/tags) by project.
+export function tagsByProject(tags = []) {
+  const map = new Map()
+  for (const tg of tags) {
+    if (!tg?.project_id) continue
+    if (!map.has(tg.project_id)) map.set(tg.project_id, [])
+    map.get(tg.project_id).push(tg)
+  }
+  return map
+}
+
+/**
+ * The record's tag pills, in the record's order.
+ * @returns {Array<{ name: string, tag: object|null }>} `tag` — the project's
+ *   tag of that name (colour and all), null for a free label
+ */
+export function recordTags(r, byProject = new Map(), projectId = recordProjectId(r)) {
+  const own = (projectId && byProject.get(projectId)) || []
+  return (r?.tags || []).map((name) => ({
+    name,
+    tag: own.find((tg) => tagKey(tg.name) === tagKey(name)) || null,
+  }))
+}
+
+// The members a record mentions, in its order; ids nobody in the roster owns
+// any more are left out (the person left the workspace).
+export function recordPeople(r, members = []) {
+  const out = []
+  for (const id of r?.mentions || []) {
+    const m = members.find((x) => x.user_id === id)
+    if (m && !out.includes(m)) out.push(m)
+  }
+  return out
+}
+
+// «#релиз, frontend #идеи» → ['релиз', 'frontend', 'идеи']: the tag line of an
+// opened record. Repeats fold onto the first spelling.
+export function parseTagLine(text) {
+  const out = []
+  for (const w of String(text || '').split(/[\s,]+/)) {
+    const name = w.replace(/^#+/, '').trim()
+    if (name && !out.some((x) => tagKey(x) === tagKey(name))) out.push(name)
+  }
+  return out
+}
+
+export const tagLine = (tags = []) => tags.map((n) => `#${n}`).join(' ')
 
 /**
  * Group the feed: «Сработало» (open reminders whose time has come, oldest
@@ -49,14 +122,14 @@ export function passes(r, filter, boardId) {
  */
 export function groupInbox(
   { reminders = [], notes = [] },
-  { now = new Date(), filter = 'all', boardId = null } = {},
+  { now = new Date(), filter = 'all', boardId = null, tag = '' } = {},
 ) {
   const tomorrow = startOfDay(now).getTime() + DAY_MS
   const out = { fired: [], today: [], later: [], notes: [] }
   const doneHere = []
   for (const r of reminders) {
     const rec = r.kind ? r : { ...r, kind: 'reminder' }
-    if (!passes(rec, filter, boardId)) continue
+    if (!passes(rec, filter, boardId, tag)) continue
     const st = recordState(rec, now)
     if (st === 'done') {
       if (doneToday(rec, now)) doneHere.push(rec)
@@ -74,7 +147,7 @@ export function groupInbox(
   out.today.push(...doneHere)
   for (const n of notes) {
     const rec = n.kind ? n : { ...n, kind: 'note' }
-    if (passes(rec, filter, boardId)) out.notes.push(rec)
+    if (passes(rec, filter, boardId, tag)) out.notes.push(rec)
   }
   out.notes.sort((a, b) => Date.parse(b.updated_at) - Date.parse(a.updated_at))
   return GROUPS.map((key) => ({ key, items: out[key] })).filter((g) => g.items.length)

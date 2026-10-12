@@ -70,6 +70,10 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const gitlabCanCreate = ref(false)
   const gitlabFetchTemplates = ref(false)
   const gitlabIntegrationId = ref(null)
+  // Several GitLab projects may mirror into one board (#3082): the bindings an
+  // issue can be created in — [{ id, project_path, name, fetch_templates }]. More
+  // than one → the task modal asks which project.
+  const gitlabCreateTargets = ref([])
   // Same shape for the hierarchy half (#2592): writeback.push_children gates both the
   // "Сделать сгруппированной" button on a parent and the per-subtask push/retry. Kept
   // separate from gitlabCanCreate because an integration can allow one and not the other.
@@ -89,6 +93,9 @@ export const useBoardViewStore = defineStore('boardView', () => {
   // publishes how many tasks the current filter leaves so the header knows when
   // to fall back to a workspace-wide search (null = no board count yet).
   const searchQ = ref('')
+  // Who is looking at the open board right now (#3116): the board's sockets as the
+  // server last announced them (board.presence), me included.
+  const present = ref({ boardId: null, userIds: [] })
   const shownTasks = ref(null)
   // Its tooltip («показано 5 из 12…») — the count sits next to the board in the
   // sidebar (v2), not in the sub-toolbar.
@@ -164,6 +171,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     gitlabCanCreate.value = false
     gitlabFetchTemplates.value = false
     gitlabIntegrationId.value = null
+    gitlabCreateTargets.value = []
     gitlabCanGroup.value = false
     cardSize.value = 'medium'
     stackFields.value = false
@@ -181,6 +189,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
   }
 
   return {
+    present,
     active,
     searchQ,
     shownTasks,
@@ -208,6 +217,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     gitlabCanCreate,
     gitlabFetchTemplates,
     gitlabIntegrationId,
+    gitlabCreateTargets,
     gitlabCanGroup,
     cardSize,
     stackFields,

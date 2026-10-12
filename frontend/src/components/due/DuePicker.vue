@@ -64,6 +64,7 @@ import {
 } from '@/utils/dueModel'
 import { CAPS } from '@/utils/keyCaps'
 import { capsOfDisplay } from '@/shortcuts/keymap'
+import { vLayer } from '@/utils/layerZ'
 
 const SHIFT_BACKSPACE = capsOfDisplay(['shift', 'backspace'])
 
@@ -488,6 +489,7 @@ defineExpose({ model, pane, openPane })
     <div
       v-if="desktopShow"
       ref="panel"
+      v-layer
       class="dp-layer kit-layer"
       :style="panelStyle"
       :data-testid="testid"

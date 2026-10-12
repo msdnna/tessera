@@ -8,6 +8,8 @@
 // Keys inside: ↑↓ move · 1–4 filters · ↵ open (a note opens in place, a
 // reminder tied to a task opens the task) · E complete · H snooze · T to a task
 // · ⇧D to a document · L tie to a task · ⌫ delete (undo toast) · Esc close.
+// A record's tag pill narrows the feed to that tag (#3040); the chip beside the
+// segments shows it and takes it off.
 // G I (the shell's) opens it with the focus in the list, and closes it again.
 import { computed, nextTick, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
@@ -16,6 +18,7 @@ import {
   AddOutline,
   AlarmOutline,
   ArrowRedoOutline,
+  CloseOutline,
   CheckmarkDoneOutline,
   CheckmarkOutline,
   CloudOfflineOutline,
@@ -41,8 +44,7 @@ import { useBoardViewStore } from '@/stores/boardView'
 import { useAuthStore } from '@/stores/auth'
 import { useResponsive } from '@/composables/useResponsive'
 import { useInboxActions } from '@/composables/useInboxActions'
-import { doneTodayCount, FILTERS, groupInbox } from '@/utils/inbox'
-import { stubTask } from '@/utils/featureStubs'
+import { doneTodayCount, FILTERS, groupInbox, tagKey } from '@/utils/inbox'
 import { CAPS, cap } from '@/utils/keyCaps'
 import { isMac } from '@/utils/keys'
 
@@ -62,9 +64,21 @@ const boardId = computed(() => (board.active ? board.boardId : null))
 const groups = computed(() =>
   groupInbox(
     { reminders: inbox.reminders, notes: inbox.notes },
-    { now: inbox.now, filter: inbox.filter, boardId: boardId.value },
+    { now: inbox.now, filter: inbox.filter, boardId: boardId.value, tag: inbox.tagFilter },
   ),
 )
+// The tag the feed is narrowed to, spelled as the first record wearing it does.
+const tagName = computed(() => {
+  const key = inbox.tagFilter
+  if (!key) return ''
+  for (const r of [...inbox.reminders, ...inbox.notes])
+    for (const n of r.tags || []) if (tagKey(n) === key) return n
+  return key
+})
+function filterByTag(name) {
+  const key = tagKey(name)
+  inbox.tagFilter = inbox.tagFilter === key ? '' : key
+}
 const flat = computed(() => groups.value.flatMap((g) => g.items))
 const keyOf = (r) => `${r.kind}:${r.id}`
 const current = computed(() => flat.value.find((r) => keyOf(r) === inbox.selected) || null)
@@ -72,7 +86,10 @@ const doneToday = computed(() => doneTodayCount(inbox.reminders, inbox.now))
 const empty = computed(() => inbox.loaded && !flat.value.length)
 
 // Key hints show only after the keyboard moved the cursor, never after the
-// pointer or on a touch screen (#2969).
+// pointer or on a touch screen (#2969). They go as soon as the pointer moves,
+// not on the press: dropping the selected record's hint row under a pressed
+// button shifted the records below it, and the click (a tag pill, the task
+// chip) landed on the list instead.
 const kbd = ref(false)
 const listEl = ref(null)
 
@@ -115,6 +132,13 @@ function open(rec) {
   }
   inbox.expanded = inbox.expanded === keyOf(rec) ? '' : keyOf(rec)
 }
+// «Теги» in the menu: the record opens in place with the focus in its tag line.
+function editTags(rec) {
+  selectKey(keyOf(rec))
+  inbox.editFocus = 'tags'
+  if (inbox.expanded === keyOf(rec)) inbox.expanded = ''
+  nextTick(() => (inbox.expanded = keyOf(rec)))
+}
 function collapse() {
   inbox.expanded = ''
   nextTick(() => listEl.value?.focus({ preventScroll: true }))
@@ -150,7 +174,6 @@ async function removeSelected(rec) {
 }
 
 const isAuthor = (rec) => rec.kind === 'note' && rec.author_id === auth.user?.id
-const tagStub = stubTask('inbox.tags')
 const shiftD = isMac ? '⇧D' : 'Shift D'
 
 const menuItems = computed(() => {
@@ -198,7 +221,7 @@ const menuItems = computed(() => {
       icon: EyeOutline,
       toggle: r.visibility === 'workspace',
     })
-  items.push({ key: 'tags', label: t('inbox.action.tags'), icon: PricetagOutline, stub: tagStub })
+  items.push({ key: 'tags', label: t('inbox.action.tags'), icon: PricetagOutline })
   items.push({ gap: true })
   items.push({
     key: 'delete',
@@ -229,6 +252,8 @@ function run(action, rec) {
       return act.link(rec, null)
     case 'visibility':
       return act.toggleVisibility(rec)
+    case 'tags':
+      return editTags(rec)
     case 'delete':
       return removeSelected(rec)
   }
@@ -320,6 +345,7 @@ const subtitle = computed(() => {
     class="inbox-dock"
     :class="{ open: show && !isMobile }"
     :style="show && !isMobile ? { '--inbox-w': `${inbox.width}px` } : null"
+    @pointermove.capture="kbd = false"
     @pointerdown.capture="kbd = false"
   >
     <span
@@ -369,7 +395,26 @@ const subtitle = computed(() => {
           {{ filterLabel(f) }}
         </button>
       </div>
+      <div v-if="inbox.tagFilter" class="ib-tagf" data-testid="inbox-tag-filter">
+        <span class="ib-tagf-k">{{ t('inbox.panel.byTag') }}</span>
+        <button
+          type="button"
+          class="ib-tagf-chip"
+          :title="t('inbox.panel.tagClear')"
+          @click="inbox.tagFilter = ''"
+        >
+          #{{ tagName }}
+          <n-icon :component="CloseOutline" :size="12" />
+        </button>
+      </div>
 
+      <!-- Captured without a connection (#3042): waiting on the device. -->
+      <div v-if="inbox.pending" class="ib-pending" data-testid="inbox-pending">
+        <span>{{ t('inbox.pending', { n: inbox.pending }, inbox.pending) }}</span>
+        <button type="button" class="ib-pending-b" @click="inbox.flushQueue()">
+          {{ t('inbox.pendingSend') }}
+        </button>
+      </div>
       <div ref="listEl" class="ib-list" tabindex="0" data-testid="inbox-list" @keydown="onListKey">
         <template v-if="!inbox.loaded && inbox.loading">
           <div v-for="i in 5" :key="i" class="ib-skel">
@@ -391,7 +436,9 @@ const subtitle = computed(() => {
           <span class="ib-state-ic"><n-icon :component="CheckmarkDoneOutline" :size="24" /></span>
           <div class="ib-state-t">
             {{
-              inbox.filter === 'all' ? t('inbox.panel.emptyTitle') : t('inbox.panel.emptyFiltered')
+              inbox.filter === 'all' && !inbox.tagFilter
+                ? t('inbox.panel.emptyTitle')
+                : t('inbox.panel.emptyFiltered')
             }}
           </div>
           <div class="ib-state-s">
@@ -455,6 +502,7 @@ const subtitle = computed(() => {
                 @select="!kbd && selectKey(keyOf(r))"
                 @open="open(r)"
                 @task="act.openTask(r)"
+                @tag="filterByTag"
                 @menu="(el) => openMenu(r, el)"
                 @collapse="collapse"
                 @contextmenu.prevent="openMenu(r)"
@@ -572,6 +620,36 @@ const subtitle = computed(() => {
   color: var(--t-text1);
   font-weight: 650;
   box-shadow: var(--t-sh-card);
+}
+.ib-tagf {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: -2px 8px 8px;
+  font-size: 12px;
+  color: var(--t-text3);
+}
+.ib-tagf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  max-width: 220px;
+  padding: 0 6px 0 9px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+.ib-tagf-chip:hover {
+  background: color-mix(in srgb, var(--t-primary) 24%, transparent);
 }
 .ib-list {
   display: flex;
@@ -715,5 +793,27 @@ const subtitle = computed(() => {
 }
 .ib-skel-lines span + span {
   width: 60%;
+}
+.ib-pending {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 12px 6px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: color-mix(in srgb, #f0a020 14%, var(--t-pop));
+  font-size: 12.5px;
+  color: var(--t-text2);
+}
+.ib-pending span {
+  flex: 1;
+}
+.ib-pending-b {
+  border: 0;
+  background: transparent;
+  color: var(--t-primary);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
 </style>

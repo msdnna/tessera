@@ -130,9 +130,22 @@ describe('TaskCard after the pills/subtasks split', () => {
   })
 
   it('archive view: the pill row goes display-only and the restore action appears', async () => {
-    const w = await mountCard({ readonly: true, subtasks: SUBS, subtasksTotal: 2 })
+    const w = await mountCard({
+      task: { ...TASK, archived_at: '2026-10-01T10:00:00Z' },
+      readonly: true,
+      subtasks: SUBS,
+      subtasksTotal: 2,
+    })
     expect(w.find('.ca-restore').exists()).toBe(true)
     expect(w.find('.pills').classes()).toContain('ro')
     expect(w.find('.subs').classes()).toContain('ro')
+  })
+
+  // A board of an archived project (#3005) is read-only too, but its cards are
+  // live: no «Вернуть из архива» on them.
+  it('read-only live card (archived project): display-only, no restore', async () => {
+    const w = await mountCard({ readonly: true, subtasks: SUBS, subtasksTotal: 2 })
+    expect(w.find('.ca-restore').exists()).toBe(false)
+    expect(w.find('.pills').classes()).toContain('ro')
   })
 })

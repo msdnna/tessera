@@ -84,6 +84,18 @@ var bundles = map[string]bundle{
 			"integration_sync_partial": "{label}: +{created} новых, ~{updated} обновлено, за {took} (часть действий с ошибками)",
 			"integration_sync_failed":  "{label}: синхронизация не удалась — {reason} (за {took})",
 			"conference_invited":       "{actor} приглашает вас в конференцию{ctx}",
+			"note_mention":             "{actor} упомянул(а) вас в заметке{ctx}",
+			// v2 notifications (#3048).
+			"milestone_closed":     "{actor} закрыл(а) этап «{title}» — выполнено {done} из {total}",
+			"conference_starting":  "Через {minutes} мин начнётся встреча «{title}»",
+			"integration_conflict": "{label} · конфликт синхронизации в #{ref} ({fields}): изменено в обоих местах",
+			"document_mention":     "{actor} упомянул(а) вас в документе «{name}»{ctx}",
+			"conference_mention":   "{actor} упомянул(а) вас в чате встречи «{name}»{ctx}",
+			// Members (#3063).
+			"workspace_owner_transferred": "{actor} передал(а) вам владение пространством «{workspace}»",
+			"access_requested":            "{actor} просит доступ к пространству",
+			"access_approved":             "{actor} открыл(а) вам доступ к пространству «{workspace}»",
+			"access_declined":             "Запрос доступа отклонён",
 		},
 		fields: map[string]string{
 			"title":       "название",
@@ -94,6 +106,7 @@ var bundles = map[string]bundle{
 			"estimate":    "оценка",
 			"completed":   "выполнена",
 			"reopened":    "возвращена в работу",
+			"state":       "статус",
 		},
 		defaultNames: map[string]string{
 			"personal":    "Личное пространство",
@@ -117,6 +130,12 @@ var bundles = map[string]bundle{
 			"reminder":          "Напоминание",
 			"integration_sync":  "Синхронизация завершена",
 			"conference_invite": "Приглашение в конференцию",
+			// v2 notifications (#3048).
+			"milestone_closed":     "Этап закрыт",
+			"conference_soon":      "Скоро встреча",
+			"integration_conflict": "Конфликт синхронизации",
+			"workspace_owner":      "Передано владение пространством",
+			"access_request":       "Запрос доступа",
 			// Not a stored notification: the subject of the probe a user sends to
 			// check a channel they just set up.
 			"test": "Проверка канала",
@@ -156,6 +175,18 @@ var bundles = map[string]bundle{
 			"integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
 			"integration_sync_failed":  "{label}: sync failed — {reason} (after {took})",
 			"conference_invited":       "{actor} invited you to a conference{ctx}",
+			"note_mention":             "{actor} mentioned you in a note{ctx}",
+			// v2 notifications (#3048).
+			"milestone_closed":     "{actor} closed stage “{title}” — {done} of {total} done",
+			"conference_starting":  "Meeting “{title}” starts in {minutes} min",
+			"integration_conflict": "{label} · sync conflict on #{ref} ({fields}): changed on both sides",
+			"document_mention":     "{actor} mentioned you in document “{name}”{ctx}",
+			"conference_mention":   "{actor} mentioned you in the chat of “{name}”{ctx}",
+			// Members (#3063).
+			"workspace_owner_transferred": "{actor} handed you the workspace “{workspace}”",
+			"access_requested":            "{actor} asks for access to the workspace",
+			"access_approved":             "{actor} let you into the workspace “{workspace}”",
+			"access_declined":             "Your access request was declined",
 		},
 		fields: map[string]string{
 			"title":       "title",
@@ -166,6 +197,7 @@ var bundles = map[string]bundle{
 			"estimate":    "estimate",
 			"completed":   "completed",
 			"reopened":    "reopened",
+			"state":       "status",
 		},
 		defaultNames: map[string]string{
 			"personal":    "Personal space",
@@ -189,7 +221,13 @@ var bundles = map[string]bundle{
 			"reminder":          "Reminder",
 			"integration_sync":  "Sync finished",
 			"conference_invite": "Conference invitation",
-			"test":              "Channel test",
+			// v2 notifications (#3048).
+			"milestone_closed":     "Stage closed",
+			"conference_soon":      "Meeting starting soon",
+			"integration_conflict": "Sync conflict",
+			"test":                 "Channel test",
+			"workspace_owner":      "Workspace handed over",
+			"access_request":       "Access request",
 		},
 		fallbackKind: "Notification",
 		listSep:      ", ",
@@ -213,7 +251,7 @@ var bundles = map[string]bundle{
 // fieldOrder is the order changed fields are listed in, so a task_updated
 // sentence reads the same on every delivery (payload arrays keep their order,
 // but an unknown name is dropped rather than shown raw).
-var fieldOrder = []string{"title", "description", "priority", "due", "start", "estimate", "completed", "reopened"}
+var fieldOrder = []string{"title", "description", "priority", "due", "start", "estimate", "completed", "reopened", "state"}
 
 func bundleFor(lang string) bundle { return bundles[i18n.Normalize(lang)] }
 
@@ -305,11 +343,20 @@ func Sentence(payload map[string]any, lang, fallback string) string {
 		"{column}", DefaultName(str(payload["column_key"]), str(payload["column"]), lang),
 		"{title}", str(payload["title"]),
 		"{label}", str(payload["label"]),
+		// The members notifications (#3063) name a workspace; a personal one is
+		// captioned from its key.
+		"{workspace}", DefaultName(str(payload["workspace_key"]), str(payload["workspace"]), lang),
 		"{reason}", reason,
 		"{created}", strconv.Itoa(num(payload["created"])),
 		"{updated}", strconv.Itoa(num(payload["updated"])),
 		"{took}", duration(num(payload["seconds"]), b),
 		"{fields}", fieldList(payload["fields"], b),
+		// v2 notifications (#3048): the place a mention was made, a stage's
+		// tally, the minutes left before a meeting.
+		"{name}", str(payload["name"]),
+		"{done}", strconv.Itoa(num(payload["done"])),
+		"{total}", strconv.Itoa(num(payload["total"])),
+		"{minutes}", strconv.Itoa(num(payload["minutes"])),
 	).Replace(tmpl)
 }
 

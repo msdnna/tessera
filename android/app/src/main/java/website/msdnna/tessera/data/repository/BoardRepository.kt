@@ -153,6 +153,8 @@ class BoardRepository {
 
     suspend fun archiveTask(taskId: String) = api.archiveTask(taskId)
     suspend fun deleteTask(taskId: String) = api.deleteTask(taskId)
+    suspend fun untrashTask(taskId: String) = api.untrashTask(taskId)
+    suspend fun purgeTask(taskId: String) = api.purgeTask(taskId)
 
     suspend fun addTag(taskId: String, tagId: String) = api.addTaskTag(taskId, AddTagRequest(tagId))
     suspend fun removeTag(taskId: String, tagId: String) = api.removeTaskTag(taskId, tagId)

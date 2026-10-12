@@ -3,6 +3,7 @@ import { tourEvent } from '@/utils/tourEvents'
 import { ref, watch, computed, nextTick, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
+import { readFragment } from '@/utils/fragmentLink'
 import { NModal, NIcon, NSpin } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
@@ -61,6 +62,7 @@ import DuePicker from './due/DuePicker.vue'
 import { recurrenceHint } from '@/utils/dueModel'
 import TagPill from './TagPill.vue'
 import UserAvatar from './UserAvatar.vue'
+import TaskSubscribers from './task/TaskSubscribers.vue'
 import TesseraSpinner from './TesseraSpinner.vue'
 import TesseraIcon from './TesseraIcon.vue'
 import ShortcutKeys from './ShortcutKeys.vue'
@@ -74,6 +76,11 @@ import TaskFilesTab from './task/TaskFilesTab.vue'
 import TaskDocumentsTab from './task/TaskDocumentsTab.vue'
 import TagPicker from './task/TagPicker.vue'
 import TaskPropPickers from './task/TaskPropPickers.vue'
+import TimeLogPop from './task/TimeLogPop.vue'
+import AnchorLayer from './kit/AnchorLayer.vue'
+import CodeLinkCard from './task/CodeLinkCard.vue'
+import { useCodeLinksStore } from '@/stores/codeLinks'
+import { sortCodeLinks } from '@/utils/codeLinks'
 import { nextField } from './task/props/propItems'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 
@@ -111,6 +118,7 @@ const {
   gitlabCanCreate,
   gitlabFetchTemplates,
   gitlabIntegrationId,
+  gitlabCreateTargets,
   gitlabCanGroup,
 } = storeToRefs(bv)
 const tagPrefixNames = bv.prefixNames
@@ -137,6 +145,19 @@ const router = useRouter()
 const message = useMessage()
 const loading = ref(false)
 const task = ref(null)
+// «Подписаны» (#2963): the follow toggle answers with the new list.
+function onSubscribers({ subscribers, subscribed }) {
+  if (!task.value) return
+  task.value = { ...task.value, subscribers, subscribed }
+}
+// «Разработка» (#2964): the merge requests working on the task — the fetched
+// list, or what the socket said since (a pipeline finishing in GitLab).
+const codeLinksStore = useCodeLinksStore()
+const codeLinks = computed(() => {
+  const id = task.value?.id
+  if (!id) return []
+  return sortCodeLinks(codeLinksStore.byTask[id] ?? task.value.code_links ?? [])
+})
 // Read-only is a property of the TASK, not of the screen it was opened from.
 // The `readonly` prop carries the board's archive SCOPE (?archived=1); `archived_at`
 // carries the task's own state — and half the doors into this modal walk past the
@@ -146,7 +167,15 @@ const task = ref(null)
 // client convention — so an archived task reached that way took edits for real: its
 // pills were live, its status picker moved it back onto the board, comments posted.
 // Hence the OR: the scope alone was only ever half the answer (#2932).
-const ro = computed(() => props.readonly || !!task.value?.archived_at)
+//
+// A task of an archived project (#3005) is read-only too — the server says so in
+// `project_archived` and refuses writes with 409 — but it is not in the task
+// archive: «Вернуть из архива» is offered only for the task's own archive.
+const projectArchived = computed(() => !!task.value?.project_archived)
+const ro = computed(() => props.readonly || !!task.value?.archived_at || projectArchived.value)
+const canRestore = computed(
+  () => (props.readonly || !!task.value?.archived_at) && !projectArchived.value,
+)
 const boardInfo = ref(null) // { name, projectId } for the breadcrumb
 const parentCandidates = ref([]) // top-level tasks on the board (for attach)
 
@@ -329,6 +358,15 @@ function manageTags(typed = '') {
 const estCfg = computed(() => store.estimationFor(projectId.value || boardInfo.value?.projectId))
 // Full spelled-out estimate ("8 недель"), shown as the row's value.
 const estFull = computed(() => formatEstimateFull(estimate.value, estCfg.value))
+// «Потрачено» (#2965): minutes logged on the task and on its whole subtree; the
+// row says the subtree's, the time popover tells the two apart.
+const spent = ref({ spent: 0, spent_total: 0 })
+const timeShow = ref(false)
+const spentLabel = computed(() =>
+  spent.value.spent_total
+    ? formatEstimate(spent.value.spent_total, { ...(estCfg.value || {}), unit: 'time' })
+    : '',
+)
 // Projected window from start_date, free-form ("18 мая → 13 июл."), shown inline.
 const estRange = computed(() =>
   estimateRangeShort(task.value?.start_date, estimate.value, estCfg.value, formatters.value),
@@ -361,6 +399,26 @@ const { visibleCount: visibleTagCount } = useTagFit(tagsValEl, tagsMeasureEl, ta
 const assigneeObjs = computed(() =>
   selectedAssignees.value.map((id) => members.value.find((m) => m.user_id === id)).filter(Boolean),
 )
+// «Подписаны» follows the implicit participants: assigning someone or posting a
+// comment here changes the list, so it is re-read quietly once things settle.
+let subsTimer = null
+function onCommentsChanged() {
+  emit('changed')
+  refreshSubscribers()
+}
+function refreshSubscribers() {
+  const id = props.taskId
+  clearTimeout(subsTimer)
+  subsTimer = setTimeout(async () => {
+    try {
+      const { data } = await tasksApi.get(id)
+      if (props.taskId === id) onSubscribers(data)
+    } catch {
+      // the list stays as it was; the next open reads it afresh
+    }
+  }, 600)
+}
+onBeforeUnmount(() => clearTimeout(subsTimer))
 // External GitLab assignees (display-only) from the task detail.
 const glAssignees = computed(() => task.value?.gitlab_assignees || [])
 // GitLab half of the assignee picker: the project roster plus whoever this task
@@ -416,9 +474,7 @@ const recurSummary = computed(() =>
 )
 
 // The task's project — the header's icon and first crumb.
-const project = computed(
-  () => store.projects.find((p) => p.id === boardInfo.value?.projectId) || null,
-)
+const project = computed(() => store.projectById(boardInfo.value?.projectId))
 
 // The board keeps ONE TaskModal mounted and swaps `taskId` underneath it (a subtask
 // row, a relation, the «Родитель» link, an activity toast, ?task= in the URL), so two
@@ -440,6 +496,7 @@ async function loadDetail() {
     const res = await tasksApi.get(props.taskId)
     if (mine !== loadSeq) return
     const t = res.data
+    codeLinksStore.forget(t.id)
     task.value = t
     title.value = t.title
     description.value = t.description || ''
@@ -448,6 +505,7 @@ async function loadDetail() {
     dueTs.value = t.due_date ? new Date(t.due_date).getTime() : null
     startTs.value = t.start_date ? new Date(t.start_date).getTime() : null
     estimate.value = t.estimate ?? null
+    spent.value = { spent: t.spent || 0, spent_total: t.spent_total || 0 }
     recurrence.value = t.recurrence || null
     completed.value = !!t.completed_at
     selectedTags.value = (t.tags || []).map((x) => x.id)
@@ -574,6 +632,18 @@ async function loadExtras(mine) {
   // On open, land on the newest comment — but only in the wide layout, where the
   // right column scrolls on its own. In the stacked layout the whole modal scrolls,
   // and jumping to the bottom would skip past the title and description.
+  // Opened by a link to a fragment (#3119): land on that text instead.
+  const frag = readFragment(router?.currentRoute?.value?.query)
+  if (frag) {
+    scrollOnOpen = false
+    await nextTick()
+    if (frag.scope === 'desc') descTab.value?.reveal(frag.q)
+    else await commentsTab.value?.revealComment(frag.scope.slice(2), frag.q)
+    const rest = { ...router.currentRoute.value.query }
+    delete rest.frag
+    delete rest.q
+    router.replace({ query: rest })
+  }
   if (scrollOnOpen && wide.value) commentsTab.value?.scrollToBottom()
   scrollOnOpen = false
   // Enable the enter fade only after this population has rendered.
@@ -720,6 +790,7 @@ const editorTask = computed(() =>
   task.value
     ? {
         number: task.value.number,
+        board_id: task.value.board_id,
         icon: statusIcon(currentColumn.value),
         color: currentColumn.value?.color || '',
       }
@@ -781,11 +852,27 @@ async function closeTask() {
 // editor (above) before creating. On success the task becomes a synced issue task.
 const glCreating = ref(false)
 const glTemplates = ref([])
+// Which GitLab project the issue is opened in — asked only when several mirror
+// into this board (#3082); the first is the default.
+const glTarget = ref(null)
+const glTargetId = computed(() => glTarget.value || gitlabIntegrationId.value)
+const glTargetOptions = computed(() =>
+  gitlabCreateTargets.value.map((b) => ({ label: b.project_path || b.name, value: b.id })),
+)
+const glTargetFetchesTemplates = computed(() => {
+  const many = gitlabCreateTargets.value
+  if (!many.length) return gitlabFetchTemplates.value
+  return many.find((b) => b.id === glTargetId.value)?.fetch_templates === true
+})
+function pickGlTarget(id) {
+  glTarget.value = id
+  loadGlTemplates(loadSeq)
+}
 async function loadGlTemplates(mine) {
   glTemplates.value = []
-  if (!gitlabFetchTemplates.value || !wsId.value) return
+  if (!glTargetFetchesTemplates.value || !wsId.value) return
   try {
-    const res = await glApi.issueTemplates(wsId.value, gitlabIntegrationId.value)
+    const res = await glApi.issueTemplates(wsId.value, glTargetId.value)
     if (mine !== loadSeq) return
     glTemplates.value = res.data || []
   } catch {
@@ -818,7 +905,8 @@ async function createGlIssue() {
     await applyMeta()
     // The due date crosses over as a day, not an instant — send the calendar it
     // was written in (the profile zone, else the browser's).
-    const created = await glApi.createIssue(props.taskId, {}, resolvedTimezone(theme.timezone))
+    const body = gitlabCreateTargets.value.length > 1 ? { integration_id: glTargetId.value } : {}
+    const created = await glApi.createIssue(props.taskId, body, resolvedTimezone(theme.timezone))
     // Re-fetch so the task picks up its GitLab provenance and renders as synced.
     const res = await tasksApi.get(props.taskId)
     task.value = res.data
@@ -869,6 +957,7 @@ async function toggleGlGroup() {
 const moreMenu = useTaskModalMenu({
   task,
   readonly: () => ro.value,
+  restorable: () => canRestore.value,
   wide: () => wide.value,
   paneHidden: () => rightHidden.value,
   togglePane: () => toggleRightPane(),
@@ -971,6 +1060,7 @@ async function toggleAssignee(uid) {
     }
     emit('changed')
     refreshEvents()
+    refreshSubscribers()
   } catch (e) {
     message.error(e.message)
   }
@@ -992,6 +1082,7 @@ async function clearAssignees() {
     if (logins.length) task.value = (await tasksApi.get(props.taskId)).data
     emit('changed')
     refreshEvents()
+    refreshSubscribers()
   } catch (e) {
     message.error(e.message)
   }
@@ -1259,9 +1350,11 @@ const propCtx = computed(() => ({
   projectId: projectId.value || boardInfo.value?.projectId || '',
   wsId: wsId.value || '',
   readonly: ro.value
-    ? task.value?.archived_at || props.readonly
-      ? t('props.readonlyArchived')
-      : t('props.readonly')
+    ? projectArchived.value
+      ? t('project.archive.readonly')
+      : task.value?.archived_at || props.readonly
+        ? t('props.readonlyArchived')
+        : t('props.readonly')
     : '',
 }))
 const propOps = {
@@ -1424,9 +1517,12 @@ useShortcuts(
         <div class="tm-body">
           <div class="tm-main">
             <div class="tm-scroll">
-              <div v-if="ro" class="tm-ro-banner">
-                <span>{{ t('task.footer.readonly') }}</span>
+              <div v-if="ro" class="tm-ro-banner" data-testid="task-ro-banner">
+                <span>{{
+                  projectArchived ? t('project.archive.readonly') : t('task.footer.readonly')
+                }}</span>
                 <button
+                  v-if="canRestore"
                   type="button"
                   class="kit-btn primary small"
                   data-testid="task-ro-restore"
@@ -1675,9 +1771,12 @@ useShortcuts(
                       <span class="plabel">{{ t('task.field.estimate') }}</span>
                       <button class="val" @click.stop="toggleField('estimate')">
                         <n-icon :component="TimeOutline" :size="14" class="vico" />
-                        <span :class="{ muted: !estFull }">{{
-                          estFull || t('task.value.estimateUnset')
-                        }}</span>
+                        <span
+                          v-if="estFull || !spentLabel"
+                          class="est-v"
+                          :class="{ muted: !estFull }"
+                          >{{ estFull || t('task.value.estimateUnset') }}</span
+                        >
                         <span v-if="estRange" class="est-range">· {{ estRange }}</span>
                         <span
                           v-if="subtaskEstimateLabel"
@@ -1685,6 +1784,24 @@ useShortcuts(
                           :title="t('task.estimate.rollupHint')"
                           >Σ {{ subtaskEstimateLabel }}</span
                         >
+                        <span
+                          v-if="spentLabel || !ro"
+                          role="button"
+                          tabindex="0"
+                          class="est-spent"
+                          :class="{ empty: !spentLabel }"
+                          data-testid="task-spent"
+                          @click.stop="timeShow = !timeShow"
+                          @keydown.enter.stop.prevent="timeShow = !timeShow"
+                        >
+                          {{
+                            spentLabel
+                              ? t(estFull ? 'task.time.spentShort' : 'task.time.spentAlone', {
+                                  v: spentLabel,
+                                })
+                              : t('task.time.add')
+                          }}
+                        </span>
                       </button>
                       <ShortcutKeys id="task.estimate" class="pkey" />
                     </div>
@@ -1798,9 +1915,19 @@ useShortcuts(
                     </div>
                   </div>
 
-                  <!-- Разработка: the GitLab issue this task mirrors, or the way to make one. -->
-                  <template v-if="task?.gitlab || (task && gitlabCanCreate && !ro)">
+                  <!-- Разработка: the merge requests working on the task (#2964), then
+                       the GitLab issue it mirrors, or the way to make one. -->
+                  <template
+                    v-if="task?.gitlab || codeLinks.length || (task && gitlabCanCreate && !ro)"
+                  >
                     <div class="tp-sec">{{ t('task.panel.dev') }}</div>
+                    <div v-if="codeLinks.length" class="dev-list" data-testid="task-dev-mrs">
+                      <CodeLinkCard
+                        v-for="l in codeLinks"
+                        :key="`${l.provider}:${l.kind}:${l.repo}:${l.number}`"
+                        :link="l"
+                      />
+                    </div>
                     <div v-if="task.gitlab" class="dev-card">
                       <a
                         class="dev-line"
@@ -1835,10 +1962,31 @@ useShortcuts(
                         </button>
                       </div>
                     </div>
-                    <button v-else class="dev-create" :disabled="glCreating" @click="createGlIssue">
-                      <n-icon :component="LogoGitlab" :size="15" />
-                      {{ glCreating ? t('task.gitlab.creating') : t('task.gitlab.create') }}
-                    </button>
+                    <template v-else>
+                      <div
+                        v-if="glTargetOptions.length > 1"
+                        class="dev-targets"
+                        role="radiogroup"
+                        :aria-label="t('gitlab.window.chooseProject')"
+                        data-testid="gitlab-create-target"
+                      >
+                        <button
+                          v-for="o in glTargetOptions"
+                          :key="o.value"
+                          type="button"
+                          role="radio"
+                          :aria-checked="o.value === glTargetId"
+                          :class="{ on: o.value === glTargetId }"
+                          @click="pickGlTarget(o.value)"
+                        >
+                          {{ o.label }}
+                        </button>
+                      </div>
+                      <button class="dev-create" :disabled="glCreating" @click="createGlIssue">
+                        <n-icon :component="LogoGitlab" :size="15" />
+                        {{ glCreating ? t('task.gitlab.creating') : t('task.gitlab.create') }}
+                      </button>
+                    </template>
                   </template>
 
                   <div
@@ -1884,6 +2032,14 @@ useShortcuts(
                       @open-document="openDocument"
                     />
                   </template>
+
+                  <TaskSubscribers
+                    v-if="task"
+                    :task-id="taskId"
+                    :subscribers="task.subscribers || []"
+                    :subscribed="!!task.subscribed"
+                    @update="onSubscribers"
+                  />
                 </aside>
               </Teleport>
               <TaskPropPickers
@@ -1892,6 +2048,21 @@ useShortcuts(
                 :ctx="propCtx"
                 :ops="propOps"
               />
+              <AnchorLayer
+                :show="timeShow"
+                :anchor="() => rowAnchor('estimate')"
+                :title="t('task.time.title')"
+                placement="bottom-end"
+                testid="time-log-layer"
+                @update:show="timeShow = $event"
+              >
+                <TimeLogPop
+                  v-model:show="timeShow"
+                  :task-id="taskId"
+                  :cfg="estCfg"
+                  @changed="spent = $event"
+                />
+              </AnchorLayer>
 
               <TaskDescriptionTab
                 ref="descTab"
@@ -1977,7 +2148,7 @@ useShortcuts(
                   :composer-rows="1"
                   :people="editorPeople"
                   :editor-task="editorTask"
-                  @changed="emit('changed')"
+                  @changed="onCommentsChanged"
                   @reload-detail="loadDetail"
                 />
                 <TaskFilesTab
@@ -2559,6 +2730,12 @@ useShortcuts(
   white-space: nowrap;
 }
 /* ── «Разработка» ── */
+.dev-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 6px;
+}
 .dev-card {
   display: flex;
   flex-direction: column;
@@ -2614,6 +2791,27 @@ useShortcuts(
   font-size: 11px;
   white-space: nowrap;
 }
+.dev-targets {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
+}
+.dev-targets > button {
+  padding: 2px 8px;
+  border: 1px solid var(--t-border);
+  border-radius: 7px;
+  background: none;
+  font: inherit;
+  font-size: 12px;
+  color: var(--t-text2);
+  cursor: pointer;
+}
+.dev-targets > button.on {
+  border-color: color-mix(in srgb, var(--t-primary) 55%, var(--t-border));
+  color: var(--t-text1);
+  background: color-mix(in srgb, var(--t-primary) 10%, transparent);
+}
 .dev-create {
   display: inline-flex;
   align-items: center;
@@ -2639,6 +2837,33 @@ useShortcuts(
   padding: 4px;
 }
 /* estimate rollup hint on the value + popover editor */
+.est-v {
+  flex: none;
+}
+.est-spent {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 1px 5px;
+  border-radius: 6px;
+  color: var(--t-text3);
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.est-spent:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+/* Nothing logged yet: the way in shows on the row's hover (or focus). */
+.est-spent.empty {
+  opacity: 0;
+}
+.prow:hover .est-spent.empty,
+.est-spent.empty:focus-visible {
+  opacity: 1;
+}
 .est-rollup,
 .est-range {
   color: var(--t-text3);

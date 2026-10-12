@@ -19,7 +19,9 @@ import (
 
 // GitLab milestone pull-mapping (B/M1): map a GitLab issue's milestone onto a native
 // Tessera milestone + a gitlab_milestone_links row, and point the task at it. The
-// link's presence marks the milestone GitLab-sourced (read-only in Tessera).
+// link's presence marks the milestone GitLab-sourced; since #3010 it is editable in
+// Tessera and written back (gitlab_milestone_sync.go), so the pull merges three
+// ways instead of overwriting.
 
 // gidNumericID extracts the trailing numeric id from a GraphQL global id
 // ("gid://gitlab/Milestone/42" → 42), for the REST milestone_id parameter.
@@ -33,8 +35,9 @@ func gidNumericID(gid string) int64 {
 }
 
 // reconcileTaskMilestone points a synced task at the milestone its GitLab issue
-// carries (creating/refreshing the native milestone + link), or clears it when the
-// issue has none. Skipped when the user overrode the task's milestone locally.
+// carries (creating/refreshing the native milestone + link), or — when it has none —
+// at the stage a «лейбл → этап» rule named (labelStage, #3086), or clears it when
+// neither says anything. Skipped when the user overrode the task's milestone locally.
 //
 // A change on a task the sync already knew is journalled (#2992) with the sync's
 // actor, like every other field the sync moves: the stage page counts its scope
@@ -43,7 +46,7 @@ func gidNumericID(gid string) int64 {
 // (`fresh`) is not: its first import says nothing about when it joined the stage,
 // and journalling it would book every task of a sprint imported mid-way as
 // "added after the start".
-func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegration, projectID, taskID uuid.UUID, issue gitlab.Issue, overridden, fresh bool, actorID uuid.UUID) {
+func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegration, projectID, taskID uuid.UUID, issue gitlab.Issue, labelStage string, overridden, fresh bool, actorID uuid.UUID) {
 	if overridden {
 		return
 	}
@@ -52,6 +55,23 @@ func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegra
 		if t, err := h.q.GetTask(ctx, taskID); err == nil {
 			before = t.MilestoneID
 		}
+	}
+	if issue.MilestoneGID == "" && labelStage != "" {
+		// No native milestone, but a «лейбл → этап» rule names one (#3086): the
+		// stage of that title in the project, created on first sight. A native
+		// GitLab milestone, when the issue has one, wins over the label.
+		mID, err := h.ensureLabelStage(ctx, projectID, labelStage)
+		if err != nil {
+			return
+		}
+		if before != nil && *before == mID {
+			return
+		}
+		soft(ctx, "SetTaskMilestone", h.q.SetTaskMilestone(ctx, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: &mID}))
+		if !fresh {
+			h.journalMilestoneActor(ctx, taskID, actorID, before, &mID, labelStage)
+		}
+		return
 	}
 	if issue.MilestoneGID == "" {
 		// GitLab removed the milestone — clear the (GitLab-sourced) one on the task.
@@ -71,9 +91,32 @@ func (h *API) reconcileTaskMilestone(ctx context.Context, integ db.GitlabIntegra
 	}
 }
 
+// ensureLabelStage returns the project's stage of the given title, creating it when
+// the project has none (#3086). Such a stage is Tessera's own — no GitLab link: the
+// label named it, no GitLab milestone stands behind it, so a milestone write-back
+// leaves it alone (performSetMilestone treats it as native).
+func (h *API) ensureLabelStage(ctx context.Context, projectID uuid.UUID, title string) (uuid.UUID, error) {
+	m, err := h.q.GetMilestoneInProjectByTitle(ctx, db.GetMilestoneInProjectByTitleParams{ProjectID: projectID, Title: title})
+	if err == nil {
+		return m.ID, nil
+	}
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return uuid.Nil, err
+	}
+	created, cerr := h.q.CreateMilestone(ctx, db.CreateMilestoneParams{
+		ProjectID: projectID, Title: title, Slug: h.uniqueMilestoneSlug(ctx, projectID, title),
+	})
+	if cerr != nil {
+		return uuid.Nil, cerr
+	}
+	return created.ID, nil
+}
+
 // ensureGitlabMilestone upserts the native milestone + link for a GitLab milestone,
-// returning the native milestone id. GitLab is the source of truth for the synced
-// fields (title/description/dates/state) — an empty GitLab value clears ours too.
+// returning the native milestone id. An existing stage is merged three ways
+// against the link's baseline (pullGitlabMilestone): a field only GitLab changed is
+// taken — an empty GitLab value clears ours too — while a local edit not yet
+// written to GitLab is kept and one changed on both sides becomes a conflict.
 func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegration, projectID uuid.UUID, issue gitlab.Issue) (uuid.UUID, error) {
 	state := issue.MilestoneState
 	if state != "closed" {
@@ -92,11 +135,8 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 	})
 	switch {
 	case err == nil:
-		// Refresh the native milestone from GitLab + the link.
-		if _, uerr := h.q.UpdateMilestone(ctx, db.UpdateMilestoneParams{
-			ID: link.MilestoneID, Title: issue.MilestoneTitle, Description: issue.MilestoneDescription,
-			StartDate: issue.MilestoneStart, DueDate: issue.MilestoneDue, State: state,
-		}); uerr != nil {
+		// Merge GitLab's version into the native milestone, then refresh the link.
+		if uerr := h.pullGitlabMilestone(ctx, link, integ.WorkspaceID, snapOfIssue(issue), milestoneWritable(integ)); uerr != nil {
 			return uuid.Nil, uerr
 		}
 		soft(ctx, "UpdateGitlabMilestoneLink", h.q.UpdateGitlabMilestoneLink(ctx, db.UpdateGitlabMilestoneLinkParams{
@@ -124,6 +164,7 @@ func (h *API) ensureGitlabMilestone(ctx context.Context, integ db.GitlabIntegrat
 			return q.CreateGitlabMilestoneLink(ctx, db.CreateGitlabMilestoneLinkParams{
 				MilestoneID: m.ID, IntegrationID: integ.ID, GlGlobalID: issue.MilestoneGID,
 				GlIid: iid, GlNumericID: numeric, GlWebUrl: issue.MilestoneURL, GlState: state, TitleHash: titleHash,
+				GlSnapshot: snapOfIssue(issue).marshal(),
 			})
 		}); terr != nil {
 			return uuid.Nil, terr
@@ -202,6 +243,11 @@ func (h *API) PushMilestoneToGitlab(c *gin.Context) {
 		MilestoneID: id, IntegrationID: integ.ID, GlGlobalID: created.GlobalID(),
 		GlIid: iid, GlNumericID: created.ID, GlWebUrl: created.WebURL, GlState: state,
 		TitleHash: gitlab.HashStr(m.Title),
+		// GitLab now holds exactly what was sent: the baseline of the next sync.
+		GlSnapshot: milestoneSnap{
+			Title: m.Title, Description: m.Description,
+			Start: dateStr(m.StartDate), Due: dateStr(m.DueDate), State: normMilestoneState(state),
+		}.marshal(),
 	}); cerr != nil {
 		log.Printf("gitlab push milestone: link milestone %s to %s failed: %v", id, created.WebURL, cerr)
 		fail(c, cerr)

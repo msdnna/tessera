@@ -22,6 +22,7 @@ import { columnStatusName } from '@/utils/columnStatus'
 import { sortedColumns } from '@/utils/status'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useUndoStore } from '@/stores/undo'
+import { deleteTask } from '@/utils/taskTrash'
 
 // The menu is built by a computed that also runs outside a component (chart and
 // list views call this composable from setup, its callers' specs directly), so
@@ -36,9 +37,9 @@ const tr = (key, params) => i18n.global.t(key, params)
 // (ref/getter/array of {id,name,position}) fills «Переместить»; the done column
 // is `doneColumnId` (getter) or the open board's.
 //
-// The v2 interaction model (#2969): «В архив» happens at once and offers its
-// undo in a toast; «Удалить» is permanent — it takes the task's uploads with
-// it — so it is a two-step row: the menu arms it, the second press lands here.
+// The v2 interaction model (#2969): «В архив» and «Удалить» both happen at once
+// and offer their undo in a toast — the delete sends the task to the board's
+// trash (#3004), where it stays restorable for 30 days.
 //
 // `extra(target)` returns caller-specific rows, inserted before the archive —
 // the board card puts «Создать подзадачу» there. `onSelect(key, task)` gets any
@@ -164,13 +165,7 @@ export function useTaskMenu({
       ...(extra?.(t) || []),
       { gap: true },
       { key: 'archive', label: tr('task.menu.archive'), icon: ArchiveOutline },
-      {
-        key: 'delete',
-        label: tr('task.menu.delete'),
-        icon: TrashOutline,
-        danger: true,
-        confirm: { title: tr('task.menu.deleteArmed'), sub: tr('task.menu.deleteArmedSub') },
-      },
+      { key: 'delete', label: tr('task.menu.delete'), icon: TrashOutline, danger: true },
     ]
   })
 
@@ -218,15 +213,16 @@ export function useTaskMenu({
         await tasksApi.archive(t.id)
         offerUndo(t)
       } else if (key === 'delete') {
-        // The menu armed it: this is the second press.
-        await tasksApi.remove(t.id)
+        // Into the trash, with the undo in a toast; deleteTask re-reads the list.
+        await deleteTask(t, { onChanged })
+        return
       } else {
         return onSelect?.(key, t)
       }
       onChanged?.()
     } catch (e) {
-      // Loudest for the delete: the reader confirmed a permanent delete and the
-      // row is still there afterwards. Silence there reads as «it didn't take».
+      // A row that stays where it was after a delete or a move reads as «it
+      // didn't take» unless something says why.
       reportFailure(e)
       onChanged?.()
     }

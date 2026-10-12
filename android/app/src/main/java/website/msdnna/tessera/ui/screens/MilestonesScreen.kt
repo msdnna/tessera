@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +49,7 @@ import website.msdnna.tessera.data.model.Milestone
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.Workspace
 import website.msdnna.tessera.data.model.WorkspaceMilestone
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.ErrorState
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -404,9 +406,37 @@ private fun ManagerRow(vm: MilestoneViewModel, m: Milestone, glCapable: Boolean)
                     if (range.isNotEmpty()) {
                         Text(range, color = c.text3, fontSize = 12.sp)
                     }
+                    // «Не синхронизировано с GitLab · Повторить» (#3010).
+                    if (m.unsynced || (m.isLinked && m.glConflict)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.testTag(TestTags.MILESTONE_UNSYNCED),
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (m.glConflict) R.string.milestones_gitlab_conflict_mark else R.string.milestones_gitlab_unsynced,
+                                ),
+                                color = website.msdnna.tessera.ui.theme.TesseraDanger,
+                                fontSize = 12.sp,
+                            )
+                            if (!m.glConflict) {
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    stringResource(R.string.milestones_gitlab_retry),
+                                    color = c.primary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier
+                                        .testTag(TestTags.MILESTONE_RETRY)
+                                        .clickableNoRipple { vm.retryGitlab(m.id) },
+                                )
+                            }
+                        }
+                    }
                 }
-                // GitLab-sourced milestones are read-only locally (managed by the sync).
-                if (!m.isLinked) {
+                // A GitLab stage is edited and closed here only while its binding
+                // writes to GitLab (#3010); otherwise it stays read-only.
+                if (m.canEdit) {
                     IonIconButton(
                         if (m.isClosed) Ion.REFRESH else Ion.CHECK_CIRCLE,
                         onClick = { vm.toggleState(m) },
@@ -415,6 +445,8 @@ private fun ManagerRow(vm: MilestoneViewModel, m: Milestone, glCapable: Boolean)
                         tint = c.text3,
                     )
                     IonIconButton(Ion.PENCIL, onClick = { editing = true }, boxSize = 30.dp, iconSize = 15.dp, tint = c.text3)
+                }
+                if (!m.isLinked) {
                     if (glCapable) {
                         IonIconButton(Ion.GITLAB, onClick = { vm.pushToGitlab(m.id) }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
                     }

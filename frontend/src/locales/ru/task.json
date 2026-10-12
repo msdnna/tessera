@@ -10,9 +10,7 @@
     "delete": "Удалить",
     "addSubtask": "Создать подзадачу",
     "archived": "Задача «{title}» в архиве",
-    "archivedUndone": "Задача «{title}» возвращена",
-    "deleteArmed": "Точно удалить задачу?",
-    "deleteArmedSub": "Без возврата — вместе с её файлами"
+    "archivedUndone": "Задача «{title}» возвращена"
   },
   "confirm": {
     "delete": "Удалить безвозвратно? Это действие необратимо.",
@@ -514,7 +512,14 @@
     "milestone": "привязал(а) к этапу",
     "milestoneNamed": "привязал(а) к этапу «{name}»",
     "milestoneRemoved": "отвязал(а) от этапа",
-    "milestoneRemovedNamed": "отвязал(а) от этапа «{name}»"
+    "milestoneRemovedNamed": "отвязал(а) от этапа «{name}»",
+    "codeOpenedOn": "открыт {ref} в {branch}",
+    "codeOpened": "открыт {ref}",
+    "codeMerged": "смержен {ref}",
+    "codeClosed": "закрыт {ref}",
+    "trashed": "удалил(а) в корзину",
+    "untrashed": "вернул(а) из корзины",
+    "timeSpent": "потратил(а) {v}"
   },
   "ref": {
     "notFound": "Задача #{number} не найдена"
@@ -535,5 +540,54 @@
   "arm": {
     "delete": "Удалить?",
     "unlink": "Убрать?"
+  },
+  "subscribers": {
+    "title": "Подписаны",
+    "nobody": "Никто",
+    "subscribe": "Подписаться",
+    "unsubscribe": "Отписаться",
+    "hint": "Подписчики получают уведомления о комментариях, переносе, выполнении и правках задачи. Автор, исполнители и комментаторы подписаны сами.",
+    "more": "ещё {n}",
+    "failed": "Не удалось изменить подписку"
+  },
+  "dev": {
+    "openMr": "Открыть {ref} в GitLab",
+    "state": {
+      "open": "открыт",
+      "merged": "смержен",
+      "closed": "закрыт",
+      "draft": "черновик"
+    },
+    "ci": {
+      "success": "пайплайн пройден",
+      "running": "пайплайн идёт",
+      "failed": "пайплайн упал",
+      "canceled": "пайплайн отменён",
+      "manual": "пайплайн ждёт запуска"
+    }
+  },
+  "trash": {
+    "deleted": "Задача #{number} в корзине",
+    "deletedUntitled": "Задача «{title}» в корзине",
+    "restored": "Задача #{number} возвращена",
+    "restoredUntitled": "Задача «{title}» возвращена"
+  },
+  "time": {
+    "title": "Потрачено",
+    "log": "Записать",
+    "amount": "Сколько",
+    "amountPlaceholder": "1ч 30м",
+    "note": "Что делали",
+    "notePlaceholder": "необязательно",
+    "unreadable": "Не понимаю время — например «1ч 30м» или «45м»",
+    "none": "Пока ничего не записано",
+    "total": "Всего {all}",
+    "totalWithSub": "Своё {own} · с подзадачами {all}",
+    "remove": "Удалить запись",
+    "removeConfirm": "Удалить?",
+    "more": "и ещё {n}",
+    "spentShort": "· потрачено {v}",
+    "add": "+ время",
+    "spentAlone": "потрачено {v}"
   }
 }

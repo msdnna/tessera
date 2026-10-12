@@ -4,13 +4,13 @@
 // saved is the UTC midnight of the picked days (utils/milestones toDateOnlyISO).
 import { ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NDatePicker } from 'naive-ui'
+import DateField from '@/components/kit/DateField.vue'
 import PopoverForm from '../kit/PopoverForm.vue'
 import FormField from '../kit/FormField.vue'
 import { milestones as msApi } from '@/api'
 import { toDateOnlyISO, pickerValue } from '@/utils/milestones'
-import { useFormat } from '@/composables/useFormat'
 import { humanizeError } from '@/utils/errors'
+import { useStageSync } from '@/composables/useStageSync'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -20,7 +20,8 @@ const props = defineProps({
 })
 const emit = defineEmits(['update:show', 'saved'])
 const { t } = useI18n()
-const { datePattern, firstDayOfWeek } = useFormat()
+// A GitLab stage's dates go to GitLab with the save (#3010).
+const sync = useStageSync()
 
 const range = ref(null)
 const busy = ref(false)
@@ -49,6 +50,7 @@ async function submit() {
       start_date: range.value ? toDateOnlyISO(range.value[0]) : null,
       due_date: range.value ? toDateOnlyISO(range.value[1]) : null,
     })
+    sync.report(data)
     emit('saved', data)
     emit('update:show', false)
   } catch (e) {
@@ -75,12 +77,11 @@ async function submit() {
     @submit="submit"
   >
     <FormField :label="t('milestones.stage.dates')" :error="error">
-      <n-date-picker
+      <DateField
         v-model:value="range"
         type="daterange"
-        clearable
-        :format="datePattern"
-        :first-day-of-week="firstDayOfWeek"
+        :placeholder="t('milestones.stage.dates')"
+        testid="stage-dates-field"
       />
     </FormField>
   </PopoverForm>

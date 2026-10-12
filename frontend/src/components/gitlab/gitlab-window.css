@@ -282,7 +282,7 @@
 }
 .glw-ctl > .n-select,
 .glw-ctl > .n-input,
-.glw-ctl > .n-date-picker {
+.glw-ctl > .df-trigger {
   max-width: 360px;
 }
 /* Table rows (rules, write-back bindings): 40–46px, no lines. */

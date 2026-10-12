@@ -12,6 +12,42 @@ import (
 	"github.com/google/uuid"
 )
 
+const changeUserEmail = `-- name: ChangeUserEmail :one
+UPDATE users SET email = $2, email_verified = true, updated_at = now() WHERE id = $1
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at
+`
+
+type ChangeUserEmailParams struct {
+	ID    uuid.UUID `json:"id"`
+	Email string    `json:"email"`
+}
+
+// The new address was proven by a code sent to it, so it lands verified (#3058).
+func (q *Queries) ChangeUserEmail(ctx context.Context, arg ChangeUserEmailParams) (User, error) {
+	row := q.db.QueryRow(ctx, changeUserEmail, arg.ID, arg.Email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.Name,
+		&i.PasswordHash,
+		&i.IsAdmin,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Provider,
+		&i.Active,
+		&i.EmailVerified,
+		&i.LastName,
+		&i.FirstName,
+		&i.MiddleName,
+		&i.Bio,
+		&i.Company,
+		&i.JobTitle,
+		&i.LastSeenAt,
+	)
+	return i, err
+}
+
 const countUsers = `-- name: CountUsers :one
 SELECT count(*) FROM users
 `
@@ -26,7 +62,7 @@ func (q *Queries) CountUsers(ctx context.Context) (int64, error) {
 const createUser = `-- name: CreateUser :one
 INSERT INTO users (email, name, password_hash, is_admin)
 VALUES ($1, $2, $3, $4)
-RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at
 `
 
 type CreateUserParams struct {
@@ -61,12 +97,13 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title FROM users WHERE email = $1
+SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at FROM users WHERE email = $1
 `
 
 func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
@@ -89,12 +126,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
 const getUserByID = `-- name: GetUserByID :one
-SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title FROM users WHERE id = $1
+SELECT id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at FROM users WHERE id = $1
 `
 
 func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
@@ -117,25 +155,68 @@ func (q *Queries) GetUserByID(ctx context.Context, id uuid.UUID) (User, error) {
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
 
+const listAllMemberships = `-- name: ListAllMemberships :many
+SELECT m.user_id, m.workspace_id, w.name AS workspace_name, m.role
+FROM memberships m
+JOIN workspaces w ON w.id = m.workspace_id
+ORDER BY w.name
+`
+
+type ListAllMembershipsRow struct {
+	UserID        uuid.UUID `json:"user_id"`
+	WorkspaceID   uuid.UUID `json:"workspace_id"`
+	WorkspaceName string    `json:"workspace_name"`
+	Role          string    `json:"role"`
+}
+
+// The admin panel's «Пространства» column (#3078): every membership on the
+// instance with its workspace name, read once and grouped by user in Go.
+func (q *Queries) ListAllMemberships(ctx context.Context) ([]ListAllMembershipsRow, error) {
+	rows, err := q.db.Query(ctx, listAllMemberships)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListAllMembershipsRow
+	for rows.Next() {
+		var i ListAllMembershipsRow
+		if err := rows.Scan(
+			&i.UserID,
+			&i.WorkspaceID,
+			&i.WorkspaceName,
+			&i.Role,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const listUsers = `-- name: ListUsers :many
-SELECT id, email, name, is_admin, active, email_verified, created_at, updated_at
+SELECT id, email, name, is_admin, active, email_verified, created_at, updated_at, last_seen_at
 FROM users
 ORDER BY name
 `
 
 type ListUsersRow struct {
-	ID            uuid.UUID `json:"id"`
-	Email         string    `json:"email"`
-	Name          string    `json:"name"`
-	IsAdmin       bool      `json:"is_admin"`
-	Active        bool      `json:"active"`
-	EmailVerified bool      `json:"email_verified"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID            uuid.UUID  `json:"id"`
+	Email         string     `json:"email"`
+	Name          string     `json:"name"`
+	IsAdmin       bool       `json:"is_admin"`
+	Active        bool       `json:"active"`
+	EmailVerified bool       `json:"email_verified"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	LastSeenAt    *time.Time `json:"last_seen_at"`
 }
 
 func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
@@ -156,6 +237,7 @@ func (q *Queries) ListUsers(ctx context.Context) ([]ListUsersRow, error) {
 			&i.EmailVerified,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.LastSeenAt,
 		); err != nil {
 			return nil, err
 		}
@@ -229,7 +311,7 @@ UPDATE users SET
     job_title   = $8,
     updated_at  = now()
 WHERE id = $1
-RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at
 `
 
 type UpdateUserProfileParams struct {
@@ -272,6 +354,7 @@ func (q *Queries) UpdateUserProfile(ctx context.Context, arg UpdateUserProfilePa
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }

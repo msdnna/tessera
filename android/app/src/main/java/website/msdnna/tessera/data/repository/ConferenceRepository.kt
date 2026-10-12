@@ -14,9 +14,11 @@ import website.msdnna.tessera.data.model.ConferenceParticipant
 import website.msdnna.tessera.data.model.ConferenceRecording
 import website.msdnna.tessera.data.model.ConferenceToken
 import website.msdnna.tessera.data.model.CreateConferenceRequest
+import website.msdnna.tessera.data.model.CreateConferenceTaskRequest
 import website.msdnna.tessera.data.model.InviteConferenceRequest
 import website.msdnna.tessera.data.model.PostConferenceMessageRequest
 import website.msdnna.tessera.data.model.UpdateConferenceRequest
+import website.msdnna.tessera.util.ConferencePlan
 
 /**
  * Why a token request failed.
@@ -70,6 +72,7 @@ class ConferenceRepository {
         scheduledAt: String? = null,
         taskId: String? = null,
         recordingTtlDays: Int? = null,
+        plan: ConferencePlan? = null,
     ): Conference = api.createConference(
         workspaceId,
         CreateConferenceRequest(
@@ -78,6 +81,10 @@ class ConferenceRepository {
             scheduledAt = scheduledAt,
             taskId = taskId,
             recordingTtlDays = recordingTtlDays,
+            durationMinutes = plan?.durationMinutes,
+            recurrence = plan?.recurrence,
+            timezone = plan?.timezone,
+            milestoneId = plan?.milestoneId,
         ),
     )
 
@@ -157,8 +164,13 @@ class ConferenceRepository {
         return api.conferenceMessages(id, beforeAt, beforeId, limit)
     }
 
-    suspend fun postMessage(id: String, body: String): ConferenceMessage =
-        api.postConferenceMessage(id, PostConferenceMessageRequest(body))
+    /** [mentions] are the members the line @-mentions (#3055) — the server notifies them. */
+    suspend fun postMessage(id: String, body: String, mentions: List<String> = emptyList()): ConferenceMessage =
+        api.postConferenceMessage(id, PostConferenceMessageRequest(body, mentions.ifEmpty { null }))
+
+    /** «/задача» (#3055): answers the chat line that announces the new task. */
+    suspend fun createTask(id: String, title: String, boardId: String): ConferenceMessage =
+        api.createConferenceTask(id, CreateConferenceTaskRequest(title, boardId)).message
 
     /**
      * A message with files. The body rides along as a form field rather than a
@@ -169,10 +181,12 @@ class ConferenceRepository {
         id: String,
         body: String,
         files: List<MultipartBody.Part>,
+        mentions: List<String> = emptyList(),
     ): ConferenceMessage = api.postConferenceMessageWithFiles(
         id,
         body.toRequestBody(TEXT_PLAIN.toMediaTypeOrNull()),
         files,
+        mentions.map { it.toRequestBody(TEXT_PLAIN.toMediaTypeOrNull()) },
     )
 
     suspend fun deleteMessage(messageId: String) = api.deleteConferenceMessage(messageId)

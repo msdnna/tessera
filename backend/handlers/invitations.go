@@ -18,12 +18,28 @@ import (
 
 const invitationTTL = 7 * 24 * time.Hour
 
+// invitationResendPause keeps «Ещё раз» from turning a manager's double click —
+// or a script — into a stream of letters to someone else's mailbox.
+const invitationResendPause = 60 * time.Second
+
 // invitationDTO is the public shape of an invitation (no token hash).
 func invitationDTO(inv db.WorkspaceInvitation) gin.H {
 	return gin.H{
 		"id": inv.ID, "workspace_id": inv.WorkspaceID, "email": inv.Email,
 		"role": inv.Role, "created_at": inv.CreatedAt, "expires_at": inv.ExpiresAt,
+		"sent_at": inv.SentAt, "send_count": inv.SendCount, "declined_at": inv.DeclinedAt,
 	}
+}
+
+// mailInvitation emails an invitation's link and returns it, so the inviter can
+// copy it when SMTP is off.
+func (h *API) mailInvitation(c *gin.Context, inv db.WorkspaceInvitation, raw string) string {
+	link := fmt.Sprintf("%s/invite?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
+	subject, body := mail.Compose(mail.KindInvitation, emailLang(c, h.q, inv.Email), mail.Vars{
+		Link: link, TTLHours: int(invitationTTL / time.Hour),
+	})
+	mail.SendAsync(h.mailer, inv.Email, subject, body)
+	return link
 }
 
 // CreateInvitation invites an email to a workspace (owner/admin). The invitee
@@ -68,14 +84,54 @@ func (h *API) CreateInvitation(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	link := fmt.Sprintf("%s/invite?token=%s", strings.TrimRight(h.publicURL, "/"), raw)
-	subject, body := mail.Compose(mail.KindInvitation, emailLang(c, h.q, inv.Email), mail.Vars{
-		Link: link, TTLHours: int(invitationTTL / time.Hour),
-	})
-	mail.SendAsync(h.mailer, inv.Email, subject, body)
 	out := invitationDTO(inv)
-	out["link"] = link
+	out["link"] = h.mailInvitation(c, inv, raw)
 	c.JSON(http.StatusCreated, out)
+}
+
+// ResendInvitation is «Ещё раз» for a waiting invitation and «Продлить» for an
+// expired or declined one (#3061) — the same act: a new token, a fresh week, a
+// new letter. The old link stops working, which is the point of a resend that
+// may follow a forwarded or leaked letter. Scoped by the workspace in the URL,
+// the one the caller's role was checked against (see DeleteInvitation).
+func (h *API) ResendInvitation(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	if !h.requireManager(c, id) {
+		return
+	}
+	invID, ok := parseID(c, "invId")
+	if !ok {
+		return
+	}
+	cur, err := h.q.GetInvitationInWorkspace(c, db.GetInvitationInWorkspaceParams{ID: invID, WorkspaceID: id})
+	if err != nil || cur.AcceptedAt != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found in this workspace"})
+		return
+	}
+	if wait := time.Until(cur.SentAt.Add(invitationResendPause)); wait > 0 {
+		c.JSON(http.StatusTooManyRequests, gin.H{
+			"error": "too many requests", "retry_after": int((wait + time.Second - 1) / time.Second),
+		})
+		return
+	}
+	raw, hash, err := auth.NewRefreshToken()
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	inv, err := h.q.ReissueInvitation(c, db.ReissueInvitationParams{
+		ID: invID, WorkspaceID: id, TokenHash: hash, ExpiresAt: time.Now().Add(invitationTTL),
+	})
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "invitation not found in this workspace"})
+		return
+	}
+	out := invitationDTO(inv)
+	out["link"] = h.mailInvitation(c, inv, raw)
+	c.JSON(http.StatusOK, out)
 }
 
 // ListInvitations lists a workspace's pending invitations (owner/admin).
@@ -161,8 +217,14 @@ func (h *API) AcceptInvitation(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	inv, err := h.q.GetInvitationByHash(c, auth.HashRefreshToken(req.Token))
-	if err != nil || inv.AcceptedAt != nil || time.Now().After(inv.ExpiresAt) {
+	hash := auth.HashRefreshToken(req.Token)
+	inv, err := h.q.GetInvitationByHash(c, hash)
+	if err != nil {
+		// Not an addressed invitation — perhaps the workspace's shared link.
+		h.acceptInviteLink(c, hash)
+		return
+	}
+	if !invitationLive(inv, time.Now()) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid or expired invitation"})
 		return
 	}

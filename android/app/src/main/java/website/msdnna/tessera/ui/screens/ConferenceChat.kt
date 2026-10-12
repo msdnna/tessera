@@ -56,6 +56,7 @@ import website.msdnna.tessera.ui.viewmodels.ConferenceChatUiState
 import website.msdnna.tessera.ui.viewmodels.ConferenceChatViewModel
 import website.msdnna.tessera.util.CONF_CHAT_MAX_BODY
 import website.msdnna.tessera.util.CONF_CHAT_MAX_FILES
+import website.msdnna.tessera.util.ChatMember
 import website.msdnna.tessera.util.ConfPendingFile
 import website.msdnna.tessera.util.ConfPickRefusal
 import website.msdnna.tessera.util.ConfSizeUnit
@@ -93,6 +94,7 @@ internal fun ConferenceChatHost(vm: ConferenceChatViewModel, state: ConferenceCh
         onClose = { vm.close() },
         onDraft = { vm.setDraft(it) },
         onSend = { vm.send(source) },
+        onPickBoard = { vm.pickBoard(it) },
         // Everything, filtered by the server rather than by us: the chat carries
         // logs and archives as often as it carries screenshots, and a MIME filter
         // is how «почему я не могу отправить дамп» starts.
@@ -201,6 +203,7 @@ internal fun ConferenceChatSheet(
     onConfirmRemove: () -> Unit,
     onDownload: (ConferenceAttachment) -> Unit,
     onDismissError: () -> Unit,
+    onPickBoard: (String) -> Unit = {},
 ) {
     val c = Tessera.colors
     val log = rememberLazyListState()
@@ -279,6 +282,8 @@ internal fun ConferenceChatSheet(
                         removable = state.canRemove(message),
                         onAskRemove = { onAskRemove(message.id) },
                         onDownload = onDownload,
+                        members = state.members,
+                        meId = state.meId,
                     )
                 }
             }
@@ -306,6 +311,8 @@ internal fun ConferenceChatSheet(
             )
         }
 
+        ChatSuggest(state = state, onDraft = onDraft)
+        TaskStrip(state = state, onPickBoard = onPickBoard)
         Composer(
             state = state,
             onDraft = onDraft,
@@ -332,8 +339,14 @@ private fun MessageRow(
     removable: Boolean,
     onAskRemove: () -> Unit,
     onDownload: (ConferenceAttachment) -> Unit,
+    members: List<ChatMember> = emptyList(),
+    meId: String = "",
 ) {
     val c = Tessera.colors
+    if (message.isTask) {
+        TaskLine(message)
+        return
+    }
     // A row whose author left the workspace: the message outlives the account,
     // and «» over an avatar would read as a rendering failure.
     val name = message.userName?.takeIf { it.isNotBlank() }
@@ -353,7 +366,7 @@ private fun MessageRow(
                 Text(at, color = c.text3, fontSize = 11.sp)
             }
             if (message.body.isNotBlank()) {
-                Text(message.body, color = c.text2, fontSize = 13.sp)
+                Text(mentionText(message.body, members, meId), color = c.text2, fontSize = 13.sp)
             }
             message.attachments.forEach { attachment ->
                 AttachmentRow(attachment, onClick = { onDownload(attachment) })
@@ -459,7 +472,7 @@ private fun Composer(
         TTextField(
             value = state.draft,
             onValueChange = onDraft,
-            placeholder = stringResource(R.string.conf_chat_placeholder),
+            placeholder = stringResource(R.string.conf_chat_hint),
             singleLine = false,
             modifier = Modifier.weight(1f),
             fieldTag = TestTags.CONFERENCE_CHAT_INPUT,

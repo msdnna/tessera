@@ -37,6 +37,9 @@ import {
   SyncOutline,
 } from '@vicons/ionicons5'
 import { admin } from '@/api'
+import { toCSV } from '@/utils/csv'
+import { handOffBlob } from '@/utils/blobHandoff'
+import ArmButton from '@/components/kit/ArmButton.vue'
 import { copyText } from '@/utils/clipboard'
 import { stubTask } from '@/utils/featureStubs'
 import { humanizeError } from '@/utils/errors'
@@ -64,10 +67,10 @@ const whatsNew = useWhatsNewStore()
 const message = useMessage()
 const { isMobile } = useResponsive()
 const { web, api: apiVersion } = useVersionInfo()
-const { formatDateTime } = useFormat()
+const { formatDateTime, formatDate, formatRelative } = useFormat()
 
 const host = location.host
-const SECTIONS = ['users', 'server', 'integrations', 'help']
+const SECTIONS = ['users', 'invites', 'server', 'integrations', 'help']
 const section = computed(() => {
   const s = route?.query?.s
   return typeof s === 'string' && SECTIONS.includes(s) ? s : 'users'
@@ -76,10 +79,7 @@ function pick(key) {
   if (key !== section.value) router.replace({ query: { ...route.query, s: key } })
 }
 const STUB = {
-  invites: stubTask('admin.invites'),
   roles: stubTask('admin.roles'),
-  spaces: stubTask('admin.userSpaces'),
-  csv: stubTask('admin.csv'),
   twoFactor: stubTask('settings.twoFactor'),
 }
 
@@ -108,6 +108,93 @@ const filtered = computed(() => {
     return u.name.toLowerCase().includes(q) || u.email.toLowerCase().includes(q)
   })
 })
+
+// «Пространства» (#3078): the first by name and «+N»; all of them in the tooltip.
+function spacesLabel(u) {
+  const ws = u.workspaces || []
+  if (!ws.length) return ''
+  return ws.length === 1 ? ws[0].name : `${ws[0].name} +${ws.length - 1}`
+}
+// «Вход» (#3078): when they were last in the app — relative while it is near.
+function seenLabel(u) {
+  if (!u.last_seen_at) return ''
+  return (
+    formatRelative(u.last_seen_at) || formatDate(u.last_seen_at, { day: 'numeric', month: 'short' })
+  )
+}
+
+// «Экспорт CSV» (#3080): what the list shows now (filter and search applied).
+function exportCSV() {
+  const text = toCSV(filtered.value, [
+    { label: t('settings.admin.csvCol.name'), value: (u) => u.name },
+    { label: 'Email', value: (u) => u.email },
+    {
+      label: t('settings.admin.col.role'),
+      value: (u) =>
+        u.is_admin ? t('settings.admin.role.adminShort') : t('settings.admin.role.user'),
+    },
+    {
+      label: t('settings.admin.col.status'),
+      value: (u) =>
+        u.active ? t('settings.admin.status.active') : t('settings.admin.status.blocked'),
+    },
+    { label: t('settings.admin.csvCol.verified'), value: (u) => (u.email_verified ? 1 : 0) },
+    {
+      label: t('settings.admin.col.spaces'),
+      value: (u) => (u.workspaces || []).map((w) => w.name).join('; '),
+    },
+    { label: t('settings.admin.csvCol.lastSeen'), value: (u) => u.last_seen_at || '' },
+    { label: t('settings.admin.csvCol.created'), value: (u) => u.created_at },
+  ])
+  const day = new Date().toISOString().slice(0, 10)
+  handOffBlob(new Blob([text], { type: 'text/csv;charset=utf-8' }), `tessera-users-${day}.csv`)
+}
+
+// ── invitations of the whole instance (#3079) ──
+const invites = ref([])
+const invLoading = ref(false)
+const invFilter = ref('pending')
+const INV_FILTERS = ['pending', 'expired', 'declined', 'all']
+function invState(inv) {
+  if (inv.declined_at) return 'declined'
+  return new Date(inv.expires_at).getTime() <= Date.now() ? 'expired' : 'pending'
+}
+const invCounts = computed(() => {
+  const c = { pending: 0, expired: 0, declined: 0, all: invites.value.length }
+  for (const inv of invites.value) c[invState(inv)]++
+  return c
+})
+const invFiltered = computed(() => {
+  const q = query.value.trim().toLowerCase()
+  return invites.value.filter((inv) => {
+    if (invFilter.value !== 'all' && invState(inv) !== invFilter.value) return false
+    if (!q) return true
+    return inv.email.toLowerCase().includes(q) || inv.workspace_name.toLowerCase().includes(q)
+  })
+})
+async function loadInvites() {
+  invLoading.value = true
+  try {
+    const res = await admin.listInvitations()
+    invites.value = res.data || []
+  } catch (e) {
+    message.error(humanizeError(e))
+  } finally {
+    invLoading.value = false
+  }
+}
+async function revokeInvite(inv) {
+  try {
+    await admin.deleteInvitation(inv.id)
+    invites.value = invites.value.filter((x) => x.id !== inv.id)
+  } catch (e) {
+    message.error(humanizeError(e))
+  }
+}
+function openInvited() {
+  invFilter.value = 'pending'
+  select('invites')
+}
 
 async function load() {
   loading.value = true
@@ -379,6 +466,7 @@ function select(key) {
 
 onMounted(() => {
   load()
+  loadInvites()
   loadOAuth()
 })
 </script>
@@ -406,16 +494,17 @@ onMounted(() => {
         <span class="av-item-l">{{ t('settings.admin.nav.users') }}</span>
         <span class="av-item-n">{{ users.length || '' }}</span>
       </button>
-      <n-tooltip :delay="300" placement="right">
-        <template #trigger>
-          <span class="av-item stub" aria-disabled="true" data-testid="admin-nav-invites">
-            <n-icon :component="MailOutline" :size="16" class="av-item-ic" />
-            <span class="av-item-l">{{ t('settings.admin.nav.invites') }}</span>
-            <span class="av-pill">{{ t('common.stub.badge') }}</span>
-          </span>
-        </template>
-        {{ t('common.stub.soon', { n: STUB.invites }) }}
-      </n-tooltip>
+      <button
+        type="button"
+        class="av-item"
+        :class="{ active: section === 'invites' }"
+        data-testid="admin-nav-invites"
+        @click="select('invites')"
+      >
+        <n-icon :component="MailOutline" :size="16" class="av-item-ic" />
+        <span class="av-item-l">{{ t('settings.admin.nav.invites') }}</span>
+        <span class="av-item-n">{{ invCounts.pending || '' }}</span>
+      </button>
       <n-tooltip :delay="300" placement="right">
         <template #trigger>
           <span class="av-item stub" aria-disabled="true" data-testid="admin-nav-roles">
@@ -475,28 +564,21 @@ onMounted(() => {
           <h1 class="av-title">{{ t('settings.admin.nav.users') }}</h1>
           <span class="av-sub">{{ users.length }}</span>
           <span class="av-grow" />
-          <n-tooltip :delay="300">
-            <template #trigger>
-              <span class="av-stub-btn" data-testid="admin-csv">
-                <n-button secondary disabled>
-                  <template #icon><n-icon :component="CloudDownloadOutline" /></template>
-                  {{ t('settings.admin.csv') }}
-                </n-button>
-              </span>
-            </template>
-            {{ t('common.stub.soon', { n: STUB.csv }) }}
-          </n-tooltip>
-          <n-tooltip :delay="300">
-            <template #trigger>
-              <span class="av-stub-btn" data-testid="admin-invite">
-                <n-button type="primary" disabled>
-                  <template #icon><n-icon :component="PersonAddOutline" /></template>
-                  {{ t('settings.admin.invite') }}
-                </n-button>
-              </span>
-            </template>
-            {{ t('common.stub.soon', { n: STUB.invites }) }}
-          </n-tooltip>
+          <n-button
+            secondary
+            :disabled="!filtered.length"
+            data-testid="admin-csv"
+            @click="exportCSV"
+          >
+            <template #icon><n-icon :component="CloudDownloadOutline" /></template>
+            {{ t('settings.admin.csv') }}
+          </n-button>
+          <!-- An invitation leads into a workspace: it is sent from that
+               workspace's «Участники» (#3079). -->
+          <n-button type="primary" data-testid="admin-invite" @click="dialogs.open('members')">
+            <template #icon><n-icon :component="PersonAddOutline" /></template>
+            {{ t('settings.admin.invite') }}
+          </n-button>
         </header>
 
         <div class="av-tools">
@@ -528,14 +610,15 @@ onMounted(() => {
               {{ t(`settings.admin.filter.${f}`) }}
               <span class="av-seg-n">{{ counts[f] }}</span>
             </button>
-            <n-tooltip :delay="300">
-              <template #trigger>
-                <span class="av-seg-b stub" aria-disabled="true">{{
-                  t('settings.admin.filter.invited')
-                }}</span>
-              </template>
-              {{ t('common.stub.soon', { n: STUB.invites }) }}
-            </n-tooltip>
+            <button
+              type="button"
+              class="av-seg-b"
+              data-testid="admin-filter-invited"
+              @click="openInvited"
+            >
+              {{ t('settings.admin.filter.invited') }}
+              <span class="av-seg-n">{{ invCounts.pending }}</span>
+            </button>
           </div>
         </div>
 
@@ -544,19 +627,9 @@ onMounted(() => {
             <div v-if="!isMobile" class="av-thead" role="row">
               <span class="c-user">{{ t('settings.admin.col.user') }}</span>
               <span class="c-role">{{ t('settings.admin.col.role') }}</span>
-              <n-tooltip :delay="300">
-                <template #trigger>
-                  <span class="c-spaces stub">{{ t('settings.admin.col.spaces') }}</span>
-                </template>
-                {{ t('common.stub.soon', { n: STUB.spaces }) }}
-              </n-tooltip>
+              <span class="c-spaces">{{ t('settings.admin.col.spaces') }}</span>
               <span class="c-status">{{ t('settings.admin.col.status') }}</span>
-              <n-tooltip :delay="300">
-                <template #trigger>
-                  <span class="c-login stub">{{ t('settings.admin.col.login') }}</span>
-                </template>
-                {{ t('common.stub.soon', { n: STUB.spaces }) }}
-              </n-tooltip>
+              <span class="c-login">{{ t('settings.admin.col.login') }}</span>
               <n-tooltip :delay="300">
                 <template #trigger>
                   <span class="c-2fa stub">{{ t('settings.admin.col.twoFactor') }}</span>
@@ -623,14 +696,34 @@ onMounted(() => {
                   {{ t('settings.admin.role.selfLocked') }}
                 </n-tooltip>
               </span>
-              <span v-if="!isMobile" class="c-spaces av-dim">—</span>
+              <n-tooltip v-if="!isMobile && u.workspaces?.length > 1" :delay="300">
+                <template #trigger>
+                  <span class="c-spaces av-ellip" data-testid="admin-user-spaces">{{
+                    spacesLabel(u)
+                  }}</span>
+                </template>
+                <div v-for="w in u.workspaces" :key="w.id">{{ w.name }}</div>
+              </n-tooltip>
+              <span
+                v-else-if="!isMobile"
+                class="c-spaces av-ellip"
+                :class="{ 'av-dim': !u.workspaces?.length }"
+                data-testid="admin-user-spaces"
+                >{{ spacesLabel(u) || '—' }}</span
+              >
               <span class="c-status">
                 <span class="av-dot" :class="u.active ? 'on' : 'off'" />
                 {{
                   u.active ? t('settings.admin.status.active') : t('settings.admin.status.blocked')
                 }}
               </span>
-              <span v-if="!isMobile" class="c-login av-dim">—</span>
+              <span
+                v-if="!isMobile"
+                class="c-login av-dim"
+                :title="u.last_seen_at ? formatDateTime(u.last_seen_at) : ''"
+                data-testid="admin-user-seen"
+                >{{ seenLabel(u) || '—' }}</span
+              >
               <span v-if="!isMobile" class="c-2fa av-dim">
                 <n-icon :component="ShieldOutline" :size="15" />
               </span>
@@ -662,6 +755,103 @@ onMounted(() => {
             </div>
             <p v-if="!filtered.length && !loading" class="av-empty">
               {{ t('settings.admin.empty') }}
+            </p>
+          </div>
+        </n-spin>
+      </template>
+
+      <!-- Invitations of the whole instance (#3079) -->
+      <template v-else-if="section === 'invites'">
+        <header class="av-head">
+          <h1 class="av-title">{{ t('settings.admin.nav.invites') }}</h1>
+          <span class="av-sub">{{ invCounts.pending }}</span>
+          <span class="av-grow" />
+          <n-button type="primary" data-testid="admin-invite" @click="dialogs.open('members')">
+            <template #icon><n-icon :component="PersonAddOutline" /></template>
+            {{ t('settings.admin.invite') }}
+          </n-button>
+        </header>
+        <div class="av-tools">
+          <label class="av-search">
+            <n-icon :component="SearchOutline" :size="15" class="av-search-ic" />
+            <input
+              v-model="query"
+              class="av-search-in"
+              :placeholder="t('settings.admin.invites.search')"
+              data-testid="admin-inv-search"
+              @keydown.esc="query = ''"
+            />
+          </label>
+          <div class="av-seg" role="tablist">
+            <button
+              v-for="f in INV_FILTERS"
+              :key="f"
+              type="button"
+              role="tab"
+              class="av-seg-b"
+              :class="{ on: invFilter === f }"
+              :aria-selected="invFilter === f"
+              :data-testid="`admin-inv-filter-${f}`"
+              @click="invFilter = f"
+            >
+              {{ t(`settings.admin.invites.filter.${f}`) }}
+              <span class="av-seg-n">{{ invCounts[f] }}</span>
+            </button>
+          </div>
+        </div>
+        <n-spin :show="invLoading && !invites.length" size="small">
+          <div class="av-table" role="table" data-testid="admin-invites">
+            <div v-if="!isMobile" class="av-thead av-ithead" role="row">
+              <span>{{ t('settings.admin.invites.col.email') }}</span>
+              <span>{{ t('settings.admin.invites.col.space') }}</span>
+              <span>{{ t('settings.admin.col.role') }}</span>
+              <span>{{ t('settings.admin.col.status') }}</span>
+              <span>{{ t('settings.admin.invites.col.sent') }}</span>
+              <span />
+            </div>
+            <div
+              v-for="inv in invFiltered"
+              :key="inv.id"
+              class="av-row av-irow"
+              :class="{ off: invState(inv) !== 'pending' }"
+              role="row"
+              data-testid="admin-invite-row"
+              :data-email="inv.email"
+            >
+              <span class="av-ellip av-imail i-mail">
+                <n-icon :component="MailOutline" :size="15" class="av-dim" />
+                {{ inv.email }}
+              </span>
+              <span class="av-ellip i-ws">{{ inv.workspace_name }}</span>
+              <span class="av-dim i-role">{{ t(`settings.admin.invites.role.${inv.role}`) }}</span>
+              <span class="i-state">
+                <span class="av-dot" :class="invState(inv) === 'pending' ? 'on' : 'off'" />
+                {{
+                  invState(inv) === 'pending'
+                    ? t('settings.admin.invites.until', {
+                        date: formatDate(inv.expires_at, { day: 'numeric', month: 'short' }),
+                      })
+                    : t(`settings.admin.invites.state.${invState(inv)}`)
+                }}
+              </span>
+              <span class="av-dim av-ellip i-sent" :title="formatDateTime(inv.sent_at)">
+                {{
+                  formatRelative(inv.sent_at) ||
+                  formatDate(inv.sent_at, { day: 'numeric', month: 'short' })
+                }}
+                <template v-if="inv.invited_by_name"> · {{ inv.invited_by_name }}</template>
+              </span>
+              <span class="c-more">
+                <ArmButton
+                  :title="t('settings.admin.invites.revoke')"
+                  :confirm="t('settings.admin.invites.revokeConfirm')"
+                  testid="admin-invite-revoke"
+                  @confirm="revokeInvite(inv)"
+                />
+              </span>
+            </div>
+            <p v-if="!invFiltered.length && !invLoading" class="av-empty">
+              {{ t('settings.admin.invites.empty') }}
             </p>
           </div>
         </n-spin>
@@ -1095,6 +1285,23 @@ onMounted(() => {
   text-transform: uppercase;
   color: var(--t-text3);
 }
+.av-ithead,
+.av-irow {
+  grid-template-columns:
+    minmax(180px, 1.6fr) minmax(120px, 1fr) 90px minmax(120px, 1fr)
+    minmax(120px, 1fr) 32px;
+}
+.av-ellip {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.av-imail {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .av-thead .stub {
   opacity: 0.6;
   cursor: default;
@@ -1308,8 +1515,8 @@ onMounted(() => {
   font-size: 12px;
 }
 
-/* A narrow pane (a laptop with the sidebar open) drops the stub columns first:
-   they carry no data yet, the user, role and status do. */
+/* A narrow pane (a laptop with the sidebar open) drops the secondary columns
+   first: the user, role and status are what a row is about. */
 @container (max-width: 800px) {
   .av-thead .c-spaces,
   .av-thead .c-login,
@@ -1322,6 +1529,16 @@ onMounted(() => {
   .av-thead,
   .av-row {
     grid-template-columns: minmax(180px, 1fr) 150px minmax(120px, 0.6fr) 32px;
+  }
+  .av-irow .i-role,
+  .av-irow .i-sent,
+  .av-ithead > :nth-child(3),
+  .av-ithead > :nth-child(5) {
+    display: none;
+  }
+  .av-ithead,
+  .av-irow {
+    grid-template-columns: minmax(160px, 1.4fr) minmax(100px, 1fr) minmax(110px, 1fr) 32px;
   }
 }
 /* Phone: chips over the section, rows stack name / role · status. */
@@ -1370,6 +1587,26 @@ onMounted(() => {
 }
 .av.mobile .c-user {
   grid-area: user;
+}
+.av.mobile .av-irow {
+  grid-template-columns: minmax(0, 1fr) auto 32px;
+  grid-template-areas:
+    'mail mail more'
+    'ws state more';
+}
+.av.mobile .i-mail {
+  grid-area: mail;
+}
+.av.mobile .i-ws {
+  grid-area: ws;
+}
+.av.mobile .i-state {
+  grid-area: state;
+  justify-self: end;
+}
+.av.mobile .i-role,
+.av.mobile .i-sent {
+  display: none;
 }
 .av.mobile .c-role {
   grid-area: role;

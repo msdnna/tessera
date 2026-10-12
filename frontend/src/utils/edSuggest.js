@@ -31,7 +31,9 @@ export function detectTrigger(upto, { mentions = true, tasks = true } = {}) {
 //   items   buildMentionItems rows
 //   people  [{ id, role }] — role: 'assignee' | 'author' | 'commenter'
 //   labels  { inTask, members, gitlab, role: (role) => string, gitlabAside }
-export function mentionRows(items, query, people = [], labels = {}) {
+//   groups  member groups (#3074): [{ id, name, member_ids }] — a group row
+//           inserts the handles of its people who are among `items`.
+export function mentionRows(items, query, people = [], labels = {}, groups = []) {
   const q = String(query || '').toLowerCase()
   const hit = (m) =>
     !q || (m.label || '').toLowerCase().includes(q) || (m.display || '').toLowerCase().includes(q)
@@ -74,6 +76,26 @@ export function mentionRows(items, query, people = [], labels = {}) {
   section(titled ? labels.members : '', members, () => '')
   // GitLab logins are always titled: a bare login reads like a typo otherwise.
   section(labels.gitlab, gitlab, () => labels.gitlabAside || '')
+  // Groups last, titled: «@Фронтенд» writes out everyone in it, so each person
+  // gets their own chip and their own notification — a group grants nothing.
+  const byId = new Map((items || []).filter((m) => m.id && !m.gitlab).map((m) => [m.id, m]))
+  const groupHits = (groups || [])
+    .map((g) => ({ g, people: (g.member_ids || []).map((id) => byId.get(id)).filter(Boolean) }))
+    .filter(({ g, people }) => people.length && (!q || (g.name || '').toLowerCase().includes(q)))
+    .slice(0, Math.max(left, 0))
+  if (groupHits.length) {
+    out.push({ head: labels.groups || '' })
+    for (const { g, people } of groupHits)
+      out.push({
+        key: `grp:${g.id}`,
+        item: { group: true, labels: people.map((m) => m.label) },
+        name: g.name,
+        login: labels.groupCount ? labels.groupCount(people.length) : '',
+        aside: '',
+        avatarUserId: '',
+        avatarSrc: null,
+      })
+  }
   return out
 }
 

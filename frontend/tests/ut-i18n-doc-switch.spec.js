@@ -75,17 +75,23 @@ describe('editor labels follow a language switch', () => {
 
   it('re-renders the built-in template gallery and its bodies', async () => {
     expect(builtinCards().map((c) => c.title)).toEqual([
-      'Протокол совещания',
+      'Повестка встречи',
       'Техническое задание',
       'Ретроспектива',
+      'Планирование спринта',
+      'Постмортем',
+      'ADR',
     ])
     expect(JSON.stringify(builtinContent('meeting'))).toContain('Повестка')
 
     await setI18nLocale('en')
     expect(builtinCards().map((c) => c.title)).toEqual([
-      'Meeting notes',
+      'Meeting agenda',
       'Technical spec',
       'Retrospective',
+      'Sprint planning',
+      'Postmortem',
+      'ADR',
     ])
     // The card id stays keyed, not translated: the gallery and the create call
     // match on it.

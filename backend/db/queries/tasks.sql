@@ -5,11 +5,19 @@ INSERT INTO tasks (
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
+-- GetTask answers for live tasks only: a task in the trash (deleted_at, 0086) is
+-- gone for every reader, so loadTask and every internal lookup see a 404 / no
+-- row. GetTaskAny is the door for the few callers that must see the trash too —
+-- restore, purge, and the GitLab sync, which keeps the link of a deleted mirror
+-- and must not mistake it for an issue it has never seen.
 -- name: GetTask :one
+SELECT * FROM tasks WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: GetTaskAny :one
 SELECT * FROM tasks WHERE id = $1;
 
 -- name: ListTasksByBoard :many
-SELECT * FROM tasks WHERE board_id = $1 AND parent_id IS NULL ORDER BY position, created_at, id;
+SELECT * FROM tasks WHERE board_id = $1 AND parent_id IS NULL AND deleted_at IS NULL ORDER BY position, created_at, id;
 
 -- ListBoardTasksWithMeta returns top-level board tasks with their tag and
 -- assignee ids aggregated, so the kanban can render chips and group by tag
@@ -52,6 +60,8 @@ LEFT JOIN LATERAL (
 ) ga ON true
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
 WHERE t.board_id = @board_id
+  -- The trash (0086) is a screen of its own (ListBoardTrashWithMeta).
+  AND t.deleted_at IS NULL
   -- Active board (archived_at IS NULL) or the read-only archive view (IS NOT NULL).
   AND ((@archived::boolean AND t.archived_at IS NOT NULL) OR (NOT @archived::boolean AND t.archived_at IS NULL))
   -- Top-level *for this view*: no parent that the same view would also draw.
@@ -68,6 +78,7 @@ WHERE t.board_id = @board_id
   AND NOT EXISTS (
     SELECT 1 FROM tasks p
     WHERE p.id = t.parent_id
+      AND p.deleted_at IS NULL
       AND ((@archived::boolean AND p.archived_at IS NOT NULL) OR (NOT @archived::boolean AND p.archived_at IS NULL))
   )
   AND (
@@ -82,7 +93,7 @@ WHERE t.board_id = @board_id
 ORDER BY CASE WHEN @archived::boolean THEN t.archived_at END DESC NULLS LAST, t.position, t.created_at, t.id;
 
 -- name: ListSubtasks :many
-SELECT * FROM tasks WHERE parent_id = $1 ORDER BY position, created_at, id;
+SELECT * FROM tasks WHERE parent_id = $1 AND deleted_at IS NULL ORDER BY position, created_at, id;
 
 -- ListSubtasksWithMeta returns a parent's subtasks with tag/assignee ids, so the
 -- task modal can render a kanban-style hover card for each one.
@@ -105,7 +116,7 @@ FROM tasks t
 LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 LEFT JOIN gitlab_links gl ON gl.task_id = t.id
-WHERE t.parent_id = $1
+WHERE t.parent_id = $1 AND t.deleted_at IS NULL
 GROUP BY t.id, gl.task_id
 ORDER BY t.position, t.created_at, t.id;
 
@@ -135,12 +146,12 @@ LEFT JOIN LATERAL (
     SELECT COALESCE(array_agg(DISTINCT tga.gl_username), '{}')::text[] AS gitlab_assignee_logins
     FROM task_gitlab_assignees tga WHERE tga.task_id = t.id
 ) ga ON true
-WHERE t.board_id = $1 AND t.archived_at IS NULL
+WHERE t.board_id = $1 AND t.archived_at IS NULL AND t.deleted_at IS NULL
   -- Only rows the board can actually place under a card: the parent has to be
   -- active too, or the subtask is drawn nowhere. The mirror of the predicate in
   -- ListBoardTasksWithMeta, and the reason the two never overlap — an active
   -- child of an archived parent is served there as a card, exactly once.
-  AND EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NULL)
+  AND EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NULL AND p.deleted_at IS NULL)
 ORDER BY t.position, t.created_at, t.id;
 
 -- ListBoardArchivedWithMeta returns a board's archived tasks: top-level ones
@@ -156,12 +167,81 @@ LEFT JOIN task_tags tt ON tt.task_id = t.id
 LEFT JOIN task_assignees ta ON ta.task_id = t.id
 WHERE t.board_id = $1
   AND t.archived_at IS NOT NULL
+  AND t.deleted_at IS NULL
   AND (
     t.parent_id IS NULL
-    OR NOT EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NOT NULL)
+    OR NOT EXISTS (SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.archived_at IS NOT NULL AND p.deleted_at IS NULL)
   )
 GROUP BY t.id
 ORDER BY t.archived_at DESC;
+
+-- ListBoardTrashWithMeta is the board's trash (0086): every task that went there
+-- as an entry of its own — a root deleted with its subtree, or a subtask deleted
+-- on its own. Subtasks that went with their root (same deleted_at stamp, see
+-- SoftDeleteTaskSubtree) are not listed: they come back with it. Newest first;
+-- deleted_by_name says who threw it away.
+-- name: ListBoardTrashWithMeta :many
+SELECT
+    t.*,
+    COALESCE(u.name, '')::text AS deleted_by_name,
+    COALESCE((SELECT array_agg(DISTINCT tt.tag_id) FROM task_tags tt WHERE tt.task_id = t.id), '{}')::uuid[] AS tag_ids,
+    COALESCE((SELECT array_agg(DISTINCT ta.user_id) FROM task_assignees ta WHERE ta.task_id = t.id), '{}')::uuid[] AS assignee_ids,
+    (SELECT count(*) FROM tasks s WHERE s.parent_id = t.id AND s.deleted_at = t.deleted_at)::bigint AS subtask_count
+FROM tasks t
+LEFT JOIN users u ON u.id = t.deleted_by
+WHERE t.board_id = $1
+  AND t.deleted_at IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM tasks p WHERE p.id = t.parent_id AND p.deleted_at = t.deleted_at
+  )
+ORDER BY t.deleted_at DESC, t.number DESC;
+
+-- SoftDeleteTaskSubtree puts a task and every live descendant in the trash with
+-- ONE stamp (now() is the transaction timestamp) — what RestoreTaskSubtree reads
+-- to give back exactly this delete. A subtask already in the trash keeps the
+-- older stamp it went in with: it is an entry of its own there. Returns the ids
+-- it took (the realtime event and the uploads purge later need no walk).
+-- name: SoftDeleteTaskSubtree :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.id = @id AND t.deleted_at IS NULL
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id WHERE t.deleted_at IS NULL
+)
+UPDATE tasks SET deleted_at = now(), deleted_by = sqlc.narg('deleted_by')::uuid, updated_at = now()
+WHERE id IN (SELECT id FROM down)
+RETURNING id;
+
+-- RestoreTaskSubtree takes a task out of the trash with the subtasks that went
+-- in with it (same stamp — the RestoreTask trick above). A root whose parent is
+-- still in the trash comes back to the top level of its column: the parent is
+-- gone for every reader, and a subtask under it would be drawn nowhere. The
+-- caller passes that decision as detach (and the end-of-column position).
+-- name: RestoreTaskSubtree :many
+WITH RECURSIVE down AS (
+    SELECT t.id, t.deleted_at, t.deleted_at AS root_deleted_at
+    FROM tasks t WHERE t.id = @id AND t.deleted_at IS NOT NULL
+    UNION
+    SELECT t.id, t.deleted_at, down.root_deleted_at
+    FROM tasks t JOIN down ON t.parent_id = down.id
+), taken AS (
+    SELECT down.id FROM down WHERE down.deleted_at = down.root_deleted_at
+)
+UPDATE tasks SET deleted_at = NULL, deleted_by = NULL, updated_at = now(),
+    parent_id = CASE WHEN tasks.id = @id AND @detach::boolean THEN NULL ELSE tasks.parent_id END,
+    position = CASE WHEN tasks.id = @id AND @detach::boolean THEN @position::double precision ELSE tasks.position END
+WHERE tasks.id IN (SELECT taken.id FROM taken)
+RETURNING tasks.id;
+
+-- PurgeDeletedTasks finishes what the trash left pending: tasks that stayed
+-- deleted past the cutoff are removed for good (subtasks by the parent_id
+-- cascade; the recursion names them so their upload folders can be swept).
+-- name: PurgeDeletedTasks :many
+WITH RECURSIVE down AS (
+    SELECT t.id FROM tasks t WHERE t.deleted_at IS NOT NULL AND t.deleted_at < @cutoff::timestamptz
+    UNION
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+)
+DELETE FROM tasks WHERE tasks.id IN (SELECT id FROM down) RETURNING tasks.id;
 
 -- name: ArchiveTask :exec
 UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1;
@@ -178,9 +258,9 @@ UPDATE tasks SET archived_at = now(), updated_at = now() WHERE id = $1;
 -- that already grew a ring must get an answer instead of spinning.
 -- name: ArchiveTaskCascade :exec
 WITH RECURSIVE down AS (
-    SELECT t.id FROM tasks t WHERE t.id = $1
+    SELECT t.id FROM tasks t WHERE t.id = $1 AND t.deleted_at IS NULL
     UNION
-    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id
+    SELECT t.id FROM tasks t JOIN down ON t.parent_id = down.id WHERE t.deleted_at IS NULL
 )
 UPDATE tasks SET archived_at = now(), updated_at = now()
 -- Only the rows this archive actually takes. A subtask already in the archive
@@ -211,10 +291,10 @@ WHERE id IN (SELECT id FROM down) AND archived_at IS NULL;
 -- name: RestoreTask :exec
 WITH RECURSIVE down AS (
     SELECT t.id, t.archived_at, t.archived_at AS root_archived_at
-    FROM tasks t WHERE t.id = $1
+    FROM tasks t WHERE t.id = $1 AND t.deleted_at IS NULL
     UNION
     SELECT t.id, t.archived_at, down.root_archived_at
-    FROM tasks t JOIN down ON t.parent_id = down.id
+    FROM tasks t JOIN down ON t.parent_id = down.id WHERE t.deleted_at IS NULL
 ), taken AS (
     SELECT down.id FROM down WHERE down.archived_at = down.root_archived_at
 )
@@ -393,19 +473,19 @@ UPDATE tasks t
 SET parent_id = NULL,
     position = (
         SELECT coalesce(max(p.position), 0) FROM tasks p
-        WHERE p.column_id = t.column_id AND p.parent_id IS NULL
+        WHERE p.column_id = t.column_id AND p.parent_id IS NULL AND p.deleted_at IS NULL
     ) + 65536 * ord.rn,
     updated_at = now()
 FROM (
     SELECT s.id, row_number() OVER (ORDER BY s.position, s.created_at, s.id) AS rn
-    FROM tasks s WHERE s.parent_id = $1
+    FROM tasks s WHERE s.parent_id = $1 AND s.deleted_at IS NULL
 ) ord
 WHERE t.id = ord.id
 RETURNING t.id;
 
 -- name: MaxTaskPositionInColumn :one
 SELECT coalesce(max(position), 0)::double precision
-FROM tasks WHERE column_id = $1 AND parent_id IS NULL;
+FROM tasks WHERE column_id = $1 AND parent_id IS NULL AND deleted_at IS NULL;
 
 -- Rebalance* respace a sibling list onto a fresh gap * 1,2,3… ladder, keeping the
 -- order the list already had. Card order is a float8 midpoint, and the gap halves
@@ -419,7 +499,7 @@ UPDATE tasks t
 SET position = ordered.rn * sqlc.arg(gap)::double precision, updated_at = now()
 FROM (
     SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
-    FROM tasks WHERE column_id = sqlc.arg(column_id)::uuid AND parent_id IS NULL
+    FROM tasks WHERE column_id = sqlc.arg(column_id)::uuid AND parent_id IS NULL AND deleted_at IS NULL
 ) ordered
 WHERE t.id = ordered.id;
 
@@ -428,7 +508,7 @@ UPDATE tasks t
 SET position = ordered.rn * sqlc.arg(gap)::double precision, updated_at = now()
 FROM (
     SELECT id, row_number() OVER (ORDER BY position, created_at, id) AS rn
-    FROM tasks WHERE parent_id = sqlc.arg(parent_id)::uuid
+    FROM tasks WHERE parent_id = sqlc.arg(parent_id)::uuid AND deleted_at IS NULL
 ) ordered
 WHERE t.id = ordered.id;
 
@@ -520,10 +600,13 @@ WHERE parent_id = sqlc.arg(parent_id)::uuid
 -- name: ListScheduleRecurDue :many
 SELECT * FROM tasks
 WHERE archived_at IS NULL
+  AND deleted_at IS NULL
   AND due_date IS NOT NULL
   AND due_date <= now()
   AND recurrence->>'trigger' = 'schedule'
-  AND EXISTS (SELECT 1 FROM boards b WHERE b.id = tasks.board_id AND b.deleted_at IS NULL)
+  -- An archived project (0086) is read-only: its series wait for the restore.
+  AND EXISTS (SELECT 1 FROM boards b JOIN projects p ON p.id = b.project_id
+              WHERE b.id = tasks.board_id AND b.deleted_at IS NULL AND p.archived_at IS NULL)
 ORDER BY due_date;
 
 -- name: UpdateTaskDueDate :exec
@@ -571,10 +654,10 @@ RETURNING *;
 -- UNION cannot stop it on a parent ring the way it stops DeleteTask's below; the
 -- depth bound does instead — far deeper than any real checklist, and finite.
 WITH RECURSIVE down AS (
-    SELECT t.id, 0 AS depth FROM tasks t WHERE t.id = $1
+    SELECT t.id, 0 AS depth FROM tasks t WHERE t.id = $1 AND t.deleted_at IS NULL
     UNION ALL
     SELECT t.id, down.depth + 1 FROM tasks t JOIN down ON t.parent_id = down.id
-    WHERE down.depth < 64
+    WHERE down.depth < 64 AND t.deleted_at IS NULL
 ),
 people AS (
     SELECT ta.user_id, d.id AS task_id, d.depth

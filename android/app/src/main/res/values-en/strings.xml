@@ -152,9 +152,28 @@
     <string name="sidebar_ws_delete">Delete workspace</string>
     <string name="sidebar_ws_delete_message">Workspace “%1$s” and all of its projects, boards and tasks will be deleted permanently. Type the name to confirm.</string>
     <string name="sidebar_ws_delete_last">You cannot delete your only workspace</string>
+    <!-- Counts in the project / workspace delete confirmation (#3014). -->
+    <string name="delete_counts_line">Will be deleted: %1$s.</string>
+    <string name="delete_counts_join">%1$s and %2$s</string>
+    <plurals name="delete_counts_projects">
+        <item quantity="one">%d project</item>
+        <item quantity="other">%d projects</item>
+    </plurals>
+    <plurals name="delete_counts_boards">
+        <item quantity="one">%d board</item>
+        <item quantity="other">%d boards</item>
+    </plurals>
+    <plurals name="delete_counts_tasks">
+        <item quantity="one">%d task</item>
+        <item quantity="other">%d tasks</item>
+    </plurals>
 
     <!-- Sidebar: project tree -->
     <string name="sidebar_projects_header">PROJECTS</string>
+    <string name="sidebar_favorites_header">FAVOURITES</string>
+    <string name="sidebar_favorite_up">Move up</string>
+    <string name="sidebar_favorite_down">Move down</string>
+    <string name="sidebar_favorite_remove">Remove from favourites</string>
     <string name="sidebar_add_project">Project</string>
     <string name="sidebar_add_group">Group</string>
     <string name="sidebar_group_name_hint">Group name</string>
@@ -203,8 +222,10 @@
     <string name="task_card_menu_add_subtask">Add subtask</string>
     <string name="task_card_menu_restore">Restore from archive</string>
     <string name="task_card_menu_delete_forever">Delete forever</string>
+    <string name="task_trash_deleted">Task #%1$d moved to the trash</string>
+    <string name="task_trash_deleted_untitled">Task “%1$s” moved to the trash</string>
+    <string name="task_trash_undo">Restore</string>
     <string name="task_card_archive_confirm">Archive the task “%1$s”?</string>
-    <string name="task_card_delete_confirm">Delete the task “%1$s”? This cannot be undone.</string>
     <string name="task_card_delete_forever_confirm">Delete the task “%1$s” forever? This cannot be undone.</string>
     <string name="task_card_conflict">Conflict</string>
     <string name="task_card_subtask_hint">Subtask title, Enter</string>
@@ -222,9 +243,22 @@
     <!-- The "grouped task" badge on an issue carrying the grouping label (#2592) -->
     <string name="task_prop_grouping">Grouping</string>
     <string name="task_gitlab_grouped">Grouped</string>
+    <string name="task_dev_title">Development</string>
+    <string name="task_dev_state_open">open</string>
+    <string name="task_dev_state_merged">merged</string>
+    <string name="task_dev_state_closed">closed</string>
+    <string name="task_dev_state_draft">draft</string>
+    <string name="task_dev_ci_success">pipeline passed</string>
+    <string name="task_dev_ci_running">pipeline running</string>
+    <string name="task_dev_ci_failed">pipeline failed</string>
+    <string name="task_dev_ci_canceled">pipeline canceled</string>
+    <string name="task_dev_ci_manual">pipeline awaiting start</string>
+    <string name="task_event_code_opened_on">opened %1$s on %2$s</string>
+    <string name="task_event_code_opened">opened %1$s</string>
+    <string name="task_event_code_merged">merged %1$s</string>
+    <string name="task_event_code_closed">closed %1$s</string>
     <string name="task_archive_confirm">Archive this task?</string>
     <string name="task_archive_action">Archive</string>
-    <string name="task_delete_confirm">Delete this task? This cannot be undone.</string>
     <string name="task_prop_priority">Priority</string>
     <string name="task_prop_due">Due</string>
     <string name="task_prop_estimate">Estimate</string>
@@ -233,6 +267,11 @@
     <string name="task_prop_tags">Tags</string>
     <string name="task_prop_milestone">Milestone</string>
     <string name="task_prop_status">Status</string>
+    <string name="task_subscribers_title">Following</string>
+    <string name="task_subscribers_nobody">Nobody</string>
+    <string name="task_subscribers_subscribe">Follow</string>
+    <string name="task_subscribers_unsubscribe">Unfollow</string>
+    <string name="task_subscribers_more">%1$d more</string>
     <string name="task_prop_parent">Parent</string>
     <string name="task_prop_title">Title</string>
     <string name="task_prop_column">Column</string>
@@ -972,15 +1011,30 @@
     <string name="docs_export_share">Share “%1$s”</string>
     <string name="docs_export_unavailable">The converter is unavailable — try HTML</string>
     <!-- Built-in templates. The bodies are Markdown, parsed by DocMarkdown.kt -->
-    <string name="docs_template_meeting_title">Meeting notes</string>
-    <string name="docs_template_meeting_description">Attendees, agenda, decisions and follow-up tasks</string>
-    <string name="docs_template_meeting_body"># Meeting notes\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1. \n2. \n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due\n\n## Follow-up tasks\n\n- [ ] \n</string>
+    <string name="docs_template_meeting_title">Meeting agenda</string>
+    <string name="docs_template_meeting_description">Attendees, questions, decisions — tied to a meeting</string>
+    <string name="docs_template_meeting_body"># Meeting agenda\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1. \n2. \n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due\n\n## Follow-up tasks\n\n- [ ] \n</string>
     <string name="docs_template_spec_title">Specification</string>
     <string name="docs_template_spec_description">The problem, the scope, acceptance criteria and risks</string>
     <string name="docs_template_spec_body"># Specification\n\n## The problem\n\n## In scope\n\n- \n\n## Out of scope\n\n- \n\n## Acceptance criteria\n\n- [ ] \n\n## Risks and open questions\n\n| Question | Owner |\n|---|---|\n|  |  |\n</string>
     <string name="docs_template_retro_title">Retrospective</string>
     <string name="docs_template_retro_description">What went well, what got in the way, what we change</string>
     <string name="docs_template_retro_body"># Retrospective\n\n**Period:**\n\n## What went well\n\n- \n\n## What got in the way\n\n- \n\n## What we change\n\n- [ ] Action — owner\n</string>
+    <string name="docs_template_sprint_plan_title">Sprint planning</string>
+    <string name="docs_template_sprint_plan_description">Goal, scope, team capacity and risks</string>
+    <string name="docs_template_sprint_plan_body"># Sprint planning\n\n**Dates:**\n**Sprint goal:**\n\n## Scope\n\n- [ ] \n\n## Team capacity\n\n| Member | Availability |\n|---|---|\n|  |  |\n\n## Risks and dependencies\n\n- \n</string>
+    <string name="docs_template_postmortem_title">Postmortem</string>
+    <string name="docs_template_postmortem_description">Timeline, cause, impact, follow-ups</string>
+    <string name="docs_template_postmortem_body"># Postmortem\n\n**Incident:**\n**When:**\n**Impact:**\n\n## Timeline\n\n- \n\n## Root cause\n\n## What helped, what got in the way\n\n- \n\n## Follow-ups\n\n- [ ] Action — owner, due\n</string>
+    <string name="docs_template_adr_title">ADR</string>
+    <string name="docs_template_adr_description">Architecture decision: context, options, choice</string>
+    <string name="docs_template_adr_body"># ADR: \n\n**Status:** proposed\n**Date:**\n\n## Context\n\n## Options\n\n1. \n2. \n\n## Decision\n\n## Consequences\n\n- \n</string>
+    <string name="docs_templates_source_all">All</string>
+    <string name="docs_templates_source_mine">My templates</string>
+    <string name="docs_templates_category_sprint">Sprint</string>
+    <string name="docs_templates_category_product">Product</string>
+    <string name="docs_templates_category_engineering">Engineering</string>
+    <string name="docs_templates_category_meetings">Meetings</string>
 
     <!-- Conferences (#2896) -->
     <string name="conf_schedule">Schedule</string>
@@ -1016,6 +1070,22 @@
     <string name="conf_create_ttl_hint">Recordings of this conference are deleted automatically after that many days. 0 keeps them indefinitely.</string>
     <string name="conf_create_ttl_invalid">Enter a number of days: 0 or more</string>
     <string name="conf_create_submit">Schedule</string>
+    <string name="conf_plan_duration">Duration</string>
+    <string name="conf_plan_min">%1$d min</string>
+    <string name="conf_plan_h">%1$d h</string>
+    <string name="conf_plan_hm">%1$d h %2$d min</string>
+    <string name="conf_plan_stage">Stage</string>
+    <string name="conf_plan_no_stage">No stage</string>
+    <string name="conf_plan_no_stages">There are no open stages in this workspace</string>
+    <string name="conf_plan_linked">linked to “%1$s”</string>
+    <string name="conf_plan_repeat">Repeat</string>
+    <string name="conf_repeat_none">Does not repeat</string>
+    <string name="conf_repeat_daily">Every day</string>
+    <string name="conf_repeat_weekdays">Every weekday</string>
+    <string name="conf_repeat_weekly">Every week</string>
+    <string name="conf_repeat_biweekly">Every 2 weeks</string>
+    <string name="conf_repeat_monthly">Every month</string>
+    <string name="conf_plan_repeat_needs_time">A repeat counts from the start time — pick one first</string>
     <string name="conf_back">Back</string>
     <string name="conf_detail_not_found">Conference not found</string>
     <string name="conf_action_join">Join</string>
@@ -1085,6 +1155,17 @@
     <string name="conf_chat_size_b">%1$s B</string>
     <string name="conf_chat_size_kb">%1$s KB</string>
     <string name="conf_chat_size_mb">%1$s MB</string>
+    <string name="conf_chat_hint">Message · / task · @ person</string>
+    <string name="conf_chat_cmd_head">Commands</string>
+    <string name="conf_chat_cmd_task">task</string>
+    <string name="conf_chat_cmd_task_hint">Create a task from the meeting</string>
+    <string name="conf_chat_mention_head">Workspace members</string>
+    <string name="conf_chat_task_created">created a task</string>
+    <string name="conf_chat_task_gone">The task was deleted or is no longer in this workspace</string>
+    <string name="conf_chat_task_in">Task in</string>
+    <string name="conf_chat_task_no_board">No boards — create one in a project</string>
+    <string name="conf_chat_task_title">— type a title</string>
+    <string name="conf_reactions">Reactions</string>
 
     <!-- Screen share and recordings (#2896 §8) -->
     <string name="conf_share">Share screen</string>
@@ -1139,6 +1220,20 @@
     <string name="members_role_admin">Admin</string>
     <string name="members_role_member">Member</string>
     <string name="members_you">This is you</string>
+    <string name="members_transfer">Hand over ownership…</string>
+    <string name="members_transfer_title">Hand over ownership — %1$s</string>
+    <string name="members_transfer_sub">The new owner gets the whole workspace; you stay in it as an admin. Only they can hand it back.</string>
+    <string name="members_transfer_type">Type the workspace name</string>
+    <string name="members_transfer_go">Hand over ownership</string>
+    <string name="members_leave">Leave</string>
+    <string name="members_leave_confirm">Leave the workspace?</string>
+    <string name="members_requests">Asking for access</string>
+    <string name="members_request_approve">Let in</string>
+    <string name="members_activity_now">now</string>
+    <string name="members_activity_min">%1$d min ago</string>
+    <string name="members_activity_hours">%1$d h ago</string>
+    <string name="members_activity_yesterday">yesterday</string>
+    <string name="members_activity_days">%1$d d ago</string>
     <string name="members_read_only">Read-only list: the workspace owner or an admin changes who is here.</string>
 
     <!-- Admin: account list -->
@@ -1244,6 +1339,11 @@
     <string name="milestones_range">%1$s – %2$s</string>
     <string name="milestones_range_until">until %1$s</string>
     <string name="milestones_range_from">from %1$s</string>
+    <string name="milestones_gitlab_unsynced">Not synced with GitLab</string>
+    <string name="milestones_gitlab_retry">Retry</string>
+    <string name="milestones_gitlab_conflict_mark">Conflict with GitLab — resolve it on the web</string>
+    <string name="milestones_gitlab_failed">Saved in Tessera, but GitLab did not accept the change: %1$s</string>
+    <string name="milestones_gitlab_conflict">The stage was changed in GitLab too — pick a version in the conflicts window on the web</string>
 
     <!-- Due picker: start/due tabs -->
     <string name="due_picker_tab_start">Start</string>
@@ -1528,6 +1628,8 @@
     <!-- App shell: top bar, board menu, Back-to-exit -->
     <string name="main_boards_of_project">PROJECT BOARDS</string>
     <string name="main_board_menu_archive">Board archive</string>
+    <string name="main_board_menu_favorite">Add to favourites</string>
+    <string name="main_board_menu_unfavorite">Remove from favourites</string>
     <string name="main_provider_soon">%1$s · soon</string>
     <string name="main_back_again_to_exit">Press Back again to exit</string>
 
@@ -1587,6 +1689,14 @@
     <string name="default_column_in_progress">In progress</string>
     <string name="default_column_review">In review</string>
     <string name="default_column_done">Done</string>
+    <string name="default_column_backlog">Sprint backlog</string>
+    <string name="default_column_new">New</string>
+    <string name="default_column_confirmed">Confirmed</string>
+    <string name="default_column_verify">Verifying</string>
+    <string name="default_column_closed">Closed</string>
+    <string name="default_column_ideas">Ideas</string>
+    <string name="default_column_planned">Planned</string>
+    <string name="default_column_shipped">Shipped</string>
 
     <!-- Names of the seven accent schemes of the design language -->
     <string name="accent_purple">Purple</string>
@@ -1736,6 +1846,7 @@
     <string name="cmd_remove_start_desc">Clear the start date</string>
     <string name="cmd_estimate_desc">Set the estimate</string>
     <string name="cmd_remove_estimate_desc">Clear the estimate</string>
+    <string name="cmd_spend_desc">Log time spent</string>
     <string name="cmd_priority_desc">Set the priority</string>
     <string name="cmd_title_desc">Change the title</string>
     <string name="cmd_tag_desc">Add a tag (comma-separated)</string>
@@ -1775,6 +1886,13 @@
     <string name="notif_ev_sync_partial">%1$s: +%2$s new, ~%3$s updated, in %4$s (some actions failed)</string>
     <string name="notif_ev_sync_failed">%1$s: sync failed — %2$s (after %3$s)</string>
     <string name="notif_ev_conference_invited">%1$s invited you to a conference%2$s</string>
+    <!-- v2 notifications (#3048). -->
+    <string name="notif_ev_milestone_closed">%1$s closed stage “%2$s” — %3$s of %4$s done</string>
+    <string name="notif_ev_conference_starting">Meeting “%2$s” starts in %1$s min</string>
+    <string name="notif_ev_integration_conflict">%1$s · sync conflict on #%2$s (%3$s): changed on both sides</string>
+    <string name="notif_ev_document_mention">%1$s mentioned you in document “%2$s”%3$s</string>
+    <string name="notif_ev_conference_mention">%1$s mentioned you in the chat of “%2$s”%3$s</string>
+    <string name="notif_ev_field_state">status</string>
     <string name="notif_ev_field_title">title</string>
     <string name="notif_ev_field_description">description</string>
     <string name="notif_ev_field_priority">priority</string>

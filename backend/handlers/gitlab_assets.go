@@ -256,7 +256,7 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		// stream the bytes. relPath "/uploads/<secret>/<file>" → ".../uploads/<secret>/<file>".
 		apiURL := base + "/api/v4/projects/" + url.QueryEscape(projectPath) + "/uploads/" + rest
 		if req, rerr := http.NewRequestWithContext(c, http.MethodGet, apiURL, nil); rerr == nil {
-			req.Header.Set("PRIVATE-TOKEN", token)
+			setGitlabAuth(req, token)
 			if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
 				if resp.StatusCode == http.StatusOK {
 					defer func() { _ = resp.Body.Close() }()
@@ -274,7 +274,7 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		webURL := base + "/" + projectPath + relPath
 		lastWebURL = webURL
 		if req, rerr := http.NewRequestWithContext(c, http.MethodGet, webURL, nil); rerr == nil {
-			req.Header.Set("PRIVATE-TOKEN", token)
+			setGitlabAuth(req, token)
 			if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
 				ct := resp.Header.Get("Content-Type")
 				// A sign-in redirect serves HTML — only stream real binary content.
@@ -342,6 +342,17 @@ func (h *API) GitlabAvatar(c *gin.Context) {
 	c.Redirect(http.StatusFound, rawURL)
 }
 
+// setGitlabAuth puts a connection's token on a request to GitLab: a PAT as
+// PRIVATE-TOKEN, an OAuth access token (#3083) as a Bearer header — GitLab takes
+// only the latter for OAuth.
+func setGitlabAuth(req *http.Request, token string) {
+	if raw, oauth := gitlab.SplitToken(token); oauth {
+		req.Header.Set("Authorization", "Bearer "+raw)
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+}
+
 // imgAttempt is one server-side fetch of the avatar with a specific credential
 // placement. GitLab authenticates differently across its endpoints, so we try the
 // PAT as a Bearer header (what the API/GraphQL accept), a PRIVATE-TOKEN header, and
@@ -359,6 +370,9 @@ type imgAttempt struct {
 // response (status + content-type + a short body snippet) so a session-only route
 // (private instance, no PAT support on /uploads/-/system/user/avatar) is diagnosable.
 func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) bool {
+	// An OAuth connection's token (#3083) arrives marked; the attempts below send
+	// it bare (the Bearer one is the attempt that works for it).
+	token, _ = gitlab.SplitToken(token)
 	var attempts []imgAttempt
 	if token != "" {
 		sep := "?"

@@ -15,7 +15,6 @@ import {
 } from '@vicons/ionicons5'
 import SwipeRow from '../kit/SwipeRow.vue'
 import { useResponsive } from '@/composables/useResponsive'
-import { stubTask } from '@/utils/featureStubs'
 import { useFormat } from '@/composables/useFormat'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import { hueGrad, hueGradVert } from '@/utils/gradient'
@@ -31,14 +30,14 @@ defineProps({
   folded: { type: Object, default: () => new Set() },
   selectedId: { type: String, default: null },
 })
-const emit = defineEmits(['open', 'complete', 'select', 'toggle'])
+const emit = defineEmits(['open', 'complete', 'snooze', 'select', 'toggle'])
 
 const { t } = useI18n()
 const { formatDate, formatTime } = useFormat()
 
 // A phone (#2976 — package G «Мои задачи»): each row is a 64px card, a tap
 // opens the task, the status circle is a 44px target, and a swipe to the left
-// offers «Готово» (and «Отложить», which a task does not have yet — #3108).
+// offers «Готово» and «Отложить» (#3108 — the host asks how far and moves the due).
 const { isMobile } = useResponsive()
 const swipeActions = computed(() => [
   { key: 'done', label: t('shell.mobile.swipeDone'), icon: CheckmarkOutline, tone: '#18a058' },
@@ -47,7 +46,6 @@ const swipeActions = computed(() => [
     label: t('shell.mobile.swipeSnooze'),
     icon: AlarmOutline,
     tone: '#f0a020',
-    stub: stubTask('home.snoozeTask'),
   },
 ])
 function onRow(task) {
@@ -108,7 +106,7 @@ function duePill(task) {
           :key="task.id"
           class="hl-cell"
           v-bind="isMobile ? { right: swipeActions } : {}"
-          @action="(key) => key === 'done' && emit('complete', task)"
+          @action="(key) => emit(key === 'done' ? 'complete' : 'snooze', task)"
         >
           <div
             class="hl-row"

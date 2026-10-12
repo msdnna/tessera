@@ -36,6 +36,10 @@ import {
   CalendarOutline,
   CalendarNumberOutline,
   CloseCircleOutline,
+  CloudUploadOutline,
+  DownloadOutline,
+  Star,
+  StarOutline,
 } from '@vicons/ionicons5'
 
 export const ICONS = {
@@ -43,6 +47,10 @@ export const ICONS = {
   CalendarOutline,
   CalendarNumberOutline,
   CloseCircleOutline,
+  CloudUploadOutline,
+  DownloadOutline,
+  Star,
+  StarOutline,
   AddOutline,
   AlarmOutline,
   AppsOutline,

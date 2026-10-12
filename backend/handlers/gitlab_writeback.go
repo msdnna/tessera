@@ -207,7 +207,16 @@ func (h *API) drainWritebacks(ctx context.Context) {
 	// One push run per integration touched in this drain cycle, recording every
 	// delivery attempt (and its outcome) so failures are visible in the journal.
 	journals := map[uuid.UUID]*syncJournal{}
-	for _, w := range rows {
+	for i, w := range rows {
+		// Shutting down (a deploy, or a test respawning the worker): put the rows
+		// still claimed back as they were — pushing them on a dead ctx would only
+		// manufacture failures (#3103).
+		if ctx.Err() != nil {
+			for _, rest := range rows[i:] {
+				h.settleWriteback(ctx, rest, ctx.Err())
+			}
+			break
+		}
 		j := journals[w.IntegrationID]
 		if j == nil {
 			j = h.newJournal(w.IntegrationID, "push", "auto", nil)
@@ -221,10 +230,17 @@ func (h *API) drainWritebacks(ctx context.Context) {
 				h.broadcast(res.wsID, "gitlab.conflict", map[string]any{
 					"task_id": w.TaskID, "change_kind": w.ChangeKind, "fields": res.fields,
 				})
+				// The person whose change is parked is told it waits for them (#3048).
+				h.notifyWritebackConflict(ctx, w, res.wsID, res.fields)
 			}
 			continue
 		}
 		h.settleWriteback(ctx, w, perr)
+		// A push cut short by the worker's own cancellation is re-armed above, not
+		// failed — so it gets no «ошибка» line in the push journal either (#3103).
+		if ctx.Err() != nil && errors.Is(perr, context.Canceled) {
+			continue
+		}
 		h.recordWritebackAction(j, w, res, perr)
 	}
 	for _, j := range journals {
@@ -351,6 +367,19 @@ func (h *API) settleWriteback(ctx context.Context, w db.GitlabWriteback, err err
 	soft(ctx, "MarkWritebackRetry", h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{ID: w.ID, LastError: truncErr(err), NextAttemptAt: next}))
 }
 
+// permanentLookup wraps a failed lookup of what a push needs (the task's link, the
+// integration) as permanent — the row can never succeed once those are gone —
+// unless the lookup failed only because the ctx ended: a cancelled or timed-out
+// query says nothing about the row, and burying it as "integration gone" lost
+// the change and logged a false failure (#3103).
+func permanentLookup(what string, err error) error {
+	wrapped := fmt.Errorf("%s: %w", what, err)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return wrapped
+	}
+	return notify.Permanent(wrapped)
+}
+
 // isPermanentWriteback classifies a push error as non-retryable: an explicitly
 // permanent error, or a GitLab 4xx that won't fix itself (except 429 rate-limit).
 func isPermanentWriteback(err error) bool {
@@ -378,20 +407,26 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	}
 	link, err := h.q.GetGitlabLinkByTask(ctx, w.TaskID)
 	if err != nil {
-		return res, notify.Permanent(fmt.Errorf("task no longer linked: %w", err))
+		return res, permanentLookup("task no longer linked", err)
 	}
 	res.glIid = link.GlIid
 	// The task's board is soft-deleted (0078): hold the push — a retry, not a
 	// refusal. A restore lets it through on the next attempt; the purge takes the
 	// link, and the next attempt then gives up on "task no longer linked".
-	if t, terr := h.q.GetTask(ctx, w.TaskID); terr == nil {
+	// The same hold for a task in the trash (0086): its link survives the soft
+	// delete, and a push from the trash would reach GitLab for a task nobody
+	// can see. A restore lets it through; the purge takes the link.
+	if t, terr := h.q.GetTaskAny(ctx, w.TaskID); terr == nil {
+		if t.DeletedAt != nil {
+			return res, errors.New("task is deleted")
+		}
 		if b, berr := h.q.GetBoardAny(ctx, t.BoardID); berr == nil && b.DeletedAt != nil {
 			return res, errors.New("task board is deleted")
 		}
 	}
 	integ, err := h.q.GetGitlabIntegrationByID(ctx, w.IntegrationID)
 	if err != nil {
-		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))
+		return res, permanentLookup("integration gone", err)
 	}
 	wb := parseWriteback(integ.Writeback)
 	// Resolve the write connection attributed to the acting user (task #2690): the
@@ -427,7 +462,7 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	// Conflict gate: for three-way-checked triggers, fetch the current issue and decide
 	// whether to push (baseline clean), no-op (already in sync), or park as a conflict.
 	if conflictCheckedKind(w.ChangeKind) {
-		issues, ferr := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+		issues, ferr := client.IssuesByIIDsLight(ctx, path, []string{strconv.FormatInt(iid, 10)})
 		if ferr != nil {
 			return res, ferr
 		}
@@ -443,12 +478,23 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 			res.result = "уже синхронно с GitLab"
 			return res, nil
 		case conflictParked:
-			if perr := h.parkConflict(ctx, w, fields); perr != nil {
-				return res, perr
+			// The binding's conflict policy (#3088) may settle it without asking.
+			switch wb.EffectiveConflictPolicy() {
+			case gitlab.ConflictTessera:
+				h.acknowledgeTheirs(ctx, link, fields, rules)
+				res.result = "конфликт — Tessera важнее; "
+			case gitlab.ConflictGitlab:
+				h.takeTheirs(ctx, w.TaskID, link, fields, integ.WorkspaceID, rules)
+				res.result = "конфликт — GitLab важнее, значение взято из GitLab"
+				return res, nil
+			default:
+				if perr := h.parkConflict(ctx, w, fields); perr != nil {
+					return res, perr
+				}
+				res.conflict, res.fields = true, fields
+				res.result = "конфликт — ожидает решения"
+				return res, nil
 			}
-			res.conflict, res.fields = true, fields
-			res.result = "конфликт — ожидает решения"
-			return res, nil
 		}
 		// conflictProceed: fall through to the push.
 	}
@@ -465,8 +511,34 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 			results = append(results, out)
 		}
 	}
-	res.result = strings.Join(results, "; ")
+	res.result += strings.Join(results, "; ")
 	return res, nil
+}
+
+// acknowledgeTheirs is «Tessera важнее» (#3088) before the push goes out: GitLab's
+// diverged values become the baseline, so the push that follows overwrites them
+// as a clean change — the same bookkeeping an interactive «ours» does.
+func (h *API) acknowledgeTheirs(ctx context.Context, link db.GitlabLink, fields []conflictField, rules gitlab.Rules) {
+	snap, _ := snapshotPresence(link.GlSnapshot)
+	for _, f := range fields {
+		setSnapshotField(&snap, f.Field, f.Theirs, rules)
+	}
+	soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: marshalSnapshot(snap)}))
+}
+
+// takeTheirs is «GitLab важнее» (#3088): GitLab's diverged values go into the
+// task and become the baseline, and nothing is pushed — an interactive «theirs»,
+// decided by the binding instead of a person.
+func (h *API) takeTheirs(ctx context.Context, taskID uuid.UUID, link db.GitlabLink, fields []conflictField, wsID uuid.UUID, rules gitlab.Rules) {
+	snap, _ := snapshotPresence(link.GlSnapshot)
+	for _, f := range fields {
+		h.applyConflictValue(ctx, taskID, f.Field, f.Theirs)
+		setSnapshotField(&snap, f.Field, f.Theirs, rules)
+	}
+	soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)}))
+	if t, err := h.q.GetTask(ctx, taskID); err == nil {
+		h.broadcast(wsID, "task.updated", t)
+	}
 }
 
 // tesseraCommentMarker is the optional footer appended to a pushed comment when the
@@ -600,7 +672,7 @@ func (h *API) performReconcileLabels(ctx context.Context, client *gitlab.Client,
 	if !rules.TagsInvertible() {
 		return "", notify.Permanent(errors.New("tag labels are not invertible (prefix stripped)"))
 	}
-	issues, err := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+	issues, err := client.IssuesByIIDsLight(ctx, path, []string{strconv.FormatInt(iid, 10)})
 	if err != nil {
 		return "", err
 	}
@@ -918,7 +990,7 @@ func (h *API) performSetTitleDesc(ctx context.Context, client *gitlab.Client, in
 // sees nothing remote-changed and doesn't echo our own change back. Best-effort:
 // the push already succeeded, so a refresh failure isn't fatal.
 func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) {
-	issues, err := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+	issues, err := client.IssuesByIIDsLight(ctx, path, []string{strconv.FormatInt(iid, 10)})
 	if err != nil || len(issues) == 0 {
 		return
 	}

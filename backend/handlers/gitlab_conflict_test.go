@@ -33,12 +33,12 @@ func TestEvalConflict(t *testing.T) {
 
 // TestConflictCheckedKind documents which kinds go through detection this pass.
 func TestConflictCheckedKind(t *testing.T) {
-	for _, k := range []string{"due", "estimate", "title_desc", "state", "priority"} {
+	for _, k := range []string{"due", "estimate", "title_desc", "state", "priority", "labels", "assignees"} {
 		if !conflictCheckedKind(k) {
 			t.Errorf("expected %q to be conflict-checked", k)
 		}
 	}
-	for _, k := range []string{"labels", "assignees", "comment"} {
+	for _, k := range []string{"comment", "milestone", "column"} {
 		if conflictCheckedKind(k) {
 			t.Errorf("did not expect %q to be conflict-checked", k)
 		}

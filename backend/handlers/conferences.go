@@ -86,6 +86,7 @@ func (h *API) CreateConference(c *gin.Context) {
 		ScheduledAt      *time.Time `json:"scheduled_at"`
 		TaskID           *uuid.UUID `json:"task_id"`
 		RecordingTTLDays *int32     `json:"recording_ttl_days"`
+		conferencePlanReq
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -106,6 +107,10 @@ func (h *API) CreateConference(c *gin.Context) {
 		}
 		ttl = *req.RecordingTTLDays
 	}
+	plan, ok := h.resolvePlan(c, wsID, conferencePlan{}, req.conferencePlanReq, req.ScheduledAt)
+	if !ok {
+		return
+	}
 	uid := middleware.CurrentUser(c)
 	var conf db.Conference
 	err := h.inTx(c, func(q *db.Queries) error {
@@ -118,6 +123,10 @@ func (h *API) CreateConference(c *gin.Context) {
 			Description:      req.Description,
 			ScheduledAt:      req.ScheduledAt,
 			RecordingTtlDays: ttl,
+			DurationMinutes:  plan.duration,
+			Recurrence:       plan.recurrence,
+			Timezone:         plan.timezone,
+			MilestoneID:      plan.milestone,
 		})
 		if err != nil {
 			return err
@@ -132,7 +141,7 @@ func (h *API) CreateConference(c *gin.Context) {
 		return
 	}
 	h.broadcastAs(c, wsID, "conference.created", conf)
-	c.JSON(http.StatusCreated, conf)
+	c.JSON(http.StatusCreated, h.viewConference(c, conf))
 }
 
 // taskInWorkspace checks that a task belongs to the given workspace, writing
@@ -170,12 +179,14 @@ func (h *API) ListConferences(c *gin.Context) {
 			return
 		}
 	}
-	rows, err := h.q.ListConferences(c, db.ListConferencesParams{WorkspaceID: wsID, Status: status})
+	rows, err := h.q.ListConferences(c, db.ListConferencesParams{
+		Viewer: middleware.CurrentUser(c), WorkspaceID: wsID, Status: status,
+	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, orEmpty(rows))
+	c.JSON(http.StatusOK, listItems(rows, time.Now()))
 }
 
 // GetConference returns one conference together with its participants — the
@@ -191,7 +202,7 @@ func (h *API) GetConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"conference": conf, "participants": orEmpty(parts)})
+	c.JSON(http.StatusOK, gin.H{"conference": h.viewConference(c, conf), "participants": orEmpty(parts)})
 }
 
 // ListTaskConferences returns the conferences held about a task, so the task
@@ -236,6 +247,7 @@ func (h *API) UpdateConference(c *gin.Context) {
 		ScheduledAt      *time.Time `json:"scheduled_at"`
 		TaskID           *uuid.UUID `json:"task_id"`
 		RecordingTTLDays *int32     `json:"recording_ttl_days"`
+		conferencePlanReq
 	}{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -252,6 +264,10 @@ func (h *API) UpdateConference(c *gin.Context) {
 		}
 		ttl = *req.RecordingTTLDays
 	}
+	plan, ok := h.resolvePlan(c, conf.WorkspaceID, planFrom(conf), req.conferencePlanReq, req.ScheduledAt)
+	if !ok {
+		return
+	}
 	// Одной транзакцией, потому что срок хранения — это политика конференции, а
 	// не пометка на будущих записях: вместе с полем переезжают даты удаления уже
 	// снятых (#2932). Порознь правка могла бы оставить конференцию с новым
@@ -267,6 +283,10 @@ func (h *API) UpdateConference(c *gin.Context) {
 			ScheduledAt:      req.ScheduledAt,
 			TaskID:           req.TaskID,
 			RecordingTtlDays: ttl,
+			DurationMinutes:  plan.duration,
+			Recurrence:       plan.recurrence,
+			Timezone:         plan.timezone,
+			MilestoneID:      plan.milestone,
 		})
 		if uerr != nil {
 			return uerr
@@ -283,7 +303,7 @@ func (h *API) UpdateConference(c *gin.Context) {
 		return
 	}
 	h.broadcastAs(c, conf.WorkspaceID, "conference.updated", updated)
-	c.JSON(http.StatusOK, updated)
+	c.JSON(http.StatusOK, h.viewConference(c, updated))
 }
 
 // requireConferenceManager writes a 403 unless the caller may moderate the
@@ -584,7 +604,8 @@ func (h *API) InviteConference(c *gin.Context) {
 			prev, perr := q.GetConferenceParticipant(c, db.GetConferenceParticipantParams{
 				ConferenceID: conf.ID, UserID: uid,
 			})
-			if errIsNoRows(perr) || (perr == nil && prev.LeftAt != nil) {
+			// So does one who declined (#3051): the invitation is asked again.
+			if errIsNoRows(perr) || (perr == nil && (prev.LeftAt != nil || prev.Rsvp == rsvpDeclined)) {
 				fresh[uid] = true
 			}
 			p, err := q.InviteConferenceParticipant(c, db.InviteConferenceParticipantParams{
@@ -605,7 +626,7 @@ func (h *API) InviteConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	msg := msgConferenceInvited(h.actorName(c), conf.Title, conf.ID.String())
+	msg := msgConferenceInvited(h.actorName(c), conf.Title, conf.ID.String(), conf.ScheduledAt)
 	for _, p := range invited {
 		h.broadcastAs(c, conf.WorkspaceID, "conference.participant.invited", p)
 		if fresh[p.UserID] {
@@ -615,6 +636,55 @@ func (h *API) InviteConference(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, invited)
+}
+
+// The answers to an invitation (#3051).
+const (
+	rsvpAccepted = "accepted"
+	rsvpDeclined = "declined"
+)
+
+// RespondConference records the caller's answer to an invitation —
+// «Принять / Отклонить» in the feed and on the meeting's page (#3051):
+// `PUT /conferences/:id/rsvp {"response": "accepted"|"declined"}`.
+//
+// Only an invited seat answers: a member who was never invited has nothing to
+// accept (they may still walk in, which JoinConference records as acceptance).
+// The answer closes the invitation in the reader's feed wherever it was given,
+// and the workspace hears it, so the host sees who is coming.
+func (h *API) RespondConference(c *gin.Context) {
+	conf, ok := h.conferenceScope(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Response string `json:"response" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Response != rsvpAccepted && req.Response != rsvpDeclined {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ответ — accepted или declined"})
+		return
+	}
+	uid := middleware.CurrentUser(c)
+	part, err := h.q.SetConferenceRsvp(c, db.SetConferenceRsvpParams{
+		Rsvp: req.Response, ConferenceID: conf.ID, UserID: uid,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "вас не приглашали в эту встречу"})
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	soft(c, "MarkConferenceInviteRead", h.q.MarkConferenceInviteRead(c, db.MarkConferenceInviteReadParams{
+		UserID: uid, ConferenceID: conf.ID.String(),
+	}))
+	h.broadcastAs(c, conf.WorkspaceID, "conference.participant.rsvp", part)
+	c.JSON(http.StatusOK, part)
 }
 
 // ListConferenceParticipants returns everyone invited to a conference, with the

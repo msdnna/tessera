@@ -1,9 +1,16 @@
 import { defineStore } from 'pinia'
 import { computed, ref } from 'vue'
-import { inbox as inboxApi, notes as notesApi, reminders as remApi } from '@/api'
-import { firedCount, remindersByTask } from '@/utils/inbox'
+import {
+  inbox as inboxApi,
+  notes as notesApi,
+  reminders as remApi,
+  workspaces as wsApi,
+} from '@/api'
+import { firedCount, remindersByTask, tagsByProject } from '@/utils/inbox'
+import { buildMentionItems } from '@/utils/mentions'
 import { sGet, sSet } from '@/utils/serverStorage'
 import { tourEvent } from '@/utils/tourEvents'
+import { enqueue, flush, newClientId, queued } from '@/utils/captureQueue'
 
 // «Входящие» (#2972): the user's reminders and notes of the current workspace,
 // the panel's state and the capture popover's. One copy for the whole shell —
@@ -14,6 +21,10 @@ import { tourEvent } from '@/utils/tourEvents'
 // Records keep the server's row plus `kind` ('reminder' | 'note'). The socket
 // keeps the copy fresh (onEvent): reminder events are addressed to their owner,
 // note events to whoever may read the note (a private one — to its author).
+//
+// Tags and mentions (#3040): the store also holds the workspace's members and
+// tags — the capture resolves «@человек» and «#тег» against them, the records
+// draw their pills from them (a project tag takes its colour).
 
 export const WIDTH_KEY = 'tessera_inbox_width'
 export const MIN_W = 320
@@ -26,6 +37,8 @@ export const useInboxStore = defineStore('inbox', () => {
   const wsId = ref(null)
   const reminders = ref([])
   const notes = ref([])
+  const members = ref([])
+  const wsTags = ref([])
   const loading = ref(false)
   const loaded = ref(false)
   const error = ref('')
@@ -36,10 +49,14 @@ export const useInboxStore = defineStore('inbox', () => {
   // ── the panel ──
   const panelOpen = ref(false)
   const filter = ref('all')
+  // The tag the feed is narrowed to (a tagKey), '' — none (#3040).
+  const tagFilter = ref('')
   // The record under the keyboard cursor: 'reminder:<id>' | 'note:<id>'.
   const selected = ref('')
-  // The note opened in place for editing.
+  // The record opened in place for editing, and the field to focus there
+  // ('tags' — from «Теги» in the record's menu).
   const expanded = ref('')
+  const editFocus = ref('')
   // Bumped to ask the panel to move focus into the list (G I).
   const focusSeq = ref(0)
   const width = ref(clampW(Number(sGet(WIDTH_KEY)) || DEFAULT_W))
@@ -57,6 +74,16 @@ export const useInboxStore = defineStore('inbox', () => {
   const fired = computed(() => firedCount(reminders.value, now.value))
   const byTask = computed(() => remindersByTask(reminders.value))
   const total = computed(() => reminders.value.filter((r) => !r.done).length + notes.value.length)
+  const tagsOf = computed(() => tagsByProject(wsTags.value))
+  // The @-popup rows of the record editors: Tessera members only — a record is
+  // never pushed to GitLab, so the inserted handle is the member's own.
+  const mentionItems = computed(() =>
+    buildMentionItems(
+      members.value.map((m) => ({ ...m, gl_username: '' })),
+      [],
+      {},
+    ),
+  )
 
   const tag = (kind) => (r) => ({ ...r, kind })
 
@@ -65,6 +92,9 @@ export const useInboxStore = defineStore('inbox', () => {
     if (id !== wsId.value) {
       reminders.value = []
       notes.value = []
+      members.value = []
+      wsTags.value = []
+      tagFilter.value = ''
       loaded.value = false
       selected.value = ''
       expanded.value = ''
@@ -73,6 +103,7 @@ export const useInboxStore = defineStore('inbox', () => {
     const mine = ++seq
     loading.value = true
     error.value = ''
+    loadPeople(id, mine)
     try {
       const { data } = await inboxApi.list(id)
       if (mine !== seq) return
@@ -80,11 +111,22 @@ export const useInboxStore = defineStore('inbox', () => {
       notes.value = (data?.notes || []).map(tag('note'))
       loaded.value = true
       now.value = new Date()
+      // Reachable again: whatever waited on the device goes out now.
+      flushQueue()
     } catch (e) {
       if (mine === seq) error.value = e?.message || 'error'
     } finally {
       if (mine === seq) loading.value = false
     }
+  }
+
+  // Members and tags ride beside the feed; neither is worth an error state —
+  // without them the pills fall back to plain text.
+  async function loadPeople(id, mine) {
+    const [m, tg] = await Promise.allSettled([wsApi.members(id), wsApi.tags(id)])
+    if (mine !== seq) return
+    if (m.status === 'fulfilled') members.value = m.value?.data || []
+    if (tg.status === 'fulfilled') wsTags.value = tg.value?.data || []
   }
 
   function scheduleReload() {
@@ -160,16 +202,58 @@ export const useInboxStore = defineStore('inbox', () => {
   }
 
   // ── mutations: each answers with the saved record, already in the feed ──
+  // Creating names the record on the client (client_id, #3042): without a
+  // connection the capture waits on the device ({ queued: true }) and goes out
+  // when the connection is back — a resend can't make a twin.
   async function createNote(data) {
-    const res = await notesApi.create(wsId.value, data)
-    tourEvent('inbox.captured')
-    return putNote(res.data)
+    const body = { client_id: newClientId(), ...data }
+    try {
+      const res = await notesApi.create(wsId.value, body)
+      tourEvent('inbox.captured')
+      return putNote(res.data)
+    } catch (e) {
+      if (!e?.offline) throw e
+      pending.value = enqueue({ kind: 'note', wsId: wsId.value, data: body })
+      return { queued: true }
+    }
   }
   async function createReminder(data) {
-    const res = await remApi.create({ workspace_id: wsId.value, ...data })
-    tourEvent('inbox.captured')
-    return putReminder(res.data)
+    const body = { client_id: newClientId(), workspace_id: wsId.value, ...data }
+    try {
+      const res = await remApi.create(body)
+      tourEvent('inbox.captured')
+      return putReminder(res.data)
+    } catch (e) {
+      if (!e?.offline) throw e
+      pending.value = enqueue({ kind: 'reminder', wsId: wsId.value, data: body })
+      return { queued: true }
+    }
   }
+
+  // ── the offline queue (#3042) ──
+  const pending = ref(queued().length)
+  const dropped = ref(0)
+  let flushing = null
+  function flushQueue() {
+    if (flushing || !queued().length) return flushing
+    flushing = flush((item) =>
+      item.kind === 'reminder' ? remApi.create(item.data) : notesApi.create(item.wsId, item.data),
+    )
+      .then((r) => {
+        for (const { item, res } of r.sent) {
+          if (item.wsId !== wsId.value) continue
+          if (item.kind === 'reminder') putReminder(res.data)
+          else putNote(res.data)
+        }
+        if (r.sent.length) tourEvent('inbox.captured')
+        dropped.value += r.dropped.length
+        pending.value = r.left
+        return r
+      })
+      .finally(() => (flushing = null))
+    return flushing
+  }
+  if (typeof window !== 'undefined') window.addEventListener('online', () => flushQueue())
   async function updateReminder(r, patch) {
     const res = await remApi.update(r.id, patch)
     return putReminder(res.data)
@@ -206,6 +290,8 @@ export const useInboxStore = defineStore('inbox', () => {
         task_id: rec.task_id || undefined,
         project_id: rec.project_id || undefined,
         visibility: rec.visibility,
+        tags: rec.tags || [],
+        mentions: rec.mentions || [],
       })
     }
     const back = await createReminder({
@@ -214,6 +300,8 @@ export const useInboxStore = defineStore('inbox', () => {
       remind_at: rec.remind_at,
       task_id: rec.task_id || undefined,
       workspace_id: rec.workspace_id || undefined,
+      tags: rec.tags || [],
+      mentions: rec.mentions || [],
     })
     if (rec.done) return setDone(back, true)
     return back
@@ -241,6 +329,7 @@ export const useInboxStore = defineStore('inbox', () => {
   // Opens the panel on one record (a search result, a deep link).
   function reveal(kind, id) {
     filter.value = 'all'
+    tagFilter.value = ''
     selected.value = `${kind}:${id}`
     if (kind === 'note') expanded.value = `note:${id}`
     open()
@@ -261,9 +350,16 @@ export const useInboxStore = defineStore('inbox', () => {
   }
 
   return {
+    pending,
+    dropped,
+    flushQueue,
     wsId,
     reminders,
     notes,
+    members,
+    wsTags,
+    tagsOf,
+    mentionItems,
     loading,
     loaded,
     error,
@@ -273,8 +369,10 @@ export const useInboxStore = defineStore('inbox', () => {
     total,
     panelOpen,
     filter,
+    tagFilter,
     selected,
     expanded,
+    editFocus,
     focusSeq,
     width,
     capture,

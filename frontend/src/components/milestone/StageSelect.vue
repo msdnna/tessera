@@ -33,6 +33,7 @@ import {
 import ShortcutKeys from '../ShortcutKeys.vue'
 import Kbd from '../Kbd.vue'
 import { tourEvent } from '@/utils/tourEvents'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   stages: { type: Array, default: () => [] },
@@ -175,6 +176,7 @@ const sub = (m) => {
     <div
       v-if="open"
       ref="panel"
+      v-layer
       class="ss-menu"
       :style="style"
       role="listbox"

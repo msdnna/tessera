@@ -2,14 +2,12 @@ package handlers
 
 import (
 	"context"
-	"errors"
 	"log"
 	"net/http"
 	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
-	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
@@ -35,14 +33,18 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		return
 	}
 
-	// Resolve the binding by the task's own board (multi-binding).
-	integ, err := h.q.GetGitlabIntegrationByBoard(c, task.BoardID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "task is not on a GitLab integration board"})
-		return
+	// Optional description override (e.g. an issue-template-prefilled body the user
+	// edited in the modal) and, on a board several projects mirror into (#3082), the
+	// binding — i.e. the GitLab project — the issue is opened in.
+	var req struct {
+		Description   *string    `json:"description"`
+		IntegrationID *uuid.UUID `json:"integration_id"`
 	}
-	if err != nil {
-		fail(c, err)
+	_ = c.ShouldBindJSON(&req)
+
+	// Resolve the binding by the task's own board (multi-binding).
+	integ, ok := h.boardIntegration(c, id, task.BoardID, req.IntegrationID)
+	if !ok {
 		return
 	}
 	if !integ.Enabled {
@@ -58,12 +60,6 @@ func (h *API) CreateGitlabIssueFromTask(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "task is already linked to a GitLab issue"})
 		return
 	}
-	// Optional description override (e.g. an issue-template-prefilled body the user
-	// edited in the modal); falls back to the task's own description.
-	var req struct {
-		Description *string `json:"description"`
-	}
-	_ = c.ShouldBindJSON(&req)
 	description := task.Description
 	if req.Description != nil {
 		description = *req.Description

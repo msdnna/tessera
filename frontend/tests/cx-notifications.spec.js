@@ -85,6 +85,12 @@ describe('notificationText', () => {
         'Иван приглашает вас в конференцию «Летучка»',
         'Иван invited you to a conference “Летучка”',
       ],
+      // An @-mention in a call's chat (#3055): the call's name, no #ref.
+      [
+        { event: 'conference_mention', actor: 'Иван', name: 'Летучка', conference_id: 'c-1' },
+        'Иван упомянул(а) вас в чате встречи «Летучка»',
+        'Иван mentioned you in the chat of “Летучка”',
+      ],
     ]
     for (const [payload, wantRu] of cases) {
       expect(notificationText(N(payload), ru())).toBe(wantRu)
@@ -257,6 +263,12 @@ describe('notificationRoute', () => {
     expect(
       notificationRoute({ kind: 'conference_invite', payload: { conference_id: 'c-1' } }),
     ).toBe('/conferences/c-1')
+  })
+
+  it('opens the «Входящие» panel on the note for a note mention (#3040)', () => {
+    expect(
+      notificationRoute({ kind: 'mention', payload: { event: 'note_mention', note_id: 'n-1' } }),
+    ).toBe('?inbox=notes&note=n-1')
   })
 
   it('opens the board with the task query for a task notification', () => {

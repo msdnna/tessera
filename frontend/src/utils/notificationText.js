@@ -10,7 +10,7 @@
 // own bundle must still show something. Both cases land on the same branch.
 import { i18n } from '@/i18n'
 import { defaultFormatters } from '@/utils/format'
-import { columnName } from '@/utils/defaultNames'
+import { columnName, workspaceName } from '@/utils/defaultNames'
 
 // Changed-task fields the server may list in a task_updated payload. An unknown
 // field name (server ahead of client) is dropped rather than shown raw.
@@ -23,6 +23,8 @@ const FIELDS = [
   'estimate',
   'completed',
   'reopened',
+  // A sync conflict (#3048) names the issue's state among its fields.
+  'state',
 ]
 
 // Title for a native (OS) notification, by notification kind.
@@ -63,6 +65,9 @@ export function notificationText(
     column: columnName({ name: p.column, name_key: p.column_key }, { t, te }),
     title: p.title || '',
     label: p.label || '',
+    // The members notifications (#3063) name a workspace; a personal one is
+    // captioned from its key, like everywhere else.
+    workspace: workspaceName({ name: p.workspace || '', name_key: p.workspace_key }, { t, te }),
     // A failure reason is the integration's own error text, shown verbatim. A
     // failure with nothing to blame carries no reason at all (the server keeps
     // its default in the legacy text), so the word for "we don't know why" is
@@ -72,6 +77,12 @@ export function notificationText(
     updated: p.updated ?? 0,
     took: formatDuration(p.seconds ?? 0, t),
     fields: fieldList(p.fields, t, f),
+    // v2 notifications (#3048): where a mention was made, a stage's tally, the
+    // minutes left before a meeting.
+    name: p.name || '',
+    done: p.done ?? 0,
+    total: p.total ?? 0,
+    minutes: p.minutes ?? 0,
   })
 }
 

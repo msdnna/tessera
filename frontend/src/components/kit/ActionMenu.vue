@@ -20,6 +20,7 @@
 //   { key, label, glyph: 'layout-kanban', active, note, noteWarn, locked,
 //     caps: ['1'] }                                // a list entry (#2987)
 //   { key, label, icon, children: [...items], subWidth }  // a submenu (#3111)
+//   { key, label, icon, iconGrad: true }   // the icon in the accent gradient
 // ]
 // Emits select(key, value) — value is the colour for a swatch row, the new
 // state for a switch row. A row of a submenu emits its own key.
@@ -60,6 +61,7 @@ import { byId } from '@/shortcuts/catalog'
 import { matchChord, parseKeys } from '@/shortcuts/keymap'
 import { hueGrad } from '@/utils/gradient'
 import { PICKER_COLORS } from '@/utils/pickerColors'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -361,10 +363,11 @@ function stubTitle(item) {
 
 <template>
   <Teleport to="body" :disabled="inline || inPlace">
-    <div v-if="show && sheet" class="am-scrim" aria-hidden="true" />
+    <div v-if="show && sheet" v-layer class="am-scrim" aria-hidden="true" />
     <div
       v-if="show"
       ref="panel"
+      v-layer
       class="am kit-menu"
       :class="{ inline, sheet }"
       role="menu"
@@ -492,7 +495,13 @@ function stubTitle(item) {
               :src="item.avatar.src || ''"
               :name="item.avatar.name || item.label"
             />
-            <n-icon v-else-if="item.icon" :component="item.icon" :size="16" class="am-icon" />
+            <n-icon
+              v-else-if="item.icon"
+              :component="item.icon"
+              :size="16"
+              class="am-icon"
+              :class="{ 'grad-icon': item.iconGrad }"
+            />
             <span class="am-label">{{ item.label }}</span>
             <span v-if="item.note" class="am-note" :class="{ warn: item.noteWarn }">{{
               item.note

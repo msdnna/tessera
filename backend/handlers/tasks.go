@@ -27,6 +27,19 @@ type taskDetail struct {
 	GitlabAssignees []db.ListTaskGitlabAssigneesRow `json:"gitlab_assignees"`
 	Subtasks        []db.ListSubtasksWithMetaRow    `json:"subtasks"`
 	GitLab          *gitlabLinkView                 `json:"gitlab,omitempty"`
+	// Subscribers — who hears about the task (#2963); Subscribed — whether the
+	// viewer is among them.
+	Subscribers []db.ListTaskSubscribersRow `json:"subscribers"`
+	Subscribed  bool                        `json:"subscribed"`
+	// CodeLinks are the merge requests working on the task (#2964), always a list.
+	CodeLinks []codeLinkView `json:"code_links"`
+	// ProjectArchived: the task's project is in the archive (0086) — every
+	// client opens it read-only; the server refuses writes with 409.
+	ProjectArchived bool `json:"project_archived"`
+	// Spent / SpentTotal — minutes logged on the task itself and on its whole
+	// subtree (#2965, «потрачено»).
+	Spent      int64 `json:"spent"`
+	SpentTotal int64 `json:"spent_total"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -43,7 +56,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, boardID) {
 		return
 	}
 	var req struct {
@@ -287,7 +300,6 @@ func (h *API) GetTask(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	_ = wsID
 	if subtasks == nil {
 		subtasks = []db.ListSubtasksWithMetaRow{}
 	}
@@ -295,9 +307,25 @@ func (h *API) GetTask(c *gin.Context) {
 	if glAssignees == nil {
 		glAssignees = []db.ListTaskGitlabAssigneesRow{}
 	}
+	subs, subscribed, err := h.taskSubscribers(c, id, wsID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	archived, _ := h.q.ProjectArchivedForBoard(c, t.BoardID)
+	spent, _ := h.q.TaskSpentMinutes(c, id)
+	glLink := h.gitlabLinkForTask(c, id)
+	if glLink != nil {
+		// MRs of other GitLab projects send us no hooks: look again, in the
+		// background, when the task is opened; the answer comes as task.code_links.
+		h.refreshCodeLinksSoon(id)
+	}
 	c.JSON(http.StatusOK, taskDetail{
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, GitlabAssignees: glAssignees,
-		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id),
+		Subtasks: subtasks, GitLab: glLink, ProjectArchived: archived,
+		Subscribers: subs, Subscribed: subscribed,
+		CodeLinks: h.codeLinksForTask(c, id),
+		Spent:     spent.Own, SpentTotal: spent.Total,
 	})
 }
 
@@ -737,7 +765,11 @@ func (h *API) ListBoardArchived(c *gin.Context) {
 	c.JSON(http.StatusOK, slimBoardArchivedTasks(rows))
 }
 
-// DeleteTask removes a task and its subtasks.
+// DeleteTask puts a task and its subtasks in the trash (0086). Since the v2
+// interaction model the delete is immediate and reversible: the client offers
+// the undo in a toast (POST /tasks/:id/restore), and the board's trash keeps the
+// task for taskTrashRetention; trash_purge — or «Удалить навсегда»
+// (DELETE /tasks/:id/purge) — removes it for good.
 func (h *API) DeleteTask(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -747,7 +779,8 @@ func (h *API) DeleteTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	// ?subtasks=detach keeps subtasks (re-parented to null); default cascades.
+	// ?subtasks=detach keeps subtasks (re-parented to null); default takes the
+	// whole subtree to the trash with the root.
 	if c.Query("subtasks") == "detach" {
 		detached, err := h.q.DetachChildren(c, &id)
 		if err != nil {
@@ -761,27 +794,25 @@ func (h *API) DeleteTask(c *gin.Context) {
 		h.pushDetachedChildren(c, detached, id)
 	}
 	// Who has to hear about it is read before the delete — afterwards the
-	// assignee rows are gone with the tasks. After a detach this is the root
-	// alone; otherwise every subtask the cascade is about to take as well.
+	// subtree is out of every live read. After a detach this is the root alone;
+	// otherwise every subtask going to the trash with it as well.
 	participants, perr := h.q.TaskSubtreeParticipants(c, id)
 	if perr != nil {
 		soft(c, "TaskSubtreeParticipants", perr)
 	}
-	gone, err := h.q.DeleteTask(c, id)
-	if err != nil {
+	uid := middleware.CurrentUser(c)
+	if _, err := h.q.SoftDeleteTaskSubtree(c, db.SoftDeleteTaskSubtreeParams{ID: id, DeletedBy: &uid}); err != nil {
 		fail(c, err)
 		return
 	}
-	// Sweep the attachments of every task the delete actually took, subtasks
-	// included — each has its own <uploadDir>/<id>/ (UploadAttachment) and its
-	// rows have just gone with it, so nothing names those files any more. The
-	// list comes from the delete itself rather than from a walk of the tree: a
-	// ?subtasks=detach run re-parented the children a statement earlier, and
-	// they keep both their rows and their files.
-	h.purgeTaskUploads(gone)
+	// Nothing is swept from disk here: the task is in the trash, and its
+	// attachments come back with it. PurgeDeletedTask and trash_purge sweep them
+	// once the rows are really gone.
+	h.logEvent(c, id, "trashed", nil)
 	h.notifyDeleted(c, wsID, participants)
-	// The task is gone, so the event itself says which one it was: a client that
-	// never had the card loaded (a toast, another board) has nothing to look it up by.
+	// The task is out of every live read, so the event itself says which one it
+	// was: a client that never had the card loaded (a toast, another board) has
+	// nothing to look it up by.
 	h.broadcastAs(c, wsID, "task.deleted", gin.H{
 		"id": id, "number": t.Number, "title": t.Title, "board_id": t.BoardID,
 	})
@@ -935,6 +966,11 @@ func (h *API) loadTask(c *gin.Context, id uuid.UUID) (db.Task, uuid.UUID, bool) 
 		return db.Task{}, uuid.Nil, false
 	}
 	if !h.requireMember(c, wsID) {
+		return db.Task{}, uuid.Nil, false
+	}
+	// A task of an archived project (0086) is read-only: every task write goes
+	// through here, so this one gate is what keeps the archive unchanged.
+	if isWrite(c) && !h.requireProjectWritable(c, t.BoardID) {
 		return db.Task{}, uuid.Nil, false
 	}
 	return t, wsID, true

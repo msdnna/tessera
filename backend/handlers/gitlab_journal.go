@@ -13,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/jobs"
 )
 
 // journalRetention caps how many runs we keep per integration; older runs (and
@@ -71,6 +72,9 @@ type syncJournal struct {
 	deleted       int
 	status        string // overall run status; "ok" unless an action fails or the run aborts
 	errText       string // run-level error (a fetch/board failure that aborted the pull)
+	// live is the run's entry in the jobs registry, when it has one: every action
+	// also becomes a line of the jobs window's live log (#3067).
+	live *jobs.Handle
 }
 
 func (h *API) newJournal(integrationID uuid.UUID, kind, trigger string, actorID *uuid.UUID) *syncJournal {
@@ -138,6 +142,19 @@ func (j *syncJournal) add(a journalAction) {
 		j.status = "partial"
 	}
 	j.actions = append(j.actions, a)
+	if j.live != nil {
+		level, text := jobs.LevelInfo, a.Summary
+		if a.Status == "fail" {
+			level = jobs.LevelError
+			if a.Err != "" {
+				text += ": " + a.Err
+			}
+		}
+		if a.GlIid != nil {
+			text = "#" + strconv.FormatInt(*a.GlIid, 10) + " " + text
+		}
+		j.live.Log(level, text)
+	}
 }
 
 // abort records a run-level failure (e.g. the GitLab fetch failed before any

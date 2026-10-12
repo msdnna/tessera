@@ -7,6 +7,7 @@ import { useI18n } from 'vue-i18n'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
 import { PICKER_COLORS } from '@/utils/pickerColors'
 import { hueGrad } from '@/utils/gradient'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -64,6 +65,7 @@ function pick(hex) {
     <div
       v-if="show"
       ref="panel"
+      v-layer
       class="cpop"
       :style="style"
       role="dialog"

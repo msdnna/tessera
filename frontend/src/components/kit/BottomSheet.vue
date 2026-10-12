@@ -20,6 +20,7 @@
 // for when what it talks about sits where the sheet would be.
 import { computed, ref, toRef, watch, onBeforeUnmount } from 'vue'
 import { useOverlayBack } from '@/composables/useOverlayBack'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -117,9 +118,9 @@ const sheetStyle = computed(() =>
     <transition name="bs">
       <div
         v-if="open"
+        v-layer="{ zIndex: z || undefined }"
         class="bs-scrim"
         :class="{ page, bare }"
-        :style="z ? { zIndex: z } : null"
         @click.self="!page && !bare && close()"
       >
         <div

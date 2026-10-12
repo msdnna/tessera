@@ -51,7 +51,7 @@
       "copy": "Copy",
       "copied": "Copied",
       "copyFailed": "Could not copy — select and copy manually",
-      "onceWarning": "The secret is shown once. Paste the URL and token into GitLab: Settings → Webhooks, with the “Issues” and “Comments” events. Lost it? Generate a new one.",
+      "onceWarning": "The secret is shown once. Paste the URL and token into GitLab: Settings → Webhooks, with the “Issues”, “Comments”, “Merge request events” and “Pipeline events” triggers (the last two feed a task’s “Development” block). Lost it? Generate a new one.",
       "lastEvent": "Last event: {at}",
       "never": "never",
       "failed": "Could not change the webhook"
@@ -189,7 +189,8 @@
         "board": "Board (routing)",
         "tag": "Tag",
         "group": "Grouping (subtasks)",
-        "ignore": "Ignore"
+        "ignore": "Ignore",
+        "milestone": "Stage"
       },
       "matchType": {
         "prefix": "Prefix",
@@ -289,14 +290,20 @@
       "due": "Due (YYYY-MM-DD)",
       "estimate": "Estimate (minutes)",
       "state": "State",
-      "priority": "Priority"
+      "priority": "Priority",
+      "start": "Start (YYYY-MM-DD)",
+      "assignees": "Assignees",
+      "labels": "Labels"
     },
     "kind": {
       "title_desc": "Title and description",
       "due": "Due",
       "estimate": "Estimate",
       "state": "State",
-      "priority": "Priority"
+      "priority": "Priority",
+      "milestone": "stage",
+      "assignees": "Assignees",
+      "labels": "Labels"
     },
     "state": {
       "open": "Open",
@@ -320,7 +327,16 @@
     "keyVersion": "version",
     "postpone": "Postpone",
     "apply": "Apply and push",
-    "keyFieldHint": "↑↓ — field, B / T / G — version, M — merge by hand"
+    "keyFieldHint": "↑↓ — field, B / T / G — version, M — merge by hand",
+    "stageWord": "Stage",
+    "openStage": "Open the stage",
+    "fromMilestone": "milestone %{iid} · {at}",
+    "hintStage": "The stage changed both in Tessera and in GitLab since the last sync. Pick a version for each field.",
+    "onePushStage": "The decision goes straight to the GitLab milestone",
+    "resolvedN": "{n} conflict resolved | {n} conflicts resolved",
+    "applyN": "Apply {n} and push",
+    "postponeHint": "Keep the choices as a draft and go to the next task",
+    "postponed": "put off"
   },
   "window": {
     "crumb": "Integrations",
@@ -350,7 +366,6 @@
     "connectProject": "Connect a project",
     "connected": "Connected",
     "pat": "personal token",
-    "tokenExpiry": "token expiry",
     "noAccount": "No personal account connected",
     "noAccountSub": "Needed to write on your behalf — the URL and a token below",
     "oauth": "Sign in with GitLab",
@@ -362,7 +377,8 @@
     "state": {
       "on": "Connected",
       "off": "Off",
-      "noCreds": "No access"
+      "noCreds": "No access",
+      "paused": "Token expired · sync paused"
     },
     "webhookOn": "webhook",
     "noBoard": "no board",
@@ -376,7 +392,6 @@
     "rules": {
       "note": "top to bottom, the first match wins",
       "all": "All",
-      "stage": "Stage",
       "colLabel": "GitLab label",
       "colMatch": "Match",
       "colAction": "Becomes",
@@ -395,7 +410,23 @@
       "keyOrder": "order",
       "keyOpen": "details",
       "keyDelete": "delete with undo",
-      "check": "Check a label"
+      "check": "Check a label",
+      "template": "Stage name",
+      "templatePlaceholder": "Sprint {'{'}value{'}'}",
+      "templateHint": "{'{'}value{'}'} is the label's value: sprint::42 → “Sprint 42”. The issue's own milestone wins.",
+      "templateValue": "the label's value",
+      "tasks": "{n} task | {n} tasks",
+      "tasksTitle": "Tasks of the binding this rule decides something for",
+      "toggle": "Turn the rule on / off",
+      "keyToggle": "on/off",
+      "checkDefaultTag": "no rule fits → tag “{tag}”",
+      "checkDefaultIgnore": "no rule fits → the label is skipped",
+      "checkRule": "rule {n} · {action}",
+      "checkIgnored": "skipped",
+      "checkGroup": "the task becomes a group",
+      "checkNoValue": "the value is not in the map",
+      "checkTasks": "on {n} task | on {n} tasks",
+      "partial": "Counted over {recorded} of {linked} tasks; the rest count after their next sync"
     },
     "wb": {
       "note": "an event in Tessera → an action in GitLab, sent with the next push",
@@ -414,7 +445,9 @@
       "schedule": "Sync",
       "scheduleSub": "scheduled pull",
       "now": "Now",
-      "notInGitlab": "Reminders, notes and documents don't go to GitLab — it has nothing of the kind."
+      "notInGitlab": "Reminders, notes and documents don't go to GitLab — it has nothing of the kind.",
+      "tesseraWinsHint": "Tessera's value goes to GitLab over theirs",
+      "gitlabWinsHint": "GitLab's value goes into the task, nothing is pushed"
     },
     "journal": {
       "lastPull": "Last pull",
@@ -432,6 +465,21 @@
       "keyResolve": "resolve",
       "resolve": "Resolve the conflict",
       "changes": "Changes"
-    }
+    },
+    "tokenUntil": "token until {date}",
+    "tokenExpired": "token expired",
+    "oauthKind": "OAuth",
+    "oauthReconnect": "Reconnect with GitLab",
+    "reconnect": "Reconnect",
+    "reconnectService": "Syncing under the service token — an administrator can replace it",
+    "reconnectServiceShort": "needs a new service token",
+    "importOnly": "only labelled “{labels}”",
+    "importLabels": "Only issues labelled",
+    "importLabelsHint": "comma-separated, all of them; empty — no filter",
+    "oauthResult": {
+      "connected": "GitLab connected through OAuth",
+      "failed": "Couldn't connect GitLab: {reason}"
+    },
+    "chooseProject": "GitLab project"
   }
 }

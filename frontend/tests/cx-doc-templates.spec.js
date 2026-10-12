@@ -1,5 +1,9 @@
 import { describe, it, expect, vi, afterEach } from 'vitest'
 import { mount } from '@vue/test-utils'
+import { createPinia, setActivePinia } from 'pinia'
+
+// The meeting picker formats dates through useFormat, which reads the theme store.
+setActivePinia(createPinia())
 
 // useMessage() throws without an <n-message-provider>; keep the rest of naive-ui
 // intact and stub only that, as the other component specs do.
@@ -89,6 +93,44 @@ describe('DocTemplates gallery', () => {
   it('shows an import error instead of failing silently', () => {
     wrapper = mountGallery({ error: 'Файл больше 2 МБ' })
     expect(document.body.textContent).toContain('Файл больше 2 МБ')
+  })
+
+  // #3045: the column lists the mockup's categories with counts, «Мои» is the
+  // reader's own saved templates.
+  it('filters by category and by «Мои шаблоны»', async () => {
+    wrapper = mountGallery({
+      userId: 'u1',
+      templates: [
+        saved({ id: 'a', title: 'Мой спринт', category: 'sprint', author_id: 'u1' }),
+        saved({ id: 'b', title: 'Чужой', category: '', author_id: 'u2' }),
+        ...builtinCards(),
+      ],
+    })
+    const count = (s) =>
+      document.querySelector(`[data-testid="tpl-source-${s}"] .tpl-src-n`).textContent.trim()
+    expect(count('mine')).toBe('1')
+    expect(Number(count('sprint'))).toBe(
+      1 + builtinCards().filter((c) => c.category === 'sprint').length,
+    )
+    document.querySelector('[data-testid="tpl-source-mine"]').click()
+    await wrapper.vm.$nextTick()
+    const tiles = document.querySelectorAll('[data-testid="tpl-tile"]')
+    expect(tiles).toHaveLength(1)
+    expect(tiles[0].textContent).toContain('Мой спринт')
+  })
+
+  // #3046: the agenda template is used together with the meeting the footer
+  // preselected.
+  it('passes the preselected meeting with the agenda template', async () => {
+    const meeting = { id: 'm1', title: 'Планирование', status: 'live' }
+    const agenda = builtinCards().find((c) => c.key === 'meeting')
+    wrapper = mountGallery({ templates: [agenda], meetings: [meeting] })
+    await wrapper.vm.$nextTick()
+    document.querySelector('[data-testid="tpl-use"]').click()
+    await wrapper.vm.$nextTick()
+    const [card, opts] = wrapper.emitted('use')[0]
+    expect(card.key).toBe('meeting')
+    expect(opts.conferenceId).toBe('m1')
   })
 
   it('tells the user what an empty gallery accepts', () => {

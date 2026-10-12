@@ -57,6 +57,12 @@ data class NotificationPayload(
     @SerializedName("updated") val updated: Int? = null,
     @SerializedName("seconds") val seconds: Int? = null,
     @SerializedName("fields") val fields: List<String>? = null,
+    // Уведомления v2 (#3048): где упомянули (документ, чат встречи), итог
+    // закрытого этапа, минуты до встречи.
+    @SerializedName("name") val name: String? = null,
+    @SerializedName("done") val done: Int? = null,
+    @SerializedName("total") val total: Int? = null,
+    @SerializedName("minutes") val minutes: Int? = null,
 )
 
 /** `{ "count": <n> }` from `GET /notifications/unread-count`. */

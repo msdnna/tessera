@@ -9,7 +9,11 @@ import { setActivePinia, createPinia } from 'pinia'
 import { mount, flushPromises } from '@vue/test-utils'
 
 const api = {
-  gitlab: { conflicts: vi.fn(), resolveConflict: vi.fn(() => Promise.resolve({ data: {} })) },
+  gitlab: {
+    conflicts: vi.fn(),
+    resolveConflict: vi.fn(() => Promise.resolve({ data: {} })),
+    resolveConflicts: vi.fn(() => Promise.resolve({ data: {} })),
+  },
   tasks: { get: vi.fn() },
 }
 vi.mock('@/api', () => api)
@@ -163,5 +167,43 @@ describe('ConflictResolverModal · выбор по полю', () => {
     await flushPromises()
     expect(w.emitted('update:show')?.at(-1)).toEqual([false])
     expect(w.emitted('resolved')).toHaveLength(1)
+  })
+
+  // #3089: «Применить» берёт все готовые задачи очереди одним запросом.
+  it('готовые задачи очереди уходят одним пакетом', async () => {
+    const w = await open([TITLE_DESC, STATE])
+    // Вторая задача: решаем статус и возвращаемся к первой.
+    await w.findAll('[data-testid="conflict-item"]')[1].trigger('click')
+    await fieldRow(w, 0).find('[data-testid="conflict-pick-ours"]').trigger('click')
+    await w.findAll('[data-testid="conflict-item"]')[0].trigger('click')
+    await fieldRow(w, 0).find('[data-testid="conflict-pick-theirs"]').trigger('click')
+    await fieldRow(w, 1).find('[data-testid="conflict-pick-theirs"]').trigger('click')
+    await applyBtn(w).trigger('click')
+    await flushPromises()
+    expect(api.gitlab.resolveConflict).not.toHaveBeenCalled()
+    expect(api.gitlab.resolveConflicts).toHaveBeenCalledWith('ws1', [
+      { task_id: 't1', conflict_id: 'c1', resolution: 'theirs' },
+      { task_id: 't2', conflict_id: 'c2', resolution: 'ours' },
+    ])
+    expect(w.emitted('resolved')).toHaveLength(2)
+  })
+
+  it('«Отложить» убирает задачу в конец очереди и из пакета', async () => {
+    localStorage.clear()
+    const w = await open([TITLE_DESC, STATE])
+    await fieldRow(w, 0).find('[data-testid="conflict-pick-ours"]').trigger('click')
+    await w.find('[data-testid="conflict-postpone"]').trigger('click')
+    const items = w.findAll('[data-testid="conflict-item"]')
+    expect(items[1].text()).toContain('Экспорт отчёта')
+    expect(items[0].classes()).toContain('on')
+    // Черновик отложенной задачи сохранён и переживёт перезагрузку.
+    expect(JSON.parse(localStorage.getItem('tessera_conflict_drafts'))).toEqual({
+      c1: { title: { pick: 'ours' } },
+    })
+    await fieldRow(w, 0).find('[data-testid="conflict-pick-ours"]').trigger('click')
+    await applyBtn(w).trigger('click')
+    await flushPromises()
+    expect(api.gitlab.resolveConflict).toHaveBeenCalledWith('t2', 'c2', { resolution: 'ours' })
+    expect(api.gitlab.resolveConflicts).not.toHaveBeenCalled()
   })
 })

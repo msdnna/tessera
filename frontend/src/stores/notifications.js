@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { ref, computed } from 'vue'
-import { notifications as api } from '@/api'
+import { notifications as api, conferences as confApi } from '@/api'
 import { getDeviceId, notificationsSupported } from '@/utils/device'
 import { isTauri } from '@/utils/serverBase'
 import { notificationText, notificationTitle } from '@/utils/notificationText'
@@ -30,6 +30,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
 
   async function load() {
     const seq = ++loadSeq
+    const asked = Date.now()
     const live = []
     arrivals.add(live)
     try {
@@ -39,7 +40,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
       for (let i = live.length - 1; i >= 0; i--) {
         if (!rows.some((x) => x.id === live[i].id)) rows.unshift(live[i])
       }
-      items.value = rows.map(withLocalRead)
+      items.value = rows.map(withLocalRead).map((n) => withLocalAnswer(n, asked))
       loaded.value = true
     } catch {
       /* offline / unauthorized — leave whatever we had */
@@ -54,6 +55,15 @@ export const useNotificationsStore = defineStore('notifications', () => {
   // at the moment of a resync puts the row (and the badge) back to unread until
   // the next load. A refusal still rolls the row back: `restore` runs on
   // whatever array is current by then.
+  // An answer to an invitation given after the load was asked for (#3051)
+  // outranks the answer's snapshot, which predates it — the same reasoning as
+  // the read state above. id → { rsvp, at }.
+  const answers = new Map()
+  function withLocalAnswer(n, asked) {
+    const a = answers.get(n.id)
+    return a && a.at >= asked && n.rsvp !== a.rsvp ? { ...n, rsvp: a.rsvp } : n
+  }
+
   function withLocalRead(n) {
     if (n.read_at) return n
     const prev = items.value.find((x) => x.id === n.id)
@@ -159,6 +169,44 @@ export const useNotificationsStore = defineStore('notifications', () => {
     }
   }
 
+  // «Принять / Отклонить» an invitation to a meeting (#3051), from the feed or
+  // the page. Optimistic like markRead: the row shows the answer and goes read
+  // at once (the server closes the invitation too), and a refusal puts both
+  // back. `rows` are the copies of the same notification on screen besides the
+  // store's own — the page of all notifications keeps its own list.
+  async function rsvp(n, response, message, rows = []) {
+    const confId = n?.payload?.conference_id
+    if (!confId) return false
+    const copies = [items.value.find((x) => x.id === n.id), n, ...rows].filter(Boolean)
+    const prev = copies.map((x) => ({ x, rsvp: x.rsvp, read_at: x.read_at }))
+    const now = new Date().toISOString()
+    const before = answers.get(n.id)
+    answers.set(n.id, { rsvp: response, at: Date.now() })
+    for (const x of copies) {
+      x.rsvp = response
+      if (!x.read_at) x.read_at = now
+    }
+    try {
+      await confApi.rsvp(confId, response)
+      // Every other invitation to the same call is closed by the server.
+      for (const x of items.value)
+        if (x.payload?.conference_id === confId && x.kind === n.kind) {
+          x.rsvp = response
+          if (!x.read_at) x.read_at = now
+        }
+      return true
+    } catch (e) {
+      if (before) answers.set(n.id, before)
+      else answers.delete(n.id)
+      for (const p of prev) {
+        p.x.rsvp = p.rsvp
+        p.x.read_at = p.read_at
+      }
+      message?.error(e.message)
+      return false
+    }
+  }
+
   function restore(ids) {
     for (const id of ids) {
       const n = items.value.find((x) => x.id === id)
@@ -185,6 +233,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
   function reset() {
     loadSeq++
     arrivals.clear()
+    answers.clear()
     items.value = []
     loaded.value = false
   }
@@ -204,6 +253,7 @@ export const useNotificationsStore = defineStore('notifications', () => {
     onEvent,
     markRead,
     markAllRead,
+    rsvp,
     reset,
     feedRequest,
     requestFeed,

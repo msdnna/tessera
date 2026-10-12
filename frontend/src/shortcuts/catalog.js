@@ -118,6 +118,30 @@ export const CATALOG = [
   // Stage selector in the sub-toolbar and the stage strip over the board (#2994).
   { id: 'board.stage', keys: 'shift+e', group: 'board', command: 'TrailSignOutline' },
   { id: 'board.stageStrip', keys: 'shift+h', group: 'board' },
+  // The star after the crumbs (#3115): the open board in / out of favourites.
+  { id: 'board.favorite', keys: 'shift+f', group: 'board', command: 'StarOutline' },
+  // Export / import of the board's tasks (#3068): palette commands only
+  // (`>export`), no keys. `section` names the palette's subtitle without putting
+  // them in the cheat sheet; `aliases` are matched besides the label, so the
+  // English word finds the Russian row.
+  {
+    id: 'board.exportCsv',
+    command: 'DownloadOutline',
+    section: 'board',
+    aliases: ['export', 'csv', 'экспорт'],
+  },
+  {
+    id: 'board.exportJson',
+    command: 'DownloadOutline',
+    section: 'board',
+    aliases: ['export', 'json', 'экспорт'],
+  },
+  {
+    id: 'board.import',
+    command: 'CloudUploadOutline',
+    section: 'board',
+    aliases: ['import', 'csv', 'json', 'импорт'],
+  },
   // Six equal views (#2970): Канбан · Список · Таймлайн · Гант · Календарь · Матрица.
   { id: 'board.layout', keys: 'v digit', group: 'board', digit: '1–6' },
   // The column under the pointer, or the selected card's (#2969): F2 renames in
@@ -330,6 +354,8 @@ export const CATALOG = [
   // switch its tabs. The tag table's keys are caught by the table itself (they
   // only mean something on its rows); these entries list them.
   { id: 'project.window', keys: 'mod+,', group: 'project', command: 'SettingsOutline' },
+  // «или пустая доска ⇧N» on an empty project's screen (#3047).
+  { id: 'project.blankBoard', keys: 'shift+n', group: 'project' },
   { id: 'tags.select', group: 'project', display: [['space'], ['shift', '↑/↓']] },
   { id: 'tags.rename', group: 'project', display: [['enter'], ['f2']] },
   { id: 'tags.new', group: 'project', display: [['n'], ['/']] },
@@ -369,7 +395,16 @@ export const CATALOG = [
   { id: 'conflict.apply', keys: 'mod+enter', group: 'window', modal: true, input: true },
   { id: 'jobs.stop', keys: 'shift+backspace', group: 'window', modal: true },
   { id: 'jobs.run', keys: 'r', modal: true },
+  // The live log (#3092): follow the newest line, copy it all (only while no
+  // text is selected — see BackgroundJobsModal).
+  { id: 'jobs.follow', keys: 'f', group: 'window', modal: true },
+  { id: 'jobs.copyLog', keys: 'mod+c', group: 'window', modal: true },
+  // The import window (#3095): the mapping → the preview → «Импортировать».
+  { id: 'import.next', keys: 'mod+enter', group: 'window', modal: true, input: true },
   { id: 'members.invite', keys: 'i', group: 'window', modal: true },
+  // The shared invitation link (#3062); only while it is on screen and no text
+  // is selected — see MembersModal.
+  { id: 'members.copyLink', keys: 'mod+c', group: 'window', modal: true },
   { id: 'commands.edit', group: 'window', display: [['enter']] },
   { id: 'commands.move', group: 'window', display: [['alt', '↑/↓']] },
 

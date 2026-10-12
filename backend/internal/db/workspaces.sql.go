@@ -18,7 +18,7 @@ INSERT INTO memberships (workspace_id, user_id, role)
 VALUES ($1, $2, $3)
 ON CONFLICT (workspace_id, user_id) DO UPDATE
 SET role = CASE WHEN memberships.role = 'owner' THEN memberships.role ELSE EXCLUDED.role END
-RETURNING id, workspace_id, user_id, role, created_at
+RETURNING id, workspace_id, user_id, role, created_at, last_active_at
 `
 
 type CreateMembershipParams struct {
@@ -42,6 +42,7 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 		&i.UserID,
 		&i.Role,
 		&i.CreatedAt,
+		&i.LastActiveAt,
 	)
 	return i, err
 }
@@ -105,7 +106,7 @@ func (q *Queries) DeleteWorkspace(ctx context.Context, id uuid.UUID) error {
 }
 
 const getMembership = `-- name: GetMembership :one
-SELECT id, workspace_id, user_id, role, created_at FROM memberships WHERE workspace_id = $1 AND user_id = $2
+SELECT id, workspace_id, user_id, role, created_at, last_active_at FROM memberships WHERE workspace_id = $1 AND user_id = $2
 `
 
 type GetMembershipParams struct {
@@ -122,6 +123,7 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (M
 		&i.UserID,
 		&i.Role,
 		&i.CreatedAt,
+		&i.LastActiveAt,
 	)
 	return i, err
 }
@@ -166,7 +168,7 @@ func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, er
 }
 
 const listMembers = `-- name: ListMembers :many
-SELECT m.user_id, m.role, u.email, u.name,
+SELECT m.user_id, m.role, u.email, u.name, u.last_seen_at, m.last_active_at,
   COALESCE((
     SELECT oi.provider_username FROM oauth_identities oi
     WHERE oi.user_id = u.id AND oi.provider = 'gitlab'
@@ -179,11 +181,13 @@ ORDER BY u.name
 `
 
 type ListMembersRow struct {
-	UserID     uuid.UUID `json:"user_id"`
-	Role       string    `json:"role"`
-	Email      string    `json:"email"`
-	Name       string    `json:"name"`
-	GlUsername string    `json:"gl_username"`
+	UserID       uuid.UUID  `json:"user_id"`
+	Role         string     `json:"role"`
+	Email        string     `json:"email"`
+	Name         string     `json:"name"`
+	LastSeenAt   *time.Time `json:"last_seen_at"`
+	LastActiveAt *time.Time `json:"last_active_at"`
+	GlUsername   string     `json:"gl_username"`
 }
 
 // gl_username is the member's GitLab login, so @-mentions can insert `@login`
@@ -191,6 +195,8 @@ type ListMembersRow struct {
 // comment is pushed to GitLab). Scalar subquery rather than a LEFT JOIN:
 // oauth_identities is unique by (provider, provider_user_id), not by user_id, so
 // a user linked to two GitLab instances would otherwise be listed twice.
+// last_seen_at / last_active_at (#3073): when the person was last in the app
+// and when they last changed something in this workspace.
 func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]ListMembersRow, error) {
 	rows, err := q.db.Query(ctx, listMembers, workspaceID)
 	if err != nil {
@@ -205,6 +211,8 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 			&i.Role,
 			&i.Email,
 			&i.Name,
+			&i.LastSeenAt,
+			&i.LastActiveAt,
 			&i.GlUsername,
 		); err != nil {
 			return nil, err
@@ -382,7 +390,7 @@ func (q *Queries) SetWorkspaceEstimation(ctx context.Context, arg SetWorkspaceEs
 const updateMembershipRole = `-- name: UpdateMembershipRole :one
 UPDATE memberships SET role = $3
 WHERE workspace_id = $1 AND user_id = $2
-RETURNING id, workspace_id, user_id, role, created_at
+RETURNING id, workspace_id, user_id, role, created_at, last_active_at
 `
 
 type UpdateMembershipRoleParams struct {
@@ -400,6 +408,7 @@ func (q *Queries) UpdateMembershipRole(ctx context.Context, arg UpdateMembership
 		&i.UserID,
 		&i.Role,
 		&i.CreatedAt,
+		&i.LastActiveAt,
 	)
 	return i, err
 }

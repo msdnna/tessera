@@ -30,6 +30,9 @@ vi.mock('@/api', () => ({
     createInvitation: vi.fn(),
     removeMember: vi.fn(),
     updateMemberRole: vi.fn(),
+    // Members v2 (#3063): the access requests and groups the window also reads.
+    accessRequests: () => Promise.resolve({ data: [] }),
+    memberGroups: () => Promise.resolve({ data: [] }),
     deleteInvitation: vi.fn(() => Promise.resolve({ data: {} })),
   },
 }))

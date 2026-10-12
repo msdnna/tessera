@@ -17,6 +17,7 @@ import { AlertCircleOutline } from '@vicons/ionicons5'
 import Kbd from '@/components/Kbd.vue'
 import { CAPS } from '@/utils/keyCaps'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   modelValue: { type: String, default: '' },
@@ -173,6 +174,7 @@ const keysHint = computed(() => {
     <Teleport to="body" :disabled="!teleportHint">
       <span
         v-if="showHint && (error || keysHint.length)"
+        v-layer
         class="ie-tip"
         :class="{ err: !!error, local: !teleportHint }"
         :style="teleportHint ? tipPos : { left: `${hintLeft}px` }"

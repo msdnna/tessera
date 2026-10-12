@@ -1,12 +1,24 @@
 <script setup>
 // «Участники пространства» — a large window (v2, #2975, mockup MembersWin):
+// invite by email (addresses become chips, a bad one is marked), the
+// workspace's shared invitation link (#3062: role, lifetime and limit in its
+// menu, «Копировать ⌘C», «Сбросить»), invitations waiting for an answer with
+// «Ещё раз» / «Продлить» (#3061) and the roster with a role menu. Every change
+// lands at once; revoking an invitation is undone from its toast, removing a
+// member is a two-step item of the role menu.
 // invite by email (addresses become chips, a bad one is marked), the link of
 // the latest invitation, invitations waiting for an answer and the roster with
 // a role menu. Every change lands at once; revoking an invitation is undone
 // from its toast, removing a member is a two-step item of the role menu.
+//
+// Members v2 (#3063): each row says the member's groups and when they were
+// last here; the role menu hands the workspace over («Передать владение…», the
+// owner only, the name typed in); the reader's own row leaves the workspace;
+// access requests wait above the invitations; «Группы» and «Роли и права» are
+// real sections. The guest role and the role editor stay «Скоро» (#3075/#3076).
 import { ref, computed, watch, nextTick } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NTooltip } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import { useMessage } from '@/composables/useMessage'
 import {
   PeopleOutline,
@@ -25,6 +37,8 @@ import {
   RefreshOutline,
   TimeOutline,
   TrashOutline,
+  LogOutOutline,
+  HandRightOutline,
 } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 import { useAuthStore } from '@/stores/auth'
@@ -36,7 +50,12 @@ import { useShortcuts } from '@/composables/useShortcuts'
 import { copyText } from '@/utils/clipboard'
 import { CAPS, cap } from '@/utils/keyCaps'
 import { stubTask } from '@/utils/featureStubs'
+import { linkMeta, linkUses, shortLink, LINK_TTL_DAYS, LINK_USES } from '@/utils/inviteLink'
 import { workspaceName } from '@/utils/defaultNames'
+import { serverBase } from '@/utils/serverBase'
+import { humanizeError } from '@/utils/errors'
+import { useMembersStore } from '@/stores/members'
+import { lastActivity, activityLabel, groupsOf } from '@/utils/memberActivity'
 import {
   LOCK_VIEWER,
   LOCK_OWNER,
@@ -45,6 +64,9 @@ import {
   addMemberRefusal,
 } from '@/utils/members'
 import LargeWindow from './kit/LargeWindow.vue'
+import TransferOwnerPop from './members/TransferOwnerPop.vue'
+import MemberGroupsPane from './members/MemberGroupsPane.vue'
+import RolesPane from './members/RolesPane.vue'
 import ActionMenu from './kit/ActionMenu.vue'
 import UserAvatar from './UserAvatar.vue'
 import ShortcutKeys from './ShortcutKeys.vue'
@@ -65,7 +87,7 @@ const props = defineProps({
 const emit = defineEmits(['update:show'])
 
 const { t } = useI18n()
-const { formatDate } = useFormat()
+const { formatDate, formatRelative } = useFormat()
 const message = useMessage()
 const auth = useAuthStore()
 const wsStore = useWorkspacesStore()
@@ -84,7 +106,12 @@ const winRef = ref(null)
 // store's `canManage`, which follows the globally-selected one — the id
 // arrives here as a prop.
 const workspace = computed(() => wsStore.list.find((w) => w.id === props.wsId) || null)
-const canManage = computed(() => ['owner', 'admin'].includes(workspace.value?.my_role))
+const myRole = computed(() => workspace.value?.my_role || '')
+const canManage = computed(() => ['owner', 'admin'].includes(myRole.value))
+const isOwner = computed(() => myRole.value === 'owner')
+const membersStore = useMembersStore()
+const groups = computed(() => membersStore.groupsFor(props.wsId))
+const accessReqs = ref([])
 
 // Who is looking: the viewer's own row and the owner's are not offered the role
 // menu — see utils/members.js. `ownerId` is left to the row's own `role` field.
@@ -120,14 +147,30 @@ const loadedWsId = ref('')
 // "invalid or expired invitation"; there is no unique key on (workspace, email)
 // either, so re-invites pile up and only the newest of the identical-looking
 // rows works. The date is what tells them apart.
+//
+// A declined one (#3059) is dead the same way, and says so; «Продлить» brings
+// either back to life (#3061).
 const invitationRows = computed(() =>
   invitations.value.map((inv) => {
     const until = inv.expires_at ? new Date(inv.expires_at) : null
     const expired = !!until && until.getTime() <= Date.now()
-    return { ...inv, expired, until: until && !expired ? formatDate(until) : '' }
+    const declined = !!inv.declined_at
+    // formatRelative is silent past this week (sent last Saturday, read on a
+    // Monday) — the row then fell back to no «отправлено» at all; a date says it.
+    const rel = inv.sent_at
+      ? formatRelative(inv.sent_at) || formatDate(inv.sent_at, { day: 'numeric', month: 'short' })
+      : ''
+    return {
+      ...inv,
+      expired,
+      declined,
+      dead: expired || declined,
+      until: until && !expired ? formatDate(until) : '',
+      sent: rel ? rel.charAt(0).toLowerCase() + rel.slice(1) : '',
+    }
   }),
 )
-const pendingCount = computed(() => invitationRows.value.filter((i) => !i.expired).length)
+const pendingCount = computed(() => invitationRows.value.filter((i) => !i.dead).length)
 
 // The two lists are fetched behind different gates — ListMembers is
 // `requireMember`, ListInvitations is `requireManager` — so under `Promise.all`
@@ -148,15 +191,23 @@ async function load() {
     loadedWsId.value = wsId
     members.value = []
     invitations.value = []
+    accessReqs.value = []
     lastLink.value = ''
+    shared.value = null
+    sharedUrl.value = ''
     inviteError.value = ''
     chips.value = []
     draft.value = ''
     filter.value = ''
   }
-  const [m, inv] = await Promise.allSettled([
+  const [m, inv, link, reqs] = await Promise.allSettled([
     wsApi.members(wsId),
     canManage.value ? wsApi.invitations(wsId) : Promise.resolve({ data: [] }),
+    canManage.value
+      ? Promise.resolve().then(() => wsApi.inviteLink(wsId))
+      : Promise.resolve({ data: { link: null } }),
+    canManage.value ? wsApi.accessRequests(wsId) : Promise.resolve({ data: [] }),
+    membersStore.loadGroups(wsId, { force: true }),
   ])
   // Switched away while these were in flight: the answers are about the
   // workspace that is no longer on screen.
@@ -165,6 +216,87 @@ async function load() {
   else message.error(m.reason.message)
   if (inv.status === 'fulfilled') invitations.value = inv.value.data || []
   else message.error(inv.reason.message)
+  // The shared link is a convenience on top of the list: a failed read leaves
+  // the row offering to create one rather than a second error toast.
+  const live = link.status === 'fulfilled' ? link.value?.data?.link || null : null
+  if (!live || live.id !== shared.value?.id) sharedUrl.value = ''
+  shared.value = live
+  if (reqs.status === 'fulfilled') accessReqs.value = reqs.value.data || []
+}
+
+// ── a member's line: groups and activity (#3073/#3074) ──
+const now = ref(Date.now())
+function memberGroups(m) {
+  return groupsOf(m.user_id, groups.value).join(', ')
+}
+function activity(m) {
+  const a = lastActivity(m, now.value)
+  const l = activityLabel(a.at, now.value)
+  const text =
+    l.key === 'date'
+      ? formatDate(new Date(a.at), { day: 'numeric', month: 'short' })
+      : t(`shell.members.activity.${l.key}`, { n: l.n }, l.n || 1)
+  const parts = []
+  if (m.last_seen_at)
+    parts.push(
+      t('shell.members.seenAt', {
+        at: formatDate(new Date(m.last_seen_at), {
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      }),
+    )
+  if (m.last_active_at)
+    parts.push(
+      t('shell.members.activeAt', {
+        at: formatDate(new Date(m.last_active_at), {
+          day: 'numeric',
+          month: 'short',
+          hour: '2-digit',
+          minute: '2-digit',
+        }),
+      }),
+    )
+  return { text, online: a.online, title: parts.join(' · ') }
+}
+
+// ── access requests (#3077) ──
+const reqBusy = ref('')
+async function decide(r, approve) {
+  if (reqBusy.value) return
+  reqBusy.value = r.id
+  try {
+    if (approve) {
+      await wsApi.approveAccess(props.wsId, r.id, 'member')
+      message.success(t('shell.members.requestApproved', { name: r.user_name || r.user_email }))
+    } else {
+      await wsApi.declineAccess(props.wsId, r.id)
+      message.info(t('shell.members.requestDeclined', { name: r.user_name || r.user_email }))
+    }
+  } catch (e) {
+    message.error(humanizeError(e))
+  } finally {
+    reqBusy.value = ''
+    await load()
+  }
+}
+function reqWhen(r) {
+  const l = activityLabel(new Date(r.created_at).getTime(), now.value)
+  return l.key === 'date'
+    ? formatDate(new Date(r.created_at), { day: 'numeric', month: 'short' })
+    : t(`shell.members.activity.${l.key}`, { n: l.n }, l.n || 1)
+}
+
+// ── the workspace's own link: a non-member who opens it can ask to be let in ──
+const spaceLink = computed(() =>
+  props.wsId ? `${serverBase() || window.location.origin}/space/${props.wsId}` : '',
+)
+async function copySpaceLink() {
+  if (!spaceLink.value) return
+  if (await copyText(spaceLink.value)) message.success(t('shell.members.linkCopied'))
+  else message.info(spaceLink.value)
 }
 
 // ── the invite field: addresses become chips ──
@@ -248,6 +380,7 @@ async function inviteOne(e) {
       try {
         const res = await wsApi.createInvitation(props.wsId, { email: e, role: role.value })
         lastLink.value = res.data.link || ''
+        lastLinkFor.value = e
         message.success(t('shell.members.inviteCreated'))
         return true
       } catch (err2) {
@@ -293,21 +426,52 @@ const menuShow = computed({
   },
 })
 const menuMember = computed(() =>
-  menuFor.value && menuFor.value !== 'invite'
+  menuFor.value &&
+  menuFor.value !== 'invite' &&
+  menuFor.value !== 'link' &&
+  menuFor.value !== 'self'
     ? members.value.find((m) => m.user_id === menuFor.value) || null
     : null,
 )
-const rolesTask = stubTask('members.roles')
+const guestTask = stubTask('members.guests')
 const menuItems = computed(() => {
+  if (menuFor.value === 'link') return linkMenuItems.value
+  // The reader's own row: the one thing to do with it is to leave (#3063). The
+  // owner can't — the workspace would be left without one — and is told so.
+  if (menuFor.value === 'self') {
+    return [
+      {
+        key: 'leave',
+        label: t('shell.members.leave'),
+        icon: LogOutOutline,
+        danger: true,
+        testid: 'member-leave',
+        ...(isOwner.value
+          ? { disabled: true, disabledTitle: t('shell.members.leaveOwner') }
+          : {
+              confirm: {
+                title: t('shell.members.leaveConfirm'),
+                sub: workspaceName(workspace.value),
+              },
+            }),
+      },
+    ]
+  }
   const cur = menuFor.value === 'invite' ? role.value : menuMember.value?.role
   const items = []
   if (menuFor.value !== 'invite') {
+    // «Владелец — передать владение…»: the owner's alone (the server says the
+    // same); an admin sees why it is greyed.
     items.push({
       key: 'owner',
       label: t('shell.members.owner'),
       note: t('shell.members.transfer'),
       icon: ShieldCheckmarkOutline,
-      stub: rolesTask,
+      caps: [cap(1)],
+      testid: 'member-transfer',
+      ...(isOwner.value
+        ? {}
+        : { disabled: true, disabledTitle: t('shell.members.transferOwnerOnly') }),
     })
   }
   items.push(
@@ -330,8 +494,9 @@ const menuItems = computed(() => {
     {
       key: 'guest',
       label: t('shell.members.guest'),
+      note: t('shell.members.guestNote'),
       icon: PeopleCircleOutline,
-      stub: rolesTask,
+      stub: guestTask,
     },
   )
   if (menuMember.value) {
@@ -356,18 +521,59 @@ function openMenu(key, el) {
 }
 async function onMenu(key) {
   const target = menuFor.value
+  if (target === 'link') {
+    await onLinkMenu(key)
+    return
+  }
   if (target === 'invite') {
     if (key === 'admin' || key === 'member') role.value = key
     return
   }
+  if (target === 'self') {
+    if (key === 'leave') await leave()
+    return
+  }
   const m = menuMember.value
   if (!m) return
+  if (key === 'owner') {
+    if (!isOwner.value) return
+    transferFor.value = m
+    menuFor.value = null
+    transferShow.value = true
+    return
+  }
   if (key === 'remove') {
     menuFor.value = null
     await remove(m.user_id)
   } else if ((key === 'admin' || key === 'member') && key !== m.role) {
     await changeRole(m.user_id, key)
   }
+}
+
+// ── handing the workspace over (#3072) ──
+const transferFor = ref(null)
+const transferShow = ref(false)
+async function onTransferred(m) {
+  message.success(t('shell.members.transferDone', { name: m.name || m.email }))
+  // The server dropped our socket so the role re-reads on reconnect; the list
+  // (my_role, hence every manager control here) is re-read now rather than
+  // whenever that lands.
+  await wsStore.resync()
+  await load()
+}
+
+// ── leaving (#3063) ──
+async function leave() {
+  menuFor.value = null
+  try {
+    await wsApi.leave(props.wsId)
+  } catch (e) {
+    message.error(humanizeError(e))
+    return
+  }
+  message.success(t('shell.members.left', { name: workspaceName(workspace.value) }))
+  close()
+  await wsStore.resync()
 }
 
 async function remove(userId) {
@@ -420,6 +626,149 @@ async function copyLink() {
   else message.info(lastLink.value)
 }
 
+// «Ещё раз» on a waiting invitation, «Продлить» on an expired or declined one
+// (#3061): the server issues a new link and a fresh week and mails it again —
+// the new link is offered for copying, as after an invitation.
+const resending = ref('')
+async function resendInvite(inv) {
+  if (resending.value) return
+  resending.value = inv.id
+  try {
+    const res = await wsApi.resendInvitation(props.wsId, inv.id)
+    lastLink.value = res.data?.link || ''
+    lastLinkFor.value = inv.email
+    message.success(
+      t(inv.dead ? 'shell.members.extended' : 'shell.members.resent', { email: inv.email }),
+    )
+    await load()
+  } catch (e) {
+    if (e.status === 429) message.info(t('shell.members.resendWait'))
+    else message.error(e.message)
+  } finally {
+    resending.value = ''
+  }
+}
+
+// ── the shared invitation link (#3062) ──
+// One live link per workspace. Only its hash is kept on the server, so the URL
+// exists here only after this window created it — reopened later, the row says
+// the link is hidden and «Сбросить» issues a fresh one. Any change of its role,
+// lifetime or limit issues a new link too (the old one stops working).
+const shared = ref(null)
+const sharedUrl = ref('')
+const sharedBusy = ref(false)
+const sharedMeta = computed(() => (shared.value ? linkMeta(shared.value, t) : ''))
+const sharedUses = computed(() => (shared.value ? linkUses(shared.value, t) : ''))
+const sharedShort = computed(() => shortLink(sharedUrl.value))
+
+async function issueShared(params, toastKey) {
+  if (sharedBusy.value) return
+  sharedBusy.value = true
+  const wsId = props.wsId
+  try {
+    const res = await wsApi.createInviteLink(wsId, params)
+    if (wsId !== props.wsId) return
+    shared.value = res.data?.link || null
+    sharedUrl.value = res.data?.link?.url || ''
+    if (toastKey) message.success(t(toastKey))
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    sharedBusy.value = false
+  }
+}
+function currentParams(over = {}) {
+  const s = shared.value
+  const days = s
+    ? Math.max(1, Math.round((new Date(s.expires_at) - new Date(s.created_at)) / 864e5))
+    : 7
+  return {
+    role: s?.role || 'member',
+    ttl_days: LINK_TTL_DAYS.includes(days) ? days : 7,
+    max_uses: s?.max_uses || 25,
+    ...over,
+  }
+}
+function createShared() {
+  return issueShared(currentParams(), 'shell.members.sharedCreated')
+}
+function resetShared() {
+  return issueShared(currentParams(), 'shell.members.sharedReset')
+}
+async function revokeShared() {
+  try {
+    await wsApi.revokeInviteLink(props.wsId)
+    shared.value = null
+    sharedUrl.value = ''
+    message.success(t('shell.members.sharedOff'))
+  } catch (e) {
+    message.error(e.message)
+  }
+}
+async function copyShared() {
+  if (!sharedUrl.value) return
+  if (await copyText(sharedUrl.value)) message.success(t('shell.members.linkCopied'))
+  else message.info(sharedUrl.value)
+}
+const linkMenuItems = computed(() => {
+  const p = currentParams()
+  return [
+    {
+      key: 'link-role',
+      label: t('shell.members.sharedRole'),
+      note: roleName(p.role),
+      icon: ShieldCheckmarkOutline,
+      children: [
+        { key: 'role:member', label: roleName('member'), checked: p.role === 'member' },
+        { key: 'role:admin', label: roleName('admin'), checked: p.role === 'admin' },
+      ],
+    },
+    {
+      key: 'link-ttl',
+      label: t('shell.members.sharedTtl'),
+      note: t('shell.members.days', { n: p.ttl_days }, p.ttl_days),
+      icon: TimeOutline,
+      children: LINK_TTL_DAYS.map((d) => ({
+        key: `ttl:${d}`,
+        label: t('shell.members.days', { n: d }, d),
+        checked: p.ttl_days === d,
+      })),
+    },
+    {
+      key: 'link-uses',
+      label: t('shell.members.sharedUses'),
+      note: shared.value
+        ? sharedUses.value
+        : t('shell.members.people', { n: p.max_uses }, p.max_uses),
+      icon: PeopleOutline,
+      children: LINK_USES.map((n) => ({
+        key: `uses:${n}`,
+        label: t('shell.members.people', { n }, n),
+        checked: p.max_uses === n,
+      })),
+    },
+    { gap: true },
+    {
+      key: 'link-off',
+      label: t('shell.members.sharedRevoke'),
+      icon: TrashOutline,
+      danger: true,
+      confirm: { title: t('shell.members.sharedRevokeConfirm'), sub: sharedShort.value || '' },
+      testid: 'members-shared-off',
+    },
+  ]
+})
+async function onLinkMenu(key) {
+  menuFor.value = null
+  if (key === 'link-off') return revokeShared()
+  const [kind, value] = String(key).split(':')
+  if (!value) return
+  const over =
+    kind === 'role' ? { role: value } : kind === 'ttl' ? { ttl_days: +value } : { max_uses: +value }
+  await issueShared(currentParams(over), shared.value ? 'shell.members.sharedChanged' : '')
+}
+const lastLinkFor = ref('')
+
 // ── the roster filter ──
 const filter = ref('')
 const filterEl = ref(null)
@@ -431,7 +780,14 @@ const shownMembers = computed(() => {
   )
 })
 
-const invitesTask = stubTask('members.inviteLink')
+const sectionTitle = computed(
+  () =>
+    ({
+      invites: t('shell.members.navInvites'),
+      groups: t('shell.members.navGroups'),
+      roles: t('shell.members.navRoles'),
+    })[section.value] || t('shell.members.navMembers'),
+)
 const navItems = computed(() => [
   {
     key: 'members',
@@ -445,7 +801,7 @@ const navItems = computed(() => [
           key: 'invites',
           icon: MailOutline,
           label: t('shell.members.navInvites'),
-          count: invitations.value.length || null,
+          count: invitations.value.length + accessReqs.value.length || null,
         },
       ]
     : []),
@@ -453,13 +809,12 @@ const navItems = computed(() => [
     key: 'groups',
     icon: PeopleCircleOutline,
     label: t('shell.members.navGroups'),
-    stub: rolesTask,
+    count: groups.value.length || null,
   },
   {
     key: 'roles',
     icon: ShieldCheckmarkOutline,
     label: t('shell.members.navRoles'),
-    stub: rolesTask,
   },
 ])
 
@@ -469,7 +824,13 @@ function focusInvite() {
 }
 // Esc inside the window: an open menu closes itself; a typed filter is cleared
 // first; then the window.
+const groupsPane = ref(null)
 function paneEscape() {
+  if (transferShow.value) {
+    transferShow.value = false
+    return true
+  }
+  if (section.value === 'groups' && groupsPane.value?.escape()) return true
   if (menuFor.value) {
     menuFor.value = null
     return true
@@ -484,12 +845,28 @@ const topmost = () => !!winRef.value?.topmost()
 useShortcuts(
   {
     'members.invite': () => canManage.value && focusInvite(),
+    // N on «Группы» names a new group.
+    'win.new': () => {
+      if (section.value === 'groups' && canManage.value) groupsPane.value?.focusNew()
+    },
     'win.filter': () => {
       section.value = 'members'
       nextTick(() => filterEl.value?.focus())
     },
   },
   { when: topmost },
+)
+// ⌘C copies the shared link — only while there is one to copy and nothing is
+// selected: copying text out of the window keeps working as everywhere.
+useShortcuts(
+  { 'members.copyLink': copyShared },
+  {
+    when: () =>
+      topmost() &&
+      !!sharedUrl.value &&
+      section.value === 'members' &&
+      !String(window.getSelection?.() || ''),
+  },
 )
 
 // «Пригласить «…»» from the assignee picker (#3118) hands an address over: it
@@ -505,9 +882,20 @@ function takeDraft() {
 watch(
   () => [props.show, props.wsId],
   ([show]) => {
-    if (show) load().then(takeDraft)
-    else menuFor.value = null
+    if (show) {
+      now.value = Date.now()
+      load().then(takeDraft)
+    } else {
+      menuFor.value = null
+      transferShow.value = false
+    }
   },
+)
+// The roster, the access requests or the groups changed elsewhere (socket,
+// stores/members): re-read while the window is open.
+watch(
+  () => membersStore.rev[props.wsId],
+  () => props.show && load(),
 )
 watch(canManage, (can) => {
   if (!can && section.value === 'invites') section.value = 'members'
@@ -545,24 +933,49 @@ function close() {
 
     <div class="mw" data-testid="members-pane">
       <div class="mw-title">
-        <h2>
-          {{
-            section === 'invites' ? t('shell.members.navInvites') : t('shell.members.navMembers')
-          }}
-        </h2>
-        <span class="mw-note">
+        <h2>{{ sectionTitle }}</h2>
+        <span v-if="section === 'groups'" class="mw-note">
+          {{ t('shell.members.groupsSummary', groups.length) }}
+        </span>
+        <span v-else-if="section !== 'roles'" class="mw-note">
           {{ t('shell.members.summary', members.length) }}
           <template v-if="canManage && pendingCount">
             · {{ t('shell.members.pendingSummary', pendingCount) }}
           </template>
+          <template v-if="canManage && accessReqs.length">
+            · {{ t('shell.members.requestsSummary', accessReqs.length) }}
+          </template>
         </span>
       </div>
 
-      <div class="mw-scroll t-hoverscroll">
+      <div v-if="section === 'groups'" class="mw-scroll t-hoverscroll">
+        <MemberGroupsPane
+          ref="groupsPane"
+          :ws-id="wsId"
+          :members="members"
+          :can-manage="canManage"
+        />
+      </div>
+      <div v-else-if="section === 'roles'" class="mw-scroll t-hoverscroll">
+        <RolesPane :my-role="myRole" />
+      </div>
+      <div v-else class="mw-scroll t-hoverscroll">
         <!-- Every door below this line is requireManager. Saying so once beats
              controls that answer 403, and beats silence — the roster is still
              worth the trip. -->
-        <p v-if="!canManage" class="mw-readonly hint">{{ t('shell.members.readOnly') }}</p>
+        <template v-if="!canManage">
+          <p class="mw-readonly hint">{{ t('shell.members.readOnly') }}</p>
+          <div class="mw-link" data-testid="members-space-link-row">
+            <n-icon :component="LinkOutline" :size="15" class="mw-link-ic" />
+            <span class="mw-link-l">{{ t('shell.members.spaceLink') }}</span>
+            <span class="mw-link-empty">{{ t('shell.members.spaceLinkHint') }}</span>
+            <span class="mw-grow" />
+            <button type="button" class="kit-btn small" @click="copySpaceLink">
+              <n-icon :component="CopyOutline" :size="14" />
+              {{ t('shell.members.copy') }}
+            </button>
+          </div>
+        </template>
 
         <section v-else-if="section === 'members'" class="invite mw-invite">
           <div class="mw-inv-row">
@@ -640,16 +1053,18 @@ function close() {
               <span>{{ t('shell.members.nextAddress') }}</span>
             </span>
           </div>
-          <div class="mw-link">
-            <n-icon :component="LinkOutline" :size="15" class="mw-link-ic" />
-            <span class="mw-link-l">{{ t('shell.members.linkLabel') }}</span>
-            <code v-if="lastLink" class="mw-link-v link-box" data-testid="members-invite-link">{{
-              lastLink
-            }}</code>
-            <span v-else class="mw-link-empty">{{ t('shell.members.linkEmpty') }}</span>
+          <!-- The link of the invitation just sent: with SMTP off it is the only
+               copy of that token anywhere (#2932). -->
+          <div v-if="lastLink" class="mw-link mw-last">
+            <n-icon :component="MailOutline" :size="15" class="mw-link-ic" />
+            <span class="mw-link-l">{{
+              lastLinkFor
+                ? t('shell.members.lastLinkFor', { email: lastLinkFor })
+                : t('shell.members.lastLink')
+            }}</span>
+            <code class="mw-link-v link-box" data-testid="members-invite-link">{{ lastLink }}</code>
             <span class="mw-grow" />
             <button
-              v-if="lastLink"
               type="button"
               class="kit-btn small"
               data-testid="members-copy-link"
@@ -658,21 +1073,143 @@ function close() {
               <n-icon :component="CopyOutline" :size="14" />
               {{ t('shell.members.copy') }}
             </button>
-            <n-tooltip :delay="300">
-              <template #trigger>
-                <span
-                  class="kit-btn small stub"
-                  aria-disabled="true"
-                  data-testid="members-link-stub"
-                >
-                  <n-icon :component="RefreshOutline" :size="14" />
-                  {{ t('shell.members.sharedLink') }}
-                </span>
-              </template>
-              {{ t('common.stub.soon', { n: invitesTask }) }}
-            </n-tooltip>
+          </div>
+          <!-- The workspace's shared link (#3062). -->
+          <div class="mw-link mw-shared" data-testid="members-shared-link">
+            <n-icon :component="LinkOutline" :size="15" class="mw-link-ic" />
+            <span class="mw-link-l">{{ t('shell.members.linkLabel') }}</span>
+            <template v-if="shared">
+              <code
+                v-if="sharedUrl"
+                class="mw-link-v link-box"
+                :title="sharedUrl"
+                data-testid="members-shared-url"
+                >{{ sharedShort }}</code
+              >
+              <span
+                v-else
+                class="mw-link-empty mw-link-hidden"
+                :title="t('shell.members.sharedHidden')"
+                data-testid="members-shared-hidden"
+                >{{ t('shell.members.sharedHiddenShort') }}</span
+              >
+              <button
+                type="button"
+                class="mw-link-meta"
+                :class="{ ctx: menuFor === 'link' }"
+                :title="t('shell.members.sharedUsesTitle', { uses: sharedUses })"
+                data-testid="members-shared-meta"
+                @click="openMenu('link', $event.currentTarget)"
+              >
+                {{ sharedMeta }}
+                <n-icon :component="ChevronDownOutline" :size="12" />
+              </button>
+              <span class="mw-grow" />
+              <button
+                v-if="sharedUrl"
+                type="button"
+                class="kit-btn small"
+                data-testid="members-shared-copy"
+                @click="copyShared"
+              >
+                <n-icon :component="CopyOutline" :size="14" />
+                {{ t('shell.members.copy') }}
+                <ShortcutKeys id="members.copyLink" soft joined />
+              </button>
+              <button
+                type="button"
+                class="kit-btn small"
+                :disabled="sharedBusy"
+                data-testid="members-shared-reset"
+                @click="resetShared"
+              >
+                <n-icon :component="RefreshOutline" :size="14" />
+                {{ t('shell.members.sharedResetBtn') }}
+              </button>
+            </template>
+            <template v-else>
+              <span class="mw-link-empty">{{ t('shell.members.sharedNone') }}</span>
+              <span class="mw-grow" />
+              <button
+                type="button"
+                class="kit-btn small"
+                :disabled="sharedBusy"
+                data-testid="members-shared-create"
+                @click="createShared"
+              >
+                <n-icon :component="LinkOutline" :size="14" />
+                {{ t('shell.members.sharedCreate') }}
+              </button>
+            </template>
+          </div>
+          <!-- The workspace's own address (#3077): whoever opens it without
+               being a member can ask to be let in — the requests land below. -->
+          <div class="mw-link" data-testid="members-space-link-row">
+            <n-icon :component="HandRightOutline" :size="15" class="mw-link-ic" />
+            <span class="mw-link-l">{{ t('shell.members.spaceLink') }}</span>
+            <code class="mw-link-v" data-testid="members-space-link">{{ spaceLink }}</code>
+            <span class="mw-grow" />
+            <button
+              type="button"
+              class="kit-btn small"
+              data-testid="members-copy-space-link"
+              @click="copySpaceLink"
+            >
+              <n-icon :component="CopyOutline" :size="14" />
+              {{ t('shell.members.copy') }}
+            </button>
           </div>
         </section>
+
+        <!-- Access requests (#3077): people who opened a link to this space and
+             asked to be let in. «Впустить» makes them a member; the role can be
+             changed afterwards like anyone's. -->
+        <template v-if="canManage && accessReqs.length">
+          <div class="mw-h">
+            {{ t('shell.members.requests') }} <span class="mw-h-n">{{ accessReqs.length }}</span>
+          </div>
+          <div class="mw-list">
+            <div
+              v-for="r in accessReqs"
+              :key="r.id"
+              class="mw-row mw-req"
+              data-testid="access-request-row"
+            >
+              <UserAvatar :user-id="r.user_id" :name="r.user_name" class="mw-av" />
+              <div class="info">
+                <span class="name">{{ r.user_name || r.user_email }}</span>
+                <span class="mail">
+                  {{ r.user_email }}
+                  <template v-if="r.board_name">
+                    · {{ t('shell.members.requestFrom', { board: r.board_name }) }}</template
+                  >
+                </span>
+                <span v-if="r.message" class="mw-req-msg">{{
+                  t('shell.members.requestMessage', { text: r.message })
+                }}</span>
+              </div>
+              <span class="inv-until">{{ reqWhen(r) }}</span>
+              <button
+                type="button"
+                class="kit-btn small primary"
+                :disabled="reqBusy === r.id"
+                data-testid="access-approve"
+                @click="decide(r, true)"
+              >
+                {{ t('shell.members.requestApprove') }}
+              </button>
+              <button
+                type="button"
+                class="mw-act"
+                :disabled="reqBusy === r.id"
+                data-testid="access-decline"
+                @click="decide(r, false)"
+              >
+                {{ t('shell.members.requestDecline') }}
+              </button>
+            </div>
+          </div>
+        </template>
 
         <!-- Invitations waiting for an answer — on «Участники» under the field,
              and the whole of «Приглашения». -->
@@ -685,28 +1222,41 @@ function close() {
               v-for="inv in invitationRows"
               :key="inv.id"
               class="invite-row mw-row"
-              :class="{ 'is-expired': inv.expired }"
+              :class="{ 'is-expired': inv.dead }"
               data-testid="invite-row"
             >
               <span class="mw-tile inv-icon"><n-icon :component="MailOutline" :size="15" /></span>
               <span class="inv-mail">{{ inv.email }}</span>
               <span class="mw-role" :class="`r-${inv.role}`">{{ roleName(inv.role) }}</span>
-              <span v-if="inv.expired" class="inv-expired mw-expired">
+              <span
+                v-if="inv.declined"
+                class="inv-expired mw-expired"
+                data-testid="invite-declined"
+              >
+                {{ t('shell.members.inviteDeclined') }}
+              </span>
+              <span v-else-if="inv.expired" class="inv-expired mw-expired">
                 {{ t('shell.members.inviteExpired') }}
               </span>
-              <span v-else-if="inv.until" class="inv-until">
-                <n-icon :component="TimeOutline" :size="12" />
-                {{ t('shell.members.inviteUntil', { date: inv.until }) }}
-              </span>
+              <template v-else>
+                <span v-if="inv.sent" class="inv-sent">{{
+                  t('shell.members.sentAgo', { when: inv.sent })
+                }}</span>
+                <span v-if="inv.until" class="inv-until">
+                  <n-icon :component="TimeOutline" :size="12" />
+                  {{ t('shell.members.inviteUntil', { date: inv.until }) }}
+                </span>
+              </template>
               <span class="mw-grow" />
-              <n-tooltip :delay="300">
-                <template #trigger>
-                  <span class="mw-act stub" aria-disabled="true">{{
-                    inv.expired ? t('shell.members.extend') : t('shell.members.resend')
-                  }}</span>
-                </template>
-                {{ t('common.stub.soon', { n: invitesTask }) }}
-              </n-tooltip>
+              <button
+                type="button"
+                class="mw-act"
+                :disabled="resending === inv.id"
+                data-testid="invite-resend"
+                @click="resendInvite(inv)"
+              >
+                {{ inv.dead ? t('shell.members.extend') : t('shell.members.resend') }}
+              </button>
               <!-- Revoke stays on an expired row: clearing it out of the list is
                    the only thing left to do with it. -->
               <button
@@ -720,7 +1270,7 @@ function close() {
             </div>
           </div>
         </template>
-        <p v-else-if="section === 'invites'" class="mw-empty">
+        <p v-else-if="section === 'invites' && !accessReqs.length" class="mw-empty">
           {{ t('shell.members.noInvites') }}
         </p>
 
@@ -742,61 +1292,77 @@ function close() {
             </label>
           </div>
           <div class="members mw-list">
-            <div
-              v-for="m in shownMembers"
-              :key="m.user_id"
-              class="member mw-row"
-              :class="{ ctx: menuFor === m.user_id }"
-              data-testid="member-row"
-            >
-              <UserAvatar :user-id="m.user_id" :name="m.name" class="mw-av" />
-              <div class="info">
-                <span class="name">
-                  {{ m.name }}
-                  <span v-if="isSelf(m)" class="mw-you">{{ t('shell.members.youShort') }}</span>
+            <template v-for="m in shownMembers" :key="m.user_id">
+              <div
+                class="member mw-row"
+                :class="{ ctx: menuFor === m.user_id }"
+                data-testid="member-row"
+              >
+                <UserAvatar :user-id="m.user_id" :name="m.name" class="mw-av" />
+                <div class="info">
+                  <span class="name">
+                    {{ m.name }}
+                    <span v-if="isSelf(m)" class="mw-you">{{ t('shell.members.youShort') }}</span>
+                  </span>
+                  <span class="mail">{{ m.email }}</span>
+                </div>
+                <span class="mw-groups" data-testid="member-groups-cell">{{
+                  memberGroups(m)
+                }}</span>
+                <span class="mw-seen" :title="activity(m).title" data-testid="member-activity">
+                  <span v-if="activity(m).online" class="mw-dot" />
+                  {{ activity(m).text }}
                 </span>
-                <span class="mail">{{ m.email }}</span>
-              </div>
-              <!-- A control that vanishes with no word reads as a broken window,
+                <!-- A control that vanishes with no word reads as a broken window,
                    so a locked row keeps its role in place and says why on hover. -->
-              <span
-                v-if="rowLock(m)"
-                class="mw-role locked"
-                :class="`r-${m.role}`"
-                :title="lockReason(m)"
-                :aria-label="`${roleName(m.role)} — ${lockReason(m)}`"
-                data-testid="member-role-locked"
-              >
-                {{ roleName(m.role) }}
-                <n-icon
-                  v-if="canManage"
-                  :component="LockClosedOutline"
-                  :size="11"
-                  class="mw-lock"
-                />
-              </span>
-              <button
-                v-else
-                type="button"
-                class="mw-role btn"
-                :class="`r-${m.role}`"
-                data-testid="member-role"
-                @click="openMenu(m.user_id, $event.currentTarget)"
-              >
-                {{ roleName(m.role) }}
-                <n-icon :component="ChevronDownOutline" :size="12" />
-              </button>
-              <button
-                v-if="!rowLock(m)"
-                type="button"
-                class="mw-more"
-                :title="t('common.action.more')"
-                data-testid="member-menu"
-                @click="openMenu(m.user_id, $event.currentTarget)"
-              >
-                <n-icon :component="EllipsisHorizontal" :size="16" />
-              </button>
-            </div>
+                <span
+                  v-if="rowLock(m)"
+                  class="mw-role locked"
+                  :class="`r-${m.role}`"
+                  :title="lockReason(m)"
+                  :aria-label="`${roleName(m.role)} — ${lockReason(m)}`"
+                  data-testid="member-role-locked"
+                >
+                  {{ roleName(m.role) }}
+                  <n-icon
+                    v-if="canManage"
+                    :component="LockClosedOutline"
+                    :size="11"
+                    class="mw-lock"
+                  />
+                </span>
+                <button
+                  v-else
+                  type="button"
+                  class="mw-role btn"
+                  :class="`r-${m.role}`"
+                  data-testid="member-role"
+                  @click="openMenu(m.user_id, $event.currentTarget)"
+                >
+                  {{ roleName(m.role) }}
+                  <n-icon :component="ChevronDownOutline" :size="12" />
+                </button>
+                <button
+                  v-if="!rowLock(m) || isSelf(m)"
+                  type="button"
+                  class="mw-more"
+                  :title="t('common.action.more')"
+                  data-testid="member-menu"
+                  @click="openMenu(isSelf(m) ? 'self' : m.user_id, $event.currentTarget)"
+                >
+                  <n-icon :component="EllipsisHorizontal" :size="16" />
+                </button>
+                <span v-else class="mw-more-gap" />
+              </div>
+              <TransferOwnerPop
+                v-if="transferShow && transferFor?.user_id === m.user_id"
+                v-model:show="transferShow"
+                :ws-id="wsId"
+                :ws-name="workspaceName(workspace)"
+                :member="transferFor"
+                @done="onTransferred"
+              />
+            </template>
             <p v-if="!shownMembers.length && filter" class="mw-empty">
               {{ t('shell.members.noMatch') }}
             </p>
@@ -1022,6 +1588,45 @@ function close() {
   color: var(--t-text3);
   font-size: 12.5px;
 }
+/* The shared link's URL takes what the row can spare, not the leftovers. */
+/* One line, as in the mockup: the URL gives way first (down to a stub), the
+   label, the settings and the buttons keep their size. */
+.mw-shared > :not(.mw-link-v):not(.mw-grow) {
+  flex-shrink: 0;
+}
+.mw-shared .mw-link-v {
+  flex: 0 1 220px;
+  min-width: 56px;
+}
+.mw-link-hidden {
+  font-family: var(--t-mono, ui-monospace, monospace);
+  letter-spacing: 0.02em;
+}
+/* «Участник · 6 дней · 3 из 25» — the link's settings, its menu on a click. */
+.mw-link-meta {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text3);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.mw-link-meta:hover,
+.mw-link-meta.ctx {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.mw-last {
+  min-height: 32px;
+}
 .stub,
 .kit-btn.stub {
   opacity: 0.55;
@@ -1131,6 +1736,55 @@ function close() {
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
+/* Groups and activity (#3063) — the mockup's two quiet columns. */
+.mw-groups {
+  flex: 0 0 160px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--t-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mw-seen {
+  flex: 0 0 110px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--t-text3);
+  white-space: nowrap;
+}
+.mw-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #18a058 86%, #000),
+    #18a058 50%,
+    color-mix(in srgb, #18a058 86%, #fff)
+  );
+}
+.mw-more-gap {
+  flex: none;
+  width: 28px;
+}
+.mw-req .info {
+  gap: 1px;
+}
+.mw-req-msg {
+  font-size: 12.5px;
+  color: var(--t-text2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.lw-mobile .mw-groups,
+.lw-mobile .mw-seen {
+  display: none;
+}
 /* Role pills: the owner in the accent, an admin in blue, the rest neutral. */
 .mw-role {
   flex: none;
@@ -1207,6 +1861,11 @@ function close() {
   white-space: nowrap;
   font-size: 13.5px;
 }
+.inv-sent {
+  font-size: 12px;
+  color: var(--t-text3);
+  white-space: nowrap;
+}
 .inv-until {
   display: inline-flex;
   align-items: center;
@@ -1243,7 +1902,11 @@ function close() {
   display: inline-flex;
   align-items: center;
 }
-.mw-act:not(.stub):hover {
+.mw-act:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.mw-act:not(.stub):not(:disabled):hover {
   background: var(--t-hover);
   color: var(--t-text1);
 }
@@ -1284,7 +1947,8 @@ function close() {
 }
 .lw-mobile .mw-inv-keys,
 .lw-mobile .mw-inv-hint,
-.lw-mobile .mw-link-empty,
+.lw-mobile .mw-link-empty:not(.mw-link-hidden),
+.lw-mobile .inv-until,
 .lw-mobile .mw-send :deep(.kbd),
 .lw-mobile .mw-filter :deep(.kbd) {
   display: none;

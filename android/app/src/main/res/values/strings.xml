@@ -158,9 +158,36 @@
     <string name="sidebar_ws_delete">Удалить пространство</string>
     <string name="sidebar_ws_delete_message">Пространство «%1$s» и все его проекты, доски и задачи будут удалены безвозвратно. Введите название для подтверждения.</string>
     <string name="sidebar_ws_delete_last">Нельзя удалить единственное пространство</string>
+    <!-- Счётчики в подтверждении удаления проекта и пространства (#3014). Список —
+         после двоеточия: глагол согласуется со списком, а «1 доска будут удалены»
+         так не получится. -->
+    <string name="delete_counts_line">Будут удалены: %1$s.</string>
+    <string name="delete_counts_join">%1$s и %2$s</string>
+    <plurals name="delete_counts_projects">
+        <item quantity="one">%d проект</item>
+        <item quantity="few">%d проекта</item>
+        <item quantity="many">%d проектов</item>
+        <item quantity="other">%d проекта</item>
+    </plurals>
+    <plurals name="delete_counts_boards">
+        <item quantity="one">%d доска</item>
+        <item quantity="few">%d доски</item>
+        <item quantity="many">%d досок</item>
+        <item quantity="other">%d доски</item>
+    </plurals>
+    <plurals name="delete_counts_tasks">
+        <item quantity="one">%d задача</item>
+        <item quantity="few">%d задачи</item>
+        <item quantity="many">%d задач</item>
+        <item quantity="other">%d задачи</item>
+    </plurals>
 
     <!-- Боковая панель: дерево проектов -->
     <string name="sidebar_projects_header">ПРОЕКТЫ</string>
+    <string name="sidebar_favorites_header">ИЗБРАННОЕ</string>
+    <string name="sidebar_favorite_up">Выше</string>
+    <string name="sidebar_favorite_down">Ниже</string>
+    <string name="sidebar_favorite_remove">Убрать из избранного</string>
     <string name="sidebar_add_project">Проект</string>
     <string name="sidebar_add_group">Группа</string>
     <string name="sidebar_group_name_hint">Название группы</string>
@@ -211,8 +238,10 @@
     <string name="task_card_menu_add_subtask">Создать подзадачу</string>
     <string name="task_card_menu_restore">Вернуть из архива</string>
     <string name="task_card_menu_delete_forever">Удалить навсегда</string>
+    <string name="task_trash_deleted">Задача #%1$d в корзине</string>
+    <string name="task_trash_deleted_untitled">Задача «%1$s» в корзине</string>
+    <string name="task_trash_undo">Вернуть</string>
     <string name="task_card_archive_confirm">Архивировать задачу «%1$s»?</string>
-    <string name="task_card_delete_confirm">Удалить задачу «%1$s»? Это действие необратимо.</string>
     <string name="task_card_delete_forever_confirm">Удалить задачу «%1$s» навсегда? Это действие необратимо.</string>
     <string name="task_card_conflict">Конфликт</string>
     <string name="task_card_subtask_hint">Название подзадачи, Enter</string>
@@ -230,9 +259,22 @@
     <!-- Пометка «сгруппированная задача» на issue с меткой группировки (#2592) -->
     <string name="task_prop_grouping">Группировка</string>
     <string name="task_gitlab_grouped">Сгруппированная</string>
+    <string name="task_dev_title">Разработка</string>
+    <string name="task_dev_state_open">открыт</string>
+    <string name="task_dev_state_merged">смержен</string>
+    <string name="task_dev_state_closed">закрыт</string>
+    <string name="task_dev_state_draft">черновик</string>
+    <string name="task_dev_ci_success">пайплайн пройден</string>
+    <string name="task_dev_ci_running">пайплайн идёт</string>
+    <string name="task_dev_ci_failed">пайплайн упал</string>
+    <string name="task_dev_ci_canceled">пайплайн отменён</string>
+    <string name="task_dev_ci_manual">пайплайн ждёт запуска</string>
+    <string name="task_event_code_opened_on">открыт %1$s в %2$s</string>
+    <string name="task_event_code_opened">открыт %1$s</string>
+    <string name="task_event_code_merged">смержен %1$s</string>
+    <string name="task_event_code_closed">закрыт %1$s</string>
     <string name="task_archive_confirm">Архивировать задачу?</string>
     <string name="task_archive_action">В архив</string>
-    <string name="task_delete_confirm">Удалить задачу? Это действие необратимо.</string>
     <string name="task_prop_priority">Приоритет</string>
     <string name="task_prop_due">Срок</string>
     <string name="task_prop_estimate">Оценка</string>
@@ -241,6 +283,11 @@
     <string name="task_prop_tags">Теги</string>
     <string name="task_prop_milestone">Этап</string>
     <string name="task_prop_status">Статус</string>
+    <string name="task_subscribers_title">Подписаны</string>
+    <string name="task_subscribers_nobody">Никто</string>
+    <string name="task_subscribers_subscribe">Подписаться</string>
+    <string name="task_subscribers_unsubscribe">Отписаться</string>
+    <string name="task_subscribers_more">ещё %1$d</string>
     <string name="task_prop_parent">Родитель</string>
     <string name="task_prop_title">Заголовок</string>
     <string name="task_prop_column">Колонка</string>
@@ -998,15 +1045,30 @@
     <string name="docs_export_share">Поделиться «%1$s»</string>
     <string name="docs_export_unavailable">Конвертер недоступен — попробуйте HTML</string>
     <!-- Встроенные шаблоны. Тела — Markdown: их разбирает DocMarkdown.kt -->
-    <string name="docs_template_meeting_title">Протокол совещания</string>
-    <string name="docs_template_meeting_description">Участники, повестка, решения и задачи по итогам</string>
-    <string name="docs_template_meeting_body"># Протокол совещания\n\n**Дата:**\n**Участники:**\n\n## Повестка\n\n1. \n2. \n\n## Обсуждение\n\n## Решения\n\n- [ ] Решение — ответственный, срок\n\n## Задачи по итогам\n\n- [ ] \n</string>
+    <string name="docs_template_meeting_title">Повестка встречи</string>
+    <string name="docs_template_meeting_description">Участники, вопросы, решения — с привязкой к встрече</string>
+    <string name="docs_template_meeting_body"># Повестка встречи\n\n**Дата:**\n**Участники:**\n\n## Вопросы\n\n1. \n2. \n\n## Обсуждение\n\n## Решения\n\n- [ ] Решение — ответственный, срок\n\n## Задачи по итогам\n\n- [ ] \n</string>
     <string name="docs_template_spec_title">Техническое задание</string>
     <string name="docs_template_spec_description">Задача, объём работ, критерии приёмки и риски</string>
     <string name="docs_template_spec_body"># Техническое задание\n\n## Постановка задачи\n\n## Что входит в объём\n\n- \n\n## Что не входит\n\n- \n\n## Критерии приёмки\n\n- [ ] \n\n## Риски и открытые вопросы\n\n| Вопрос | Кто отвечает |\n|---|---|\n|  |  |\n</string>
     <string name="docs_template_retro_title">Ретроспектива</string>
     <string name="docs_template_retro_description">Что получилось, что мешало, что меняем</string>
     <string name="docs_template_retro_body"># Ретроспектива\n\n**Период:**\n\n## Что получилось\n\n- \n\n## Что мешало\n\n- \n\n## Что меняем\n\n- [ ] Действие — ответственный\n</string>
+    <string name="docs_template_sprint_plan_title">Планирование спринта</string>
+    <string name="docs_template_sprint_plan_description">Цель, объём, ёмкость команды и риски</string>
+    <string name="docs_template_sprint_plan_body"># Планирование спринта\n\n**Даты:**\n**Цель спринта:**\n\n## Объём\n\n- [ ] \n\n## Ёмкость команды\n\n| Участник | Доступность |\n|---|---|\n|  |  |\n\n## Риски и зависимости\n\n- \n</string>
+    <string name="docs_template_postmortem_title">Постмортем</string>
+    <string name="docs_template_postmortem_description">Хронология, причина, последствия, задачи</string>
+    <string name="docs_template_postmortem_body"># Постмортем\n\n**Инцидент:**\n**Когда:**\n**Влияние:**\n\n## Хронология\n\n- \n\n## Причина\n\n## Что помогло, что помешало\n\n- \n\n## Задачи\n\n- [ ] Действие — ответственный, срок\n</string>
+    <string name="docs_template_adr_title">ADR</string>
+    <string name="docs_template_adr_description">Архитектурное решение: контекст, варианты, выбор</string>
+    <string name="docs_template_adr_body"># ADR: \n\n**Статус:** предложено\n**Дата:**\n\n## Контекст\n\n## Варианты\n\n1. \n2. \n\n## Решение\n\n## Последствия\n\n- \n</string>
+    <string name="docs_templates_source_all">Все</string>
+    <string name="docs_templates_source_mine">Мои шаблоны</string>
+    <string name="docs_templates_category_sprint">Спринт</string>
+    <string name="docs_templates_category_product">Продукт</string>
+    <string name="docs_templates_category_engineering">Инженерия</string>
+    <string name="docs_templates_category_meetings">Встречи</string>
 
     <!-- Конференции (#2896). Подписи строки: время у карточки одно, и какое
          именно — зависит от состояния встречи, см. conferenceTimeLine. -->
@@ -1043,6 +1105,22 @@
     <string name="conf_create_ttl_hint">Записи этой конференции удалятся автоматически через столько дней. 0 — хранить без срока.</string>
     <string name="conf_create_ttl_invalid">Введите число дней: 0 или больше</string>
     <string name="conf_create_submit">Запланировать</string>
+    <string name="conf_plan_duration">Длительность</string>
+    <string name="conf_plan_min">%1$d мин</string>
+    <string name="conf_plan_h">%1$d ч</string>
+    <string name="conf_plan_hm">%1$d ч %2$d мин</string>
+    <string name="conf_plan_stage">К этапу</string>
+    <string name="conf_plan_no_stage">Без этапа</string>
+    <string name="conf_plan_no_stages">В пространстве нет открытых этапов</string>
+    <string name="conf_plan_linked">привязано к «%1$s»</string>
+    <string name="conf_plan_repeat">Повтор</string>
+    <string name="conf_repeat_none">Не повторять</string>
+    <string name="conf_repeat_daily">Каждый день</string>
+    <string name="conf_repeat_weekdays">По будням</string>
+    <string name="conf_repeat_weekly">Каждую неделю</string>
+    <string name="conf_repeat_biweekly">Каждые 2 недели</string>
+    <string name="conf_repeat_monthly">Каждый месяц</string>
+    <string name="conf_plan_repeat_needs_time">Повтор отсчитывается от времени начала — выберите его</string>
     <string name="conf_back">Назад</string>
     <string name="conf_detail_not_found">Конференция не найдена</string>
     <string name="conf_action_join">Войти</string>
@@ -1112,6 +1190,17 @@
     <string name="conf_chat_size_b">%1$s Б</string>
     <string name="conf_chat_size_kb">%1$s КБ</string>
     <string name="conf_chat_size_mb">%1$s МБ</string>
+    <string name="conf_chat_hint">Сообщение · / задача · @ человек</string>
+    <string name="conf_chat_cmd_head">Команды</string>
+    <string name="conf_chat_cmd_task">задача</string>
+    <string name="conf_chat_cmd_task_hint">Создать задачу из встречи</string>
+    <string name="conf_chat_mention_head">Участники пространства</string>
+    <string name="conf_chat_task_created">создал(а) задачу</string>
+    <string name="conf_chat_task_gone">Задача удалена или больше не в этом пространстве</string>
+    <string name="conf_chat_task_in">Задача в</string>
+    <string name="conf_chat_task_no_board">Нет досок — создайте доску в проекте</string>
+    <string name="conf_chat_task_title">— допишите название</string>
+    <string name="conf_reactions">Реакции</string>
 
     <!-- Демонстрация экрана и записи (#2896 §8) -->
     <string name="conf_share">Показать экран</string>
@@ -1166,6 +1255,20 @@
     <string name="members_role_admin">Админ</string>
     <string name="members_role_member">Участник</string>
     <string name="members_you">Это вы</string>
+    <string name="members_transfer">Передать владение…</string>
+    <string name="members_transfer_title">Передать владение — %1$s</string>
+    <string name="members_transfer_sub">Новый владелец получит всё пространство, вы останетесь в нём админом. Вернуть владение сможет только он.</string>
+    <string name="members_transfer_type">Введите название пространства</string>
+    <string name="members_transfer_go">Передать владение</string>
+    <string name="members_leave">Покинуть</string>
+    <string name="members_leave_confirm">Покинуть пространство?</string>
+    <string name="members_requests">Просят доступ</string>
+    <string name="members_request_approve">Впустить</string>
+    <string name="members_activity_now">сейчас</string>
+    <string name="members_activity_min">%1$d мин назад</string>
+    <string name="members_activity_hours">%1$d ч назад</string>
+    <string name="members_activity_yesterday">вчера</string>
+    <string name="members_activity_days">%1$d дн. назад</string>
     <string name="members_read_only">Список только для чтения: менять состав может владелец или админ пространства.</string>
 
     <!-- Администрирование: список аккаунтов -->
@@ -1271,6 +1374,11 @@
     <string name="milestones_range">%1$s – %2$s</string>
     <string name="milestones_range_until">до %1$s</string>
     <string name="milestones_range_from">с %1$s</string>
+    <string name="milestones_gitlab_unsynced">Не синхронизировано с GitLab</string>
+    <string name="milestones_gitlab_retry">Повторить</string>
+    <string name="milestones_gitlab_conflict_mark">Конфликт с GitLab — разрешите в веб-версии</string>
+    <string name="milestones_gitlab_failed">Сохранено в Tessera, но GitLab не принял изменения: %1$s</string>
+    <string name="milestones_gitlab_conflict">Этап изменили и в GitLab — выберите версию в окне конфликтов веб-версии</string>
 
     <!-- Выбор срока: вкладки начала/срока -->
     <string name="due_picker_tab_start">Начало</string>
@@ -1581,6 +1689,8 @@
     <!-- Оболочка приложения: шапка, меню доски, выход по «Назад» -->
     <string name="main_boards_of_project">ДОСКИ ПРОЕКТА</string>
     <string name="main_board_menu_archive">Архив доски</string>
+    <string name="main_board_menu_favorite">В избранное</string>
+    <string name="main_board_menu_unfavorite">Убрать из избранного</string>
     <string name="main_provider_soon">%1$s · скоро</string>
     <string name="main_back_again_to_exit">Нажмите «Назад» ещё раз для выхода</string>
 
@@ -1647,6 +1757,14 @@
     <string name="default_column_in_progress">В процессе</string>
     <string name="default_column_review">На рассмотрении</string>
     <string name="default_column_done">Готово</string>
+    <string name="default_column_backlog">Бэклог спринта</string>
+    <string name="default_column_new">Новые</string>
+    <string name="default_column_confirmed">Подтверждены</string>
+    <string name="default_column_verify">Проверка</string>
+    <string name="default_column_closed">Закрыты</string>
+    <string name="default_column_ideas">Идеи</string>
+    <string name="default_column_planned">Запланировано</string>
+    <string name="default_column_shipped">Выпущено</string>
 
     <!-- Названия семи акцентных схем дизайн-языка (ключ схемы — в accent, не здесь) -->
     <string name="accent_purple">Фиолетовый</string>
@@ -1801,6 +1919,7 @@
     <string name="cmd_remove_start_desc">Убрать дату начала</string>
     <string name="cmd_estimate_desc">Установить оценку</string>
     <string name="cmd_remove_estimate_desc">Убрать оценку</string>
+    <string name="cmd_spend_desc">Записать потраченное время</string>
     <string name="cmd_priority_desc">Установить приоритет</string>
     <string name="cmd_title_desc">Изменить заголовок</string>
     <string name="cmd_tag_desc">Добавить тег (через запятую)</string>
@@ -1846,6 +1965,13 @@
     <string name="notif_ev_sync_partial">%1$s: +%2$s новых, ~%3$s обновлено, за %4$s (часть действий с ошибками)</string>
     <string name="notif_ev_sync_failed">%1$s: синхронизация не удалась — %2$s (за %3$s)</string>
     <string name="notif_ev_conference_invited">%1$s приглашает вас в конференцию%2$s</string>
+    <!-- Уведомления v2 (#3048). -->
+    <string name="notif_ev_milestone_closed">%1$s закрыл(а) этап «%2$s» — выполнено %3$s из %4$s</string>
+    <string name="notif_ev_conference_starting">Через %1$s мин начнётся встреча «%2$s»</string>
+    <string name="notif_ev_integration_conflict">%1$s · конфликт синхронизации в #%2$s (%3$s): изменено в обоих местах</string>
+    <string name="notif_ev_document_mention">%1$s упомянул(а) вас в документе «%2$s»%3$s</string>
+    <string name="notif_ev_conference_mention">%1$s упомянул(а) вас в чате встречи «%2$s»%3$s</string>
+    <string name="notif_ev_field_state">статус</string>
     <string name="notif_ev_field_title">название</string>
     <string name="notif_ev_field_description">описание</string>
     <string name="notif_ev_field_priority">приоритет</string>

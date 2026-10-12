@@ -10,9 +10,7 @@
     "delete": "Delete",
     "addSubtask": "Add a subtask",
     "archived": "Task «{title}» archived",
-    "archivedUndone": "Task «{title}» restored",
-    "deleteArmed": "Delete the task?",
-    "deleteArmedSub": "For good — along with its files"
+    "archivedUndone": "Task «{title}» restored"
   },
   "confirm": {
     "delete": "Delete permanently? This cannot be undone.",
@@ -514,7 +512,14 @@
     "milestone": "linked it to a milestone",
     "milestoneNamed": "linked it to the milestone “{name}”",
     "milestoneRemoved": "unlinked it from a milestone",
-    "milestoneRemovedNamed": "unlinked it from the milestone “{name}”"
+    "milestoneRemovedNamed": "unlinked it from the milestone “{name}”",
+    "codeOpenedOn": "opened {ref} on {branch}",
+    "codeOpened": "opened {ref}",
+    "codeMerged": "merged {ref}",
+    "codeClosed": "closed {ref}",
+    "trashed": "moved it to the trash",
+    "untrashed": "restored it from the trash",
+    "timeSpent": "logged {v}"
   },
   "ref": {
     "notFound": "Task #{number} not found"
@@ -535,5 +540,54 @@
   "arm": {
     "delete": "Delete?",
     "unlink": "Remove?"
+  },
+  "subscribers": {
+    "title": "Following",
+    "nobody": "Nobody",
+    "subscribe": "Follow",
+    "unsubscribe": "Unfollow",
+    "hint": "Followers are notified about the task's comments, moves, completion and edits. The author, the assignees and the commenters follow it on their own.",
+    "more": "{n} more",
+    "failed": "Could not change the subscription"
+  },
+  "dev": {
+    "openMr": "Open {ref} in GitLab",
+    "state": {
+      "open": "open",
+      "merged": "merged",
+      "closed": "closed",
+      "draft": "draft"
+    },
+    "ci": {
+      "success": "pipeline passed",
+      "running": "pipeline running",
+      "failed": "pipeline failed",
+      "canceled": "pipeline canceled",
+      "manual": "pipeline awaiting start"
+    }
+  },
+  "trash": {
+    "deleted": "Task #{number} moved to the trash",
+    "deletedUntitled": "Task «{title}» moved to the trash",
+    "restored": "Task #{number} restored",
+    "restoredUntitled": "Task «{title}» restored"
+  },
+  "time": {
+    "title": "Time spent",
+    "log": "Log",
+    "amount": "How long",
+    "amountPlaceholder": "1h 30m",
+    "note": "On what",
+    "notePlaceholder": "optional",
+    "unreadable": "Can't read the time — e.g. «1h 30m» or «45m»",
+    "none": "Nothing logged yet",
+    "total": "Total {all}",
+    "totalWithSub": "Own {own} · with subtasks {all}",
+    "remove": "Remove the entry",
+    "removeConfirm": "Remove?",
+    "more": "and {n} more",
+    "spentShort": "· spent {v}",
+    "add": "+ time",
+    "spentAlone": "spent {v}"
   }
 }

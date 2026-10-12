@@ -177,7 +177,7 @@ install_govulncheck() {
     echo "  · govulncheck already on PATH ($(command -v govulncheck))"
     return 0
   fi
-  # Plain `go`, not the repo's pinned go1.25.14: govulncheck's own go.mod asks for
+  # Plain `go`, not the repo's pinned go1.26.9: govulncheck's own go.mod asks for
   # a newer toolchain and GOTOOLCHAIN=auto has to be free to fetch one.
   if GOBIN="$BIN" go install "$GOVULNCHECK_PKG"; then
     echo "  ✓ $BIN/govulncheck"

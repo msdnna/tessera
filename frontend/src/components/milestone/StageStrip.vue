@@ -4,7 +4,12 @@
 // name, dates, progress «18 из 31», the first line of the goals, days left;
 // unfolded, the goals in full (up to 240px, then a scroll) and three small
 // figures. ⇧H or the chevron folds it; the state is kept per board and user.
-// «⋯» — close the stage, open it in GitLab, hide the strip on this board.
+// «⋯» — close the stage (⇧X), open it in GitLab, hide the strip on this board.
+//
+// A GitLab stage (#3010) is closed here too when its binding writes to GitLab;
+// the write goes out at once. If GitLab refused it, the goal line gives way to
+// «Описание не синхронизировано с GitLab · ↵ повторить» (mockup StageStrip,
+// goalErr); a conflict says so the same way and opens the conflicts window.
 import { computed, ref, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
@@ -20,23 +25,32 @@ import {
   CheckmarkDoneOutline,
   EyeOffOutline,
   OpenOutline,
+  RefreshOutline,
+  AlertCircleOutline,
+  GitMergeOutline,
 } from '@vicons/ionicons5'
 import { milestones as msApi } from '@/api'
 import { useFormat } from '@/composables/useFormat'
 import { humanizeError } from '@/utils/errors'
-import { stubTask } from '@/utils/featureStubs'
 import { formatHours } from '@/utils/estimation'
+import { useStageSync } from '@/composables/useStageSync'
 import {
   milestoneRangeShort,
   stageProgress,
   stageState,
   daysLeft,
   stagePath,
+  stageEditable,
+  stageUnsynced,
+  stageConflict,
+  unsyncedKey,
 } from '@/utils/milestones'
 import { percent } from '@/utils/milestoneMetrics'
 import RichContent from '../RichContent.vue'
 import ShortcutKeys from '../ShortcutKeys.vue'
 import ActionMenu from '../kit/ActionMenu.vue'
+import Kbd from '../Kbd.vue'
+import { CAPS } from '@/utils/keyCaps'
 import { tourEvent } from '@/utils/tourEvents'
 
 const props = defineProps({
@@ -63,6 +77,26 @@ const leftLabel = computed(() => {
   return t('board.strip.left', left.value)
 })
 const linked = computed(() => !!props.stage.gl_global_id)
+const editable = computed(() => stageEditable(props.stage))
+const unsynced = computed(() => stageUnsynced(props.stage))
+const conflict = computed(() => stageConflict(props.stage))
+const sync = useStageSync()
+const retrying = ref(false)
+async function retry() {
+  if (retrying.value) return
+  retrying.value = true
+  try {
+    if (await sync.retry(props.stage)) emit('changed')
+  } finally {
+    retrying.value = false
+  }
+}
+// The red line's one action: a conflict is settled in the window, a refused
+// write is sent again.
+function onSyncMark() {
+  if (conflict.value) sync.resolve(props.stage)
+  else retry()
+}
 // The first line of the goals with the Markdown taken off — the folded hint.
 const firstLine = computed(() => {
   const lines = String(props.stage.description || '')
@@ -117,17 +151,27 @@ function openPage(edit = false) {
 // ── «⋯» ──
 const menuShow = ref(false)
 const menuBtn = ref(null)
-const gitlabStub = stubTask('stage.gitlabWrite')
+const closed = computed(() => props.stage.state === 'closed')
 const menuItems = computed(() => [
   { key: 'page', label: t('board.strip.page'), icon: OpenOutline, keys: 'nav.goStage' },
   {
     key: 'close',
-    label: t('milestones.page.close'),
-    icon: CheckmarkDoneOutline,
-    ...(linked.value
-      ? { stub: gitlabStub }
-      : { confirm: { title: t('board.strip.closeArmed', { name: props.stage.title }), sub: '' } }),
+    label: closed.value ? t('milestones.stage.reopen') : t('milestones.page.close'),
+    icon: closed.value ? RefreshOutline : CheckmarkDoneOutline,
+    ...(!editable.value
+      ? { disabled: true, disabledTitle: t('milestones.gitlab.readOnly') }
+      : closed.value
+        ? {}
+        : {
+            keys: 'stage.close',
+            confirm: { title: t('board.strip.closeArmed', { name: props.stage.title }), sub: '' },
+          }),
   },
+  ...(conflict.value
+    ? [{ key: 'resolve', label: t('milestones.gitlab.resolveMenu'), icon: GitMergeOutline }]
+    : unsynced.value
+      ? [{ key: 'retry', label: t('milestones.gitlab.retryMenu'), icon: RefreshOutline }]
+      : []),
   ...(linked.value && props.stage.gl_url
     ? [{ key: 'gitlab', label: t('milestones.manager.openInGitlab'), icon: GitBranchOutline }]
     : []),
@@ -138,17 +182,24 @@ async function onMenu(key) {
   if (key === 'page') openPage()
   else if (key === 'gitlab') window.open(props.stage.gl_url, '_blank', 'noopener')
   else if (key === 'hide') emit('hide')
-  else if (key === 'close') {
+  else if (key === 'resolve') {
+    menuShow.value = false
+    sync.resolve(props.stage)
+  } else if (key === 'retry') {
+    menuShow.value = false
+    retry()
+  } else if (key === 'close') {
     const m = props.stage
     try {
-      await msApi.update(m.id, {
+      const { data } = await msApi.update(m.id, {
         title: m.title,
         description: m.description || '',
         start_date: m.start_date || null,
         due_date: m.due_date || null,
-        state: 'closed',
+        state: closed.value ? 'active' : 'closed',
       })
       menuShow.value = false
+      sync.report(data)
       emit('changed')
     } catch (e) {
       message.error(humanizeError(e))
@@ -174,13 +225,40 @@ async function onMenu(key) {
       <span class="sstrip-count">{{
         t('board.strip.progress', { done: progress.done, total: progress.total })
       }}</span>
-      <span v-if="!mobile && !open" class="sstrip-goal">
+      <span v-if="!mobile && (unsynced || conflict)" class="sstrip-goal sstrip-err">
+        <n-icon :component="AlertCircleOutline" :size="14" class="sstrip-err-ic" />
+        <span class="sstrip-err-t">{{
+          conflict ? t('milestones.gitlab.conflict') : t(unsyncedKey(stage))
+        }}</span>
+        <button
+          type="button"
+          class="sstrip-retry"
+          :disabled="retrying"
+          :title="conflict ? '' : stage.gl_push_error"
+          data-testid="stage-strip-retry"
+          @click="onSyncMark"
+        >
+          <Kbd>{{ CAPS.enter }}</Kbd
+          >{{ conflict ? t('milestones.gitlab.resolve') : t('milestones.gitlab.retry') }}
+        </button>
+      </span>
+      <span v-else-if="!mobile && !open" class="sstrip-goal">
         <template v-if="firstLine">{{ firstLine }}</template>
         <button v-else type="button" class="sstrip-add" @click="openPage(true)">
           {{ t('board.strip.noGoals') }}
         </button>
       </span>
       <span v-else class="sstrip-grow" />
+      <button
+        v-if="mobile && (unsynced || conflict)"
+        type="button"
+        class="sstrip-btn sstrip-err-ic"
+        :title="conflict ? t('milestones.gitlab.conflict') : t(unsyncedKey(stage))"
+        data-testid="stage-strip-retry"
+        @click="onSyncMark"
+      >
+        <n-icon :component="AlertCircleOutline" :size="15" />
+      </button>
       <span v-if="leftLabel" class="sstrip-left" :class="{ late: left < 0 }">{{ leftLabel }}</span>
       <ShortcutKeys v-if="!mobile" id="board.stageStrip" class="sstrip-kbd" />
       <button
@@ -370,6 +448,44 @@ async function onMenu(key) {
 }
 .sstrip-grow {
   flex: 1;
+}
+/* «Описание не синхронизировано с GitLab · ↵ повторить» in place of the goal
+   line (mockup StageStrip, goalErr): text1, the icon red, the action text2. */
+.sstrip-err {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--t-text1);
+}
+.sstrip-err-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.sstrip-err-ic {
+  flex: none;
+  color: var(--t-error);
+}
+.sstrip-retry {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  cursor: pointer;
+}
+.sstrip-retry:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.sstrip-retry:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
 }
 .sstrip-left {
   flex: none;

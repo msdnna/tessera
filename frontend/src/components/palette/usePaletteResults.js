@@ -7,6 +7,11 @@ import { useBoardViewStore } from '@/stores/boardView'
 import { useHelpStore } from '@/stores/help'
 import { usePaletteStore } from '@/stores/palette'
 import { useInboxStore } from '@/stores/inbox'
+import { useFavoritesStore } from '@/stores/favorites'
+import { useMacrosStore } from '@/stores/macros'
+import { macroKeyId } from '@/shortcuts/dynamic'
+import { favoriteFirst } from '@/utils/favorites'
+import { unwindOverlay } from '@/utils/overlayNav'
 import { workspaceName } from '@/utils/defaultNames'
 import { CATALOG } from '@/shortcuts/catalog'
 import { isLive, runShortcut } from '@/shortcuts/dispatcher'
@@ -42,6 +47,8 @@ export function usePaletteResults() {
   const help = useHelpStore()
   const palette = usePaletteStore()
   const inbox = useInboxStore()
+  const favorites = useFavoritesStore()
+  const macros = useMacrosStore()
   const route = useRoute()
 
   // Where a palette form would create its thing — said under the command, as
@@ -135,9 +142,17 @@ export function usePaletteResults() {
     }
   }
 
-  function go(path, ctx) {
-    if (ctx?.newTab) window.open(router.resolve(path).href, '_blank', 'noopener')
-    else router.push(path)
+  // The palette owns a history entry (useOverlayBack): closing it after the
+  // push let its `history.back()` cancel a push that was still resolving — a
+  // board in another place stayed unopened (#3115). Close it first and wait
+  // for the unwind (utils/overlayNav).
+  async function go(path, ctx) {
+    if (ctx?.newTab) {
+      window.open(router.resolve(path).href, '_blank', 'noopener')
+      return
+    }
+    await unwindOverlay(() => palette.hide())
+    router.push(path)
   }
 
   function taskRow(task, hl) {
@@ -155,17 +170,50 @@ export function usePaletteResults() {
     }
   }
 
-  const commandRows = computed(() => {
+  // The workspace's own commands (#3069, CmdsWin): found by their call (>bug)
+  // and name, first in «Команды». A task command needs an open board.
+  const MACRO_ICON = {
+    create_task: 'AddOutline',
+    open_link: 'LinkOutline',
+    create_document: 'DocumentTextOutline',
+    run_pipeline: 'GitBranchOutline',
+  }
+  const macroRows = computed(() => {
+    void openedAt.value
+    const term = parsed.value.term
+    return rank(macros.enabled, (m) => [m.trigger, m.name], term).map((m) => {
+      const why = macros.blockedReason(m)
+      return {
+        key: `macro:${m.id}`,
+        icon: ICONS[MACRO_ICON[m.action]],
+        title: m.name,
+        hl: term,
+        sub: `>${m.trigger} · ${t(`shell.commands.macro.action.${m.action}`)}`,
+        keys: macroKeyId(m),
+        disabled: !!why,
+        hint: why
+          ? t(why === 'soon' ? 'shell.commands.macro.soon' : 'shell.commands.macro.needBoard')
+          : null,
+        run: async (ctx) => {
+          await macros.run(m, { go: (path) => go(path, ctx) })
+        },
+      }
+    })
+  })
+
+  const commandRows = computed(() => [...macroRows.value, ...catalogRows.value])
+  const catalogRows = computed(() => {
     void openedAt.value
     const term = parsed.value.term
     const live = CATALOG.filter((e) => e.command && (e.to || e.form || isLive(e.id)))
     const label = (e) => t(`shell.keys.${e.id}`)
-    return rank(live, (e) => [label(e)], term).map((e) => ({
+    // `aliases` match besides the label (#3068: `>export` finds «Экспорт…»).
+    return rank(live, (e) => [label(e), ...(e.aliases || [])], term).map((e) => ({
       key: `cmd:${e.id}`,
       icon: ICONS[e.command],
       title: label(e),
       hl: term,
-      sub: e.form ? formSub(e.form) : t(`shell.keys.groups.${e.group || 'nav'}`),
+      sub: e.form ? formSub(e.form) : t(`shell.keys.groups.${e.group || e.section || 'nav'}`),
       keys: e.keys || e.display ? e.id : null,
       form: e.form || null,
       run: (ctx) => {
@@ -197,16 +245,34 @@ export function usePaletteResults() {
     }))
   })
 
+  // Favourite boards (#3115): their own group while nothing is typed, and on
+  // top of the found boards once something is — with the filled star.
+  const favoriteRows = computed(() =>
+    favorites.items.map((f) => ({
+      key: `fav:${f.board_id}`,
+      icon: ICONS.Star,
+      grad: true,
+      title: f.name,
+      sub: `${t('shell.palette.board')} · ${f.project_name}`,
+      run: (ctx) => go(`/project/${f.project_slug}/board/${f.slug}`, ctx),
+    })),
+  )
+
   const boardRows = computed(() => {
     const term = parsed.value.term
-    const boards = found.value.boards.map((b) => ({
-      key: `board:${b.id}`,
-      icon: ICONS.GridOutline,
-      title: b.name,
-      hl: term,
-      sub: `${t('shell.palette.board')} · ${b.project_name}`,
-      run: (ctx) => go(`/project/${b.project_slug}/board/${b.slug}`, ctx),
-    }))
+    const byFavorite = favoriteFirst(found.value.boards, favorites.isFavorite)
+    const boards = byFavorite.map((b) => {
+      const fav = favorites.isFavorite(b.id)
+      return {
+        key: `board:${b.id}`,
+        icon: fav ? ICONS.Star : ICONS.GridOutline,
+        grad: fav,
+        title: b.name,
+        hl: term,
+        sub: `${t('shell.palette.board')} · ${b.project_name}`,
+        run: (ctx) => go(`/project/${b.project_slug}/board/${b.slug}`, ctx),
+      }
+    })
     // Open milestones first; rank() keeps that order among equal scores.
     const ordered = [...milestones.value].sort(
       (a, b) => (a.state === 'closed') - (b.state === 'closed'),
@@ -299,6 +365,8 @@ export function usePaletteResults() {
           'recent',
           palette.recent.map((r) => taskRow(r, null)),
         )
+      if (all || section === 'boards')
+        add('favorites', favoriteRows.value, all ? LIMITS.boards : FULL)
       if (all || section === 'commands') add('commands', commandRows.value, all ? 6 : FULL)
       if (section === 'people') add('people', peopleRows.value, FULL)
       if (section === 'boards') add('boards', boardRows.value, FULL)

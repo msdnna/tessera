@@ -27,7 +27,10 @@ const api = {
   leave: vi.fn(),
   end: vi.fn(),
   remove: vi.fn(),
+  update: vi.fn(),
   participants: vi.fn(),
+  // «Принять / Отклонить» (#3051).
+  rsvp: vi.fn(),
   // The recordings panel under the room (#2877); empty here, it has its own spec.
   recordings: vi.fn(() => Promise.resolve({ data: [] })),
   // The embedded room (#2871) reaches for a media token. jsdom has no
@@ -44,6 +47,8 @@ const wsApi = {
   groups: vi.fn(() => Promise.resolve({ data: [] })),
   projects: vi.fn(() => Promise.resolve({ data: [] })),
   commands: vi.fn(() => Promise.resolve({ data: { builtin: [], custom: [] } })),
+  // «К этапу» in the schedule form (#3053).
+  milestones: vi.fn(() => Promise.resolve({ data: [] })),
 }
 // getAccessToken is what useRealtime reads on mount; null keeps the socket from
 // ever opening in jsdom (it retries on a timer, which unmount clears).
@@ -195,7 +200,65 @@ describe('scheduling', () => {
       // The retention the dialog defaults to (#2877) — sent explicitly so the
       // number the user saw is the number that applies.
       recording_ttl_days: 30,
+      // The plan (#3034): 30 minutes by default, no repeat (nothing to repeat
+      // without a start), no stage.
+      duration_minutes: 30,
+      recurrence: '',
+      timezone: '',
+      milestone_id: null,
     })
+  })
+
+  it("sends the repeat with the reader's zone and the stage", async () => {
+    api.create.mockResolvedValue({ data: conf({ id: 'new3' }) })
+    wsApi.milestones.mockResolvedValue({
+      data: [{ id: 'm43', title: 'Спринт 43', project_name: 'Web', state: 'active' }],
+    })
+    const { w } = await mountAt('/conferences')
+    w.vm.openDialog()
+    await flushPromises()
+    w.vm.dlg.title = 'Стендап'
+    w.vm.dlg.at = Date.parse('2026-10-09T08:00:00Z')
+    w.vm.dlg.duration = 15
+    w.vm.pickRepeat('weekdays')
+    w.vm.pickStage('m43')
+    await w.vm.submit()
+    const body = api.create.mock.calls[0][1]
+    expect(body).toMatchObject({
+      duration_minutes: 15,
+      recurrence: 'weekdays',
+      milestone_id: 'm43',
+      scheduled_at: '2026-10-09T08:00:00.000Z',
+    })
+    expect(body.timezone).toBeTruthy()
+  })
+
+  it('edits a meeting with the same form, keeping its task', async () => {
+    api.update.mockResolvedValue({ data: conf() })
+    const { w } = await mountAt('/conferences')
+    w.vm.openEdit(
+      conf({
+        id: 'c9',
+        task_id: 't1',
+        scheduled_at: '2026-10-09T08:00:00Z',
+        duration_minutes: 45,
+        recurrence: 'biweekly',
+        milestone_id: 'm1',
+      }),
+      null,
+    )
+    w.vm.pickRepeat('none')
+    await w.vm.submit()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.update).toHaveBeenCalledWith(
+      'c9',
+      expect.objectContaining({
+        task_id: 't1',
+        duration_minutes: 45,
+        recurrence: '',
+        milestone_id: 'm1',
+      }),
+    )
   })
 
   it('falls back to the default retention when the field is cleared', async () => {
@@ -430,5 +493,50 @@ describe('routing', () => {
     )
     expect(left.textContent).toContain('Ежедневная летучка')
     expect(w.text()).toContain('Ежедневная летучка')
+  })
+})
+
+// «Принять / Отклонить» an invitation (#3051): in the row while unanswered, as a
+// word once answered, and in the lobby.
+describe('conference invitation answer', () => {
+  it('answers from the row and shows the answer', async () => {
+    api.list.mockResolvedValue({ data: [conf({ created_by: 'u2', my_rsvp: 'pending' })] })
+    api.rsvp.mockResolvedValue({ data: {} })
+    const { w } = await mountAt('/conferences')
+    await w.get('[data-testid="conference-row-accept"]').trigger('click')
+    await flushPromises()
+    expect(api.rsvp).toHaveBeenCalledWith('c1', 'accepted')
+    expect(w.find('[data-testid="conference-row-rsvp"]').exists()).toBe(false)
+    expect(w.get('[data-testid="conference-row-answer"]').text()).toBe('Иду')
+  })
+
+  it('puts the answer back when the server refuses', async () => {
+    api.list.mockResolvedValue({ data: [conf({ created_by: 'u2', my_rsvp: 'pending' })] })
+    api.rsvp.mockRejectedValue(new Error('нет'))
+    const { w } = await mountAt('/conferences')
+    await w.get('[data-testid="conference-row-decline"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="conference-row-rsvp"]').exists()).toBe(true)
+    expect(toast.error).toHaveBeenCalledWith('нет')
+  })
+
+  it('offers the answer in the lobby to an invited member', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        conference: conf({ created_by: 'u2' }),
+        participants: [
+          part({ user_id: 'u2', role: 'host', rsvp: 'accepted' }),
+          part({ role: 'member', rsvp: 'pending' }),
+        ],
+      },
+    })
+    api.rsvp.mockResolvedValue({ data: {} })
+    const { w } = await mountAt('/conferences/c1')
+    const box = w.get('[data-testid="conference-rsvp"]')
+    expect(box.attributes('data-rsvp')).toBe('pending')
+    await w.get('[data-testid="conference-rsvp-decline"]').trigger('click')
+    await flushPromises()
+    expect(api.rsvp).toHaveBeenCalledWith('c1', 'declined')
+    expect(w.get('[data-testid="conference-rsvp"]').attributes('data-rsvp')).toBe('declined')
   })
 })

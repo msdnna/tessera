@@ -182,6 +182,11 @@ object TestTags {
      *  the per-subtask GitLab hierarchy marker / «родитель не сгруппирован» hint in the
      *  subtasks tab. All three only exist on a binding with `push_children`. */
     const val TASK_GITLAB_GROUPED = "task-gitlab-grouped"
+    const val TASK_SUBSCRIBERS = "task-subscribers"
+    const val TASK_SUBSCRIBE_TOGGLE = "task-subscribe-toggle"
+
+    /** A merge request card in «Разработка» (#2964). */
+    const val TASK_MR = "task-mr"
     const val TASK_SUBTASK_GL_CHIP = "task-subtask-gl-chip"
     const val TASK_SUBTASK_GL_HINT = "task-subtask-gl-hint"
 
@@ -251,6 +256,37 @@ object TestTags {
     const val CONFERENCE_CREATE_NAME = "conference-create-name"
     const val CONFERENCE_CREATE_TTL = "conference-create-ttl"
     const val CONFERENCE_CREATE_SUBMIT = "conference-create-submit"
+
+    /** The plan in the schedule dialog (#3034): length chips, «К этапу» and the
+     *  repeat, and their menus' rows — keyed by value. */
+    fun conferenceDuration(minutes: Int) = "conference-duration:$minutes"
+
+    const val CONFERENCE_PLAN_STAGE = "conference-plan-stage"
+    const val CONFERENCE_PLAN_REPEAT = "conference-plan-repeat"
+
+    fun conferenceStageOption(id: String) = "conference-stage-option:$id"
+
+    fun conferenceRepeatOption(rule: String) = "conference-repeat-option:${rule.ifBlank { "none" }}"
+
+    /** A row's (or the lobby's) plan line: length, repeat, stage. */
+    fun conferencePlan(id: String) = "conference-plan:$id"
+
+    /** Reactions in the call (#3054): the dock button, one emoji of the picker,
+     *  the bubbles over the stage. */
+    const val CONFERENCE_REACTIONS = "conference-reactions"
+
+    fun conferenceReaction(emoji: String) = "conference-reaction:$emoji"
+
+    const val CONFERENCE_REACTION_BUBBLE = "conference-reaction-bubble"
+
+    /** The chat's «/» and «@» (#3055): the suggestion list and a row of it, the
+     *  task strip, a task line and a mention chip. */
+    const val CONFERENCE_CHAT_SUGGEST = "conference-chat-suggest"
+
+    fun conferenceChatSuggestRow(key: String) = "conference-chat-suggest-row:$key"
+
+    const val CONFERENCE_CHAT_TASK_STRIP = "conference-chat-task-strip"
+    const val CONFERENCE_CHAT_TASK_LINE = "conference-chat-task-line"
 
     /** One call in the list, and its delete button — keyed by id, so a spec says
      *  «this conference» and a sorting change doesn't rewrite what it checks. */
@@ -649,6 +685,9 @@ object TestTags {
     const val DOCUMENT_TEMPLATES_SEARCH = "document-templates-search"
     const val DOCUMENT_TEMPLATES_EMPTY = "document-templates-empty"
     const val DOCUMENT_TEMPLATES_UPLOAD = "document-templates-upload"
+    fun documentTemplateSource(source: String) = "document-templates-source-$source"
+    const val DOCUMENT_PIN_STAGE = "document-pin-stage"
+    const val DOCUMENT_PIN_MEETING = "document-pin-meeting"
     const val DOCUMENT_TEMPLATE_REMOVE_CONFIRM = "document-template-remove-confirm"
 
     /** What the picker will take — the line that changes when the sidecar is
@@ -708,6 +747,12 @@ object TestTags {
      *  that needs anything in the sidebar starts here. */
     const val TOP_MENU = "top-menu"
 
+    /** Favourite boards (#3115): the sidebar section, one of its rows (suffixed
+     *  with the board id), and the board menu's star row. */
+    const val SIDEBAR_FAVORITES = "sidebar-favorites"
+    const val FAVORITE_ROW = "favorite-row"
+    const val BOARD_MENU_FAVORITE = "board-action-favorite"
+
     /** The version line in the sidebar footer — a button opening the full
      *  changelog (#2858), and the build stamp only that mode renders (#2859). */
     const val SIDEBAR_VERSION = "sidebar-version"
@@ -725,4 +770,18 @@ object TestTags {
 
     /** «Обучение» in the sidebar footer — the guide's only entry point. */
     const val TOUR_START = "tour-start"
+
+    // ── task trash (#3004) ──────────────────────────────────────────────────
+    //
+    // The undo toast after «Удалить» and its «Вернуть».
+
+    const val TRASH_UNDO = "trash-undo"
+    const val TRASH_UNDO_BUTTON = "trash-undo-button"
+    // ── milestones: GitLab write-back (#3010) ─────────────────────────────
+
+    /** «Не синхронизировано с GitLab» under a manager row. */
+    const val MILESTONE_UNSYNCED = "milestone-unsynced"
+
+    /** Its «Повторить». */
+    const val MILESTONE_RETRY = "milestone-retry"
 }

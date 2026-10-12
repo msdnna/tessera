@@ -22,6 +22,9 @@ import (
 type boardScopeView struct {
 	db.Board
 	WorkspaceID uuid.UUID `json:"workspace_id"`
+	// ProjectArchived: the board's project is in the archive (0086) — the client
+	// opens the board read-only, the server refuses writes with 409.
+	ProjectArchived bool `json:"project_archived"`
 }
 
 // CreateBoard adds a board to a project.
@@ -41,20 +44,40 @@ func (h *API) CreateBoard(c *gin.Context) {
 	if !h.requireMember(c, p.WorkspaceID) {
 		return
 	}
+	if p.ArchivedAt != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": errProjectArchived, "archived": true})
+		return
+	}
 	var req struct {
 		Name string `json:"name" binding:"required"`
 		// The view a new board opens in (#3017) — the inline row's Tab switches
 		// Канбан / Список. Absent = kanban, as before.
 		DefaultLayout string `json:"default_layout"`
+		// A board template (#3047): sprint | bugs | roadmap. Absent = the four
+		// default columns, as before.
+		Template string `json:"template"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	tpl, ok := boardTemplateFor(req.Template)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown board template"})
+		return
+	}
+	// An explicit layout wins; otherwise the template's own.
+	if req.DefaultLayout == "" {
+		req.DefaultLayout = tpl.layout
+	}
 	layout, ok := boardLayout(req.DefaultLayout)
 	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown board layout"})
 		return
+	}
+	lang := i18n.Default
+	if len(tpl.tags) > 0 {
+		lang = h.userLang(c, middleware.CurrentUser(c))
 	}
 	maxPos, err := h.q.MaxBoardPosition(c, projectID)
 	if err != nil {
@@ -65,6 +88,7 @@ func (h *API) CreateBoard(c *gin.Context) {
 	// column) can't hold a task — a partial create leaves an unusable board.
 	slug := h.uniqueBoardSlug(c, projectID, req.Name)
 	var b db.Board
+	var tags []db.Tag
 	if err := h.inTx(c, func(q *db.Queries) error {
 		var err error
 		b, err = q.CreateBoard(c, db.CreateBoardParams{
@@ -74,35 +98,20 @@ func (h *API) CreateBoard(c *gin.Context) {
 		if err != nil {
 			return err
 		}
-		// Seed the board with a default set of status columns, remembering the
-		// last one so it can become the board's "done" column.
-		var lastColID *uuid.UUID
-		for i, dc := range defaultColumns {
-			pos := float64(i+1) * positionGap
-			col, err := q.CreateColumn(c, db.CreateColumnParams{
-				BoardID: b.ID, Name: dc.name, NameKey: ptr(dc.nameKey),
-				Color: dc.color, Position: pos,
-			})
-			if err != nil {
-				return err
-			}
-			id := col.ID
-			lastColID = &id
+		// Seed the board's status columns (the default four or the template's);
+		// the rightmost one ("Готово") closes tasks by default.
+		if b, err = seedBoardColumns(c, q, b, tpl); err != nil {
+			return err
 		}
-		// The rightmost seeded column ("Готово") closes tasks by default.
-		if lastColID != nil {
-			updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{
-				ID: b.ID, DoneColumnID: lastColID,
-			})
-			if err != nil {
-				return err
-			}
-			b = updated
-		}
-		return nil
+		tags, err = seedTemplateTags(c, q, p, tpl, lang)
+		return err
 	}); err != nil {
 		fail(c, err)
 		return
+	}
+
+	for _, tag := range tags {
+		h.broadcastAs(c, p.WorkspaceID, "tag.created", tag)
 	}
 
 	h.broadcastAs(c, p.WorkspaceID, "board.created", b)
@@ -164,8 +173,17 @@ func defaultColumnKey(name string) string {
 // put on the card. The Russian arm duplicates defaultColumns on purpose — the
 // two are edited in different places, and the test above pins them together.
 var seededColumnCaptions = map[string]map[string]string{
-	"ru": {"todo": "К работе", "in_progress": "В процессе", "review": "На рассмотрении", "done": doneColumnName},
-	"en": {"todo": "To do", "in_progress": "In progress", "review": "In review", "done": "Done"},
+	"ru": {
+		"todo": "К работе", "in_progress": "В процессе", "review": "На рассмотрении", "done": doneColumnName,
+		// Board templates (#3047, board_templates.go).
+		"backlog": "Бэклог спринта", "new": "Новые", "confirmed": "Подтверждены", "verify": "Проверка",
+		"closed": "Закрыты", "ideas": "Идеи", "planned": "Запланировано", "shipped": "Выпущено",
+	},
+	"en": {
+		"todo": "To do", "in_progress": "In progress", "review": "In review", "done": "Done",
+		"backlog": "Sprint backlog", "new": "New", "confirmed": "Confirmed", "verify": "Verifying",
+		"closed": "Closed", "ideas": "Ideas", "planned": "Planned", "shipped": "Shipped",
+	},
 }
 
 // seededColumnKey maps a caption a client may have shown the user back to the
@@ -218,10 +236,19 @@ func (h *API) ListBoards(c *gin.Context) {
 	c.JSON(http.StatusOK, boards)
 }
 
+// boardResolveView is a resolved board plus its project's current address. The
+// address in the request may be a former one (#3012); the client rewrites its
+// URL to this one.
+type boardResolveView struct {
+	boardScopeView
+	ProjectSlug string `json:"project_slug"`
+}
+
 // ResolveBoardBySlug resolves a /project/<projectSlug>/board/<boardSlug> pair to
-// its board (board slugs are unique only within a project).
+// its board (board slugs are unique only within a project). The project part
+// may be an address the project left less than 30 days ago.
 func (h *API) ResolveBoardBySlug(c *gin.Context) {
-	proj, err := h.q.GetProjectBySlug(c, c.Query("project"))
+	proj, _, err := h.projectBySlug(c, c.Query("project"))
 	if notFound(c, err) {
 		return
 	}
@@ -240,7 +267,10 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID})
+	c.JSON(http.StatusOK, boardResolveView{
+		boardScopeView: boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID, ProjectArchived: proj.ArchivedAt != nil},
+		ProjectSlug:    proj.Slug,
+	})
 }
 
 // resolveBoardParam resolves a board route's :id segment — a UUID or a
@@ -293,7 +323,8 @@ func (h *API) GetBoard(c *gin.Context) {
 	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID})
+	archived, _ := h.q.ProjectArchivedForBoard(c, b.ID)
+	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID, ProjectArchived: archived})
 }
 
 // UpdateBoard renames a board.
@@ -310,7 +341,7 @@ func (h *API) UpdateBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	b, err := h.q.GetBoard(c, id)
@@ -380,7 +411,7 @@ func (h *API) DeleteBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	if _, err := h.q.SoftDeleteBoard(c, id); notFound(c, err) {
@@ -439,7 +470,7 @@ func (h *API) SetDoneColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	var req struct {
@@ -482,7 +513,7 @@ func (h *API) CreateColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, boardID) {
 		return
 	}
 	var req struct {
@@ -548,7 +579,7 @@ func (h *API) UpdateColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -590,7 +621,7 @@ func (h *API) MoveColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -666,7 +697,7 @@ func (h *API) DeleteColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -772,7 +803,7 @@ func (h *API) RestoreColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	var (

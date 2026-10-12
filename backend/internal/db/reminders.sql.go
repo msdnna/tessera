@@ -13,20 +13,24 @@ import (
 )
 
 const createReminder = `-- name: CreateReminder :one
-INSERT INTO reminders (user_id, task_id, remind_at, message, body, workspace_id)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id
+INSERT INTO reminders (id, user_id, task_id, remind_at, message, body, workspace_id, tags, mentions)
+VALUES (COALESCE($7::uuid, gen_random_uuid()), $1, $2, $3, $4, $5, $6, $8::text[], $9::uuid[])
+RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id, tags, mentions
 `
 
 type CreateReminderParams struct {
-	UserID      uuid.UUID  `json:"user_id"`
-	TaskID      *uuid.UUID `json:"task_id"`
-	RemindAt    time.Time  `json:"remind_at"`
-	Message     string     `json:"message"`
-	Body        string     `json:"body"`
-	WorkspaceID *uuid.UUID `json:"workspace_id"`
+	UserID      uuid.UUID   `json:"user_id"`
+	TaskID      *uuid.UUID  `json:"task_id"`
+	RemindAt    time.Time   `json:"remind_at"`
+	Message     string      `json:"message"`
+	Body        string      `json:"body"`
+	WorkspaceID *uuid.UUID  `json:"workspace_id"`
+	ClientID    *uuid.UUID  `json:"client_id"`
+	Tags        []string    `json:"tags"`
+	Mentions    []uuid.UUID `json:"mentions"`
 }
 
+// client_id (#3042): see CreateNote.
 func (q *Queries) CreateReminder(ctx context.Context, arg CreateReminderParams) (Reminder, error) {
 	row := q.db.QueryRow(ctx, createReminder,
 		arg.UserID,
@@ -35,6 +39,9 @@ func (q *Queries) CreateReminder(ctx context.Context, arg CreateReminderParams) 
 		arg.Message,
 		arg.Body,
 		arg.WorkspaceID,
+		arg.ClientID,
+		arg.Tags,
+		arg.Mentions,
 	)
 	var i Reminder
 	err := row.Scan(
@@ -50,6 +57,8 @@ func (q *Queries) CreateReminder(ctx context.Context, arg CreateReminderParams) 
 		&i.DoneAt,
 		&i.SnoozedFrom,
 		&i.WorkspaceID,
+		&i.Tags,
+		&i.Mentions,
 	)
 	return i, err
 }
@@ -64,7 +73,7 @@ func (q *Queries) DeleteReminder(ctx context.Context, id uuid.UUID) error {
 }
 
 const getReminder = `-- name: GetReminder :one
-SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders WHERE id = $1
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id, tags, mentions FROM reminders WHERE id = $1
 `
 
 func (q *Queries) GetReminder(ctx context.Context, id uuid.UUID) (Reminder, error) {
@@ -83,12 +92,14 @@ func (q *Queries) GetReminder(ctx context.Context, id uuid.UUID) (Reminder, erro
 		&i.DoneAt,
 		&i.SnoozedFrom,
 		&i.WorkspaceID,
+		&i.Tags,
+		&i.Mentions,
 	)
 	return i, err
 }
 
 const inboxReminders = `-- name: InboxReminders :many
-SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id, tags, mentions FROM reminders
 WHERE user_id = $1
   AND (workspace_id = $2 OR workspace_id IS NULL)
   AND (NOT done OR done_at > now() - interval '36 hours')
@@ -126,6 +137,8 @@ func (q *Queries) InboxReminders(ctx context.Context, arg InboxRemindersParams) 
 			&i.DoneAt,
 			&i.SnoozedFrom,
 			&i.WorkspaceID,
+			&i.Tags,
+			&i.Mentions,
 		); err != nil {
 			return nil, err
 		}
@@ -138,7 +151,7 @@ func (q *Queries) InboxReminders(ctx context.Context, arg InboxRemindersParams) 
 }
 
 const listReminders = `-- name: ListReminders :many
-SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders WHERE user_id = $1 ORDER BY remind_at
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id, tags, mentions FROM reminders WHERE user_id = $1 ORDER BY remind_at
 `
 
 func (q *Queries) ListReminders(ctx context.Context, userID uuid.UUID) ([]Reminder, error) {
@@ -163,6 +176,8 @@ func (q *Queries) ListReminders(ctx context.Context, userID uuid.UUID) ([]Remind
 			&i.DoneAt,
 			&i.SnoozedFrom,
 			&i.WorkspaceID,
+			&i.Tags,
+			&i.Mentions,
 		); err != nil {
 			return nil, err
 		}
@@ -175,7 +190,7 @@ func (q *Queries) ListReminders(ctx context.Context, userID uuid.UUID) ([]Remind
 }
 
 const listTaskReminders = `-- name: ListTaskReminders :many
-SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id FROM reminders
+SELECT id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id, tags, mentions FROM reminders
 WHERE task_id = $1 AND user_id = $2
 ORDER BY done, remind_at
 `
@@ -207,6 +222,8 @@ func (q *Queries) ListTaskReminders(ctx context.Context, arg ListTaskRemindersPa
 			&i.DoneAt,
 			&i.SnoozedFrom,
 			&i.WorkspaceID,
+			&i.Tags,
+			&i.Mentions,
 		); err != nil {
 			return nil, err
 		}
@@ -227,23 +244,27 @@ SET remind_at    = $1,
     task_id      = $5,
     workspace_id = $6,
     snoozed_from = $7,
+    tags         = $8::text[],
+    mentions     = $9::uuid[],
     done_at      = CASE WHEN NOT $3::boolean THEN NULL
                         WHEN done THEN done_at
                         ELSE now() END,
     notified_at  = CASE WHEN remind_at IS DISTINCT FROM $1 THEN NULL ELSE notified_at END
-WHERE id = $8
-RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id
+WHERE id = $10
+RETURNING id, user_id, task_id, remind_at, message, done, created_at, notified_at, body, done_at, snoozed_from, workspace_id, tags, mentions
 `
 
 type UpdateReminderParams struct {
-	RemindAt    time.Time  `json:"remind_at"`
-	Message     string     `json:"message"`
-	Done        bool       `json:"done"`
-	Body        string     `json:"body"`
-	TaskID      *uuid.UUID `json:"task_id"`
-	WorkspaceID *uuid.UUID `json:"workspace_id"`
-	SnoozedFrom *time.Time `json:"snoozed_from"`
-	ID          uuid.UUID  `json:"id"`
+	RemindAt    time.Time   `json:"remind_at"`
+	Message     string      `json:"message"`
+	Done        bool        `json:"done"`
+	Body        string      `json:"body"`
+	TaskID      *uuid.UUID  `json:"task_id"`
+	WorkspaceID *uuid.UUID  `json:"workspace_id"`
+	SnoozedFrom *time.Time  `json:"snoozed_from"`
+	Tags        []string    `json:"tags"`
+	Mentions    []uuid.UUID `json:"mentions"`
+	ID          uuid.UUID   `json:"id"`
 }
 
 // Moving a reminder to a new time re-arms channel delivery (notified_at back to
@@ -260,6 +281,8 @@ func (q *Queries) UpdateReminder(ctx context.Context, arg UpdateReminderParams) 
 		arg.TaskID,
 		arg.WorkspaceID,
 		arg.SnoozedFrom,
+		arg.Tags,
+		arg.Mentions,
 		arg.ID,
 	)
 	var i Reminder
@@ -276,6 +299,8 @@ func (q *Queries) UpdateReminder(ctx context.Context, arg UpdateReminderParams) 
 		&i.DoneAt,
 		&i.SnoozedFrom,
 		&i.WorkspaceID,
+		&i.Tags,
+		&i.Mentions,
 	)
 	return i, err
 }

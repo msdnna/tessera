@@ -24,6 +24,7 @@ import BottomSheet from './BottomSheet.vue'
 import './kit.css'
 import { useAnchoredPanel } from '@/composables/useAnchoredPanel'
 import { useResponsive } from '@/composables/useResponsive'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -175,6 +176,7 @@ const sheetShow = computed({
     <div
       v-if="showDesktop || (inline && show)"
       ref="panel"
+      v-layer
       class="pf kit-form"
       :class="{ inline }"
       role="dialog"

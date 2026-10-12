@@ -79,3 +79,8 @@ LIMIT 1;
 INSERT INTO users (email, name, password_hash, is_admin, provider, email_verified)
 VALUES ($1, $2, '', $3, $4, true)
 RETURNING *;
+
+-- SetServiceTokenExpiry records when the instance service token expires (#3084),
+-- NULL = never or unknown.
+-- name: SetServiceTokenExpiry :exec
+UPDATE oauth_providers SET service_token_expires_at = $2 WHERE provider = $1;

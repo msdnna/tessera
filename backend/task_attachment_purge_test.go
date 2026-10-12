@@ -61,7 +61,7 @@ func TestDeletingATaskTakesItsAttachmentsWithIt(t *testing.T) {
 	neighbour := mkTask(t, owner, s.Board, col, "Соседняя задача")["id"].(string)
 	attachFile(t, owner, neighbour, "сосед.txt", []byte("neighbour"))
 
-	owner.expect(t, owner.del("/tasks/"+task), http.StatusNoContent)
+	deleteForGood(t, owner, "tasks", task, "")
 
 	// The task is gone from the API...
 	if got := owner.get("/tasks/" + task); got.Status != http.StatusNotFound {
@@ -104,7 +104,7 @@ func TestDeletingATaskTakesEverySubtasksAttachments(t *testing.T) {
 		}
 	}
 
-	owner.expect(t, owner.del("/tasks/"+parent), http.StatusNoContent)
+	deleteForGood(t, owner, "tasks", parent, "")
 
 	// Nesting is not depth-limited, so the grandchild is the assertion that a
 	// one-level sweep would fail.
@@ -137,7 +137,7 @@ func TestDeletingATaskKeepsDetachedSubtasksAttachments(t *testing.T) {
 	}), http.StatusCreated)["id"].(string)
 	attachFile(t, owner, child, "важное.txt", []byte("keep me"))
 
-	owner.expect(t, owner.del("/tasks/"+parent+"?subtasks=detach"), http.StatusNoContent)
+	deleteForGood(t, owner, "tasks", parent, "?subtasks=detach")
 
 	// The child outlived the request...
 	if got := owner.get("/tasks/" + child); got.Status != http.StatusOK {
@@ -162,7 +162,7 @@ func TestDeletingATaskWithoutAttachmentsIsFine(t *testing.T) {
 	s := mkStack(t, owner)
 
 	task := mkTask(t, owner, s.Board, s.col(t, 0), "Задача без файлов")["id"].(string)
-	owner.expect(t, owner.del("/tasks/"+task), http.StatusNoContent)
+	deleteForGood(t, owner, "tasks", task, "")
 
 	if n, ok := countFiles(t, taskUploadDir(task)); ok {
 		t.Fatalf("directory appeared for a task with no attachments: %d entr(ies)", n)

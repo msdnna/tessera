@@ -2,132 +2,248 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"os"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"tessera/internal/db"
 	"tessera/internal/jobs"
+	"tessera/middleware"
 )
 
-// ── Admin: background jobs panel ───────────────────────────
+// ── Admin: background jobs window ──────────────────────────
 // Instance-level, so every handler is gated on global admin. Live state (running
-// jobs + worker heartbeats) comes from the in-memory registry; finished sync runs
-// are read from the durable gitlab_sync_runs so they survive a restart.
+// and queued jobs, worker heartbeats) comes from the in-memory registry; finished
+// runs come from the durable history (job_runs, #3067) so they survive a restart
+// and stay visible for 30 days.
 
-// jobDTO is the unified panel row: either a live registry entry (worker or running
-// job) or a finished sync run pulled from the journal.
+// jobDTO is the unified window row: a live registry entry (worker, running or
+// queued job) or a finished run read back from the history.
 // Name/CurrentOp are the pre-rendered Russian fallback; the *_key fields carry the
-// same thing as catalog keys so the client can render the panel in its own language
-// (a name key comes with name_arg for the part that isn't translatable — a project
-// label). An unknown key simply falls back to the rendered text.
+// same thing as catalog keys so the client can render the window in its own
+// language (a name key comes with name_arg for the part that isn't translatable —
+// a project label). An unknown key simply falls back to the rendered text.
 type jobDTO struct {
-	Key          string     `json:"key"`
-	Name         string     `json:"name"`
-	NameKey      string     `json:"name_key,omitempty"`
-	NameArg      string     `json:"name_arg,omitempty"`
-	Kind         string     `json:"kind"`
-	Status       string     `json:"status"`
-	CurrentOp    string     `json:"current_op,omitempty"`
-	CurrentOpKey string     `json:"current_op_key,omitempty"`
-	Mode         string     `json:"mode,omitempty"`
-	Trigger      string     `json:"trigger,omitempty"`
-	IntervalSec  int        `json:"interval_sec,omitempty"`
-	StartedAt    *time.Time `json:"started_at,omitempty"`
-	FinishedAt   *time.Time `json:"finished_at,omitempty"`
-	LastTickAt   *time.Time `json:"last_tick_at,omitempty"`
-	Created      int        `json:"created"`
-	Updated      int        `json:"updated"`
-	Error        string     `json:"error,omitempty"`
-	Cancelable   bool       `json:"cancelable"`
-	Persisted    bool       `json:"persisted"` // came from durable storage (survives restart)
+	jobs.Entry
+	Mode      string `json:"mode,omitempty"`
+	ActorName string `json:"actor_name,omitempty"`
+	Persisted bool   `json:"persisted"` // came from durable storage (survives restart)
+	// Log is the run's log: the live ring after ?after= for a running job, the
+	// kept tail for a finished one. Only on the single-job reads.
+	Log []jobs.LogLine `json:"log,omitempty"`
 }
 
-// jobsJournalWindow is how far back finished sync runs are shown in the panel,
-// configurable via JOBS_JOURNAL_TTL (Go duration, e.g. "1h", "30m"). Default 1h.
-func jobsJournalWindow() time.Duration {
+// jobsHistoryWindow is how far back finished runs are shown, configurable via
+// JOBS_JOURNAL_TTL (Go duration). Default — the full 30-day retention.
+func jobsHistoryWindow() time.Duration {
 	if v := os.Getenv("JOBS_JOURNAL_TTL"); v != "" {
 		if d, err := time.ParseDuration(v); err == nil && d > 0 {
 			return d
 		}
 	}
-	return time.Hour
+	return jobHistoryRetention
 }
+
+// jobsHistoryLimit caps one read of the history.
+const jobsHistoryLimit = 500
 
 func entryToDTO(e jobs.Entry) jobDTO {
-	return jobDTO{
-		Key: e.Key, Name: e.Name, NameKey: e.NameKey, NameArg: e.NameArg, Kind: e.Kind,
-		Status: string(e.Status), CurrentOp: e.CurrentOp, CurrentOpKey: e.CurrentOpKey,
-		IntervalSec: e.IntervalSec, StartedAt: e.StartedAt, FinishedAt: e.FinishedAt,
-		LastTickAt: e.LastTickAt, Created: int(e.Created), Updated: int(e.Updated),
-		Error: e.Error, Cancelable: e.Cancelable,
+	d := jobDTO{Entry: e}
+	if m, ok := e.Meta["mode"].(string); ok {
+		d.Mode = m
 	}
+	return d
 }
 
-// runStatus maps a journal run status to a panel job status.
-func runStatus(s string) string {
-	switch s {
-	case "error":
-		return string(jobs.StatusFailed)
-	case "running":
-		return string(jobs.StatusRunning)
-	default: // ok | partial
-		return string(jobs.StatusDone)
+// jobRunRow is the shape both history reads return.
+type jobRunRow = db.ListJobRunsRow
+
+func runToDTO(r jobRunRow) jobDTO {
+	e := jobs.Entry{
+		Key: "jobrun:" + r.ID.String(), RunID: r.ID.String(), Name: r.Name, NameKey: r.NameKey, NameArg: r.NameArg,
+		Kind: r.Kind, Type: r.Type, Trigger: r.Trigger, Status: jobs.Status(r.Status),
+		QueuedAt: &r.QueuedAt, StartedAt: r.StartedAt, FinishedAt: r.FinishedAt,
+		Created: int(r.CreatedCount), Updated: int(r.UpdatedCount), Error: r.Error,
+		Attempt: int(r.Attempt), MaxAttempts: int(r.MaxAttempts),
+		ProgressDone: int(r.ProgressDone), ProgressTotal: int(r.ProgressTotal),
+		LogLines: int(r.LogLines), LogWarns: int(r.LogWarns), LogErrors: int(r.LogErrors),
 	}
+	if r.WorkspaceID != nil {
+		e.WorkspaceID = r.WorkspaceID.String()
+	}
+	if r.ActorID != nil {
+		e.ActorID = r.ActorID.String()
+	}
+	_ = json.Unmarshal(r.Steps, &e.Steps)
+	_ = json.Unmarshal(r.Meta, &e.Meta)
+	d := entryToDTO(e)
+	d.ActorName = r.ActorName
+	d.Persisted = true
+	return d
 }
 
-// A journal row keeps its Russian name as written; the key + label travel beside it
-// so a finished run reads in the client's language too, and history stays as it was
-// recorded.
-func syncRunToDTO(r db.ListRecentGitlabSyncRunsRow) jobDTO {
-	name := gitlabSyncJournalPrefix + r.IntegrationLabel
-	return jobDTO{
-		Key: "syncrun:" + r.ID.String(), Name: name, NameKey: gitlabSyncNameKey, NameArg: r.IntegrationLabel,
-		Kind: jobs.KindSync, Status: runStatus(r.Status),
-		Mode: r.Mode, Trigger: r.Trigger, StartedAt: &r.StartedAt, FinishedAt: r.FinishedAt,
-		Created: int(r.CreatedCount), Updated: int(r.UpdatedCount), Error: r.Error, Persisted: true,
-	}
+func runTail(r jobRunRow) []jobs.LogLine {
+	var tail []jobs.LogLine
+	_ = json.Unmarshal(r.LogTail, &tail)
+	return tail
 }
 
-// ListJobs returns the background-jobs panel: live worker heartbeats and running
-// jobs from the registry, plus finished sync runs from the durable journal (within
-// the retention window) so recent outcomes and errors survive a restart.
+// ListJobs returns the jobs window: live worker heartbeats, running and queued
+// jobs from the registry, plus finished runs from the history (30 days, newest
+// first). ?type= narrows to one job family.
 func (h *API) ListJobs(c *gin.Context) {
 	if _, ok := h.requireGlobalAdmin(c); !ok {
 		return
 	}
-	out := make([]jobDTO, 0, 16)
-	// Live: workers + in-flight jobs. Finished jobs come from the durable journal
-	// below, so drop finished syncs here to avoid showing the last run twice.
+	typ := c.Query("type")
+	out := make([]jobDTO, 0, 32)
+	live := map[string]bool{}
+	names := h.actorNames(c)
+	// Live: workers + in-flight jobs. A finished run is read from the history
+	// below, so it is dropped here to avoid showing it twice.
 	for _, e := range h.jobs.Snapshot() {
-		if e.Kind == jobs.KindSync && (e.Status == jobs.StatusDone || e.Status == jobs.StatusFailed) {
+		if e.Kind != jobs.KindWorker && (e.FinishedAt != nil) {
 			continue
 		}
-		out = append(out, entryToDTO(e))
+		if typ != "" && e.Type != typ {
+			continue
+		}
+		if e.RunID != "" {
+			live[e.RunID] = true
+		}
+		d := entryToDTO(e)
+		d.ActorName = names(e.ActorID)
+		out = append(out, d)
 	}
-	// Durable sync runs that finished within the retention window.
-	since := time.Now().Add(-jobsJournalWindow())
-	if runs, err := h.q.ListRecentGitlabSyncRuns(c, db.ListRecentGitlabSyncRunsParams{Since: since, Lim: 200}); err == nil {
+	since := time.Now().Add(-jobsHistoryWindow())
+	if runs, err := h.q.ListJobRuns(c, db.ListJobRunsParams{Since: since, Type: typ, Lim: jobsHistoryLimit}); err == nil {
 		for _, r := range runs {
-			out = append(out, syncRunToDTO(r))
+			if live[r.ID.String()] {
+				continue
+			}
+			out = append(out, runToDTO(r))
 		}
 	}
 	c.JSON(http.StatusOK, out)
 }
 
-// GetJob returns one live registry entry by key (status, current op, timings).
+// actorNames resolves user ids to display names for live rows, caching per request.
+func (h *API) actorNames(ctx context.Context) func(string) string {
+	cache := map[string]string{}
+	return func(id string) string {
+		if id == "" {
+			return ""
+		}
+		if n, ok := cache[id]; ok {
+			return n
+		}
+		n := ""
+		if uid, err := uuid.Parse(id); err == nil {
+			if u, uerr := h.q.GetUserByID(ctx, uid); uerr == nil {
+				n = u.Name
+			}
+		}
+		cache[id] = n
+		return n
+	}
+}
+
+// lookupJob finds a job by registry key, by run id, or by a history key
+// ("jobrun:<id>"): the live entry when there is one, else the history row.
+func (h *API) lookupJob(ctx context.Context, key string, after int) (jobDTO, bool) {
+	runKey := strings.TrimPrefix(key, "jobrun:")
+	e, ok := h.jobs.Get(key)
+	if !ok {
+		e, ok = h.jobs.GetRun(runKey)
+	}
+	if ok {
+		d := entryToDTO(e)
+		d.ActorName = h.actorNames(ctx)(e.ActorID)
+		lookup := e.Key
+		if lines, live := h.jobs.LogSince(lookup, after); live {
+			d.Log = lines
+		}
+		return d, true
+	}
+	id, err := uuid.Parse(runKey)
+	if err != nil {
+		return jobDTO{}, false
+	}
+	r, err := h.q.GetJobRun(ctx, id)
+	if err != nil {
+		return jobDTO{}, false
+	}
+	d := runToDTO(jobRunRow(r))
+	for _, l := range runTail(jobRunRow(r)) {
+		if l.Seq > after {
+			d.Log = append(d.Log, l)
+		}
+	}
+	return d, true
+}
+
+// GetJob returns one job by key or run id, with its log (?after=<seq> for only the
+// lines after the ones the client already has).
 func (h *API) GetJob(c *gin.Context) {
 	if _, ok := h.requireGlobalAdmin(c); !ok {
 		return
 	}
-	e, ok := h.jobs.Get(c.Param("key"))
+	after, _ := strconv.Atoi(c.Query("after"))
+	d, ok := h.lookupJob(c, c.Param("key"), after)
 	if !ok {
 		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
 		return
 	}
-	c.JSON(http.StatusOK, entryToDTO(e))
+	c.JSON(http.StatusOK, d)
+}
+
+// GetMyJob is GetJob for the member who started a run (an export, an import):
+// the run is theirs, or the caller is a global admin.
+func (h *API) GetMyJob(c *gin.Context) {
+	d, ok := h.ownJob(c)
+	if !ok {
+		return
+	}
+	c.JSON(http.StatusOK, d)
+}
+
+// ownJob loads the run named by :id and checks the caller may read it. Writes the
+// error response itself.
+func (h *API) ownJob(c *gin.Context) (jobDTO, bool) {
+	after, _ := strconv.Atoi(c.Query("after"))
+	d, ok := h.lookupJob(c, c.Param("id"), after)
+	if !ok {
+		c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+		return jobDTO{}, false
+	}
+	uid := middleware.CurrentUser(c)
+	if d.ActorID != uid.String() {
+		caller, err := h.q.GetUserByID(c, uid)
+		if err != nil || !caller.IsAdmin {
+			c.JSON(http.StatusNotFound, gin.H{"error": "job not found"})
+			return jobDTO{}, false
+		}
+	}
+	return d, true
+}
+
+// CancelMyJob stops the caller's own queued or running export/import.
+func (h *API) CancelMyJob(c *gin.Context) {
+	d, ok := h.ownJob(c)
+	if !ok {
+		return
+	}
+	if !h.jobs.Cancel(d.Key) {
+		c.JSON(http.StatusConflict, gin.H{"error": "job is not running or cannot be cancelled"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"cancelled": true})
 }
 
 // RunJob triggers an immediate execution of a tick-loop worker (the "run now"
@@ -150,8 +266,12 @@ func (h *API) GetJob(c *gin.Context) {
 // deploy stopping mid-send from a verdict on the delivery — is told the process
 // is fine, so a notification that never went out is either marked failed for
 // good or left claimed for RequeueStaleDeliveries to send a second time (#2932).
+//
+// The pass is a run of its own in the registry («Запустить сейчас» · trigger
+// manual), so it lands in the history with who pressed the button (#3067).
 func (h *API) RunJob(c *gin.Context) {
-	if _, ok := h.requireGlobalAdmin(c); !ok {
+	caller, ok := h.requireGlobalAdmin(c)
+	if !ok {
 		return
 	}
 	key := c.Param("key")
@@ -165,24 +285,70 @@ func (h *API) RunJob(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "job is already running"})
 		return
 	}
-	// Free the lock however the run ends, including when it never starts.
-	if !h.runDetached("job:"+key, func(ctx context.Context) { defer release(); runner.run(ctx) }) {
+	handle, begun := h.jobs.BeginSpec(jobs.Spec{
+		Key:  "run:" + key,
+		Name: jobs.Name{Key: key, Text: workerName(key)},
+		Kind: jobs.KindRun, Type: workerType(key), ActorID: caller.ID.String(), Trigger: "manual",
+	}, nil)
+	if !begun {
 		release()
+		c.JSON(http.StatusConflict, gin.H{"error": "job is already running"})
+		return
+	}
+	handle.Steps(jobs.Step{Key: "run", Label: workerOps[workerOpOf(key)]})
+	// Free the lock however the run ends, including when it never starts.
+	if !h.runDetached("job:"+key, func(ctx context.Context) {
+		defer release()
+		handle.Step("run")
+		handle.Logf(jobs.LevelInfo, "Запуск вручную: %s", workerName(key))
+		runner.run(ctx)
+		handle.Log(jobs.LevelInfo, "Готово")
+		handle.Finish(ctx.Err())
+	}) {
+		release()
+		handle.Finish(jobs.ErrShuttingDown)
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "server is shutting down"})
 		return
 	}
-	c.JSON(http.StatusAccepted, gin.H{"started": true})
+	c.JSON(http.StatusAccepted, gin.H{"started": true, "run_id": handle.RunID()})
 }
 
-// CancelJob cancels a running cancelable job (currently: GitLab syncs). Returns 200
-// on success, 409 when the job isn't cancelable or already finished.
+// workerOpOf is the op key a worker's tick reports, for its manual run's step.
+func workerOpOf(key string) string {
+	switch key {
+	case jobGitlabSyncCron:
+		return opSyncScan
+	case jobGitlabWebhookCron:
+		return opWebhookScan
+	case jobGitlabWriteback:
+		return opWriteback
+	case jobNotifyDelivery:
+		return opDelivery
+	case jobNotifyScanner:
+		return opDueScan
+	case jobRecurrence:
+		return opRecurrence
+	case jobConfRecordings:
+		return opRecordingSweep
+	case jobTrashPurge:
+		return opTrashPurge
+	}
+	return ""
+}
+
+// CancelJob cancels a running or queued cancelable job (GitLab syncs, exports,
+// imports). Returns 200 on success, 409 when the job isn't cancelable or already
+// finished.
 func (h *API) CancelJob(c *gin.Context) {
 	if _, ok := h.requireGlobalAdmin(c); !ok {
 		return
 	}
-	if !h.jobs.Cancel(c.Param("key")) {
-		c.JSON(http.StatusConflict, gin.H{"error": "job is not running or cannot be cancelled"})
-		return
+	key := c.Param("key")
+	if !h.jobs.Cancel(key) {
+		if e, ok := h.jobs.GetRun(strings.TrimPrefix(key, "jobrun:")); !ok || !h.jobs.Cancel(e.Key) {
+			c.JSON(http.StatusConflict, gin.H{"error": "job is not running or cannot be cancelled"})
+			return
+		}
 	}
 	c.JSON(http.StatusOK, gin.H{"cancelled": true})
 }

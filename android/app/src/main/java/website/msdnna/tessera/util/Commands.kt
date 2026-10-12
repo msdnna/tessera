@@ -118,6 +118,7 @@ val BUILTIN_COMMAND_DESCRIPTIONS: Map<String, Int> = mapOf(
     "remove_start" to R.string.cmd_remove_start_desc,
     "estimate" to R.string.cmd_estimate_desc,
     "remove_estimate" to R.string.cmd_remove_estimate_desc,
+    "spend" to R.string.cmd_spend_desc,
     "priority" to R.string.cmd_priority_desc,
     "title" to R.string.cmd_title_desc,
     "tag" to R.string.cmd_tag_desc,

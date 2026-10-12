@@ -89,7 +89,12 @@
       "subtitle": "Choose a new password, then sign in with it",
       "mismatch": "The passwords do not match",
       "badTitle": "The link does not work",
-      "doneTitle": "Password changed"
+      "doneTitle": "Password changed",
+      "validFor": "The link is valid for {n} more minute | The link is valid for {n} more minutes",
+      "checking": "Checking the link…",
+      "expiredTitle": "The link has expired",
+      "expired": "The link has expired or was already used. Request a new one — it will arrive by email.",
+      "requestNew": "Request a new link"
     },
     "verify": {
       "title": "Email confirmation",
@@ -98,7 +103,34 @@
       "fail": "This link is invalid or has expired.",
       "pendingTitle": "Confirming your email",
       "okTitle": "Email confirmed",
-      "failTitle": "The link did not work"
+      "failTitle": "The link did not work",
+      "codeTitle": "Check your email",
+      "codeSent": "Code sent to {email}",
+      "codeLabel": "Confirmation code",
+      "cellLabel": "Digit {n} of {total}",
+      "resendIn": "Send again in {time}",
+      "resend": "Send again",
+      "resent": "A new code is on its way",
+      "changeEmail": "Change email",
+      "later": "Later",
+      "wrongCode": "Wrong code · attempts left: {n}",
+      "tooManyAttempts": "No attempts left — send a new code",
+      "expired": "The code has expired — send a new one",
+      "noMail": "This server doesn't send email: the code is in the server log — ask your administrator.",
+      "changedTitle": "Email changed",
+      "changed": "Your account now uses {email}.",
+      "okCode": "{email} is confirmed.",
+      "continue": "Continue",
+      "changeTitle": "New email",
+      "changeSub": "We'll send a code to the new address. Until you enter it, you sign in with the current one.",
+      "newEmail": "New email",
+      "currentPassword": "Current password",
+      "sendCode": "Send code",
+      "cancelChange": "Keep the current address",
+      "back": "Back",
+      "already": "{email} is already confirmed.",
+      "signedOut": "Sign in to enter the code — or open the link from the email.",
+      "signIn": "Sign in"
     },
     "invite": {
       "title": "Invitation",
@@ -111,7 +143,27 @@
       "okTitle": "You are in",
       "failTitle": "The invitation is no longer valid",
       "wrongAccountTitle": "The invitation is for another address",
-      "errorTitle": "Something went wrong"
+      "errorTitle": "Something went wrong",
+      "loading": "Opening the invitation…",
+      "invites": "{name} invites you to",
+      "invitesAnon": "You're invited to",
+      "projects": "{n} project | {n} projects",
+      "members": "{n} member | {n} members",
+      "role": "role: {role}",
+      "roleMember": "member",
+      "roleAdmin": "admin",
+      "email": "Email",
+      "accept": "Accept invitation",
+      "decline": "Decline",
+      "declinedTitle": "Invitation declined",
+      "declined": "The invitation no longer works. If you change your mind, ask for it to be sent again.",
+      "haveAccount": "Already have an account?",
+      "login": "Sign in",
+      "noAccount": "No account?",
+      "register": "Sign up",
+      "emailMismatch": "You're signed in as {me}",
+      "linkKind": "Invitation link",
+      "until": "valid until {date}"
     },
     "oauth": {
       "title": "Sign in with GitLab",
@@ -218,5 +270,16 @@
   },
   "window": {
     "sections": "sections"
+  },
+  "counts": {
+    "projects": "{n} project | {n} projects",
+    "boards": "{n} board | {n} boards",
+    "tasks": "{n} task | {n} tasks",
+    "join": "{list} and {last}"
+  },
+  "date": {
+    "clear": "Clear",
+    "pickStart": "Pick the first day",
+    "pickEnd": "Now the last day"
   }
 }

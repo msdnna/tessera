@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"net/url"
 	"strings"
 	"time"
 
@@ -125,6 +126,19 @@ func (h *API) deliverNotification(ctx context.Context, userID, wsID uuid.UUID, t
 				obj["task_column"] = col.Name
 				if col.NameKey != nil {
 					obj["task_column_key"] = *col.NameKey
+				}
+			}
+		}
+	}
+	// An invitation carries the reader's answer, as the list does (#3051), so a
+	// live row draws «Принять / Отклонить» without a reload.
+	if kind == kindConferenceInvite {
+		if id, ok := msg.payload["conference_id"].(string); ok {
+			if cid, perr := uuid.Parse(id); perr == nil {
+				if part, gerr := h.q.GetConferenceParticipant(ctx, db.GetConferenceParticipantParams{
+					ConferenceID: cid, UserID: userID,
+				}); gerr == nil {
+					obj["rsvp"] = part.Rsvp
 				}
 			}
 		}
@@ -277,11 +291,16 @@ func (h *API) deliveryStillInReach(ctx context.Context, n db.Notification) error
 // An unreadable task or board answers yes: the caller's job is to refuse a
 // delivery that would leak, not one whose lookup failed. A board that reads
 // fine but is soft-deleted (0078) answers no — the task is in the trash, and a
-// held delivery must not render its title after the user threw it away.
+// held delivery must not render its title after the user threw it away. A task
+// in the task trash (0086) answers no for the same reason; GetTaskAny, because
+// GetTask would hide it and an unreadable task answers yes.
 func (h *API) taskStillInReach(ctx context.Context, userID, taskID uuid.UUID) bool {
-	t, err := h.q.GetTask(ctx, taskID)
+	t, err := h.q.GetTaskAny(ctx, taskID)
 	if err != nil {
 		return true
+	}
+	if t.DeletedAt != nil {
+		return false
 	}
 	if b, berr := h.q.GetBoardAny(ctx, t.BoardID); berr == nil && b.DeletedAt != nil {
 		return false
@@ -537,7 +556,8 @@ func (h *API) outsideQuietHours(ctx context.Context, d db.NotificationDelivery, 
 	if perr != nil {
 		p = defaultPrefs(n.UserID)
 	}
-	if end, quiet := quietWindow(p.QuietEnabled, int(p.QuietStartMinutes), int(p.QuietEndMinutes), p.QuietTz, next); quiet {
+	quietAt := quietFor(p, quietExempt(p, n.Kind, h.taskPriorityOf(ctx, p, n.TaskID)))
+	if end, quiet := quietAt(next); quiet {
 		return end
 	}
 	return next
@@ -827,9 +847,25 @@ func conferenceOf(n db.Notification) string {
 func (h *API) notifyLink(n db.Notification) string { return notifyLink(h.publicURL, n) }
 
 func notifyLink(publicURL string, n db.Notification) string {
-	confID := conferenceOf(n)
-	if confID == "" || publicURL == "" {
+	if publicURL == "" {
 		return publicURL
 	}
-	return strings.TrimRight(publicURL, "/") + "/conferences/" + confID
+	base := strings.TrimRight(publicURL, "/")
+	if confID := conferenceOf(n); confID != "" {
+		return base + "/conferences/" + confID
+	}
+	// The v2 notifications about something that is not a task (#3048) open it:
+	// a document someone mentioned the reader in, a stage that was closed.
+	var p map[string]any
+	if json.Unmarshal(n.Payload, &p) == nil {
+		if slug, _ := p["document_slug"].(string); slug != "" {
+			return base + "/documents/" + url.PathEscape(slug)
+		}
+		project, _ := p["project_slug"].(string)
+		stage, _ := p["milestone_id"].(string)
+		if project != "" && stage != "" {
+			return base + "/project/" + url.PathEscape(project) + "/stage/" + stage
+		}
+	}
+	return publicURL
 }

@@ -37,8 +37,12 @@ test('документ: сохранение шаблона и создание 
     (r) => /\/document-templates$/.test(r.url()) && r.request().method() === 'POST',
   )
   await page.getByTestId('doc-actions').click()
+  // «Сохранить как шаблон» is a submenu of gallery categories (#3045).
   await page.getByTestId('doc-action-saveTemplate').click()
-  expect((await created).status()).toBe(201)
+  await page.getByTestId('doc-action-saveTemplate:sprint').click()
+  const res = await created
+  expect(res.status()).toBe(201)
+  expect(res.request().postDataJSON().category).toBe('sprint')
   await page.getByTestId('doc-back').click()
 
   await page.getByTestId('doc-templates').click()
@@ -48,6 +52,10 @@ test('документ: сохранение шаблона и создание 
   await expect(tiles.first()).toBeVisible()
   expect(await tiles.count()).toBeGreaterThanOrEqual(4)
 
+  // Filed under «Спринт» and listed under «Мои шаблоны».
+  await page.getByTestId('tpl-source-mine').click()
+  await expect(tiles).toHaveCount(1)
+  await page.getByTestId('tpl-source-sprint').click()
   const mine = tiles.filter({ hasText: 'Повестка' }).first()
   await mine.getByTestId('tpl-use').click()
 

@@ -169,7 +169,23 @@ data class Member(
     // @-mention can insert `@login` — a display name with spaces resolves to
     // nobody once the comment is pushed to GitLab.
     @SerializedName("gl_username") val glUsername: String = "",
+    // Activity (#3073): «был в приложении» and «последнее действие здесь».
+    @SerializedName("last_seen_at") val lastSeenAt: String? = null,
+    @SerializedName("last_active_at") val lastActiveAt: String? = null,
 )
+
+/** A pending request to be let into a workspace (#3077), as its managers see it. */
+data class AccessRequest(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("user_id") val userId: String = "",
+    @SerializedName("user_name") val userName: String = "",
+    @SerializedName("user_email") val userEmail: String = "",
+    @SerializedName("board_name") val boardName: String = "",
+    @SerializedName("message") val message: String = "",
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+data class TransferOwnerRequest(@SerializedName("user_id") val userId: String)
 
 data class CreateTagRequest(
     @SerializedName("name") val name: String,

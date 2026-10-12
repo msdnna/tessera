@@ -61,8 +61,11 @@ type glIssue struct {
 	AssigneeLogins []string
 	Milestone      *glMilestone
 	Notes          []glNote
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
+	// Project puts the issue in another project of the same instance (#3082 —
+	// several projects on one board); "" = the fake's own project.
+	Project   string
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 type glMember struct {
@@ -104,6 +107,9 @@ type glLink struct {
 // fakeGitlab is an in-memory GitLab instance serving the exact API subset the
 // backend's client uses. pageSize < len(issues) exercises GraphQL pagination.
 type fakeGitlab struct {
+	// restHook, when set, sees every authorised REST call first and answers it
+	// by returning true (a test's own endpoints, e.g. CI — #3099).
+	restHook    func(w http.ResponseWriter, r *http.Request) bool
 	t           *testing.T
 	srv         *httptest.Server
 	username    string // the identity the PAT resolves to
@@ -156,6 +162,39 @@ type fakeGitlab struct {
 	// it — the one window in which the remote milestone exists and the link does
 	// not. Like `delay`, a knob for catching the handler mid-flight.
 	onCreateMilestone func()
+
+	// Merge requests the project holds (#2964), and GitLab's answer to «which
+	// issues does MR !n close», keyed by MR iid. See gitlab_mr_flow_test.go.
+	mrs    []glMR
+	closes map[int64][]int64
+	// Projects whose single-MR read answers 403 — a repository the token sees
+	// MRs of through an issue but may not read (#2964 rework).
+	mrForbidden map[string]bool
+	// Project milestones by numeric id — the REST read/write surface of the stage
+	// write-back (#3010). An issue's Milestone points at the same struct, so an
+	// edit through REST is what the next pull sees. milestonePutStatus, when set,
+	// makes every PUT fail with it (GitLab down / refusing); milestonePuts records
+	// the forms of the PUTs that got through.
+	milestones         map[int64]*glMilestone
+	milestonePutStatus int
+	milestonePuts      []url.Values
+
+	// The issues queries as they arrived (#3105): whether each asked for the
+	// discussions, which iids it named (nil = a list query) and the label filter
+	// it carried (#3085). A test reads them to see which issues a sweep paid the
+	// heavy half for.
+	issueQueries []fakeIssueQuery
+
+	// tokenExpires is what /personal_access_tokens/self reports as the PAT's
+	// expiry (#3084), "" = never.
+	tokenExpires string
+}
+
+// fakeIssueQuery is one issues request the fake served.
+type fakeIssueQuery struct {
+	withNotes bool
+	iids      []int64
+	labels    []string
 }
 
 // fakeUpload is one attachment the fake instance hands back, declared type and
@@ -211,6 +250,7 @@ func newFakeGitlab(t *testing.T, username, projectPath string) *fakeGitlab {
 		children:          map[int64][]int64{},
 		childrenErr:       map[int64]bool{},
 		uploads:           map[string]fakeUpload{},
+		milestones:        map[int64]*glMilestone{},
 	}
 	f.srv = httptest.NewServer(f)
 	t.Cleanup(f.srv.Close)
@@ -240,8 +280,59 @@ func (f *fakeGitlab) addIssue(is glIssue) *glIssue {
 		is.UpdatedAt = time.Now().UTC()
 	}
 	cp := is
+	if cp.Milestone != nil {
+		// One milestone, many issues: they all share the registered struct.
+		if known, ok := f.milestones[cp.Milestone.ID]; ok {
+			cp.Milestone = known
+		} else {
+			f.milestones[cp.Milestone.ID] = cp.Milestone
+		}
+	}
 	f.issues = append(f.issues, &cp)
 	return &cp
+}
+
+// milestone returns a copy of a registered milestone as GitLab holds it now.
+func (f *fakeGitlab) milestone(id int64) glMilestone {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if m, ok := f.milestones[id]; ok {
+		return *m
+	}
+	f.t.Fatalf("fake gitlab: no milestone %d", id)
+	return glMilestone{}
+}
+
+// editMilestone changes a milestone on the GitLab side, as a person in GitLab
+// would, and touches its issues so an incremental pull sees them.
+func (f *fakeGitlab) editMilestone(id int64, edit func(*glMilestone)) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	m, ok := f.milestones[id]
+	if !ok {
+		f.t.Fatalf("fake gitlab: no milestone %d", id)
+	}
+	edit(m)
+	for _, is := range f.issues {
+		if is.Milestone == m {
+			is.UpdatedAt = time.Now().UTC()
+		}
+	}
+}
+
+// milestoneJSON is a milestone in the REST v4 shape.
+func (f *fakeGitlab) milestoneJSON(m *glMilestone) map[string]any {
+	nullable := func(s string) any {
+		if s == "" {
+			return nil
+		}
+		return s
+	}
+	return map[string]any{
+		"id": m.ID, "iid": m.IID, "title": m.Title, "description": m.Description, "state": m.State,
+		"start_date": nullable(m.StartDate), "due_date": nullable(m.DueDate),
+		"web_url": f.srv.URL + "/" + f.projectPath + "/-/milestones/" + strconv.FormatInt(m.IID, 10),
+	}
 }
 
 func (f *fakeGitlab) findIssue(iid int64) *glIssue {
@@ -325,10 +416,12 @@ func (f *fakeGitlab) graphql(w http.ResponseWriter, r *http.Request) {
 		}})
 	case strings.Contains(req.Query, "linkedItems"):
 		f.linkedItemsQuery(w, req.Variables)
+	case strings.Contains(req.Query, "mergeRequests("):
+		f.mergeRequestsQuery(w, req.Variables)
 	case strings.Contains(req.Query, "workItems"):
 		f.childItemsQuery(w, req.Variables)
 	default:
-		f.issuesQuery(w, req.Variables)
+		f.issuesQuery(w, req.Variables, strings.Contains(req.Query, "discussions("))
 	}
 }
 
@@ -426,8 +519,16 @@ func (f *fakeGitlab) linksFor(srcIID int64) []glLink {
 
 // issuesQuery serves the paginated issues query with optional iids / assignee
 // username filters (mirroring the real GraphQL filter semantics).
-func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any) {
+func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any, withNotes bool) {
 	f.mu.Lock()
+	q := fakeIssueQuery{withNotes: withNotes}
+	if raw, ok := vars["labels"].([]any); ok {
+		for _, v := range raw {
+			if s, ok := v.(string); ok {
+				q.labels = append(q.labels, s)
+			}
+		}
+	}
 	var filtered []*glIssue
 	if raw, ok := vars["iids"].([]any); ok && raw != nil {
 		want := map[int64]bool{}
@@ -435,6 +536,7 @@ func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any) {
 			if s, ok := v.(string); ok {
 				n, _ := strconv.ParseInt(s, 10, 64)
 				want[n] = true
+				q.iids = append(q.iids, n)
 			}
 		}
 		for _, is := range f.issues {
@@ -454,6 +556,40 @@ func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any) {
 	} else {
 		filtered = append(filtered, f.issues...)
 	}
+	// The project the query names: an issue of another project of this instance
+	// is not in it (#3082).
+	if path, _ := vars["path"].(string); path != "" {
+		var inProject []*glIssue
+		for _, is := range filtered {
+			own := is.Project
+			if own == "" {
+				own = f.projectPath
+			}
+			if own == path {
+				inProject = append(inProject, is)
+			}
+		}
+		filtered = inProject
+	}
+	// labelName: every listed label must be on the issue (GitLab's AND).
+	if len(q.labels) > 0 {
+		var kept []*glIssue
+		for _, is := range filtered {
+			has := map[string]bool{}
+			for _, l := range is.Labels {
+				has[l.Title] = true
+			}
+			all := true
+			for _, l := range q.labels {
+				all = all && has[l]
+			}
+			if all {
+				kept = append(kept, is)
+			}
+		}
+		filtered = kept
+	}
+	f.issueQueries = append(f.issueQueries, q)
 	f.mu.Unlock()
 
 	start := 0
@@ -469,7 +605,11 @@ func (f *fakeGitlab) issuesQuery(w http.ResponseWriter, vars map[string]any) {
 	}
 	nodes := make([]any, 0, end-start)
 	for _, is := range filtered[start:end] {
-		nodes = append(nodes, f.issueNode(is))
+		node := f.issueNode(is)
+		if !withNotes {
+			delete(node, "discussions") // the light query never asked for them
+		}
+		nodes = append(nodes, node)
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"data": map[string]any{
 		"project": map[string]any{"issues": map[string]any{
@@ -561,11 +701,29 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, http.StatusUnauthorized, map[string]any{"message": "401 Unauthorized"})
 		return
 	}
+	if f.restHook != nil && f.restHook(w, r) {
+		return
+	}
 	// An instance-wide endpoint, outside every project's scope: reaching it at
 	// all means a request escaped the project path it was built for, and the
 	// body is the kind of thing only the PAT's owner may read.
+	if r.URL.Path == "/api/v4/personal_access_tokens/self" {
+		f.mu.Lock()
+		exp := f.tokenExpires
+		f.mu.Unlock()
+		var v any
+		if exp != "" {
+			v = exp
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"id": 1, "name": "owner-pat", "expires_at": v})
+		return
+	}
 	if r.URL.Path == "/api/v4/personal_access_tokens" {
 		writeJSON(w, http.StatusOK, []any{map[string]any{"id": 1, "name": "owner-pat", "token": f.token}})
+		return
+	}
+	// Merge requests of any project, read one at a time (#2964 rework).
+	if f.foreignMR(w, r) {
 		return
 	}
 	prefix := "/api/v4/projects/" + f.projectPath + "/"
@@ -575,6 +733,11 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 	}
 	rest := strings.TrimPrefix(r.URL.Path, prefix)
 	switch {
+	case strings.HasPrefix(rest, "merge_requests/") && strings.HasSuffix(rest, "/closes_issues"):
+		f.closesIssues(w, rest)
+	case strings.HasPrefix(rest, "issues/") &&
+		(strings.HasSuffix(rest, "/related_merge_requests") || strings.HasSuffix(rest, "/closed_by")):
+		f.issueMRs(w, rest)
 	case strings.HasPrefix(rest, "issues/") && strings.HasSuffix(rest, "/links"):
 		f.mu.Lock()
 		f.linkCalls++
@@ -656,10 +819,55 @@ func (f *fakeGitlab) rest(w http.ResponseWriter, r *http.Request) {
 		if hook != nil {
 			hook()
 		}
-		writeJSON(w, http.StatusCreated, map[string]any{
-			"id": id, "iid": id - 9000, "state": "active",
-			"web_url": f.srv.URL + "/" + f.projectPath + "/-/milestones/" + strconv.FormatInt(id-9000, 10),
-		})
+		created := &glMilestone{
+			ID: id, IID: id - 9000, Title: r.PostForm.Get("title"), Description: r.PostForm.Get("description"),
+			State: "active", StartDate: r.PostForm.Get("start_date"), DueDate: r.PostForm.Get("due_date"),
+		}
+		f.mu.Lock()
+		f.milestones[id] = created
+		out := f.milestoneJSON(created)
+		f.mu.Unlock()
+		writeJSON(w, http.StatusCreated, out)
+	case strings.HasPrefix(rest, "milestones/") && (r.Method == http.MethodGet || r.Method == http.MethodPut):
+		id, _ := strconv.ParseInt(strings.TrimPrefix(rest, "milestones/"), 10, 64)
+		_ = r.ParseForm()
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		m, ok := f.milestones[id]
+		if !ok {
+			writeJSON(w, http.StatusNotFound, map[string]any{"message": "404 Milestone Not Found"})
+			return
+		}
+		if r.Method == http.MethodPut {
+			if f.milestonePutStatus != 0 {
+				writeJSON(w, f.milestonePutStatus, map[string]any{"message": "milestone write refused"})
+				return
+			}
+			form := url.Values{}
+			for k, v := range r.PostForm {
+				form[k] = v
+			}
+			f.milestonePuts = append(f.milestonePuts, form)
+			if _, has := form["title"]; has {
+				m.Title = form.Get("title")
+			}
+			if _, has := form["description"]; has {
+				m.Description = form.Get("description")
+			}
+			if _, has := form["start_date"]; has {
+				m.StartDate = form.Get("start_date")
+			}
+			if _, has := form["due_date"]; has {
+				m.DueDate = form.Get("due_date")
+			}
+			switch form.Get("state_event") {
+			case "close":
+				m.State = "closed"
+			case "activate":
+				m.State = "active"
+			}
+		}
+		writeJSON(w, http.StatusOK, f.milestoneJSON(m))
 	default:
 		// Issue mutations (labels/state/notes/…) from incidental write-backs.
 		writeJSON(w, http.StatusOK, map[string]any{})

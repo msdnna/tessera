@@ -109,6 +109,21 @@
     "unassigned": "Без исполнителя",
     "pace": "Темп",
     "paceSub": "сделано за этап",
-    "paceAvg": "Среднее за прошлые этапы ({n}) — {avg}"
+    "paceAvg": "Среднее за прошлые этапы ({n}) — {avg}",
+    "documents": "Документы"
+  },
+  "gitlab": {
+    "readOnly": "Этап из GitLab: запись в GitLab у привязки выключена — правьте его в GitLab или включите запись в окне GitLab",
+    "unsynced": "Этап не синхронизирован с GitLab",
+    "unsyncedGoals": "Описание не синхронизировано с GitLab",
+    "retry": "повторить",
+    "retryMenu": "Повторить запись в GitLab",
+    "retried": "Отправлено в GitLab",
+    "conflict": "Конфликт с GitLab",
+    "resolve": "разрешить",
+    "resolveMenu": "Разрешить конфликт…",
+    "failedToast": "Сохранено в Tessera, но GitLab не принял изменения: {error}",
+    "conflictToast": "Этап изменили и в GitLab — выберите версию в окне конфликтов",
+    "goalsMarkdown": "Markdown · уйдёт в описание этапа в GitLab"
   }
 }

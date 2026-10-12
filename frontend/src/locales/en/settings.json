@@ -43,9 +43,9 @@
     "verify": {
       "done": "Email verified",
       "pending": "Email not verified",
-      "send": "Send email",
-      "sent": "Email sent"
-    }
+      "send": "Confirm"
+    },
+    "changeEmail": "Change"
   },
   "security": {
     "title": "Security",
@@ -232,6 +232,40 @@
       "emptyTitle": "No feedback yet",
       "empty": "Answers to “Was this article helpful?” show up here, per article and language.",
       "share": "Helpful: {n}%"
+    },
+    "csvCol": {
+      "name": "Name",
+      "verified": "Email verified",
+      "lastSeen": "Last seen",
+      "created": "Created"
+    },
+    "invites": {
+      "search": "Find by email or workspace",
+      "filter": {
+        "pending": "Waiting",
+        "expired": "Expired",
+        "declined": "Declined",
+        "all": "All"
+      },
+      "col": {
+        "email": "Email",
+        "space": "Workspace",
+        "sent": "Sent"
+      },
+      "role": {
+        "owner": "Owner",
+        "admin": "Admin",
+        "member": "Member",
+        "guest": "Guest"
+      },
+      "until": "waiting until {date}",
+      "state": {
+        "expired": "expired",
+        "declined": "declined"
+      },
+      "revoke": "Revoke invitation",
+      "revokeConfirm": "Revoke?",
+      "empty": "No invitations"
     }
   },
   "notifications": {
@@ -259,7 +293,10 @@
       "due_soon": "Due soon",
       "reminder": "Reminders (scheduled)",
       "integration_sync": "Integration sync",
-      "conference_invite": "Conference invitation"
+      "conference_invite": "Conference invitation",
+      "milestone_closed": "Stage closed",
+      "conference_soon": "Meeting in 5 minutes",
+      "integration_conflict": "Sync conflict"
     },
     "lead": {
       "0": "At the deadline",
@@ -324,7 +361,8 @@
       "quietHint": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone.",
       "quietHintTz": "During this window external notifications are held back and arrive once it ends. In-app ones (the bell) always arrive. Times are in your time zone ({tz}).",
       "quietExceptions": "Only urgent and mentions",
-      "quietToasts": "And the in-app pop-ups"
+      "quietToasts": "And the in-app pop-ups",
+      "quietExceptionsHint": "Mentions, tasks marked Urgent and a meeting about to start get through even in quiet hours."
     },
     "confirm": {
       "deleteChannel": "Delete the channel “{name}”?",
@@ -423,8 +461,12 @@
         "phone": "On the phone",
         "phoneHint": "One at a time over the bottom navigation",
         "sound": "Sound",
-        "soundHint": "No sound anywhere yet",
-        "soon": "Soon"
+        "soundHint": "Silent in Do not disturb and quiet hours",
+        "soundMode": {
+          "off": "Off",
+          "important": "Important",
+          "all": "All"
+        }
       }
     }
   },

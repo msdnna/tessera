@@ -66,6 +66,16 @@ export const ME_CATEGORIES = [
 ]
 export const ACTIVITY_KINDS = ['created', 'moved', 'completed', 'deleted']
 export const ACTIVITY_MODES = ['off', 'others', 'all']
+// «Звук» (#3121): silent, only what is about me and can't wait, or every toast
+// of the top lane. My own answers (the bottom lane) never sound.
+export const SOUND_MODES = ['off', 'important', 'all']
+const IMPORTANT_SOUND = new Set(['mention', 'assign', 'call', 'reminder'])
+
+// soundFor — does a top-lane toast of this kind chime under this mode?
+export function soundFor(kind, mode) {
+  if (mode === 'all') return true
+  return mode === 'important' && IMPORTANT_SOUND.has(kind)
+}
 
 export function defaultPrefs() {
   return {
@@ -75,6 +85,7 @@ export function defaultPrefs() {
     batch: true,
     batchMin: 3,
     phone: true,
+    sound: 'off',
   }
 }
 
@@ -92,6 +103,7 @@ export function normalizePrefs(raw) {
   const kinds = src.activityKinds && typeof src.activityKinds === 'object' ? src.activityKinds : {}
   for (const k of ACTIVITY_KINDS) if (typeof kinds[k] === 'boolean') out.activityKinds[k] = kinds[k]
   if (typeof src.batch === 'boolean') out.batch = src.batch
+  if (SOUND_MODES.includes(src.sound)) out.sound = src.sound
   const n = Math.round(Number(src.batchMin))
   if (Number.isFinite(n)) out.batchMin = Math.min(BATCH_MAX, Math.max(BATCH_MIN, n))
   if (typeof src.phone === 'boolean') out.phone = src.phone
@@ -135,7 +147,10 @@ export function notificationCategory(n) {
     case 'task_unassigned':
       return 'assign'
     case 'task_mention':
+    case 'note_mention':
     case 'task_thread_reply':
+    case 'document_mention':
+    case 'conference_mention':
       return 'mentions'
     case 'task_comment':
       return 'comments'
@@ -151,7 +166,10 @@ export function notificationCategory(n) {
     case 'reminder':
       return 'due'
     case 'conference_invited':
+    case 'conference_starting':
       return 'calls'
+    case 'integration_conflict':
+      return 'system'
     default:
       return ev.startsWith('integration_sync') ? 'system' : 'changes'
   }
@@ -160,10 +178,18 @@ export function notificationCategory(n) {
 // The toast kind of a notification: decides its rank and how long it lives.
 export function notificationKind(n) {
   const ev = eventOf(n)
-  if (ev === 'conference_invited') return 'call'
+  if (ev === 'conference_invited' || ev === 'conference_starting') return 'call'
   if (ev === 'reminder') return 'reminder'
-  if (ev.startsWith('integration_sync')) return 'system'
-  if (ev === 'task_mention' || ev === 'task_thread_reply') return 'mention'
+  if (ev.startsWith('integration_sync') || ev === 'integration_conflict') return 'system'
+  // A shared «Входящие» note naming the reader (#3040) is a mention too.
+  if (
+    ev === 'task_mention' ||
+    ev === 'note_mention' ||
+    ev === 'task_thread_reply' ||
+    ev === 'document_mention' ||
+    ev === 'conference_mention'
+  )
+    return 'mention'
   if (ev === 'task_assigned') return 'assign'
   return 'me'
 }

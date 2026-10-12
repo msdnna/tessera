@@ -108,6 +108,8 @@ func main() {
 	// Close sync runs left "running" by a process that died mid-sync — nothing of
 	// ours is in flight yet, so they can only be stale.
 	rh.FailStaleSyncRuns(ctx)
+	// …and the jobs window's history rows of runs that process never finished.
+	rh.FailStaleJobRuns(ctx)
 
 	// Workers all block until ctx is done; the WaitGroup lets shutdown wait for
 	// them to finish the tick they're on before the pool closes under them. Each is
@@ -132,6 +134,8 @@ func main() {
 	// the supervisor that logs a periodic summary of in-flight background jobs.
 	rh.RegisterBackgroundWorkers()
 	spawn("job_supervisor", rh.RunJobSupervisor)
+	// Job progress, steps and log lines go out over the socket (#3067).
+	spawn("job_publisher", rh.RunJobPublisher)
 
 	// Background GitLab auto-sync worker (idle until an integration sets a
 	// positive sync interval).

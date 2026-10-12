@@ -63,6 +63,7 @@ import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.Sidebar
 import website.msdnna.tessera.ui.components.TDropdown
+import website.msdnna.tessera.ui.components.TMenuDivider
 import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.UpdateDialog
 import website.msdnna.tessera.ui.components.clickableNoRipple
@@ -539,6 +540,8 @@ fun MainScreen(
                             onArchive = { boardArchiveOpen = true },
                             onTags = { boardTagsOpen = true },
                             onCommands = { boardCommandsOpen = true },
+                            isFavorite = state.isFavorite((dest as? MainDest.BoardView)?.board?.id),
+                            onToggleFavorite = { (dest as? MainDest.BoardView)?.board?.let { wsVm.toggleFavorite(it) } },
                         )
                         HorizontalDivider(color = c.border)
 
@@ -1006,6 +1009,10 @@ private fun TopBar(
     onArchive: () -> Unit,
     onTags: () -> Unit,
     onCommands: () -> Unit,
+    // The open board in / out of favourites (#3115) — the first row of the menu,
+    // as on the web's phone: the header has no room for a star of its own.
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
 ) {
     val c = Tessera.colors
     var boardMenu by remember { mutableStateOf(false) }
@@ -1064,6 +1071,16 @@ private fun TopBar(
             Box(Modifier.tourAnchor(TourKeys.BOARD_ACTIONS)) {
                 IonIconButton(Ion.ELLIPSIS_V, onClick = { boardMenu = true }, boxSize = 40.dp)
                 TDropdown(expanded = boardMenu, onDismiss = { boardMenu = false }) {
+                    TMenuItem(
+                        stringResource(if (isFavorite) R.string.main_board_menu_unfavorite else R.string.main_board_menu_favorite),
+                        icon = if (isFavorite) Ion.STAR_FILLED else Ion.STAR,
+                        modifier = Modifier.testTag(TestTags.BOARD_MENU_FAVORITE),
+                        onClick = {
+                            boardMenu = false
+                            onToggleFavorite()
+                        },
+                    )
+                    TMenuDivider()
                     TMenuItem(stringResource(R.string.main_board_menu_archive), icon = Ion.ARCHIVE, onClick = {
                         boardMenu = false
                         onArchive()

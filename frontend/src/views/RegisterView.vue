@@ -5,7 +5,7 @@ import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
 import { LogoGitlab, AlertCircleOutline } from '@vicons/ionicons5'
 import { useRoute, useRouter, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
-import { auth } from '@/api'
+import { auth, accountFlows } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
 import PasswordMeter from '@/components/PasswordMeter.vue'
 import Kbd from '@/components/Kbd.vue'
@@ -29,12 +29,28 @@ const router = useRouter()
 const inviteToken = useRoute().query.invite || ''
 
 const gitlabEnabled = ref(false)
+// Whether this server sends letters: only then does sign-up lead on to the
+// «Проверьте почту» code screen (#3057) — without mail no code can arrive.
+const mailEnabled = ref(false)
 onMounted(async () => {
   try {
     const { data } = await auth.providers()
     gitlabEnabled.value = data?.gitlab === true
+    mailEnabled.value = data?.mail === true
   } catch {
     gitlabEnabled.value = false
+  }
+})
+// An addressed invitation fills the e-mail in (#3059): the invited address is
+// the one thing the invitee cannot check on their own, and registering another
+// one is exactly the mismatch the accept page then has to explain (#2932).
+onMounted(async () => {
+  if (!inviteToken) return
+  try {
+    const { data } = await accountFlows.lookupInvitation(inviteToken)
+    if (data?.kind === 'email' && data?.email && !email.value) email.value = data.email
+  } catch {
+    /* an unknown or spent token: the form stays as it is */
   }
 })
 function registerWithGitlab() {
@@ -83,7 +99,7 @@ async function submit() {
       router.replace(inviteOutcomeRoute(inviteToken, outcome))
       return
     }
-    router.push('/')
+    router.push(mailEnabled.value ? '/verify-email' : '/')
   } catch (e) {
     formError.value = e.message
   } finally {

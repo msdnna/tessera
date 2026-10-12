@@ -20,32 +20,7 @@
       "G703 internal/testutil/dbgate.go": 1
     },
     "govulncheck": {
-      "GO-2026-4918 go.mod": 1,
-      "GO-2026-5005 go.mod": 1,
-      "GO-2026-5006 go.mod": 1,
-      "GO-2026-5013 go.mod": 1,
-      "GO-2026-5014 go.mod": 1,
-      "GO-2026-5015 go.mod": 1,
-      "GO-2026-5016 go.mod": 1,
-      "GO-2026-5017 go.mod": 1,
-      "GO-2026-5018 go.mod": 1,
-      "GO-2026-5019 go.mod": 1,
-      "GO-2026-5020 go.mod": 1,
-      "GO-2026-5021 go.mod": 1,
-      "GO-2026-5023 go.mod": 1,
-      "GO-2026-5024 go.mod": 1,
-      "GO-2026-5025 go.mod": 1,
-      "GO-2026-5026 go.mod": 1,
-      "GO-2026-5027 go.mod": 1,
-      "GO-2026-5028 go.mod": 1,
-      "GO-2026-5029 go.mod": 1,
-      "GO-2026-5030 go.mod": 1,
-      "GO-2026-5033 go.mod": 1,
-      "GO-2026-5932 go.mod": 1,
-      "GO-2026-5942 go.mod": 1,
-      "GO-2026-6303 go.mod": 1,
-      "GO-2026-6354 go.mod": 1,
-      "GO-2026-6355 go.mod": 1
+      "GO-2026-5932 go.mod": 1
     },
     "osv-android": {},
     "osv-desktop": {

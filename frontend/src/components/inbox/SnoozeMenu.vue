@@ -21,6 +21,7 @@ import { useFormat } from '@/composables/useFormat'
 import { snoozeOptions } from '@/utils/inbox'
 import { parseCapture } from '@/utils/quickParse'
 import { cap } from '@/utils/keyCaps'
+import { vLayer } from '@/utils/layerZ'
 
 const props = defineProps({
   show: { type: Boolean, default: false },
@@ -155,10 +156,11 @@ function onKey(e) {
 
 <template>
   <Teleport to="body">
-    <div v-if="show && sheet" class="sz-scrim" aria-hidden="true" />
+    <div v-if="show && sheet" v-layer class="sz-scrim" aria-hidden="true" />
     <div
       v-if="show"
       ref="panel"
+      v-layer
       class="sz kit-menu"
       :class="{ sheet }"
       :style="sheet ? null : style"

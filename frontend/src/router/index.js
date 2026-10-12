@@ -37,6 +37,14 @@ const routes = [
     component: () => import('@/views/AcceptInviteView.vue'),
     meta: { open: true },
   },
+  // The workspace's shared invitation link (#3062) — `/join/<token>` is what a
+  // manager copies. It lands on the invitation page: the server tells a shared
+  // link from an addressed invitation, and every hop of the account fork already
+  // knows how to carry `/invite?token=`.
+  {
+    path: '/join/:token',
+    redirect: (to) => ({ path: '/invite', query: { token: to.params.token } }),
+  },
   // GitLab OAuth handoff: parses the session from the URL fragment. `open` so it
   // runs regardless of the (about-to-change) auth state.
   {
@@ -75,6 +83,12 @@ const routes = [
         path: 'project/:projectSlug/board/:boardSlug',
         component: () => import('@/views/BoardView.vue'),
       },
+      // A project's own address (#3047): its first board, or — without one —
+      // the «Пустой проект» screen with the board templates.
+      {
+        path: 'project/:projectSlug',
+        component: () => import('@/views/ProjectView.vue'),
+      },
       // The stage page (#2993): slugs like the board's — the stage slug is
       // unique within its project (milestones.slug).
       {
@@ -84,6 +98,9 @@ const routes = [
       // Legacy / deep links by id (UUID or bare slug) — BoardView resolves them
       // and canonicalizes the URL to /project/<slug>/board/<slug>.
       { path: 'board/:id', component: () => import('@/views/BoardView.vue') },
+      // A workspace's own link (#3077): a member goes in, anyone else may ask
+      // for access.
+      { path: 'space/:id', component: () => import('@/views/SpaceLinkView.vue') },
       // The «Заметки» and «Напоминания» sections became the «Входящие» panel
       // (#2999): old links land on the start screen with the panel open on
       // that filter (and on the note a `?note=` named). AppLayout reads the

@@ -257,7 +257,7 @@ async function submitAddSub() {
     >
       <span v-if="prioBar" class="prio-bar" :style="{ background: prioBar }" />
       <!-- Archive view: a single Restore affordance replaces the edit action bar. -->
-      <div v-if="readonly && !nested" class="card-actions" @click.stop>
+      <div v-if="readonly && !nested && task.archived_at" class="card-actions" @click.stop>
         <button
           class="ca-btn ca-restore"
           :title="t('task.action.restore')"

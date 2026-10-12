@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -59,8 +60,10 @@ func (h *API) notify(c *gin.Context, userID, wsID uuid.UUID, taskID *uuid.UUID, 
 	h.deliverNotification(c, userID, wsID, taskID, &a, kind, msg)
 }
 
-// notifyTaskParticipants notifies a task's assignees and creator (minus the
-// actor) — used when something happens that watchers should hear about.
+// notifyTaskParticipants notifies a task's subscribers (minus the actor) —
+// used when something happens that watchers should hear about. Subscribers are
+// the author, the assignees and the commenters unless they unsubscribed, plus
+// whoever subscribed explicitly (#2963, ListTaskSubscribers).
 func (h *API) notifyTaskParticipants(c *gin.Context, t db.Task, wsID uuid.UUID, kind string, msg notifyMsg) {
 	h.notifyTaskParticipantsExcept(c, t, wsID, kind, msg, nil)
 }
@@ -68,20 +71,14 @@ func (h *API) notifyTaskParticipants(c *gin.Context, t db.Task, wsID uuid.UUID, 
 // notifyTaskParticipantsExcept is notifyTaskParticipants with a set of user ids
 // to skip (e.g. users already reached by a more specific mention notification).
 func (h *API) notifyTaskParticipantsExcept(c *gin.Context, t db.Task, wsID uuid.UUID, kind string, msg notifyMsg, skip map[uuid.UUID]bool) {
-	seen := map[uuid.UUID]bool{}
-	for id := range skip {
-		seen[id] = true
+	subs, err := h.q.ListTaskSubscribers(c, db.ListTaskSubscribersParams{TaskID: t.ID, WorkspaceID: wsID})
+	if err != nil {
+		return
 	}
-	if assignees, err := h.q.ListTaskAssignees(c, t.ID); err == nil {
-		for _, a := range assignees {
-			if !seen[a.ID] {
-				seen[a.ID] = true
-				h.notify(c, a.ID, wsID, &t.ID, kind, msg)
-			}
+	for _, u := range subs {
+		if !skip[u.ID] {
+			h.notify(c, u.ID, wsID, &t.ID, kind, msg)
 		}
-	}
-	if t.CreatedBy != nil && !seen[*t.CreatedBy] {
-		h.notify(c, *t.CreatedBy, wsID, &t.ID, kind, msg)
 	}
 }
 
@@ -655,14 +652,104 @@ func (h *API) ListNotifications(c *gin.Context) {
 	c.JSON(http.StatusOK, orEmpty(items))
 }
 
-// UnreadNotificationCount returns the current user's unread notification count.
-func (h *API) UnreadNotificationCount(c *gin.Context) {
-	n, err := h.q.CountUnreadNotifications(c, middleware.CurrentUser(c))
+// The page of all notifications (#3049) is read in pages of this size by
+// default, and never more than the cap at once.
+const (
+	notificationPageDefault = 30
+	notificationPageMax     = 100
+)
+
+// notificationFilters are the filters the feed offers; anything else is "all".
+var notificationFilters = map[string]bool{
+	"all": true, "unread": true, "mentions": true, "assigned": true, "gitlab": true,
+}
+
+// notificationCursor is the keyset position after a row: its created_at in
+// microseconds (Postgres keeps exactly that precision) and its id, the tie-break
+// for two rows written in the same microsecond — a fan-out to the same user
+// can do that.
+func notificationCursor(at time.Time, id uuid.UUID) string {
+	return strconv.FormatInt(at.UnixMicro(), 10) + "_" + id.String()
+}
+
+func parseNotificationCursor(s string) (time.Time, uuid.UUID, bool) {
+	us, idStr, ok := strings.Cut(s, "_")
+	if !ok {
+		return time.Time{}, uuid.Nil, false
+	}
+	micro, err := strconv.ParseInt(us, 10, 64)
+	if err != nil {
+		return time.Time{}, uuid.Nil, false
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return time.Time{}, uuid.Nil, false
+	}
+	return time.UnixMicro(micro), id, true
+}
+
+// ListNotificationsPage is the page «Все уведомления» (#3049):
+// `GET /notifications/page?filter=&cursor=&limit=` answers
+// `{items, next_cursor}`. next_cursor is null on the last page. The filter is
+// applied here, not by the client, so a page of mentions is a page of mentions
+// however many assignments came in between.
+//
+// The bare `GET /notifications` stays as it was — the newest 50, as an array —
+// because the Android client and the bell read it that way.
+func (h *API) ListNotificationsPage(c *gin.Context) {
+	filter := c.DefaultQuery("filter", "all")
+	if !notificationFilters[filter] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неизвестный фильтр: " + filter})
+		return
+	}
+	limit := notificationPageDefault
+	if s := c.Query("limit"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "limit — целое число больше нуля"})
+			return
+		}
+		limit = min(n, notificationPageMax)
+	}
+	params := db.ListNotificationsPageParams{
+		UserID: middleware.CurrentUser(c), Filter: filter, Lim: int32(limit + 1),
+	}
+	if s := c.Query("cursor"); s != "" {
+		at, id, ok := parseNotificationCursor(s)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "неверный курсор"})
+			return
+		}
+		params.BeforeAt, params.BeforeID = &at, &id
+	}
+	rows, err := h.q.ListNotificationsPage(c, params)
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"count": n})
+	// One row past the page says whether there is a next one, without a count.
+	var next *string
+	if len(rows) > limit {
+		rows = rows[:limit]
+		last := rows[limit-1]
+		cur := notificationCursor(last.CreatedAt, last.ID)
+		next = &cur
+	}
+	c.JSON(http.StatusOK, gin.H{"items": orEmpty(rows), "next_cursor": next})
+}
+
+// UnreadNotificationCount returns the current user's unread notification count,
+// and (#3049) the same count per filter of the feed, for the counters on its
+// tabs — `count` keeps its meaning for the clients that read only it.
+func (h *API) UnreadNotificationCount(c *gin.Context) {
+	n, err := h.q.CountUnreadNotificationsByGroup(c, middleware.CurrentUser(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"count": n.Total, "by_group": gin.H{
+		"mentions": n.Mentions, "assigned": n.Assigned, "gitlab": n.Gitlab,
+	}})
 }
 
 // MarkNotificationRead marks a single notification read.

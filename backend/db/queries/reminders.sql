@@ -1,6 +1,7 @@
 -- name: CreateReminder :one
-INSERT INTO reminders (user_id, task_id, remind_at, message, body, workspace_id)
-VALUES ($1, $2, $3, $4, $5, $6)
+-- client_id (#3042): see CreateNote.
+INSERT INTO reminders (id, user_id, task_id, remind_at, message, body, workspace_id, tags, mentions)
+VALUES (COALESCE(sqlc.narg(client_id)::uuid, gen_random_uuid()), $1, $2, $3, $4, $5, $6, @tags::text[], @mentions::uuid[])
 RETURNING *;
 
 -- InboxReminders is the reminder half of the «Входящие» feed (#2972): the
@@ -39,6 +40,8 @@ SET remind_at    = @remind_at,
     task_id      = @task_id,
     workspace_id = @workspace_id,
     snoozed_from = @snoozed_from,
+    tags         = @tags::text[],
+    mentions     = @mentions::uuid[],
     done_at      = CASE WHEN NOT @done::boolean THEN NULL
                         WHEN done THEN done_at
                         ELSE now() END,

@@ -22,6 +22,23 @@ const (
 	maxDocTemplateDesc  = 500
 )
 
+// docTemplateCategories are the gallery's sections (#3045, mockup TemplatesWin):
+// Спринт · Продукт · Инженерия · Встречи. "" is «без категории» — such a template
+// is still in «Все». «Мои шаблоны» is not a category: it is author_id, so a
+// template cannot be filed into somebody else's «Мои». The set mirrors the CHECK
+// of migration 0090; validating here turns a typo into a 400 rather than a 500.
+var docTemplateCategories = map[string]bool{
+	"": true, "sprint": true, "product": true, "engineering": true, "meetings": true,
+}
+
+func validDocTemplateCategory(c *gin.Context, cat string) bool {
+	if docTemplateCategories[cat] {
+		return true
+	}
+	c.JSON(http.StatusBadRequest, gin.H{"error": "unknown template category"})
+	return false
+}
+
 // documentTemplateView ships content as JSON rather than the []byte sqlc scans
 // jsonb into, mirroring documentView.
 type documentTemplateView struct {
@@ -68,11 +85,15 @@ func (h *API) CreateDocumentTemplate(c *gin.Context) {
 		Title       string          `json:"title"`
 		Description string          `json:"description"`
 		Icon        string          `json:"icon"`
+		Category    string          `json:"category"`
 		Content     json.RawMessage `json:"content"`
 		DocumentID  *uuid.UUID      `json:"document_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if !validDocTemplateCategory(c, req.Category) {
 		return
 	}
 	count, err := h.q.CountDocumentTemplates(c, wsID)
@@ -128,6 +149,7 @@ func (h *API) CreateDocumentTemplate(c *gin.Context) {
 		Icon:        req.Icon,
 		Content:     clean,
 		Preview:     preview,
+		Category:    req.Category,
 	})
 	if err != nil {
 		fail(c, err)
@@ -146,7 +168,8 @@ func (h *API) GetDocumentTemplate(c *gin.Context) {
 	c.JSON(http.StatusOK, viewDocumentTemplate(tpl))
 }
 
-// UpdateDocumentTemplate edits the gallery card: title, description, icon. The
+// UpdateDocumentTemplate edits the gallery card: title, description, icon and
+// the category it is filed under (#3045). The
 // body is not editable here — a template whose content needs work is opened as
 // a document and saved again, which keeps one editing surface instead of two.
 func (h *API) UpdateDocumentTemplate(c *gin.Context) {
@@ -158,6 +181,7 @@ func (h *API) UpdateDocumentTemplate(c *gin.Context) {
 		Title       *string `json:"title"`
 		Description *string `json:"description"`
 		Icon        *string `json:"icon"`
+		Category    *string `json:"category"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -168,6 +192,7 @@ func (h *API) UpdateDocumentTemplate(c *gin.Context) {
 		Title:       tpl.Title,
 		Description: tpl.Description,
 		Icon:        tpl.Icon,
+		Category:    tpl.Category,
 	}
 	if req.Title != nil {
 		if *req.Title == "" {
@@ -181,6 +206,12 @@ func (h *API) UpdateDocumentTemplate(c *gin.Context) {
 	}
 	if req.Icon != nil {
 		next.Icon = *req.Icon
+	}
+	if req.Category != nil {
+		if !validDocTemplateCategory(c, *req.Category) {
+			return
+		}
+		next.Category = *req.Category
 	}
 	updated, err := h.q.UpdateDocumentTemplateMeta(c, next)
 	if err != nil {

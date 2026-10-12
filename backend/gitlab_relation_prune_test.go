@@ -103,7 +103,9 @@ func TestGitlabRelationsOutsideDeltaSurvive(t *testing.T) {
 	triggerSync(t, c, s.WS, integID)
 	waitSyncRuns(t, c, s.WS, 1)
 
-	tasks := c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	// A finished run is not proof the import landed: under load the first run
+	// to finish was seen with the board still empty (#3123). Wait for the tasks.
+	tasks := waitBoardTaskCount(t, c, s.Board, 3)
 	a := taskByIid(t, tasks, 1)["id"].(string)
 	b := taskByIid(t, tasks, 2)["id"].(string)
 
@@ -125,5 +127,18 @@ func TestGitlabRelationsOutsideDeltaSurvive(t *testing.T) {
 	}
 	if r := c.get("/tasks/" + a + "/relations"); r.Status != http.StatusOK {
 		t.Fatalf("relations read: status %d", r.Status)
+	}
+}
+
+// waitBoardTaskCount polls a board until it lists at least n tasks.
+func waitBoardTaskCount(t *testing.T, c *client, boardID string, n int) []map[string]any {
+	t.Helper()
+	deadline := time.Now().Add(15 * time.Second)
+	for {
+		tasks := c.get("/boards/" + boardID + "/tasks").listBody(t)
+		if len(tasks) >= n || time.Now().After(deadline) {
+			return tasks
+		}
+		time.Sleep(100 * time.Millisecond)
 	}
 }

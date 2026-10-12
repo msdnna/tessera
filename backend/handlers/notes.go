@@ -59,15 +59,30 @@ func (h *API) CreateNote(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Title      string     `json:"title" binding:"required"`
-		Body       string     `json:"body"`
-		ProjectID  *uuid.UUID `json:"project_id"`
-		TaskID     *uuid.UUID `json:"task_id"`
-		Visibility *string    `json:"visibility"`
+		Title      string      `json:"title" binding:"required"`
+		Body       string      `json:"body"`
+		ProjectID  *uuid.UUID  `json:"project_id"`
+		TaskID     *uuid.UUID  `json:"task_id"`
+		Visibility *string     `json:"visibility"`
+		Tags       []string    `json:"tags"`
+		Mentions   []uuid.UUID `json:"mentions"`
+		// ClientID (#3042): the id the client gave a capture queued offline.
+		ClientID *uuid.UUID `json:"client_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	if req.ClientID != nil {
+		// A resend of a capture that already landed: answer with it, no twin.
+		if prev, err := h.q.GetNote(c, *req.ClientID); err == nil {
+			if prev.AuthorID == nil || *prev.AuthorID != middleware.CurrentUser(c) || prev.WorkspaceID != wsID {
+				c.JSON(http.StatusConflict, gin.H{"error": "client_id taken"})
+				return
+			}
+			c.JSON(http.StatusOK, prev)
+			return
+		}
 	}
 	visibility := noteShared
 	if req.Visibility != nil {
@@ -86,8 +101,17 @@ func (h *API) CreateNote(c *gin.Context) {
 	if req.TaskID != nil && !h.taskInWorkspace(c, *req.TaskID, wsID) {
 		return
 	}
+	tags, ok := normalizeRecordTags(c, req.Tags)
+	if !ok {
+		return
+	}
+	mentions, ok := h.recordMentions(c, &wsID, req.Mentions)
+	if !ok {
+		return
+	}
 	uid := middleware.CurrentUser(c)
 	note, err := h.q.CreateNote(c, db.CreateNoteParams{
+		ClientID:    req.ClientID,
 		WorkspaceID: wsID,
 		ProjectID:   req.ProjectID,
 		AuthorID:    &uid,
@@ -96,12 +120,15 @@ func (h *API) CreateNote(c *gin.Context) {
 		Slug:        h.uniqueNoteSlug(c, wsID, req.Title),
 		TaskID:      req.TaskID,
 		Visibility:  visibility,
+		Tags:        h.canonRecordTags(c, h.noteProjectID(c, req.TaskID, req.ProjectID), tags),
+		Mentions:    mentions,
 	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
 	h.broadcastNote(note, "note.created", note)
+	h.notifyNoteMentions(c, note, nil)
 	c.JSON(http.StatusCreated, note)
 }
 
@@ -144,6 +171,10 @@ func (h *API) UpdateNote(c *gin.Context) {
 		Body       string          `json:"body"`
 		TaskID     json.RawMessage `json:"task_id"`
 		Visibility *string         `json:"visibility"`
+		// Absent (or null) keeps the current tags / mentions: the older
+		// clients (Android) send title and body only.
+		Tags     *[]string    `json:"tags"`
+		Mentions *[]uuid.UUID `json:"mentions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -169,8 +200,27 @@ func (h *API) UpdateNote(c *gin.Context) {
 		}
 		visibility = *req.Visibility
 	}
+	tags := note.Tags
+	if req.Tags != nil {
+		if tags, ok = normalizeRecordTags(c, *req.Tags); !ok {
+			return
+		}
+	}
+	mentions := note.Mentions
+	if req.Mentions != nil {
+		if mentions, ok = h.recordMentions(c, &note.WorkspaceID, *req.Mentions); !ok {
+			return
+		}
+	}
+	if mentions == nil {
+		mentions = []uuid.UUID{}
+	}
+	// Re-read against the project every time: a note tied to another task may
+	// now live in a project that spells (or has) the tag differently.
+	tags = h.canonRecordTags(c, h.noteProjectID(c, taskID, note.ProjectID), tags)
 	updated, err := h.q.UpdateNote(c, db.UpdateNoteParams{
 		ID: note.ID, Title: req.Title, Body: req.Body, TaskID: taskID, Visibility: visibility,
+		Tags: tags, Mentions: mentions,
 	})
 	if err != nil {
 		fail(c, err)
@@ -182,6 +232,11 @@ func (h *API) UpdateNote(c *gin.Context) {
 		h.broadcast(note.WorkspaceID, "note.deleted", gin.H{"id": note.ID})
 	}
 	h.broadcastNote(updated, "note.updated", updated)
+	var before []uuid.UUID
+	if note.Visibility == noteShared {
+		before = note.Mentions
+	}
+	h.notifyNoteMentions(c, updated, before)
 	c.JSON(http.StatusOK, updated)
 }
 

@@ -40,6 +40,13 @@ data class TaskDetail(
     @SerializedName("subtasks") private val subtasksRaw: List<Task>? = null,
     // GitLab provenance — present when this task mirrors a GitLab issue.
     @SerializedName("gitlab") val gitlab: GitlabLink? = null,
+    // Who hears about the task (#2963): the author, the assignees and the
+    // commenters unless they unfollowed, plus whoever followed it; `subscribed` —
+    // whether the viewer is among them.
+    @SerializedName("subscribers") private val subscribersRaw: List<AssigneeUser>? = null,
+    @SerializedName("subscribed") val subscribed: Boolean = false,
+    // Merge requests working on the task (#2964) — «Разработка». Read-only here.
+    @SerializedName("code_links") private val codeLinksRaw: List<CodeLink>? = null,
 ) {
     val isCompleted: Boolean get() = completedAt != null
     val isArchived: Boolean get() = archivedAt != null
@@ -47,7 +54,32 @@ data class TaskDetail(
     val assignees: List<AssigneeUser> get() = assigneesRaw.orEmpty()
     val gitlabAssignees: List<GitlabAssignee> get() = gitlabAssigneesRaw.orEmpty()
     val subtasks: List<Task> get() = subtasksRaw.orEmpty()
+    val subscribers: List<AssigneeUser> get() = subscribersRaw.orEmpty()
+    val codeLinks: List<CodeLink> get() = codeLinksRaw.orEmpty()
 }
+
+/** Body of `PUT /tasks/:id/subscription` (#2963). */
+data class SetSubscriptionRequest(@SerializedName("subscribed") val subscribed: Boolean)
+
+/**
+ * A code change linked to the task (#2964) — today a GitLab merge request. The
+ * backend serves it provider-neutral: `state` is open | merged | closed, `ci_status`
+ * the latest CI run ('' | success | running | failed | canceled | manual).
+ */
+data class CodeLink(
+    @SerializedName("provider") val provider: String = "",
+    @SerializedName("kind") val kind: String = "",
+    @SerializedName("number") val number: Long = 0,
+    @SerializedName("repo") val repo: String = "",
+    @SerializedName("url") val url: String = "",
+    @SerializedName("title") val title: String = "",
+    @SerializedName("state") val state: String = "open",
+    @SerializedName("draft") val draft: Boolean = false,
+    @SerializedName("source_branch") val sourceBranch: String = "",
+    @SerializedName("target_branch") val targetBranch: String = "",
+    @SerializedName("ci_status") val ciStatus: String = "",
+    @SerializedName("ci_url") val ciUrl: String = "",
+)
 
 /** A task assignee — mirrors `ListTaskAssigneesRow`. */
 data class AssigneeUser(
@@ -187,6 +219,10 @@ data class TaskEventData(
     @SerializedName("failed") val failed: List<String>? = null,
     /** Provider that wrote the entry — `user`/`gitlab`, see `util/Sources.kt`. */
     @SerializedName("source") val source: String? = null,
+    /** A merge request's number, state and branch — `code_change` (#2964). */
+    @SerializedName("number") val number: Long? = null,
+    @SerializedName("state") val state: String? = null,
+    @SerializedName("branch") val branch: String? = null,
 )
 
 /** `{ "url": "/api/uploads/<uuid>.<ext>" }` from `POST /api/uploads`. */

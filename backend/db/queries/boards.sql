@@ -206,3 +206,11 @@ DELETE FROM column_deletion_moves WHERE column_id = $1;
 
 -- name: PurgeDeletedColumns :execrows
 DELETE FROM board_columns WHERE deleted_at IS NOT NULL AND deleted_at < sqlc.arg(cutoff)::timestamptz;
+
+-- name: GetLiveBoardWorkspace :one
+-- Presence on a board (#3116): the workspace a live board belongs to — the
+-- socket may only announce itself on a board of a workspace in its scope.
+SELECT p.workspace_id
+FROM boards b
+JOIN projects p ON p.id = b.project_id
+WHERE b.id = $1 AND b.deleted_at IS NULL;

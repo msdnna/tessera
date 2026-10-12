@@ -1,17 +1,17 @@
 <script setup>
 import { computed } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopover } from 'naive-ui'
-import { EyeOutline } from '@vicons/ionicons5'
+import { NPopover } from 'naive-ui'
 import { useBoardViewStore } from '@/stores/boardView'
-import { stubTask } from '@/utils/featureStubs'
+import { useAuthStore } from '@/stores/auth'
 import UserAvatar from './UserAvatar.vue'
 
 // The people of this board, as a cascade in the sub-toolbar (v2, #2954, #3112):
 // the members who have tasks on it — assignees of the loaded tasks — the busiest
 // first; three avatars and «+N», the list «На доске · N» with roles and task
-// counts on hover. No task with an assignee — no cascade. Who is looking at the
-// board right now is a stub until #3116.
+// counts on hover. Who is looking at the board right now (#3116, board.presence)
+// comes first, with a green dot; nobody with tasks and nobody else here — no
+// cascade.
 const props = defineProps({
   // The board's loaded tasks (subtasks included).
   tasks: { type: Array, default: () => [] },
@@ -20,7 +20,16 @@ const store = useBoardViewStore()
 const { t } = useI18n()
 const SHOWN = 3
 const ROLE_ORDER = { owner: 0, admin: 1, member: 2 }
-const presenceStub = stubTask('board.presence')
+const auth = useAuthStore()
+
+// The others on this board now (me excluded — I know I'm here), as members.
+const watching = computed(() => {
+  const p = store.present
+  if (!p.boardId || p.boardId !== store.boardId) return []
+  const byId = new Map(store.membersList.map((m) => [m.user_id, m]))
+  return p.userIds.filter((id) => id !== auth.user?.id && byId.has(id)).map((id) => byId.get(id))
+})
+const watchingIds = computed(() => new Set(watching.value.map((m) => m.user_id)))
 
 const counts = computed(() => {
   const out = new Map()
@@ -39,51 +48,62 @@ const members = computed(() =>
         (a.name || '').localeCompare(b.name || ''),
     ),
 )
-const shown = computed(() => members.value.slice(0, SHOWN))
-const extra = computed(() => Math.max(0, members.value.length - SHOWN))
+// The cascade: who is here first, then the busiest of the rest.
+const cascade = computed(() => [
+  ...watching.value,
+  ...members.value.filter((m) => !watchingIds.value.has(m.user_id)),
+])
+const shown = computed(() => cascade.value.slice(0, SHOWN))
+const extra = computed(() => Math.max(0, cascade.value.length - SHOWN))
 const roleLabel = (r) => (r && ROLE_ORDER[r] !== undefined ? t(`shell.members.${r}`) : '')
 </script>
 
 <template>
   <!-- A real root, so the sub-toolbar's class (its place in the row) lands on
        an element rather than on the popover's fragment. -->
-  <div v-if="members.length" class="bm-root">
+  <div v-if="cascade.length" class="bm-root">
     <n-popover trigger="hover" placement="bottom-end" :delay="300" :show-arrow="false" raw>
       <template #trigger>
         <div class="bm" data-testid="board-members">
-          <UserAvatar
+          <span
             v-for="m in shown"
             :key="m.user_id"
-            class="bm-ava"
-            :user-id="m.user_id"
-            :name="m.name"
-          />
+            class="bm-slot"
+            :class="{ here: watchingIds.has(m.user_id) }"
+            :data-here="watchingIds.has(m.user_id) || undefined"
+          >
+            <UserAvatar class="bm-ava" :user-id="m.user_id" :name="m.name" />
+          </span>
           <span v-if="extra" class="bm-ava bm-more">+{{ extra }}</span>
         </div>
       </template>
       <div class="bm-list" data-testid="board-members-list">
-        <div class="bm-head">
+        <template v-if="watching.length">
+          <div class="bm-head">
+            <span>{{ t('board.members.watching', { count: watching.length }) }}</span>
+          </div>
+          <div class="bm-rows" data-testid="board-members-presence">
+            <div v-for="m in watching" :key="m.user_id" class="bm-row">
+              <span class="bm-slot here">
+                <UserAvatar class="bm-ava sm" :user-id="m.user_id" :name="m.name" />
+              </span>
+              <span class="bm-name">{{ m.name }}</span>
+              <span class="bm-role">{{ roleLabel(m.role) }}</span>
+            </div>
+          </div>
+          <div v-if="members.length" class="bm-gap" />
+        </template>
+        <div v-if="members.length" class="bm-head">
           <span>{{ t('board.members.title', { count: members.length }) }}</span>
           <span class="bm-head-aside">{{ t('board.members.tasks') }}</span>
         </div>
-        <div class="bm-rows">
+        <div v-if="members.length" class="bm-rows">
           <div v-for="m in members" :key="m.user_id" class="bm-row">
             <UserAvatar class="bm-ava sm" :user-id="m.user_id" :name="m.name" />
             <span class="bm-name">{{ m.name }}</span>
             <span class="bm-role">{{ roleLabel(m.role) }}</span>
             <span class="bm-n">{{ m.tasks }}</span>
           </div>
-        </div>
-        <div class="bm-gap" />
-        <div
-          class="bm-row bm-stub"
-          aria-disabled="true"
-          :title="t('common.stub.soon', { n: presenceStub })"
-          data-testid="board-members-presence"
-        >
-          <n-icon :component="EyeOutline" :size="16" class="bm-stub-ic" />
-          <span class="bm-name">{{ t('board.members.watching') }}</span>
-          <span class="bm-soon">{{ t('common.stub.soon', { n: presenceStub }) }}</span>
         </div>
       </div>
     </n-popover>
@@ -178,7 +198,7 @@ const roleLabel = (r) => (r && ROLE_ORDER[r] !== undefined ? t(`shell.members.${
   padding: 0 10px;
   border-radius: 7px;
 }
-.bm-row:not(.bm-stub):hover {
+.bm-row:hover {
   background: var(--t-hover);
 }
 .bm-name {
@@ -205,16 +225,23 @@ const roleLabel = (r) => (r && ROLE_ORDER[r] !== undefined ? t(`shell.members.${
 .bm-gap {
   height: 4px;
 }
-.bm-stub {
-  cursor: not-allowed;
+.bm-slot {
+  position: relative;
+  display: inline-flex;
 }
-.bm-stub .bm-name,
-.bm-stub-ic {
-  color: var(--t-placeholder);
+/* On the board right now (#3116): a green dot at the avatar's corner. */
+.bm-slot.here::after {
+  content: '';
+  position: absolute;
+  right: -1px;
+  bottom: -1px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #18a058;
+  box-shadow: 0 0 0 2px var(--t-bg);
 }
-.bm-soon {
-  font-size: 11.5px;
-  color: var(--t-text3);
-  white-space: nowrap;
+.bm-rows .bm-slot.here::after {
+  box-shadow: 0 0 0 2px var(--t-pop);
 }
 </style>

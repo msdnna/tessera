@@ -176,6 +176,10 @@ interface ApiService {
     @DELETE("workspaces/{id}")
     suspend fun deleteWorkspace(@Path("id") id: String)
 
+    /** What deleting the workspace takes with it — for the confirmation (#3014). */
+    @GET("workspaces/{id}/counts")
+    suspend fun workspaceCounts(@Path("id") id: String): website.msdnna.tessera.data.model.DeleteCounts
+
     // ── Project groups ──────────────────────────────────────────────────────
     @GET("workspaces/{id}/groups")
     suspend fun groups(@Path("id") workspaceId: String): List<ProjectGroup>?
@@ -214,6 +218,10 @@ interface ApiService {
     @DELETE("projects/{id}")
     suspend fun deleteProject(@Path("id") projectId: String)
 
+    /** What deleting the project takes with it — for the confirmation (#3014). */
+    @GET("projects/{id}/counts")
+    suspend fun projectCounts(@Path("id") projectId: String): website.msdnna.tessera.data.model.DeleteCounts
+
     @POST("projects/{id}/transfer")
     suspend fun transferProject(
         @Path("id") projectId: String,
@@ -235,6 +243,22 @@ interface ApiService {
 
     @DELETE("boards/{id}")
     suspend fun deleteBoard(@Path("id") boardId: String)
+
+    // Favourite boards (#3115): the caller's own, per workspace.
+    @GET("workspaces/{id}/favorites")
+    suspend fun favorites(@Path("id") workspaceId: String): List<website.msdnna.tessera.data.model.BoardFavorite>?
+
+    @PUT("boards/{id}/favorite")
+    suspend fun addFavorite(@Path("id") boardId: String): website.msdnna.tessera.data.model.BoardFavorite
+
+    @DELETE("boards/{id}/favorite")
+    suspend fun removeFavorite(@Path("id") boardId: String)
+
+    @PATCH("boards/{id}/favorite/move")
+    suspend fun moveFavorite(
+        @Path("id") boardId: String,
+        @Body body: website.msdnna.tessera.data.model.FavoriteMoveRequest,
+    ): website.msdnna.tessera.data.model.BoardFavorite
 
     @GET("boards/{id}/columns")
     suspend fun columns(@Path("id") boardId: String): List<BoardColumn>?
@@ -263,6 +287,14 @@ interface ApiService {
     // ── Tasks ───────────────────────────────────────────────────────────────
     @GET("tasks/{id}")
     suspend fun task(@Path("id") taskId: String): TaskDetail
+
+    // Follow / unfollow a task (#2963). The answer carries the new list too, but
+    // the modal re-reads the detail anyway, so it is not parsed here.
+    @PUT("tasks/{id}/subscription")
+    suspend fun setTaskSubscription(
+        @Path("id") taskId: String,
+        @Body body: website.msdnna.tessera.data.model.SetSubscriptionRequest,
+    )
 
     // milestone: <uuid> shows one sprint, "backlog" shows milestone-less tasks,
     // null shows all (server-side sprint scope — for large GitLab imports).
@@ -305,8 +337,17 @@ interface ApiService {
     @PATCH("tasks/{id}/archive")
     suspend fun archiveTask(@Path("id") taskId: String)
 
+    /** Puts the task (and its subtasks) in the board's trash (#3004) — kept 30 days. */
     @DELETE("tasks/{id}")
     suspend fun deleteTask(@Path("id") taskId: String)
+
+    /** The undo of [deleteTask]: back from the trash. POST — the archive's restore is PATCH. */
+    @POST("tasks/{id}/restore")
+    suspend fun untrashTask(@Path("id") taskId: String)
+
+    /** Deletes a task that is already in the trash for good. */
+    @DELETE("tasks/{id}/purge")
+    suspend fun purgeTask(@Path("id") taskId: String)
 
     @POST("tasks/{id}/tags")
     suspend fun addTaskTag(@Path("id") taskId: String, @Body body: AddTagRequest)
@@ -373,6 +414,12 @@ interface ApiService {
 
     @DELETE("milestones/{id}")
     suspend fun deleteMilestone(@Path("id") milestoneId: String)
+
+    /** Re-send a stage write GitLab refused («повторить», #3010). */
+    @POST("milestones/{id}/gitlab/sync")
+    suspend fun retryMilestoneGitlab(
+        @Path("id") milestoneId: String,
+    ): website.msdnna.tessera.data.model.Milestone
 
     @POST("tasks/{id}/milestone")
     suspend fun setTaskMilestone(
@@ -455,6 +502,29 @@ interface ApiService {
 
     @DELETE("workspaces/{id}/members/{userId}")
     suspend fun removeMember(@Path("id") workspaceId: String, @Path("userId") userId: String)
+
+    // ── members v2 (#3063): ownership, leaving, access requests ──
+    @POST("workspaces/{id}/owner")
+    suspend fun transferOwner(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.TransferOwnerRequest,
+    )
+
+    @POST("workspaces/{id}/leave")
+    suspend fun leaveWorkspace(@Path("id") workspaceId: String)
+
+    @GET("workspaces/{id}/access-requests")
+    suspend fun accessRequests(@Path("id") workspaceId: String): List<website.msdnna.tessera.data.model.AccessRequest>?
+
+    @POST("workspaces/{id}/access-requests/{reqId}/approve")
+    suspend fun approveAccess(
+        @Path("id") workspaceId: String,
+        @Path("reqId") reqId: String,
+        @Body body: RoleUpdate,
+    )
+
+    @POST("workspaces/{id}/access-requests/{reqId}/decline")
+    suspend fun declineAccess(@Path("id") workspaceId: String, @Path("reqId") reqId: String)
 
     // ── invitations (U2) ──
     @GET("workspaces/{id}/invitations")
@@ -1105,7 +1175,16 @@ interface ApiService {
         @Path("id") conferenceId: String,
         @Part("body") body: okhttp3.RequestBody,
         @Part files: List<MultipartBody.Part>,
+        // One `mentions` part per mentioned member (#3055); empty sends none.
+        @Part("mentions") mentions: List<@JvmSuppressWildcards okhttp3.RequestBody> = emptyList(),
     ): website.msdnna.tessera.data.model.ConferenceMessage
+
+    /** «/задача» in the chat (#3055): the task and the chat line, in one request. */
+    @POST("conferences/{id}/tasks")
+    suspend fun createConferenceTask(
+        @Path("id") conferenceId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateConferenceTaskRequest,
+    ): website.msdnna.tessera.data.model.ConferenceTaskCreated
 
     @DELETE("conference-messages/{id}")
     suspend fun deleteConferenceMessage(@Path("id") messageId: String)

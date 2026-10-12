@@ -4,6 +4,7 @@ import (
 	"context"
 	"time"
 
+	"tessera/internal/jobs"
 	"tessera/internal/observability"
 )
 
@@ -24,17 +25,37 @@ const (
 // intervalSec must match each worker's actual ticker so the UI's next-run estimate
 // is correct.
 var backgroundWorkers = []struct {
-	key, name   string
-	intervalSec int
+	key, name, typ string
+	intervalSec    int
 }{
-	{jobGitlabSyncCron, "Автосинхронизация GitLab", 30},
-	{jobGitlabWebhookCron, "Синхронизация GitLab по вебхуку", 1},
-	{jobGitlabWriteback, "Выгрузка изменений в GitLab", 10},
-	{jobNotifyDelivery, "Доставка уведомлений", 10},
-	{jobNotifyScanner, "Сканирование сроков и напоминаний", 60},
-	{jobRecurrence, "Повторяющиеся задачи", 60},
-	{jobConfRecordings, "Записи конференций", 60},
-	{jobTrashPurge, "Уборка удалённого", 600},
+	{jobGitlabSyncCron, "Автосинхронизация GitLab", jobs.TypeGitlab, 30},
+	{jobGitlabWebhookCron, "Синхронизация GitLab по вебхуку", jobs.TypeGitlab, 1},
+	{jobGitlabWriteback, "Выгрузка изменений в GitLab", jobs.TypeGitlab, 10},
+	{jobNotifyDelivery, "Доставка уведомлений", jobs.TypeNotify, 10},
+	{jobNotifyScanner, "Сканирование сроков и напоминаний", jobs.TypeNotify, 60},
+	{jobRecurrence, "Повторяющиеся задачи", jobs.TypeMaintenance, 60},
+	{jobConfRecordings, "Записи конференций", jobs.TypeMaintenance, 60},
+	{jobTrashPurge, "Уборка удалённого", jobs.TypeMaintenance, 600},
+}
+
+// workerType names a worker's job family (for its on-demand runs' history).
+func workerType(key string) string {
+	for _, w := range backgroundWorkers {
+		if w.key == key {
+			return w.typ
+		}
+	}
+	return jobs.TypeMaintenance
+}
+
+// workerName is a worker's rendered fallback name.
+func workerName(key string) string {
+	for _, w := range backgroundWorkers {
+		if w.key == key {
+			return w.name
+		}
+	}
+	return key
 }
 
 // RegisterBackgroundWorkers records the tick-loop workers as heartbeat entries so
@@ -42,7 +63,7 @@ var backgroundWorkers = []struct {
 // last-tick via jobs.Tick as it loops). Call once before starting the workers.
 func (h *API) RegisterBackgroundWorkers() {
 	for _, w := range backgroundWorkers {
-		h.jobs.RegisterWorker(w.key, w.name, w.intervalSec)
+		h.jobs.RegisterWorkerType(w.key, w.name, w.typ, w.intervalSec)
 	}
 }
 
@@ -71,7 +92,7 @@ var workerOps = map[string]string{
 	opDueScan:        "проверка сроков и напоминаний",
 	opRecurrence:     "продвижение повторяющихся задач",
 	opRecordingSweep: "проверка записей конференций и уборка по сроку",
-	opTrashPurge:     "окончательное удаление досок и колонок после срока отмены",
+	opTrashPurge:     "окончательное удаление досок и колонок (через сутки), задач и документов из корзины (через 30 дней), уборка старых адресов проектов, истории фоновых заданий (через 30 дней) и файлов экспорта (через 7 дней)",
 }
 
 // tick refreshes a worker's heartbeat; a thin wrapper so worker loops don't import

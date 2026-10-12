@@ -11,12 +11,13 @@ import {
 } from '@vicons/ionicons5'
 import { tasks as tasksApi } from '@/api'
 import { useUndoStore } from '@/stores/undo'
+import { deleteTask } from '@/utils/taskTrash'
 
 // The «⋯» of the task modal's head (#3112): GitLab, the side panel, then the
 // task's archive and delete — rows for kit/ActionMenu (TaskModalHeader draws
 // them). «В архив» happens at once and closes the modal, its undo in a toast;
-// a task with subtasks asks what to do with them in a submenu. «Удалить» is
-// permanent: a two-step row.
+// a task with subtasks asks what to do with them in a submenu. «Удалить» sends
+// it to the board's trash (#3004) the same way, with its own undo toast.
 //
 //   task             ref of the open task
 //   readonly         getter — the archive view: «Вернуть из архива» instead
@@ -25,6 +26,7 @@ import { useUndoStore } from '@/stores/undo'
 export function useTaskModalMenu({
   task,
   readonly,
+  restorable,
   wide,
   paneHidden,
   togglePane,
@@ -54,7 +56,10 @@ export function useTaskModalMenu({
         icon: paneHidden() ? EyeOutline : EyeOffOutline,
       })
     if (readonly()) {
-      out.push({ key: 'restore', label: t('task.action.restore'), icon: ArrowUndoOutline })
+      // Only the task's own archive has a «Вернуть»; an archived project (#3005)
+      // is restored from its own window.
+      if (restorable?.() ?? true)
+        out.push({ key: 'restore', label: t('task.action.restore'), icon: ArrowUndoOutline })
       return out
     }
     if (out.length) out.push({ gap: true })
@@ -76,13 +81,7 @@ export function useTaskModalMenu({
             ],
           }
         : { key: 'archive', label: t('task.action.archive'), icon: ArchiveOutline },
-      {
-        key: 'delete',
-        label: t('task.action.delete'),
-        icon: TrashOutline,
-        danger: true,
-        confirm: { title: t('task.menu.deleteArmed'), sub: t('task.menu.deleteArmedSub') },
-      },
+      { key: 'delete', label: t('task.action.delete'), icon: TrashOutline, danger: true },
     )
     return out
   })
@@ -108,10 +107,12 @@ export function useTaskModalMenu({
     })
   }
 
+  // «Удалить» sends the task to the board's trash (#3004) at once; the undo is
+  // in the toast, and the board's «Корзина» keeps it for 30 days.
   async function remove() {
+    const tk = task.value
     try {
-      await tasksApi.remove(task.value.id)
-      changed()
+      await deleteTask(tk, { onChanged: changed })
       close()
     } catch (e) {
       message.error(e.message)

@@ -13,8 +13,8 @@ import (
 )
 
 const inboxTaskChips = `-- name: InboxTaskChips :many
-SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title,
-       t.completed_at, t.due_date, t.column_id, b.name AS board_name,
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, p.id AS project_id,
+       t.number, t.title, t.completed_at, t.due_date, t.column_id, b.name AS board_name,
        bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
@@ -23,6 +23,7 @@ JOIN board_columns bc ON bc.id = t.column_id
 WHERE t.id = ANY($1::uuid[])
   AND p.workspace_id = $2
   AND b.deleted_at IS NULL
+  AND t.deleted_at IS NULL
 `
 
 type InboxTaskChipsParams struct {
@@ -35,6 +36,7 @@ type InboxTaskChipsRow struct {
 	BoardID       uuid.UUID  `json:"board_id"`
 	BoardSlug     string     `json:"board_slug"`
 	ProjectSlug   string     `json:"project_slug"`
+	ProjectID     uuid.UUID  `json:"project_id"`
 	Number        *int64     `json:"number"`
 	Title         string     `json:"title"`
 	CompletedAt   *time.Time `json:"completed_at"`
@@ -64,6 +66,7 @@ func (q *Queries) InboxTaskChips(ctx context.Context, arg InboxTaskChipsParams) 
 			&i.BoardID,
 			&i.BoardSlug,
 			&i.ProjectSlug,
+			&i.ProjectID,
 			&i.Number,
 			&i.Title,
 			&i.CompletedAt,
@@ -90,6 +93,7 @@ FROM boards b
 JOIN projects p ON p.id = b.project_id
 WHERE p.workspace_id = $1
   AND b.deleted_at IS NULL
+  AND p.archived_at IS NULL
   AND (b.name ILIKE '%' || $2 || '%' OR p.name ILIKE '%' || $2 || '%')
 ORDER BY (b.name ILIKE '%' || $2 || '%') DESC, p.name, b.position
 LIMIT 10
@@ -146,6 +150,7 @@ const searchDocuments = `-- name: SearchDocuments :many
 SELECT id, title, slug
 FROM documents
 WHERE workspace_id = $1
+  AND deleted_at IS NULL
   AND title ILIKE '%' || $2 || '%'
 ORDER BY updated_at DESC
 LIMIT 26
@@ -230,8 +235,8 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Sea
 const searchTasks = `-- name: SearchTasks :many
 
 
-SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at,
-       t.priority, t.column_id, b.name AS board_name, p.name AS project_name,
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, p.id AS project_id,
+       t.number, t.title, t.parent_id, t.completed_at, t.priority, t.column_id, b.name AS board_name, p.name AS project_name,
        bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color,
        m.title AS milestone_title
 FROM tasks t
@@ -241,7 +246,9 @@ JOIN board_columns bc ON bc.id = t.column_id
 LEFT JOIN milestones m ON m.id = t.milestone_id
 WHERE p.workspace_id = $1
   AND b.deleted_at IS NULL
+  AND p.archived_at IS NULL
   AND t.archived_at IS NULL
+  AND t.deleted_at IS NULL
   AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%'
        OR t.number = $3::bigint)
 ORDER BY (t.number = $3::bigint) DESC, t.number DESC
@@ -259,6 +266,7 @@ type SearchTasksRow struct {
 	BoardID        uuid.UUID  `json:"board_id"`
 	BoardSlug      string     `json:"board_slug"`
 	ProjectSlug    string     `json:"project_slug"`
+	ProjectID      uuid.UUID  `json:"project_id"`
 	Number         *int64     `json:"number"`
 	Title          string     `json:"title"`
 	ParentID       *uuid.UUID `json:"parent_id"`
@@ -311,6 +319,7 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Sea
 			&i.BoardID,
 			&i.BoardSlug,
 			&i.ProjectSlug,
+			&i.ProjectID,
 			&i.Number,
 			&i.Title,
 			&i.ParentID,

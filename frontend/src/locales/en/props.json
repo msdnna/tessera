@@ -51,7 +51,9 @@
     "invite": "Invite “{email}”",
     "inviteWhere": "“Members” window",
     "error": "Couldn't load the members",
-    "errorSub": "No connection to the server"
+    "errorSub": "No connection to the server",
+    "groups": "Groups",
+    "groupCount": "{n} member | {n} members"
   },
   "estimate": {
     "title": "Estimate",

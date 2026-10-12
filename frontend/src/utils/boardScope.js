@@ -44,3 +44,25 @@ export function withoutArchiveQuery(query) {
 export function isArchiveQuery(query) {
   return query?.archived === '1'
 }
+
+// The board's trash (#3004) is a panel over the board, not a scope: `?trash=1`
+// opens it (deep-linkable — the toast about a deleted task lands here, #3120),
+// `hl=<number>` lights one row up. Unlike the archive it keeps the sprint scope:
+// the board underneath does not change.
+export function isTrashQuery(query) {
+  return query?.trash === '1'
+}
+
+export function trashQuery(query, number = null) {
+  const q = { ...query, trash: '1' }
+  if (number != null) q.hl = String(number)
+  else delete q.hl
+  return q
+}
+
+export function withoutTrashQuery(query) {
+  const q = { ...query }
+  delete q.trash
+  delete q.hl
+  return q
+}

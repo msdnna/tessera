@@ -16,8 +16,11 @@ SELECT id FROM documents WHERE workspace_id = $1;
 -- has no "empty" state anyone could roll back to, and the version journal (D6)
 -- would otherwise record one.
 -- name: CreateDocument :one
-INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+--
+-- milestone_id and conference_id (#3044, #3046) are taken at birth so that
+-- «Повестка встречи» from the gallery is created already pinned to its meeting.
+INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview, milestone_id, conference_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
 RETURNING *;
 
 -- ListDocuments returns the workspace's documents as a flat list; the tree is
@@ -28,20 +31,26 @@ RETURNING *;
 -- name: ListDocuments :many
 SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
-WHERE workspace_id = $1
+WHERE workspace_id = $1 AND deleted_at IS NULL
 ORDER BY position, created_at;
 
 -- name: ListDocumentsByProject :many
 SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
-WHERE workspace_id = $1 AND project_id = $2
+WHERE workspace_id = $1 AND project_id = $2 AND deleted_at IS NULL
 ORDER BY position, created_at;
 
+-- GetDocument answers for live documents only: one in the trash (0086) is gone
+-- for every reader — its comments, versions, approvals and live room included.
+-- GetDocumentAny is for the trash's own restore and purge.
 -- name: GetDocument :one
+SELECT * FROM documents WHERE id = $1 AND deleted_at IS NULL;
+
+-- name: GetDocumentAny :one
 SELECT * FROM documents WHERE id = $1;
 
 -- name: GetDocumentBySlug :one
-SELECT * FROM documents WHERE workspace_id = $1 AND slug = $2;
+SELECT * FROM documents WHERE workspace_id = $1 AND slug = $2 AND deleted_at IS NULL;
 
 -- name: DocumentSlugExists :one
 SELECT EXISTS(SELECT 1 FROM documents WHERE workspace_id = $1 AND slug = $2);
@@ -53,7 +62,68 @@ WHERE id = $1
 RETURNING *;
 
 -- name: CountDocumentChildren :one
-SELECT count(*) FROM documents WHERE parent_id = $1;
+SELECT count(*) FROM documents WHERE parent_id = $1 AND deleted_at IS NULL;
+
+-- ListDeletedDocuments is the documents' «Корзина» (0086): every document that
+-- went there as an entry of its own — a root deleted with its subtree, or a
+-- nested one deleted alone. Documents that went with their root (same stamp)
+-- come back with it and are not listed. Newest first.
+-- name: ListDeletedDocuments :many
+SELECT d.id, d.workspace_id, d.project_id, d.parent_id, d.author_id, d.title, d.slug, d.icon,
+       d.preview, d.position, d.created_at, d.updated_at, d.deleted_at,
+       COALESCE(u.name, '')::text AS deleted_by_name,
+       (SELECT count(*) FROM documents s WHERE s.parent_id = d.id AND s.deleted_at = d.deleted_at)::bigint AS child_count
+FROM documents d
+LEFT JOIN users u ON u.id = d.deleted_by
+WHERE d.workspace_id = $1
+  AND d.deleted_at IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM documents p WHERE p.id = d.parent_id AND p.deleted_at = d.deleted_at)
+ORDER BY d.deleted_at DESC, d.title;
+
+-- SoftDeleteDocumentSubtree puts a document and every live document nested
+-- below it in the trash with one stamp — the RestoreTask trick: the restore
+-- gives back exactly what went in together. Returns the ids taken (their live
+-- rooms are dropped).
+-- name: SoftDeleteDocumentSubtree :many
+WITH RECURSIVE down AS (
+    SELECT a.id FROM documents a WHERE a.id = @id AND a.deleted_at IS NULL
+    UNION
+    SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id WHERE d.deleted_at IS NULL
+)
+UPDATE documents SET deleted_at = now(), deleted_by = sqlc.narg('deleted_by')::uuid
+WHERE id IN (SELECT id FROM down)
+RETURNING id;
+
+-- RestoreDocumentSubtree takes a document out of the trash with what went in
+-- with it. A root whose parent is still in the trash comes back at the top
+-- level (detach): under a parent nobody can see it would sit nowhere in the tree.
+-- updated_at is left alone — it is the content's optimistic-concurrency token.
+-- name: RestoreDocumentSubtree :many
+WITH RECURSIVE down AS (
+    SELECT a.id, a.deleted_at, a.deleted_at AS root_deleted_at
+    FROM documents a WHERE a.id = @id AND a.deleted_at IS NOT NULL
+    UNION
+    SELECT d.id, d.deleted_at, down.root_deleted_at
+    FROM documents d JOIN down ON d.parent_id = down.id
+), taken AS (
+    SELECT down.id FROM down WHERE down.deleted_at = down.root_deleted_at
+)
+UPDATE documents SET deleted_at = NULL, deleted_by = NULL,
+    parent_id = CASE WHEN documents.id = @id AND @detach::boolean THEN NULL ELSE documents.parent_id END
+WHERE documents.id IN (SELECT taken.id FROM taken)
+RETURNING documents.id;
+
+-- PurgeDeletedDocuments removes for good the documents that stayed in the trash
+-- past the cutoff, with everything nested below them — one statement, so the
+-- parent_id RESTRICT is checked against the end state (DeleteDocumentSubtree).
+-- Returns the ids for the image sweep.
+-- name: PurgeDeletedDocuments :many
+WITH RECURSIVE down AS (
+    SELECT a.id FROM documents a WHERE a.deleted_at IS NOT NULL AND a.deleted_at < @cutoff::timestamptz
+    UNION
+    SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id
+)
+DELETE FROM documents WHERE documents.id IN (SELECT id FROM down) RETURNING documents.id;
 
 -- DocumentAncestorIDs returns the document itself followed by its ancestors, up
 -- to the root. Used to reject re-parenting a document into its own subtree,
@@ -193,3 +263,68 @@ WHERE d.parent_id IS NOT NULL
       )
   AND d.workspace_id IS DISTINCT FROM
       (SELECT p.workspace_id FROM documents p WHERE p.id = d.parent_id);
+
+-- SetDocumentMilestone / SetDocumentConference pin a document to a stage (#3044)
+-- or to a meeting (#3046). Neither touches updated_at: it is the
+-- optimistic-concurrency token UpdateDocumentContent checks, and a chip in the
+-- head changing must not answer 409 to the next save of whoever is typing.
+-- name: SetDocumentMilestone :one
+UPDATE documents SET milestone_id = $2 WHERE id = $1 RETURNING *;
+
+-- name: SetDocumentConference :one
+UPDATE documents SET conference_id = $2 WHERE id = $1 RETURNING *;
+
+-- DocumentMilestoneRef is what the head's stage chip draws and links to: the
+-- stage, its state, and the project its page lives under.
+-- name: DocumentMilestoneRef :one
+SELECT m.id, m.title, m.slug, m.state, m.start_date, m.due_date, m.closed_at,
+       p.id AS project_id, p.name AS project_name, p.slug AS project_slug,
+       p.workspace_id
+FROM milestones m
+JOIN projects p ON p.id = m.project_id
+WHERE m.id = $1;
+
+-- ListMilestoneDocuments — the documents of a stage, for its page (#3044). The
+-- workspace filter is a backstop: the pin is checked at the door and severed on a
+-- transfer, and a list naming another team's document is the leak both exist for.
+-- name: ListMilestoneDocuments :many
+SELECT id, title, slug, icon, preview, updated_at
+FROM documents
+WHERE milestone_id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+ORDER BY updated_at DESC
+LIMIT 50;
+
+-- ListWorkspaceConferenceDocuments — every document pinned to a meeting of the
+-- workspace, in one read for the meetings list (an agenda chip per row) rather
+-- than a request per row.
+-- name: ListWorkspaceConferenceDocuments :many
+SELECT d.id, d.conference_id, d.title, d.slug, d.icon, d.created_at
+FROM documents d
+JOIN conferences c ON c.id = d.conference_id
+WHERE d.workspace_id = $1 AND c.workspace_id = $1 AND d.deleted_at IS NULL
+ORDER BY d.created_at;
+
+-- ClearDocumentMilestonesAcrossWorkspaces and ClearDocumentConferencesAcrossWorkspaces
+-- unpin what a project transfer carried across the boundary: the project's
+-- documents travel, its stages travel, a meeting never does. A pin left
+-- straddling it would hand the arriving team a stage or a meeting title of a
+-- workspace they cannot see (and the stage page would list a stranger's document).
+-- name: ClearDocumentMilestonesAcrossWorkspaces :execrows
+UPDATE documents d
+SET milestone_id = NULL
+WHERE d.milestone_id IS NOT NULL
+  AND (
+        d.project_id = sqlc.arg(project_id)::uuid
+     OR d.milestone_id IN (SELECT m.id FROM milestones m WHERE m.project_id = sqlc.arg(project_id)::uuid)
+      )
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT p.workspace_id FROM milestones m JOIN projects p ON p.id = m.project_id
+       WHERE m.id = d.milestone_id);
+
+-- name: ClearDocumentConferencesAcrossWorkspaces :execrows
+UPDATE documents d
+SET conference_id = NULL
+WHERE d.conference_id IS NOT NULL
+  AND d.project_id = sqlc.arg(project_id)::uuid
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT c.workspace_id FROM conferences c WHERE c.id = d.conference_id);

@@ -194,11 +194,16 @@ UPDATE notification_deliveries SET status = 'failed', last_error = $2, updated_a
 -- moves it up to a whole day forward and hands it a group, and a group is what
 -- makes drainDeliveries combine pushes into one "Сводка" message that carries
 -- neither the task nor the conference it was about (#2932).
+--
+-- task_priority rides along for the quiet-hours exceptions (#3050): an urgent
+-- task's row may go out inside the window, and moving the window must not
+-- re-hold it.
 -- name: ListReschedulableDeliveries :many
-SELECT d.id, d.channel_id, d.created_at, n.kind
+SELECT d.id, d.channel_id, d.created_at, n.kind, COALESCE(t.priority, 0)::int4 AS task_priority
 FROM notification_deliveries d
 JOIN notifications n ON n.id = d.notification_id
 JOIN notification_channels ch ON ch.id = d.channel_id
+LEFT JOIN tasks t ON t.id = n.task_id AND t.deleted_at IS NULL
 WHERE n.user_id = $1 AND d.status = 'pending' AND d.attempts = 0
   AND ch.type <> 'device';
 

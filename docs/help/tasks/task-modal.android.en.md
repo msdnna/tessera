@@ -2,8 +2,8 @@
 title: The task window
 category: Tasks
 order: 30
-keywords: task, window, modal, estimate, milestone, priority, due, recurrence, assignees, status, parent, tabs, save, cancel, back, app
-updated: 2026-08-28
+keywords: task, window, modal, estimate, milestone, priority, due, recurrence, assignees, status, parent, tabs, save, cancel, back, app, merge request, pipeline
+updated: 2026-10-10
 ---
 
 A card on the board shows a task in two lines. Everything else — estimate, milestone, author, relations, files, history — lives in the **task window**, which opens on a tap.
@@ -96,6 +96,8 @@ There are **six** tabs: «Description», «Comments», «Subtasks», «Relations
 The **«GitLab»** row in the fields shows one of two things. If the task is already linked to an issue — a number like `!42` with a link glyph; tapping it opens the issue **in the phone's browser**. If there is no issue yet and the board's binding allows creating one — a **«Create an issue»** button with a **«Template»** picker next to it (an empty list honestly reads «No templates»).
 
 The chosen template is filled into the **task's description**, and that description becomes the issue's body. In the browser the template picker lives above the description editor; here it sits in the field rows — on a phone the description is a tab of its own, and a button on it would be invisible whenever any other tab is open.
+
+Under the «GitLab» row come the **merge requests** working on the task: the number `!418`, the title, the state (open, draft, merged, closed), the branches `source → target` and the status of the latest pipeline. A tap opens the MR in the browser. How an MR finds its task is in the [task window article](/help/task-modal); in the app the cards are view-only.
 
 For a GitLab task the «Author» row shows the issue's author with an `@login · GitLab` caption, not whoever created the card in Tessera.
 

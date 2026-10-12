@@ -33,6 +33,19 @@ data class Conference(
     @SerializedName("created_by_name") val createdByName: String? = null,
     @SerializedName("participant_count") val participantCount: Int = 0,
     @SerializedName("active_count") val activeCount: Int = 0,
+    // The plan (#3034): length and repeat (#3052), the stage (#3053).
+    @SerializedName("duration_minutes") val durationMinutes: Int? = null,
+    /** "" (no repeat), daily, weekdays, weekly, biweekly or monthly. */
+    @SerializedName("recurrence") val recurrence: String = "",
+    @SerializedName("timezone") val timezone: String = "",
+    @SerializedName("milestone_id") val milestoneId: String? = null,
+    /** The next not-yet-finished occurrence, computed by the server; the start for a one-off. */
+    @SerializedName("next_at") val nextAt: String? = null,
+    @SerializedName("milestone_title") val milestoneTitle: String? = null,
+    @SerializedName("milestone_slug") val milestoneSlug: String? = null,
+    @SerializedName("milestone_project_slug") val milestoneProjectSlug: String? = null,
+    /** Where a «/задача» from the chat lands by default (#3055) — detail only. */
+    @SerializedName("default_board_id") val defaultBoardId: String? = null,
 ) {
     /** Somebody is in the room right now — the only state you *join*, not open. */
     val isLive: Boolean get() = status == ConferenceStatus.LIVE
@@ -110,6 +123,11 @@ data class CreateConferenceRequest(
     @SerializedName("scheduled_at") val scheduledAt: String? = null,
     @SerializedName("task_id") val taskId: String? = null,
     @SerializedName("recording_ttl_days") val recordingTtlDays: Int? = null,
+    // The plan (#3034); absent (null — Gson leaves nulls out) takes the defaults.
+    @SerializedName("duration_minutes") val durationMinutes: Int? = null,
+    @SerializedName("recurrence") val recurrence: String? = null,
+    @SerializedName("timezone") val timezone: String? = null,
+    @SerializedName("milestone_id") val milestoneId: String? = null,
 )
 
 /**
@@ -156,14 +174,43 @@ object RecordingStatus {
     const val FAILED = "failed"
 }
 
-/** One line of the in-call chat (#2873). */
+/**
+ * One line of the in-call chat (#2873).
+ *
+ * [kind] is `text`, or `task` for the line «создал(а) задачу #N» a «/задача»
+ * leaves (#3055); [task] is that line's link, null once the task is gone.
+ */
 data class ConferenceMessage(
     @SerializedName("id") val id: String = "",
     @SerializedName("user_id") val userId: String? = null,
     @SerializedName("user_name") val userName: String? = null,
     @SerializedName("body") val body: String = "",
+    @SerializedName("kind") val kind: String = "text",
+    @SerializedName("task") val task: ConferenceTaskRef? = null,
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("attachments") val attachments: List<ConferenceAttachment> = emptyList(),
+) {
+    val isTask: Boolean get() = kind == "task"
+}
+
+/** The task a chat task line links to (#3055). */
+data class ConferenceTaskRef(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("number") val number: Long? = null,
+    @SerializedName("title") val title: String = "",
+    @SerializedName("board_slug") val boardSlug: String = "",
+    @SerializedName("project_slug") val projectSlug: String = "",
+)
+
+/** `POST /conferences/:id/tasks` — «/задача» in the chat (#3055). */
+data class CreateConferenceTaskRequest(
+    @SerializedName("title") val title: String,
+    @SerializedName("board_id") val boardId: String,
+)
+
+/** Its answer: the chat line that announces the task. */
+data class ConferenceTaskCreated(
+    @SerializedName("message") val message: ConferenceMessage = ConferenceMessage(),
 )
 
 /** A file on a chat message. [isImage] is the server's own call on renderability. */
@@ -190,6 +237,8 @@ data class ConferenceMessagePage(
 /** `POST /conferences/:id/messages` with no files — the common case. */
 data class PostConferenceMessageRequest(
     @SerializedName("body") val body: String,
+    /** The members the line @-mentions (#3055); null leaves the key out. */
+    @SerializedName("mentions") val mentions: List<String>? = null,
 )
 
 /**

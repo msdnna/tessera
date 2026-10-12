@@ -109,6 +109,21 @@
     "unassigned": "Unassigned",
     "pace": "Pace",
     "paceSub": "done per milestone",
-    "paceAvg": "Average over the previous milestones ({n}) — {avg}"
+    "paceAvg": "Average over the previous milestones ({n}) — {avg}",
+    "documents": "Documents"
+  },
+  "gitlab": {
+    "readOnly": "A GitLab stage: its binding does not write to GitLab — edit it in GitLab or turn writing on in the GitLab window",
+    "unsynced": "Stage not synced with GitLab",
+    "unsyncedGoals": "Description not synced with GitLab",
+    "retry": "retry",
+    "retryMenu": "Retry writing to GitLab",
+    "retried": "Sent to GitLab",
+    "conflict": "Conflict with GitLab",
+    "resolve": "resolve",
+    "resolveMenu": "Resolve the conflict…",
+    "failedToast": "Saved in Tessera, but GitLab did not accept the change: {error}",
+    "conflictToast": "The stage was changed in GitLab too — pick a version in the conflicts window",
+    "goalsMarkdown": "Markdown · goes to the stage description in GitLab"
   }
 }

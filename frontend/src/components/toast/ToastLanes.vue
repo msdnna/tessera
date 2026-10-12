@@ -37,11 +37,15 @@ import { useWorkspacesStore } from '@/stores/workspaces'
 import { useInboxStore } from '@/stores/inbox'
 import { usePaletteStore } from '@/stores/palette'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
+import { useConflictsStore } from '@/stores/conflicts'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { useResponsive } from '@/composables/useResponsive'
 import { useVisualViewport } from '@/composables/useVisualViewport'
 import { useInboxActions } from '@/composables/useInboxActions'
 import { notificationRoute } from '@/utils/notificationRoute'
+import { boards as boardsApi, projects as projApi } from '@/api'
+import { humanizeError } from '@/utils/errors'
+import { useMessage } from '@/composables/useMessage'
 import { phoneOrder } from '@/utils/toastModel'
 import { copyText } from '@/utils/clipboard'
 
@@ -52,12 +56,14 @@ const store = useToastsStore()
 const undo = useUndoStore()
 const notes = useNotificationsStore()
 const ws = useWorkspacesStore()
+const conflicts = useConflictsStore()
 const inbox = useInboxStore()
 const palette = usePaletteStore()
 const dialogs = useWsDialogsStore()
 const inboxAct = useInboxActions()
 const { isMobile } = useResponsive()
 const { keyboardOpen } = useVisualViewport()
+const message = useMessage()
 
 // ── what the buttons do ──────────────────────────────────────────────────
 function openNotification(n) {
@@ -91,6 +97,28 @@ function reminderRecord(n) {
 }
 const snooze = ref(null) // { toastId, el, rec }
 
+// «В корзину» on the toast about a deleted task (#3120): the board the task
+// stood on, with its trash panel open and the task's row lit. The notification
+// carries the board (msgDeleted's payload) but no slugs — the board and its
+// project are read for them.
+async function openTrash(n) {
+  notes.markRead(n.id)
+  const boardId = n.payload?.board_id
+  if (!boardId) return
+  try {
+    if (n.workspace_id && n.workspace_id !== ws.currentId) await ws.selectWorkspace(n.workspace_id)
+    const { data: board } = await boardsApi.get(boardId)
+    const project = ws.projectById(board.project_id) || (await projApi.get(board.project_id)).data
+    const number = n.payload?.task_number ?? null
+    router.push({
+      path: `/project/${project.slug}/board/${board.slug}`,
+      query: { trash: '1', ...(number != null ? { hl: String(number) } : {}) },
+    })
+  } catch (e) {
+    message.error(humanizeError(e))
+  }
+}
+
 store.bind({
   open: openNotification,
   reply(n) {
@@ -98,6 +126,7 @@ store.bind({
     focusWhenReady('.tm-composer textarea')
   },
   joinCall: openNotification,
+  trash: openTrash,
   snooze(n, el) {
     const x = store.top.find((y) => y.notificationId === n.id)
     if (!n.payload?.reminder_id) return
@@ -109,6 +138,12 @@ store.bind({
     notes.markRead(n.id)
   },
   openGitlab: () => dialogs.open('gitlab'),
+  // «Разрешить конфликт» (#3048): the resolver, on this task's conflict.
+  resolveConflict(n) {
+    notes.markRead(n.id)
+    if (n.workspace_id && n.workspace_id !== ws.currentId) ws.selectWorkspace(n.workspace_id)
+    conflicts.openResolver(n.task_id || null)
+  },
   openFeed: () => notes.requestFeed(),
   // An activity toast's ↵: the task on the board in front of you.
   openTask(a) {
