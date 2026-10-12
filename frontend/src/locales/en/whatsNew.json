@@ -1,4 +1,14 @@
 {
+  "featuresV2": {
+    "title": "New in v2",
+    "item1": "A 30-day trash for tasks and documents, archived projects, undo for deleted boards and columns. Follow a task: «Following / Unfollow».",
+    "item2": "GitLab: merge requests and pipelines in a task (from other projects too), several projects per board, sign in with GitLab, a «label → stage» rule, a conflict policy and resolving conflicts in a batch.",
+    "item3": "⌘K palette commands: your own commands (>bug, >deploy) with keys and task templates — «Bug report», «Release checklist». Export a board to CSV/JSON and import tasks with a preview.",
+    "item4": "Time tracking — «spent» next to the estimate (and the /spend command). «Looking now» on a board, favourite boards, a link to a fragment of a description or a comment.",
+    "item5": "Notifications on their own page with filters, a sound for pop-up notifications, «Do not disturb», RSVP to a meeting. Meetings with repeat and duration, reactions and commands in the chat.",
+    "item6": "Sign in with a code from an email, an invite link to a workspace, handing ownership over and access requests. Admin: workspaces and last sign-in of users, all invitations, CSV export.",
+    "item7": "«Inbox» works offline: a record is kept on the device and goes out by itself. On a phone a task can be put off with a swipe. Background jobs show history, steps and a live log."
+  },
   "appV2": {
     "title": "A new look for the whole app",
     "item1": "«Inbox» replaces the «Notes» and «Reminders» sections: one feed on the right (G I), capture in one line from anywhere (N M — note, N R — reminder), linking to a task and private notes.",
