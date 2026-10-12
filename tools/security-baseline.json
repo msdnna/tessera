@@ -10,8 +10,6 @@
       "generic-api-key backend/handlers/oauth_appstate_test.go": 1,
       "generic-api-key backend/internal/livekit/token_test.go": 1,
       "generic-api-key deploy/livekit.e2e.yaml": 1,
-      "generic-api-key frontend/design-system/dist/index.js": 1,
-      "generic-api-key frontend/src/shortcuts/catalog.js": 1,
       "gitlab-pat backend/handlers/gitlab_assets_log_test.go": 1,
       "gitlab-pat backend/handlers/gitlab_assets_referer_test.go": 1,
       "jwt frontend/.design-sync/.cache/v2seed.json": 1

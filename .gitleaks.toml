@@ -68,3 +68,15 @@ paths = [
   # tracked and deliberately still scanned.
   '''^\.env$''',
 ]
+
+[[allowlists]]
+# Not a path exclusion: the shortcut catalog's chords (`keys: 'shift+arrowup'`,
+# 'mod+shift+arrowleft') read to the generic-api-key rule as `key = <value>`.
+# The match is on the captured value and only a chord shape passes — modifiers
+# joined by '+' and a key name, optionally a sequence of them — so a real token
+# in the same file would still be reported.
+description = "Keyboard chords of the shortcut catalog (src/shortcuts/catalog.js and its bundled copies)"
+regexTarget = "secret"
+regexes = [
+  '''^(?:(?:mod|shift|alt)\+)+[a-z0-9]+(?:\s+(?:(?:mod|shift|alt)\+)*[a-z0-9]+)*$''',
+]
