@@ -8,6 +8,7 @@ import com.google.common.truth.Truth.assertWithMessage
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
+import org.robolectric.annotation.Config
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.realtime.DevicePush
 import website.msdnna.tessera.reminders.ReminderNotifications
@@ -18,7 +19,13 @@ import website.msdnna.tessera.util.withLanguage
  * Строки вне Compose (волна 9 #2803). `stringResource` тут недоступен, язык
  * приходит из профиля — проверяем оба места, где это легко потерять.
  */
+// Pinned to the app's default language (ru) and a bare Application. On an
+// English runner (CI) the device locale leaked into the first localized read
+// after a test that had switched to «en», and TesseraApplication.onCreate creates
+// this very channel in the background in the system language — the channel read
+// «Reminders» where the test had asked for «ru».
 @RunWith(RobolectricTestRunner::class)
+@Config(application = android.app.Application::class, qualifiers = "ru")
 class NotificationLanguageTest {
     private val appContext: Context get() = ApplicationProvider.getApplicationContext()
 

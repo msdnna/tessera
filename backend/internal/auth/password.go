@@ -48,9 +48,19 @@ func CheckPasswordPolicy(plain string) error {
 	return nil
 }
 
+// hashCost is bcrypt.DefaultCost everywhere but in the HTTP test harness, which
+// lowers it (UseTestHashCost): every test user is a bcrypt hash, and under -race
+// the full suite spent minutes in key expansion alone.
+var hashCost = bcrypt.DefaultCost
+
+// UseTestHashCost drops the bcrypt cost to the minimum. For test harnesses only —
+// call it before the first hash; the dummy hash follows it, so the login timing
+// parity (DummyHash vs a stored hash) still holds inside the test run.
+func UseTestHashCost() { hashCost = bcrypt.MinCost }
+
 // HashPassword returns a bcrypt hash at the default cost.
 func HashPassword(plain string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+	b, err := bcrypt.GenerateFromPassword([]byte(plain), hashCost)
 	return string(b), err
 }
 
@@ -70,7 +80,7 @@ func CheckPassword(hash, plain string) bool {
 // Computed lazily rather than at init: it costs a bcrypt round, and processes
 // that never serve a login (the migration runner, tooling) should not pay it.
 var dummyHash = sync.OnceValue(func() string {
-	h, err := bcrypt.GenerateFromPassword([]byte("tessera-dummy-account-not-found"), bcrypt.DefaultCost)
+	h, err := bcrypt.GenerateFromPassword([]byte("tessera-dummy-account-not-found"), hashCost)
 	if err != nil {
 		// GenerateFromPassword errors only on an invalid cost; DefaultCost is valid.
 		panic(err)

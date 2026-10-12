@@ -29,6 +29,7 @@ import (
 
 	"tessera/config"
 	"tessera/handlers"
+	"tessera/internal/auth"
 	"tessera/internal/database"
 	"tessera/internal/db"
 	"tessera/internal/realtime"
@@ -83,6 +84,8 @@ func TestMain(m *testing.M) {
 	_, _ = mig.Close()
 
 	ctx := context.Background()
+	// Hundreds of test users: bcrypt at its minimum cost (production keeps the default).
+	auth.UseTestHashCost()
 	testPool = database.Connect(ctx, dbURL)
 	testQueries = db.New(testPool)
 

@@ -41,9 +41,18 @@ async function mountSettings(routes = ROUTES) {
   prefsApi.get.mockResolvedValue({ data: {} })
   const NotificationSettings = (await import('@/components/NotificationSettings.vue')).default
   const w = mount(NotificationSettings, { attachTo: document.body })
+  live.push(w)
   await flushPromises()
   return w
 }
+
+// Every mounted settings screen, unmounted after each test: a screen left alive
+// keeps its debounced autosave, and on a slow runner (CI) it fired into the next
+// test's mock — with the previous test's quiet_tz.
+const live = []
+afterEach(() => {
+  while (live.length) live.pop().unmount()
+})
 
 // The menu teleports to <body>; its rows are reached through the document.
 const $ = (sel) => document.body.querySelector(sel)
@@ -189,6 +198,7 @@ describe('NotificationSettings.vue — автосохранение распис
   beforeEach(() => {
     setActivePinia(createPinia())
     vi.clearAllMocks()
+    themeState.timezone = ''
     vi.useFakeTimers()
   })
   afterEach(() => vi.useRealTimers())

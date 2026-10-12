@@ -52,6 +52,9 @@ paths = [
   '''^frontend/playwright-report/''',
   '''^frontend/test-results/''',
   '''^frontend/e2e/\.auth/''',
+  # Design-sync scratch (.gitignore:95): local screenshot drivers and the seed of
+  # the screenshot stand — JWTs minted against a throwaway database.
+  '''^frontend/\.design-sync/\.cache/''',
 
   # Published APKs and their self-update manifest. apks/.gitignore lists the two
   # patterns rather than the directory — README.md and .gitignore itself are

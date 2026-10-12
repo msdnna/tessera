@@ -35,6 +35,10 @@ jobs:
           java-version: '21'
 
       - uses: android-actions/setup-android@v3
+        # Not the default «tools platform-tools»: the legacy `tools` package is gone
+        # from the SDK index (cmdline-tools 16), and sdkmanager fails the step on it.
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK 37 (preview channel)
         run: |

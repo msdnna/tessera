@@ -107,11 +107,15 @@ func TestMembersRightsMatrix(t *testing.T) {
 		{"delete group", func(f membersFixture, c *client) resp { return c.del("/member-groups/" + f.groupID) },
 			map[string]int{"owner": 204, "admin": 204, "member": 403, "outsider": 403}},
 	}
+	// A few cells at a time: 48 fresh fixtures at once exhaust the shared
+	// server's connection limit, one at a time took minutes under -race in CI.
+	sem := make(chan struct{}, 4)
 	for _, a := range actions {
 		for _, role := range roles {
-			// Sequential: 48 fresh fixtures at once exhaust the shared server's
-			// connection limit.
 			t.Run(a.name+"/"+role, func(t *testing.T) {
+				t.Parallel()
+				sem <- struct{}{}
+				defer func() { <-sem }()
 				f := mkMembersFixture(t)
 				r := a.do(f, f.as(role))
 				if r.Status != a.want[role] {

@@ -11,8 +11,7 @@
       "generic-api-key backend/internal/livekit/token_test.go": 1,
       "generic-api-key deploy/livekit.e2e.yaml": 1,
       "gitlab-pat backend/handlers/gitlab_assets_log_test.go": 1,
-      "gitlab-pat backend/handlers/gitlab_assets_referer_test.go": 1,
-      "jwt frontend/.design-sync/.cache/v2seed.json": 1
+      "gitlab-pat backend/handlers/gitlab_assets_referer_test.go": 1
     },
     "gosec": {
       "G703 internal/testutil/dbgate.go": 1

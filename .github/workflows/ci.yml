@@ -372,6 +372,10 @@ jobs:
           java-version: '21'
 
       - uses: android-actions/setup-android@v3
+        # Not the default «tools platform-tools»: the legacy `tools` package is gone
+        # from the SDK index (cmdline-tools 16), and sdkmanager fails the step on it.
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK 37 (preview channel)
         run: |
@@ -423,7 +427,7 @@ jobs:
       # job finished last silently erased the other's findings.
       - name: Publish SARIF to code scanning
         if: ${{ always() }}
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/security
           category: sast-sca-android
@@ -476,6 +480,10 @@ jobs:
           java-version: '21'
 
       - uses: android-actions/setup-android@v3
+        # Not the default «tools platform-tools»: the legacy `tools` package is gone
+        # from the SDK index (cmdline-tools 16), and sdkmanager fails the step on it.
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK 37 (preview channel)
         run: |
@@ -558,6 +566,10 @@ jobs:
           java-version: '21'
 
       - uses: android-actions/setup-android@v3
+        # Not the default «tools platform-tools»: the legacy `tools` package is gone
+        # from the SDK index (cmdline-tools 16), and sdkmanager fails the step on it.
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK 37 (preview channel)
         run: |
@@ -710,7 +722,7 @@ jobs:
       # tool name inside each file, so the four scanners stay distinguishable.
       - name: Publish SARIF to code scanning
         if: ${{ always() }}
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         with:
           sarif_file: reports/security
           category: sast-sca
