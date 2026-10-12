@@ -25,7 +25,9 @@ class TaskFilterTest {
         priority = 3,
         assigneeIds = listOf("u1"),
         tagIds = listOf("tagA"),
-        dueDate = "2026-08-03T00:00:00+03:00",
+        // Midday: the same calendar day in any JVM zone (CI runs in UTC, where a
+        // Moscow midnight is still the previous day).
+        dueDate = "2026-08-03T12:00:00+03:00",
     )
     private val subOther = Task(
         id = "s2",

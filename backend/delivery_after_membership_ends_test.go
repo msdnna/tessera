@@ -37,7 +37,7 @@ func TestDeliveryStopsWhenMembershipEnded(t *testing.T) {
 	owner.expect(t, owner.del("/workspaces/"+s.WS+"/members/"+mate.UserID), http.StatusNoContent)
 	renameTask(t, owner, taskID, "Договор с ACME на 12 млн")
 
-	drainDeliveriesUntil(t, func() bool { return allSettled(t, []string{delivID}) })
+	releaseAndDrain(t, delivID)
 
 	if got := bodies(); len(got) != 0 {
 		t.Fatalf("исключённому участнику всё-таки ушло %d сообщение(й): %q\n%s",
@@ -68,7 +68,7 @@ func TestDeliveryStillGoesToMemberWhoStayed(t *testing.T) {
 	delivID := pendingTaskDelivery(t, mate.UserID, s.WS, taskID, chID)
 	renameTask(t, owner, taskID, "Договор с ACME на 12 млн")
 
-	drainDeliveriesUntil(t, func() bool { return allSettled(t, []string{delivID}) })
+	releaseAndDrain(t, delivID)
 
 	got := bodies()
 	if len(got) != 1 {
@@ -99,7 +99,7 @@ func TestDigestStopsWhenMembershipEnded(t *testing.T) {
 	}
 	owner.expect(t, owner.del("/workspaces/"+s.WS+"/members/"+mate.UserID), http.StatusNoContent)
 
-	drainDeliveriesUntil(t, func() bool { return allSettled(t, ids) })
+	releaseAndDrain(t, ids...)
 
 	if got := bodies(); len(got) != 0 {
 		t.Fatalf("свод ушёл исключённому участнику (%d сообщение(й): %q)\n%s",
@@ -161,9 +161,23 @@ func pendingTaskDeliveryIn(t *testing.T, userID, wsID, taskID, chID, group strin
 	var delivID string
 	if err := testPool.QueryRow(ctx,
 		`INSERT INTO notification_deliveries (notification_id, channel_id, status, attempts, next_attempt_at, digest_group)
-		 VALUES ($1, $2, 'pending', 0, now() - interval '1 minute', $3) RETURNING id`,
+		 VALUES ($1, $2, 'pending', 0, now() + interval '1 hour', $3) RETURNING id`,
 		notifID, chID, group).Scan(&delivID); err != nil {
 		t.Fatalf("insert delivery: %v", err)
 	}
 	return delivID
+}
+
+// releaseAndDrain makes held deliveries due and drains the outbox until they
+// settle. Held at insert (pendingTaskDelivery) so the harness's own background
+// worker can't send them before the test has changed the world under them — it
+// used to, on a fast enough runner, between the insert and the transfer.
+func releaseAndDrain(t *testing.T, ids ...string) {
+	t.Helper()
+	if _, err := testPool.Exec(context.Background(),
+		`UPDATE notification_deliveries SET next_attempt_at = now() - interval '1 minute' WHERE id = ANY($1::uuid[])`,
+		ids); err != nil {
+		t.Fatalf("release deliveries: %v", err)
+	}
+	drainDeliveriesUntil(t, func() bool { return allSettled(t, ids) })
 }

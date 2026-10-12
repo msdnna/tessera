@@ -123,21 +123,21 @@ class TaskDetailViewModel(
             // itself for its done column (both best-effort). Read from the task's
             // own board id, so a task opened from the relations tab (possibly on
             // another board) still gets its own columns.
-            _state.update {
-                it.copy(
-                    columns = runCatching { boardRepo.columns(detail.boardId) }.getOrDefault(emptyList()),
-                    doneColumnId = runCatching { boardRepo.board(detail.boardId) }.getOrNull()?.doneColumnId,
-                )
-            }
+            val freshColumns = runCatching { boardRepo.columns(detail.boardId) }.getOrDefault(emptyList())
+            val freshDoneColumnId = runCatching { boardRepo.board(detail.boardId) }.getOrNull()?.doneColumnId
+            _state.update { it.copy(columns = freshColumns, doneColumnId = freshDoneColumnId) }
             // Collab lists are best-effort and independent — a failure of one
             // shouldn't blank the modal.
-            _state.update { it.copy(comments = runCatching { taskRepo.comments(taskId) }.getOrDefault(emptyList())) }
-            _state.update { it.copy(relations = runCatching { taskRepo.relations(taskId) }.getOrDefault(emptyList())) }
-            _state.update { it.copy(attachments = runCatching { taskRepo.attachments(taskId) }.getOrDefault(emptyList())) }
-            _state.update { it.copy(events = runCatching { taskRepo.events(taskId) }.getOrDefault(emptyList())) }
-            _state.update {
-                it.copy(documents = runCatching { docRepo.documentsOfTask(taskId) }.getOrDefault(emptyList()))
-            }
+            val freshComments = runCatching { taskRepo.comments(taskId) }.getOrDefault(emptyList())
+            _state.update { it.copy(comments = freshComments) }
+            val freshRelations = runCatching { taskRepo.relations(taskId) }.getOrDefault(emptyList())
+            _state.update { it.copy(relations = freshRelations) }
+            val freshAttachments = runCatching { taskRepo.attachments(taskId) }.getOrDefault(emptyList())
+            _state.update { it.copy(attachments = freshAttachments) }
+            val freshEvents = runCatching { taskRepo.events(taskId) }.getOrDefault(emptyList())
+            _state.update { it.copy(events = freshEvents) }
+            val freshDocuments = runCatching { docRepo.documentsOfTask(taskId) }.getOrDefault(emptyList())
+            _state.update { it.copy(documents = freshDocuments) }
         }
     }
 
@@ -151,7 +151,8 @@ class TaskDetailViewModel(
      */
     fun unlinkDocument(linkId: String) = mutate {
         docRepo.unlinkTask(linkId)
-        _state.update { it.copy(documents = docRepo.documentsOfTask(taskId), changed = true) }
+        val freshDocuments = docRepo.documentsOfTask(taskId)
+        _state.update { it.copy(documents = freshDocuments, changed = true) }
     }
 
     private suspend fun reloadDetail() {
@@ -341,8 +342,12 @@ class TaskDetailViewModel(
     fun postComment(body: String, mentions: List<MentionItem>, parentId: String? = null) = mutate {
         if (body.isBlank()) return@mutate
         val res = taskRepo.addComment(taskId, body, mentionIdsIn(body, mentions), parentId)
+        // Fetched before update{}: update is a CAS loop, and a request inside it is
+        // re-sent every time another state change lands while it is in flight —
+        // the modal used to hammer GET /comments a thousand times a second (CI).
+        val freshComments = taskRepo.comments(taskId)
         _state.update {
-            it.copy(comments = taskRepo.comments(taskId), changed = true, commandPreview = emptyList(), commandCustom = emptyList())
+            it.copy(comments = freshComments, changed = true, commandPreview = emptyList(), commandCustom = emptyList())
         }
         // Quick actions changed the task itself (assignees, column, dates…), and a
         // command-only comment stores no row at all — re-read the detail so the
@@ -396,24 +401,28 @@ class TaskDetailViewModel(
     ) = mutate {
         if (body.isBlank()) return@mutate
         taskRepo.editComment(commentId, body, addedMentionIds(oldBody, body, mentions))
-        _state.update { it.copy(comments = taskRepo.comments(taskId), changed = true) }
+        val freshComments = taskRepo.comments(taskId)
+        _state.update { it.copy(comments = freshComments, changed = true) }
     }
 
     fun deleteComment(commentId: String) = mutate {
         taskRepo.deleteComment(commentId)
-        _state.update { it.copy(comments = taskRepo.comments(taskId), changed = true) }
+        val freshComments = taskRepo.comments(taskId)
+        _state.update { it.copy(comments = freshComments, changed = true) }
     }
 
     // ── relations ────────────────────────────────────────────────────────────
 
     fun addRelation(number: Long, kind: String) = mutate {
         taskRepo.addRelation(taskId, number, kind)
-        _state.update { it.copy(relations = taskRepo.relations(taskId), changed = true) }
+        val freshRelations = taskRepo.relations(taskId)
+        _state.update { it.copy(relations = freshRelations, changed = true) }
     }
 
     fun removeRelation(relationId: String) = mutate {
         taskRepo.deleteRelation(relationId)
-        _state.update { it.copy(relations = taskRepo.relations(taskId), changed = true) }
+        val freshRelations = taskRepo.relations(taskId)
+        _state.update { it.copy(relations = freshRelations, changed = true) }
     }
 
     /** Lazily loads workspace tasks for the relation autocomplete (best-effort —
@@ -506,12 +515,14 @@ class TaskDetailViewModel(
 
     fun uploadAttachment(bytes: ByteArray, filename: String, mime: String?) = mutate {
         taskRepo.uploadAttachment(taskId, bytes, filename, mime)
-        _state.update { it.copy(attachments = taskRepo.attachments(taskId), changed = true) }
+        val freshAttachments = taskRepo.attachments(taskId)
+        _state.update { it.copy(attachments = freshAttachments, changed = true) }
     }
 
     fun removeAttachment(attachmentId: String) = mutate {
         taskRepo.deleteAttachment(attachmentId)
-        _state.update { it.copy(attachments = taskRepo.attachments(taskId), changed = true) }
+        val freshAttachments = taskRepo.attachments(taskId)
+        _state.update { it.copy(attachments = freshAttachments, changed = true) }
     }
 
     /** Downloads an attachment (auth'd) to a cache file and hands it back for

@@ -422,15 +422,23 @@ jobs:
       - name: Scan (detekt + osv-scanner over Gradle dependencies)
         run: make scan-android
 
-      # A separate category from the Security job: same-category uploads replace
-      # each other in the code-scanning UI, so sharing one would mean whichever
-      # job finished last silently erased the other's findings.
-      - name: Publish SARIF to code scanning
-        if: ${{ always() }}
+      # One upload per report, each under its own category: code scanning no
+      # longer combines several runs uploaded under one category (codeql-action
+      # v4 refuses them), and a category separate from the Security job's keeps
+      # one job's results from replacing the other's.
+      - name: Publish SARIF — detekt
+        if: ${{ always() && hashFiles('reports/security/detekt.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: reports/security
-          category: sast-sca-android
+          sarif_file: reports/security/detekt.sarif
+          category: sast-sca-android/detekt
+
+      - name: Publish SARIF — osv-android
+        if: ${{ always() && hashFiles('reports/security/osv-android.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/osv-android.sarif
+          category: sast-sca-android/osv-android
 
   android-e2e:
     name: Android e2e (JVM)
@@ -718,14 +726,43 @@ jobs:
       - name: Scan (govulncheck + gosec + osv-scanner + gitleaks)
         run: make scan-backend scan-frontend scan-secrets scan-desktop
 
-      # A directory upload: the action picks up every .sarif and keys them by the
-      # tool name inside each file, so the four scanners stay distinguishable.
-      - name: Publish SARIF to code scanning
-        if: ${{ always() }}
+      # One upload per scanner, each under its own category: code scanning no
+      # longer combines several SARIF runs uploaded under one category
+      # (codeql-action v4 refuses a directory of them).
+      - name: Publish SARIF — govulncheck
+        if: ${{ always() && hashFiles('reports/security/govulncheck.sarif') != '' }}
         uses: github/codeql-action/upload-sarif@v4
         with:
-          sarif_file: reports/security
-          category: sast-sca
+          sarif_file: reports/security/govulncheck.sarif
+          category: sast-sca/govulncheck
+
+      - name: Publish SARIF — gosec
+        if: ${{ always() && hashFiles('reports/security/gosec.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/gosec.sarif
+          category: sast-sca/gosec
+
+      - name: Publish SARIF — osv-frontend
+        if: ${{ always() && hashFiles('reports/security/osv-frontend.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/osv-frontend.sarif
+          category: sast-sca/osv-frontend
+
+      - name: Publish SARIF — osv-desktop
+        if: ${{ always() && hashFiles('reports/security/osv-desktop.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/osv-desktop.sarif
+          category: sast-sca/osv-desktop
+
+      - name: Publish SARIF — gitleaks
+        if: ${{ always() && hashFiles('reports/security/gitleaks.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/gitleaks.sarif
+          category: sast-sca/gitleaks
 
       - name: Upload reports artifact
         if: ${{ always() }}

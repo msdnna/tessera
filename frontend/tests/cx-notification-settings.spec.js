@@ -201,7 +201,11 @@ describe('NotificationSettings.vue — автосохранение распис
     themeState.timezone = ''
     vi.useFakeTimers()
   })
-  afterEach(() => vi.useRealTimers())
+  afterEach(() => {
+    // A save queued on the fake clock must not survive into the next test.
+    vi.clearAllTimers()
+    vi.useRealTimers()
+  })
 
   it('сохраняет изменение без кнопки и не сохраняет загрузку', async () => {
     const w = await mountSettings()
@@ -214,6 +218,11 @@ describe('NotificationSettings.vue — автосохранение распис
     await flushPromises()
     expect(prefsApi.update).toHaveBeenCalledTimes(1)
     expect(prefsApi.update.mock.calls[0][0].quiet_enabled).toBe(true)
+    // The save must not queue another one of its own (it used to, by writing
+    // quiet_tz into the watched state).
+    vi.advanceTimersByTime(1000)
+    await flushPromises()
+    expect(prefsApi.update).toHaveBeenCalledTimes(1)
     w.unmount()
   })
 

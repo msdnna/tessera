@@ -5,6 +5,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.launch
 import website.msdnna.tessera.BuildConfig
 import website.msdnna.tessera.data.api.ApiService
 import website.msdnna.tessera.data.api.RetrofitClient
@@ -40,7 +42,15 @@ object AppContainer {
     fun init(context: Context) {
         appContext = context.applicationContext
         prefs = AppPreferences(context.applicationContext)
+        // The profile zone, kept in memory for [callerZone] (see there).
+        appScope.launch {
+            runCatching { prefs.preferences.map { it.timezone }.collect { profileZone = it } }
+        }
     }
+
+    /** The profile's timezone as last read from DataStore; null until the first read. */
+    @Volatile
+    private var profileZone: String? = null
 
     /** The Retrofit service bound to the current [serverUrl]. */
     fun api(): ApiService = RetrofitClient.getService(serverUrl)
@@ -62,8 +72,10 @@ object AppContainer {
      * нечего»: пустой параметр зоной не является и только стоил бы серверу
      * следующего источника, поэтому Retrofit его не отправляет.
      */
-    suspend fun callerZone(): String? =
-        runCatching { resolvedTimezone(prefs.preferences.first().timezone) }
-            .getOrDefault("")
-            .ifEmpty { null }
+    // Read from memory, not from DataStore: a write path (posting a comment) used to
+    // wait on `preferences.first()` before its request even left — under the
+    // Robolectric e2e tier that read never came back until the test ended. Before
+    // the first read lands this is the device zone, which is what an empty profile
+    // zone means anyway.
+    fun callerZone(): String? = resolvedTimezone(profileZone).ifEmpty { null }
 }

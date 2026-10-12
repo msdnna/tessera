@@ -36,7 +36,7 @@ func TestTransferredTaskDropsTheHeldDelivery(t *testing.T) {
 	transferProject(t, owner, src.Project, away)
 	renameTask(t, owner, taskID, "Договор с ACME на 12 млн")
 
-	drainDeliveriesUntil(t, func() bool { return allSettled(t, []string{delivID}) })
+	releaseAndDrain(t, delivID)
 
 	if got := bodies(); len(got) != 0 {
 		t.Fatalf("ушло %d сообщение(й) про задачу из чужого пространства: %q\n%s",
@@ -71,7 +71,7 @@ func TestTransferWithinReachKeepsTheHeldDelivery(t *testing.T) {
 	transferProject(t, owner, src.Project, near)
 	renameTask(t, owner, taskID, "Договор с ACME на 12 млн")
 
-	drainDeliveriesUntil(t, func() bool { return allSettled(t, []string{delivID}) })
+	releaseAndDrain(t, delivID)
 
 	got := bodies()
 	if len(got) != 1 {
@@ -105,7 +105,7 @@ func TestTransferredTaskStillRingsTheReminderWithoutItsTitle(t *testing.T) {
 	transferProject(t, owner, src.Project, away)
 	renameTask(t, owner, taskID, "Договор с ACME на 12 млн")
 
-	drainDeliveriesUntil(t, func() bool { return allSettled(t, []string{delivID}) })
+	releaseAndDrain(t, delivID)
 
 	got := bodies()
 	if len(got) != 1 {
@@ -135,7 +135,7 @@ func TestTaskLessDeliveryIgnoresTheTaskReachGate(t *testing.T) {
 	away := mkWorkspace(t, owner, "Другое пространство "+t.Name())
 	transferProject(t, owner, src.Project, away)
 
-	drainDeliveriesUntil(t, func() bool { return allSettled(t, []string{delivID}) })
+	releaseAndDrain(t, delivID)
 
 	if got := bodies(); len(got) != 1 {
 		t.Fatalf("уведомление без задачи ушло %d раз(а), want 1 — гвард задачи стал общим выключателем\n%s",
@@ -177,7 +177,7 @@ func pendingReminderDelivery(t *testing.T, userID, wsID, taskID, chID string) st
 	var delivID string
 	if err := testPool.QueryRow(ctx,
 		`INSERT INTO notification_deliveries (notification_id, channel_id, status, attempts, next_attempt_at)
-		 VALUES ($1, $2, 'pending', 0, now() - interval '1 minute') RETURNING id`,
+		 VALUES ($1, $2, 'pending', 0, now() + interval '1 hour') RETURNING id`,
 		notifID, chID).Scan(&delivID); err != nil {
 		t.Fatalf("insert delivery: %v", err)
 	}

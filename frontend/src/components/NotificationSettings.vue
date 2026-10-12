@@ -12,7 +12,7 @@
 //     like the switches already did.
 // The mockup's event × channel matrix is a different model from our first-match
 // rules; the rules are kept and drawn as rows (see #3106).
-import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue'
+import { computed, nextTick, onMounted, reactive, ref, watch, onBeforeUnmount } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NButton, NCheckbox, NIcon, NInput, NModal, NSelect, NSpin, NSwitch } from 'naive-ui'
 import {
@@ -207,8 +207,9 @@ async function savePrefs() {
     // Quiet hours run on the server's clock in `quiet_tz`; an empty profile zone
     // would be UTC there, not «по вашему часовому поясу» as the hint promises —
     // so send the browser's own zone, the one this screen renders in.
-    prefs.quiet_tz = resolvedTimezone(theme.timezone) || prefs.quiet_tz
-    const sent = { ...prefs }
+    // Into what is sent, not into `prefs`: writing it there tripped the watcher
+    // and queued a second save of the very same values (the answer copies it in).
+    const sent = { ...prefs, quiet_tz: resolvedTimezone(theme.timezone) || prefs.quiet_tz }
     const res = await prefsApi.update(sent)
     toastsStore.applyServer(res.data)
     applying = true
@@ -237,6 +238,8 @@ watch(
   },
   { deep: true },
 )
+// A screen closed with a save still queued doesn't fire it into the void later.
+onBeforeUnmount(() => clearTimeout(prefsTimer))
 defineExpose({ savePrefs })
 
 onMounted(() => {

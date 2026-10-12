@@ -1147,14 +1147,16 @@ class BoardViewModel(
 
     private suspend fun refreshTagsAndTasks() {
         val tags = repo.tags(projectId)
-        _state.update { it.copy(tags = tags.associateBy { t -> t.id }, tagList = tags, tasks = repo.tasks(boardId)) }
+        val freshTasks = repo.tasks(boardId)
+        _state.update { it.copy(tags = tags.associateBy { t -> t.id }, tagList = tags, tasks = freshTasks) }
         markLocalChange()
     }
 
     // ── archive ────────────────────────────────────────────────────────────────
 
     fun loadArchived() = launchCatching {
-        _state.update { it.copy(archived = repo.archived(boardId)) }
+        val freshArchived = repo.archived(boardId)
+        _state.update { it.copy(archived = freshArchived) }
     }
 
     /** Enter the read-only archive scope: load the board's archived tasks into
@@ -1188,7 +1190,8 @@ class BoardViewModel(
     /** Reloads the archived-scope task list after a restore/delete. */
     private suspend fun reloadArchiveScope() {
         val tasks = repo.tasks(boardId, archived = true)
-        _state.update { it.copy(tasks = tasks, archived = repo.archived(boardId)) }
+        val freshArchived = repo.archived(boardId)
+        _state.update { it.copy(tasks = tasks, archived = freshArchived) }
     }
 
     fun restoreFromArchive(taskId: String) = launchCatching {
@@ -1196,7 +1199,8 @@ class BoardViewModel(
         if (_state.value.archivedMode) {
             reloadArchiveScope()
         } else {
-            _state.update { it.copy(archived = repo.archived(boardId)) }
+            val freshArchived = repo.archived(boardId)
+            _state.update { it.copy(archived = freshArchived) }
             refreshTasks()
         }
     }
@@ -1209,7 +1213,8 @@ class BoardViewModel(
         if (_state.value.archivedMode) {
             reloadArchiveScope()
         } else {
-            _state.update { it.copy(archived = repo.archived(boardId)) }
+            val freshArchived = repo.archived(boardId)
+            _state.update { it.copy(archived = freshArchived) }
         }
     }
 
