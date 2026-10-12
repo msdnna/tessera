@@ -28,6 +28,7 @@ import (
 	"tessera/internal/docroom"
 	"tessera/internal/jobs"
 	"tessera/internal/livekit"
+	"tessera/internal/logsafe"
 	"tessera/internal/mail"
 	"tessera/internal/notify"
 	"tessera/internal/realtime"
@@ -207,7 +208,7 @@ func (h *API) syncRoomModeration(ctx context.Context, workspaceID, userID uuid.U
 	}
 	ids, err := h.q.ConferenceIDsInWorkspace(ctx, workspaceID)
 	if err != nil {
-		log.Printf("conference moderation not re-resolved for %s in %s: %v", userID, workspaceID, err)
+		logsafe.Printf("conference moderation not re-resolved for %s in %s: %v", userID, workspaceID, err)
 		return
 	}
 	h.confRooms.SetModeration(ids, userID, role == "owner" || role == "admin")
@@ -541,7 +542,7 @@ func fail(c *gin.Context, err error) {
 	slog.Error("request failed",
 		"err", err,
 		"method", c.Request.Method,
-		"path", c.Request.URL.Path,
+		"path", logsafe.Str(c.Request.URL.Path),
 		"request_id", middleware.GetRequestID(c),
 	)
 	// Hand the real cause to the middleware chain. Nothing renders c.Errors, so

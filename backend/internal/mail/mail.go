@@ -19,6 +19,7 @@ import (
 	"strings"
 	"time"
 
+	"tessera/internal/logsafe"
 	"tessera/internal/observability"
 )
 
@@ -72,7 +73,7 @@ func SendAsync(m Mailer, to, subject, body string) {
 	go func() {
 		defer observability.Recover("mail-send")
 		if err := m.Send(to, subject, body); err != nil {
-			log.Printf("mail: send to %s (%q) failed: %v", to, subject, err)
+			logsafe.Printf("mail: send to %s (%q) failed: %v", to, subject, err)
 		}
 	}()
 }
@@ -85,7 +86,9 @@ func (noop) Send(to, subject, body string) error {
 	// Log the full body too: on a self-host without SMTP this is the only place
 	// the verification / reset / invite link surfaces (invites also return it in
 	// the API response).
-	log.Printf("mail (noop) to %s — %s\n%s", to, subject, body)
+	// The body keeps its own line breaks — it is a dump meant to be read — but
+	// the header line before it carries the address, which is outside input.
+	log.Printf("mail (noop) to %s — %s\n%s", logsafe.Str(to), logsafe.Str(subject), body)
 	return nil
 }
 

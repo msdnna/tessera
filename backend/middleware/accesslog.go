@@ -1,11 +1,11 @@
 package middleware
 
 import (
-	"log"
 	"time"
 
 	"github.com/gin-gonic/gin"
 
+	"tessera/internal/logsafe"
 	"tessera/internal/observability"
 )
 
@@ -44,7 +44,9 @@ func AccessLog() gin.HandlerFunc {
 		if q := redactedQuery(raw); q != "" {
 			full = path + "?" + q
 		}
-		log.Printf("[GIN] %s | %d | %v | %s | %s | %s %s",
+		// logsafe: the path arrives percent-decoded, so %0A in a URL is a real
+		// newline here — enough to forge a whole access-log line of its own.
+		logsafe.Printf("[GIN] %s | %d | %v | %s | %s | %s %s",
 			start.Format("2006/01/02 - 15:04:05"),
 			c.Writer.Status(),
 			time.Since(start),

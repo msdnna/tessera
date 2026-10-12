@@ -13,6 +13,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+
+	"tessera/internal/logsafe"
 )
 
 // Event is a server→client message. Scope is the workspace id the event belongs
@@ -161,6 +163,6 @@ func (h *Hub) DropUser(userID uuid.UUID) {
 	default:
 		// Run is busy; the membership change still lands on the next
 		// reconnect rather than blocking the request that triggered it.
-		log.Printf("realtime: drop-user buffer full, skipping drop for %s", userID)
+		logsafe.Printf("realtime: drop-user buffer full, skipping drop for %s", userID)
 	}
 }

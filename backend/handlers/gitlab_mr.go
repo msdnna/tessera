@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"context"
-	"log"
 	"strconv"
 	"strings"
 	"time"
@@ -11,6 +10,7 @@ import (
 
 	db "tessera/internal/db"
 	"tessera/internal/gitlab"
+	"tessera/internal/logsafe"
 )
 
 // ── Merge requests and pipelines in «Разработка» (#2964) ───
@@ -129,7 +129,7 @@ func (h *API) applyMergeRequest(ctx context.Context, integ db.GitlabIntegration,
 	if len(iids) > 0 {
 		rows, err := h.q.GitlabTasksForIids(ctx, db.GitlabTasksForIidsParams{IntegrationID: integ.ID, Iids: iids})
 		if err != nil {
-			log.Printf("gitlab mr !%d: resolve tasks: %v", mr.IID, err)
+			logsafe.Printf("gitlab mr !%d: resolve tasks: %v", mr.IID, err)
 			return touched
 		}
 		for _, r := range rows {
@@ -141,7 +141,7 @@ func (h *API) applyMergeRequest(ctx context.Context, integ db.GitlabIntegration,
 		Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Repo: integ.ProjectPath, Number: mr.IID,
 	})
 	if err != nil {
-		log.Printf("gitlab mr !%d: load links: %v", mr.IID, err)
+		logsafe.Printf("gitlab mr !%d: load links: %v", mr.IID, err)
 		return touched
 	}
 	before := make(map[uuid.UUID]db.TaskCodeLink, len(existing))
@@ -179,7 +179,7 @@ func (h *API) applyMergeRequest(ctx context.Context, integ db.GitlabIntegration,
 			RemoteUpdatedAt: mr.UpdatedAt, CiStatus: ciStatus, CiUrl: ciURL, CiRunID: ciRun,
 		})
 		if err != nil {
-			log.Printf("gitlab mr !%d: upsert task %s: %v", mr.IID, taskID, err)
+			logsafe.Printf("gitlab mr !%d: upsert task %s: %v", mr.IID, taskID, err)
 			continue
 		}
 		if len(changed) == 0 {
@@ -204,7 +204,7 @@ func (h *API) applyMergeRequest(ctx context.Context, integ db.GitlabIntegration,
 			Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Repo: integ.ProjectPath, Number: mr.IID, Keep: keep,
 		})
 		if err != nil {
-			log.Printf("gitlab mr !%d: prune links: %v", mr.IID, err)
+			logsafe.Printf("gitlab mr !%d: prune links: %v", mr.IID, err)
 		}
 		for _, id := range gone {
 			touched[id] = true
@@ -230,7 +230,7 @@ func (h *API) applyCI(ctx context.Context, integ db.GitlabIntegration, repo stri
 		Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Repo: repo, Numbers: numbers,
 	})
 	if err != nil {
-		log.Printf("gitlab pipeline %d: %v", p.ID, err)
+		logsafe.Printf("gitlab pipeline %d: %v", p.ID, err)
 		return touched
 	}
 	for _, id := range ids {
@@ -250,7 +250,7 @@ func (h *API) applyPipelineEvent(ctx context.Context, integ db.GitlabIntegration
 			Provider: codeProviderGitlab, SourceID: integ.ID, Kind: codeKindMR, Repo: integ.ProjectPath, SourceBranch: ev.Ref,
 		})
 		if err != nil {
-			log.Printf("gitlab pipeline %d: branch MRs: %v", ev.Pipeline.ID, err)
+			logsafe.Printf("gitlab pipeline %d: branch MRs: %v", ev.Pipeline.ID, err)
 		}
 		numbers = append(numbers, ns...)
 	}
@@ -279,7 +279,7 @@ func (h *API) syncMergeRequests(ctx context.Context, integ db.GitlabIntegration,
 	}
 	mrs, err := client.MergeRequestsSince(ctx, integ.ProjectPath, &since)
 	if err != nil {
-		log.Printf("gitlab mr poll ws=%s: %v", integ.WorkspaceID, err)
+		logsafe.Printf("gitlab mr poll ws=%s: %v", integ.WorkspaceID, err)
 		return
 	}
 	// Re-read the MRs whose pipeline we last saw running and the delta didn't bring.
@@ -299,7 +299,7 @@ func (h *API) syncMergeRequests(ctx context.Context, integ db.GitlabIntegration,
 	if len(stale) > 0 {
 		more, rerr := client.MergeRequestsByIIDs(ctx, integ.ProjectPath, stale)
 		if rerr != nil {
-			log.Printf("gitlab mr poll ws=%s: running pipelines: %v", integ.WorkspaceID, rerr)
+			logsafe.Printf("gitlab mr poll ws=%s: running pipelines: %v", integ.WorkspaceID, rerr)
 		}
 		mrs = append(mrs, more...)
 	}
@@ -322,6 +322,6 @@ func (h *API) syncMergeRequests(ctx context.Context, integ db.GitlabIntegration,
 	}
 	h.announceCodeLinks(ctx, integ.WorkspaceID, touched)
 	if err := h.q.MarkGitlabMRSynced(ctx, db.MarkGitlabMRSyncedParams{ID: integ.ID, MrSyncedAt: &started}); err != nil {
-		log.Printf("gitlab mr poll ws=%s: cursor: %v", integ.WorkspaceID, err)
+		logsafe.Printf("gitlab mr poll ws=%s: cursor: %v", integ.WorkspaceID, err)
 	}
 }

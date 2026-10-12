@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+
+	"tessera/internal/logsafe"
 )
 
 // InitSentry configures the global Sentry hub from the supplied options and
@@ -77,7 +79,7 @@ func clientOptions(dsn, environment, release string, tracesSampleRate float64) s
 // and the event must not be lost in the async transport's buffer.
 func CapturePanic(component string, recovered any) {
 	slog.Error("recovered panic in background goroutine",
-		"component", component, "panic", fmt.Sprint(recovered), "stack", string(debug.Stack()))
+		"component", logsafe.Str(component), "panic", logsafe.Str(fmt.Sprint(recovered)), "stack", string(debug.Stack()))
 	hub := sentry.CurrentHub()
 	if hub.Client() == nil {
 		return

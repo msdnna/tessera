@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -19,6 +18,7 @@ import (
 	db "tessera/internal/db"
 	"tessera/internal/gitlab"
 	"tessera/internal/jobs"
+	"tessera/internal/logsafe"
 )
 
 // ── GitLab webhooks: near-realtime sync trigger (#2594) ────
@@ -254,7 +254,7 @@ func (h *API) GitlabWebhook(c *gin.Context) {
 		c.Status(http.StatusNoContent)
 		return
 	case hookForeign, hookMalformed:
-		log.Printf("gitlab webhook integ=%s rejected: %s", integ.ID, reason)
+		logsafe.Printf("gitlab webhook integ=%s rejected: %s", integ.ID, reason)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unexpected payload"})
 		return
 	}
@@ -275,7 +275,7 @@ func (h *API) GitlabWebhook(c *gin.Context) {
 			if mr, perr := gitlab.ParseMergeRequestHook(body); perr == nil {
 				h.announceCodeLinks(c, integ.WorkspaceID, h.applyMergeRequest(c, integ, mrApply{mr: mr}))
 			} else {
-				log.Printf("gitlab webhook integ=%s: merge_request: %v", integ.ID, perr)
+				logsafe.Printf("gitlab webhook integ=%s: merge_request: %v", integ.ID, perr)
 			}
 			h.webhooks.mark(integ.ID, time.Now())
 		case hookPipeline:
@@ -283,7 +283,7 @@ func (h *API) GitlabWebhook(c *gin.Context) {
 			if ev, perr := gitlab.ParsePipelineHook(body); perr == nil {
 				h.announceCodeLinks(c, integ.WorkspaceID, h.applyPipelineEvent(c, integ, ev))
 			} else {
-				log.Printf("gitlab webhook integ=%s: pipeline: %v", integ.ID, perr)
+				logsafe.Printf("gitlab webhook integ=%s: pipeline: %v", integ.ID, perr)
 			}
 		default:
 			h.webhooks.mark(integ.ID, time.Now())
@@ -349,11 +349,11 @@ func (h *API) drainWebhookDirty(ctx context.Context) {
 		// arrived meanwhile reopens the burst.
 		h.webhooks.clear(e.id, e.mark.lastSeen)
 		if serr != nil {
-			log.Printf("gitlab webhook sync ws=%s: %v", integ.WorkspaceID, serr)
+			logsafe.Printf("gitlab webhook sync ws=%s: %v", integ.WorkspaceID, serr)
 			continue
 		}
 		if created+updated > 0 {
-			log.Printf("gitlab webhook sync ws=%s: +%d new, ~%d updated", integ.WorkspaceID, created, updated)
+			logsafe.Printf("gitlab webhook sync ws=%s: +%d new, ~%d updated", integ.WorkspaceID, created, updated)
 		}
 	}
 }

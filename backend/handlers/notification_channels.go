@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/i18n"
+	"tessera/internal/logsafe"
 	"tessera/internal/notify"
 	"tessera/middleware"
 )
@@ -336,7 +336,7 @@ func (h *API) RegisterDeviceChannel(c *gin.Context) {
 	}); serr != nil {
 		soft(c, "StripPushTokenFromOtherOwners", serr)
 	} else if n > 0 {
-		log.Printf("notify: device %s changed hands — dropped the push token from %d channel(s) of its previous owner(s)", req.DeviceID, n)
+		logsafe.Printf("notify: device %s changed hands — dropped the push token from %d channel(s) of its previous owner(s)", req.DeviceID, n)
 	}
 
 	if existing, err := h.q.GetDeviceChannel(c, db.GetDeviceChannelParams{UserID: uid, DeviceID: req.DeviceID}); err == nil {
