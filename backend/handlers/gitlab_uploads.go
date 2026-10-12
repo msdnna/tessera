@@ -296,15 +296,22 @@ func (h *API) mirrorAsset(ctx context.Context, client *gitlab.Client, integ db.G
 		return "", fmt.Errorf("proxy link failed signature check")
 	}
 
+	// The same gate ServeUpload puts on the public route. assetURLPat already
+	// limits a ref to this shape, but that regex lives far from the open below;
+	// checking here keeps the file name a plain media name whoever calls this.
+	name := strings.TrimPrefix(ref, "/api/uploads/")
+	if !mediaNameRe.MatchString(name) {
+		return "", fmt.Errorf("not a media upload name: %q", name)
+	}
+
 	if row, err := h.q.GetGitlabUpload(ctx, db.GetGitlabUploadParams{
 		IntegrationID: integ.ID, SourceKey: ref,
 	}); err == nil && row.GlUrl != "" {
 		return row.GlUrl, nil
 	}
 
-	name := strings.TrimPrefix(ref, "/api/uploads/")
-	path := filepath.Join(h.uploadDir, "media", filepath.Base(name))
-	f, err := os.Open(path) // #nosec G304 -- name is regex-constrained and Base'd
+	path := filepath.Join(h.uploadDir, "media", name)
+	f, err := os.Open(path) // #nosec G304 -- name matched mediaNameRe: no separator, no dot-dot
 	if err != nil {
 		return "", err
 	}

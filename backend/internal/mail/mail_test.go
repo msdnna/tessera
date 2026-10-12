@@ -43,3 +43,25 @@ func TestBuildMessage(t *testing.T) {
 		t.Errorf("body not quoted-printable encoded:\n%s", msg)
 	}
 }
+
+// A line break in the recipient would end the To header and start one of the
+// sender's choosing; it is refused before any connection is attempted (the host
+// below does not exist — reaching the dial would fail differently).
+func TestSendRefusesLineBreakInRecipient(t *testing.T) {
+	m := &smtpMailer{cfg: Config{Host: "smtp.invalid", Port: "587", From: "from@example.com"}}
+	for _, to := range []string{"a@example.com\r\nBcc: x@example.com", "a@example.com\nBcc: x@example.com"} {
+		err := m.Send(to, "s", "b")
+		if err == nil || !strings.Contains(err.Error(), "line break") {
+			t.Errorf("Send(%q) err = %v; want the line-break refusal", to, err)
+		}
+	}
+}
+
+// The Subject is RFC 2047-encoded whenever it holds a control character, so a
+// CRLF in it can never open a header line of its own.
+func TestBuildMessageSubjectCannotAddHeader(t *testing.T) {
+	msg := string(buildMessage("from@example.com", "to@example.com", "Hi\r\nBcc: x@example.com", "body"))
+	if strings.Contains(msg, "\r\nBcc:") {
+		t.Fatalf("subject injected a header:\n%s", msg)
+	}
+}

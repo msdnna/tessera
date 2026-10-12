@@ -39,9 +39,24 @@ var exportFields = []string{
 // priorityNames are the stored priorities' export names (0 none … 4 urgent).
 var priorityNames = []string{"none", "low", "normal", "high", "urgent"}
 
-// exportPath is where a run's file lives; the format is the extension.
+// exportPath is where a run's file lives; the format is the extension. Callers
+// pass a format that has been through exportFormat.
 func (h *API) exportPath(runID, format string) string {
 	return filepath.Join(h.exportDir(), runID+"."+format)
+}
+
+// exportFormat maps a format named by a client (or read back from a run's meta)
+// onto the extension its file is stored under. The result is always one of the
+// constants below, never the caller's own string, so nothing a request carries
+// can reach the file name.
+func exportFormat(s string) (string, bool) {
+	switch s {
+	case "csv":
+		return "csv", true
+	case "json":
+		return "json", true
+	}
+	return "", false
 }
 
 type exportRequest struct {
@@ -79,7 +94,8 @@ func (h *API) ExportBoard(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	if req.Format != "csv" && req.Format != "json" {
+	format, ok := exportFormat(req.Format)
+	if !ok {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "format must be csv or json"})
 		return
 	}
@@ -88,12 +104,12 @@ func (h *API) ExportBoard(c *gin.Context) {
 	key := "export:" + uuid.NewString()
 	_, started := h.jobs.Start(jobs.Spec{
 		Key:  key,
-		Name: jobs.Name{Key: "export_" + req.Format, Arg: board.Name, Text: "Экспорт доски в " + strings.ToUpper(req.Format) + " · " + board.Name},
+		Name: jobs.Name{Key: "export_" + format, Arg: board.Name, Text: "Экспорт доски в " + strings.ToUpper(format) + " · " + board.Name},
 		Kind: jobs.KindExport, Type: jobs.TypeImportExport, WorkspaceID: wsID.String(), ActorID: uid.String(),
 		Trigger: "manual", MaxAttempts: 3, Queued: true,
-		Meta: map[string]any{"board_id": boardID.String(), "board_name": board.Name, "format": req.Format, "filtered": req.TaskIDs != nil},
+		Meta: map[string]any{"board_id": boardID.String(), "board_name": board.Name, "format": format, "filtered": req.TaskIDs != nil},
 	}, h.runDetached, func(ctx context.Context, jh *jobs.Handle) error {
-		return h.runExport(ctx, jh, board, req.Format, req.TaskIDs, subtasks)
+		return h.runExport(ctx, jh, board, format, req.TaskIDs, subtasks)
 	})
 	if !started {
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "server is shutting down"})
@@ -329,8 +345,9 @@ func (h *API) DownloadJobFile(c *gin.Context) {
 	if ws := optUUID(d.WorkspaceID); ws != nil && !h.requireMember(c, *ws) {
 		return
 	}
-	format, _ := d.Meta["format"].(string)
-	if format != "csv" && format != "json" {
+	stored, _ := d.Meta["format"].(string)
+	format, ok := exportFormat(stored)
+	if !ok {
 		c.JSON(http.StatusGone, gin.H{"error": "export file is gone"})
 		return
 	}

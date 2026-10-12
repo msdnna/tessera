@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"mime"
@@ -100,6 +101,15 @@ func (m *smtpMailer) Enabled() bool { return true }
 // STARTTLS (587/25) — stdlib smtp.SendMail only does the latter, which is why a
 // 465 server would hang. Bounded by smtpTimeout end-to-end.
 func (m *smtpMailer) Send(to, subject, body string) error {
+	// The To header is written raw (buildMessage), so a line break in the address
+	// would end it and start a header of the sender's choosing (Bcc:, a second
+	// body). net/smtp's Rcpt refuses such an address too, but only as a side
+	// effect of guarding its own command line — refuse it here, by intent, before
+	// anything is dialled. Subject needs no check: the RFC 2047 encoder takes any
+	// control character as its cue to encode the whole word.
+	if strings.ContainsAny(to, "\r\n") {
+		return errors.New("mail: recipient address contains a line break")
+	}
 	addr := m.cfg.Host + ":" + m.cfg.Port
 	dialer := &net.Dialer{Timeout: smtpTimeout}
 	tlsCfg := &tls.Config{ServerName: m.cfg.Host}
