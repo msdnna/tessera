@@ -28,6 +28,7 @@ import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useShortcuts } from '@/composables/useShortcuts'
 import { useResponsive } from '@/composables/useResponsive'
 import { useTourLauncher } from '@/composables/useTourLauncher'
+import { RELEASE, shortVersion } from '@/utils/release'
 
 const { t } = useI18n()
 const store = useWhatsNewStore()
@@ -57,9 +58,13 @@ const tileBg = (c) =>
 
 // The release list / history wording.
 const pill = computed(() => {
-  if (intro.value) return t('app.whatsNew.v2.pill', { v: version })
-  const v = store.entries[0]?.version
-  return v ? t('app.whatsNew.v2.versionPill', { v }) : ''
+  if (intro.value)
+    return t('app.whatsNew.v2.pill', { v: RELEASE ? shortVersion(RELEASE.product) : version })
+  const top = store.entries[0]
+  if (!top) return ''
+  return top.product
+    ? t('app.whatsNew.v2.productPill', { v: shortVersion(top.product) })
+    : t('app.whatsNew.v2.versionPill', { v: top.version })
 })
 const title = computed(() => {
   if (intro.value) return t('app.whatsNew.v2.title')
@@ -133,7 +138,9 @@ useShortcuts({ 'whatsnew.go': go }, { when: () => show.value })
           <header class="wv-rel-head">
             <span class="wv-rel-ic"><n-icon :component="SparklesOutline" :size="14" /></span>
             <span class="wv-rel-title">{{ t(rel.titleKey) }}</span>
-            <span class="wv-rel-ver">{{ rel.version }}</span>
+            <span class="wv-rel-ver" :title="rel.product ? `web ${rel.version}` : undefined">{{
+              rel.product ? `Tessera ${shortVersion(rel.product)}` : rel.version
+            }}</span>
           </header>
           <!-- eslint-disable-next-line vue/no-v-html -- sanitized by renderMarkdown -->
           <div class="wv-md" v-html="itemsHtml(rel.itemKeys)" />

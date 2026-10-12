@@ -184,7 +184,9 @@
       "apiBuilt": "API build",
       "web": "Web client version",
       "webBuilt": "Web client build",
-      "whatsNew": "What's new"
+      "whatsNew": "What's new",
+      "release": "Release",
+      "apiOutside": "Server api {api} is not from this release (expected {want})"
     },
     "integrationsSub": "sign-in and sync through GitLab",
     "msg": {

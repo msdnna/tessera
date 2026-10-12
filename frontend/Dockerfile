@@ -25,6 +25,9 @@ RUN corepack yarn install --immutable
 
 # Help-centre content, resolved by the globs at ../../../docs/help → /app/docs/help.
 COPY docs/help /app/docs/help
+# The product release («Tessera 2.0», docs/versioning.md): vite.config.js reads
+# ../release.json for the version shown in the app.
+COPY release.json /app/release.json
 COPY frontend/ ./
 RUN corepack yarn build
 

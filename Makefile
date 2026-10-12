@@ -436,7 +436,8 @@ scan-baseline-update: ## Rewrite the scan baseline from a fresh run (SCAN_TARGET
 
 # ── Versioning ─────────────────────────────────────────────
 .PHONY: version
-version: ## Show service versions
+version: ## Show the product release and component versions
+	@python3 tools/product-release.py --show 2>/dev/null || echo "product:  — (no release.json)"
 	@echo "backend:  $$(cat backend/VERSION)"
 	@echo "frontend: $$(cat frontend/VERSION)"
 	@echo "android:  $$(cat android/VERSION)"
@@ -462,6 +463,15 @@ bump-desktop: ## Bump desktop version (BUMP=patch|minor|major)
 .PHONY: bump-mcp
 bump-mcp: ## Bump MCP server version (BUMP=patch|minor|major)
 	@./tools/bump-version.sh mcp $(or $(BUMP),patch)
+
+# ── Product release (Tessera 2.x over the components' semver) ──
+# docs/versioning.md. On develop, after `make changelog-release`: bumps release.json
+# (BUMP=minor by default; SET=X.Y.Z to set; SINCE_WEB=X.Y.Z for the first train),
+# snapshots the component versions, writes docs/releases/v<version>.md and marks
+# the train's «Что нового». The tag v<version> (set by hand) publishes it.
+.PHONY: release-product
+release-product: ## Cut a product release (BUMP=major|minor|patch SET=X.Y.Z DRY=1)
+	@python3 tools/product-release.py $(if $(SET),--set $(SET),--bump $(or $(BUMP),minor)) $(if $(SINCE_WEB),--since-web $(SINCE_WEB),) $(if $(DRY),--dry-run,)
 
 # ── Changelog fragments (feature branch → develop) ─────────
 .PHONY: changelog-add

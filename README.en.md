@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/msdnna/tessera/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/msdnna/tessera?label=Tessera" /></a>
   <a href="https://github.com/msdnna/tessera/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/msdnna/tessera/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="backend coverage" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmsdnna%2Ftessera%2Fbadges%2Fbackend.json&label=backend" />
   <img alt="web coverage" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmsdnna%2Ftessera%2Fbadges%2Fweb.json&label=web" />
@@ -87,6 +88,13 @@ frontend nginx; PostgreSQL is not exposed to the outside; the backend is a
 distroless image with fail-closed secret checks. Details and upgrades — in
 [`deploy/README.md`](deploy/README.en.md). The first registered user becomes the
 administrator.
+
+## Versions
+
+**Tessera 2.0** is the product version: the interface generation and the release train
+(`release.json`, `v2.x` releases on GitHub). The components — server, web, desktop,
+Android, MCP — keep their own semver (`api/v…`, `web/v…`). Details (in Russian) —
+[docs/versioning.md](docs/versioning.md).
 
 ## Development and contributing
 

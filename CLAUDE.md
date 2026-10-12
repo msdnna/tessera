@@ -32,8 +32,10 @@ tools/      bump-version.sh, сканеры, релиз-скрипты
 design/     бренд (design/tessera-brand-v2/ — канон, не перегенерировать), макеты v2
 ```
 
-Компоненты **независимо версионируются**, у каждого свой `VERSION` (semver), версии не
-синхронизируются; текущие — `make version`.
+Два слоя версий (`docs/versioning.md`): **продукт** — «Tessera 2.0» (`release.json` в корне,
+MAJOR = поколение интерфейса, MINOR = релизный поезд, PATCH = исправления; тег `v2.0.0`) и
+**компоненты** — у каждого свой `VERSION` (semver, теги `api/v…`, `web/v…`), не
+синхронизируются и ради продукта не поднимаются. Текущие — `make version`.
 
 ## Стек
 
@@ -104,7 +106,8 @@ Note · Reminder («Входящие») · Document · Conference · User/Member
 - **Последние стабильные зависимости**, без legacy-воркэраундов.
 - **CHANGELOG через фрагменты:** фича-ветка НЕ трогает `CHANGELOG.md`/`VERSION`, кладёт
   `changelog.d/<component>/<task#>.md`; бамп и сборка — на `develop` (`make changelog-release`).
-  `docs:`/`chore:`/`refactor:` без поведения — без бампа. Скилл **tessera-ship**.
+  `docs:`/`chore:`/`refactor:` без поведения — без бампа. Продуктовый релиз — после него
+  `make release-product` (поезд → `release.json` + `docs/releases/v*.md`). Скилл **tessera-ship**.
 - **Ветки:** одна на **родительскую** задачу (`feat/<родитель#>-slug`), подзадачи — коммитами.
   Волну фич сливаем в `integration/*` → полные гейты → develop.
 - **Миграции последовательны:** номер `NNNN_` занимать перед самым merge; коллизию чинить

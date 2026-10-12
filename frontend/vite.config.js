@@ -8,6 +8,18 @@ import { iconCatalog } from './build/iconCatalog.js'
 
 const webVersion = readFileSync('./VERSION', 'utf-8').trim()
 
+// The product release this bundle belongs to — «Tessera 2.0» over the components'
+// semver (release.json at the repo root, docs/versioning.md). The Docker build
+// copies it next to frontend/ (frontend/Dockerfile); without it the UI just shows
+// the component versions.
+function productRelease() {
+  try {
+    return JSON.parse(readFileSync('../release.json', 'utf-8'))
+  } catch {
+    return null
+  }
+}
+
 // Build metadata for the sidebar version tooltip (#2747). The Docker build
 // context is ./frontend (no .git), so CI/deploy passes GIT_COMMIT / BUILD_DATE
 // as env; a local build reads git directly and stamps "now". Empty commit is
@@ -50,6 +62,7 @@ export default defineConfig({
     __APP_VERSION__: JSON.stringify(webVersion),
     __APP_COMMIT__: JSON.stringify(webCommit),
     __BUILD_DATE__: JSON.stringify(buildDate),
+    __RELEASE__: JSON.stringify(productRelease()),
   },
   plugins: [
     vue(),

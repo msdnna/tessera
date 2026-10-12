@@ -40,6 +40,7 @@ import { useTourLauncher } from '@/composables/useTourLauncher'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useResponsive } from '@/composables/useResponsive'
 import { useVersionInfo } from '@/composables/useVersionInfo'
+import { productLabel } from '@/utils/release'
 import { workspaceName } from '@/utils/defaultNames'
 import { swatchBg } from '@/utils/gradient'
 
@@ -106,6 +107,10 @@ const tile = (tone) => ({
 
 const language = computed(() => t(`common.language.${theme.language === 'en' ? 'en' : 'ru'}`))
 const host = typeof location !== 'undefined' ? location.host : ''
+// «Tessera 2.0 · web 0.190.0 · host» — the product release, then the build.
+const verLine = [productLabel() || `Tessera ${web.version}`, `web ${web.version}`, host]
+  .filter(Boolean)
+  .join(' · ')
 
 // The phone's «Основы» (#3000) — a bottom sheet over the navigation.
 function startTour() {
@@ -270,7 +275,7 @@ function logout() {
       </button>
     </div>
 
-    <div class="mv-ver">Tessera {{ web.version }} · {{ host }}</div>
+    <div class="mv-ver">{{ verLine }}</div>
   </div>
 </template>
 

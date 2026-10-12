@@ -47,6 +47,7 @@ import { useAuthStore } from '@/stores/auth'
 import { useWsDialogsStore } from '@/stores/wsDialogs'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useVersionInfo } from '@/composables/useVersionInfo'
+import { RELEASE, apiInRelease, productLabel } from '@/utils/release'
 import { useFormat } from '@/composables/useFormat'
 import { useResponsive } from '@/composables/useResponsive'
 import { useShortcuts } from '@/composables/useShortcuts'
@@ -479,7 +480,9 @@ onMounted(() => {
         <span class="av-host-who">
           <span class="av-host-name">{{ host }}</span>
           <span class="av-host-ver">{{
-            t('settings.admin.hostVersion', { version: apiVersion?.version || web.version })
+            t('settings.admin.hostVersion', {
+              version: productLabel() || apiVersion?.version || web.version,
+            })
           }}</span>
         </span>
       </div>
@@ -867,6 +870,25 @@ onMounted(() => {
           <div class="av-kv">
             <span class="av-k">{{ t('settings.admin.server.address') }}</span>
             <span class="av-v">{{ host }}</span>
+            <template v-if="RELEASE">
+              <span class="av-k">{{ t('settings.admin.server.release') }}</span>
+              <span class="av-v" data-testid="admin-release">
+                {{ productLabel() }}
+                <span class="av-dim">· {{ RELEASE.product }} · {{ formatDate(RELEASE.date) }}</span>
+                <span
+                  v-if="!apiInRelease(apiVersion?.version)"
+                  class="av-warn"
+                  data-testid="admin-release-mismatch"
+                >
+                  {{
+                    t('settings.admin.server.apiOutside', {
+                      api: apiVersion?.version,
+                      want: RELEASE.components.backend,
+                    })
+                  }}
+                </span>
+              </span>
+            </template>
             <span class="av-k">{{ t('settings.admin.server.api') }}</span>
             <span class="av-v">
               {{ apiVersion?.version || '—' }}
@@ -1624,5 +1646,11 @@ onMounted(() => {
 }
 .av.mobile .av-v {
   margin-bottom: 8px;
+}
+.av-warn {
+  display: block;
+  margin-top: 2px;
+  font-size: 12px;
+  color: var(--t-warning, #f0a020);
 }
 </style>

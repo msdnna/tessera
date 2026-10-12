@@ -8,6 +8,8 @@
 
 !frontend
 !docs
+# The product release (docs/versioning.md) — vite.config.js reads ../release.json.
+!release.json
 
 # frontend/ carries build junk we never want in the context.
 frontend/node_modules

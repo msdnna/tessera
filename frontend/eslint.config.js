@@ -38,6 +38,7 @@ export default [
       globals: {
         ...globals.browser,
         __APP_VERSION__: 'readonly',
+        __RELEASE__: 'readonly',
         __APP_COMMIT__: 'readonly',
         __BUILD_DATE__: 'readonly',
       },

@@ -27,6 +27,7 @@
 export const WHATS_NEW = [
   {
     version: '0.190.0',
+    product: '2.0.0',
     date: '2026-10-12',
     titleKey: 'whatsNew.featuresV2.title',
     itemKeys: [
@@ -41,6 +42,7 @@ export const WHATS_NEW = [
   },
   {
     version: '0.189.0',
+    product: '2.0.0',
     date: '2026-10-10',
     titleKey: 'whatsNew.appV2.title',
     itemKeys: [
@@ -54,6 +56,7 @@ export const WHATS_NEW = [
   },
   {
     version: '0.188.0',
+    product: '2.0.0',
     date: '2026-10-07',
     titleKey: 'whatsNew.interactionV2.title',
     itemKeys: [
@@ -64,6 +67,7 @@ export const WHATS_NEW = [
   },
   {
     version: '0.187.0',
+    product: '2.0.0',
     date: '2026-10-07',
     titleKey: 'whatsNew.redesignV2.title',
     itemKeys: [

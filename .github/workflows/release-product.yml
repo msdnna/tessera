@@ -1,0 +1,64 @@
+name: Release Tessera (product)
+
+# The product release — «Tessera 2.0» — over the components' own releases
+# (docs/versioning.md). The components publish themselves on their tags
+# (api/v…, web/v…, android/v…, desktop/v…); this one publishes the release a
+# person installs: a GitHub Release named «Tessera 2.0» with the notes cut by
+# `make release-product` (docs/releases/v<version>.md) and the component set
+# from release.json. It builds nothing — the images and apps are the components'.
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write # create the GitHub Release
+
+concurrency:
+  group: release-product-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Publish the product release
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify the tag matches release.json and the notes exist
+        run: |
+          TAG="${GITHUB_REF#refs/tags/v}"
+          FILE="$(python3 -c 'import json;print(json.load(open("release.json"))["product"])')"
+          if [ "$TAG" != "$FILE" ]; then
+            echo "::error::Tag v$TAG does not match release.json product ($FILE). Run make release-product or retag."
+            exit 1
+          fi
+          NOTES="docs/releases/v$TAG.md"
+          if [ ! -s "$NOTES" ]; then
+            echo "::error::$NOTES is missing — make release-product writes it."
+            exit 1
+          fi
+          # Every component the release names must carry that very VERSION here.
+          python3 - <<'PY'
+          import json, sys
+          r = json.load(open("release.json"))
+          bad = [f"{c}: release.json {v} != {c}/VERSION {open(f'{c}/VERSION').read().strip()}"
+                 for c, v in r["components"].items()
+                 if open(f"{c}/VERSION").read().strip() != v]
+          if bad:
+              print("::error::" + "; ".join(bad))
+              sys.exit(1)
+          PY
+          {
+            echo "PRODUCT_VERSION=$TAG"
+            echo "PRODUCT_NAME=$(python3 -c 'import json;r=json.load(open("release.json"));v=r["product"].split(".");print(r["name"].split()[0]+" "+(v[0]+"."+v[1] if v[2]=="0" else r["product"]))')"
+            echo "NOTES=$NOTES"
+          } >> "$GITHUB_ENV"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ env.PRODUCT_NAME }}
+          body_path: ${{ env.NOTES }}
+          make_latest: 'true'

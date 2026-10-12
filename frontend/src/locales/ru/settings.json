@@ -184,7 +184,9 @@
       "apiBuilt": "Сборка API",
       "web": "Версия веб-клиента",
       "webBuilt": "Сборка веб-клиента",
-      "whatsNew": "Что нового"
+      "whatsNew": "Что нового",
+      "release": "Релиз",
+      "apiOutside": "Сервер api {api} — не из этого релиза (ожидается {want})"
     },
     "integrationsSub": "вход и синхронизация через GitLab",
     "msg": {

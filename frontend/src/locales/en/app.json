@@ -17,7 +17,8 @@
     "web": "Client",
     "api": "Server",
     "commit": "commit {commit}",
-    "built": "built {date}"
+    "built": "built {date}",
+    "release": "released {date}"
   },
   "connection": {
     "loading": "Loading",
@@ -33,7 +34,7 @@
     "historySub": "All Tessera updates",
     "close": "Close",
     "v2": {
-      "pill": "Tessera v2 · version {v}",
+      "pill": "Tessera {v}",
       "versionPill": "version {v}",
       "title": "The new Tessera interface",
       "sub": "The same tasks and boards — fewer dialogs and more done from the keyboard. What changed most:",
@@ -61,7 +62,8 @@
       },
       "note": "Mini-tour: 6 steps over the live interface, about a minute",
       "later": "Later",
-      "showMe": "Show what changed"
+      "showMe": "Show what changed",
+      "productPill": "Tessera {v}"
     }
   },
   "device": {

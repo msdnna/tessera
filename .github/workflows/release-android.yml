@@ -80,5 +80,7 @@ jobs:
         with:
           tag_name: ${{ github.ref_name }}
           name: Android v${{ env.ANDROID_VERSION }}
+          # The «latest» release on GitHub is the product's (release-product.yml).
+          make_latest: 'false'
           generate_release_notes: true
           files: android/msdnna-tessera-v${{ env.ANDROID_VERSION }}.apk

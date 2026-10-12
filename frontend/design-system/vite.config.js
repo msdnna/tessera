@@ -92,6 +92,7 @@ export default defineConfig({
     ],
   },
   define: {
+    __RELEASE__: 'null',
     __APP_VERSION__: JSON.stringify(webVersion),
     __APP_COMMIT__: JSON.stringify(''),
     __BUILD_DATE__: JSON.stringify(''),
