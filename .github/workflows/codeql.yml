@@ -70,6 +70,9 @@ jobs:
           # the default set. Worth the extra noise on a codebase seeing its first
           # SAST pass — the point of this round is to find out what is there.
           queries: security-extended
+          # paths-ignore for code that never ships (tests, e2e, design mock-ups);
+          # the file says why product code must never be listed there.
+          config-file: ./.github/codeql/codeql-config.yml
 
       # autobuild would find backend/ and stop there; the repo holds two Go
       # modules and both should be analysed.

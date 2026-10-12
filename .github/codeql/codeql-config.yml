@@ -1,0 +1,23 @@
+# CodeQL configuration (#2936). Wired in by .github/workflows/codeql.yml.
+#
+# paths-ignore takes out code that never ships: unit specs and their helpers,
+# the Playwright suite, and design mock-ups. Their findings (a test helper
+# stripping tags for an assertion, a fixture read before a request to the
+# throwaway e2e backend, a postMessage handler in a static design prototype)
+# describe no attack surface of the product and would only drown the alerts
+# that do.
+#
+# Product code is NOT to be listed here. A false positive in shipped code is
+# dismissed in the Security tab with its reasoning, where it stays visible and
+# re-opens if the code under it changes — an ignore line would hide the next
+# real finding in that file too.
+#
+# The entries are all JavaScript. Go needs none: it is analysed from `go build`,
+# which compiles no _test.go file.
+name: tessera-codeql
+
+paths-ignore:
+  - frontend/tests
+  - frontend/e2e
+  - design
+  - '**/*.spec.js'
