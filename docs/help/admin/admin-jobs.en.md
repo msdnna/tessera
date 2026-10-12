@@ -3,15 +3,15 @@ title: Background jobs
 category: Administration
 order: 88
 keywords: administration, background jobs, workers, worker, synchronization, queue, log, error, run
-updated: 2026-08-26
+updated: 2026-10-08
 platforms: web
 ---
 
 Some of Tessera's work happens on its own, out of the user's sight: it polls GitLab, pushes changes there, sends notifications, watches reminder due dates and creates recurring tasks. The **Background jobs** window shows what of this is running right now, when it will happen next, and what ended with an error.
 
-It's opened with the server-icon button in the sidebar header (in the tools row to the right of the logo) — visible only to an instance admin.
+It's opened with the keys <kbd>G</kbd> <kbd>J</kbd>, the **Background jobs** item in the “⋯” menu of the sidebar footer or in the column of sections on the [Administration](/help/admin-users) screen — all of them only for an instance admin.
 
-![The Background jobs window: the list on the left, the selected job's card on the right](../assets/background-jobs-light.png)
+![The Background jobs window: the filters on the left, the list, the selected job's card](../assets/background-jobs-light.png)
 
 ## A worker and a sync are different things
 
@@ -25,28 +25,23 @@ A **sync** is a one-off pass with a beginning and an end: a specific run of the 
 
 There are five of them, each with its own role:
 
-| Worker                        | Interval | What it does                                                       |
-| ----------------------------- | -------- | ------------------------------------------------------------------ |
-| GitLab auto-sync              | 30 s     | checks which integrations are due for a sync and starts them       |
-| GitLab write-back             | 10 s     | pushes the accumulated task changes to GitLab (write-back)         |
-| Notification delivery         | 10 s     | works through the notification queue and sends them over channels  |
-| Due dates and reminders scan  | 60 s     | looks for task due dates that have arrived and reminders that fired |
-| Recurring tasks               | 60 s     | creates the next occurrence on schedule                            |
+| Worker                       | Interval | What it does                                                        |
+| ---------------------------- | -------- | ------------------------------------------------------------------- |
+| GitLab auto-sync             | 30 s     | checks which integrations are due for a sync and starts them        |
+| GitLab write-back            | 10 s     | pushes the accumulated task changes to GitLab (write-back)          |
+| Notification delivery        | 10 s     | works through the notification queue and sends them over channels   |
+| Due dates and reminders scan | 60 s     | looks for task due dates that have arrived and reminders that fired |
+| Recurring tasks              | 60 s     | creates the next occurrence on schedule                             |
 
 The intervals are fixed; you can't configure them from the interface.
 
-## How to read the list
+## How to read the window
 
-On the left are the job rows, each with a coloured status dot:
+On the left are the filters: **All · Running · Queued · Failed · Finished** and, by type, **Workers** and **GitLab**; each has a count, errors in red. The digits <kbd>1</kbd>–<kbd>7</kbd> switch them from the keyboard.
 
-- **running** — green;
-- **queued** — orange;
-- **done** — grey;
-- **error** — red.
+In the middle is the list of jobs with a search (<kbd>/</kbd>); <kbd>↑</kbd> <kbd>↓</kbd> walk the rows. Under the name a worker shows what it does and when it runs next, a sync — its mode and what started it. On the right of a row: “Queued” or “Error” as a pill, the running time of a sync in progress, a tick with the finish time for a finished one, a green dot for a live worker. The list refreshes itself every few seconds; the arrows button in the window's header refreshes it immediately, next to the “running · queued” summary.
 
-Next to a worker's status comes “next run in …”; for a sync — the current step. On the right of the row is the running time for a job that's running and the finish time for a completed one. The list refreshes itself every few seconds; the arrows button in the heading refreshes it immediately.
-
-Clicking a row opens the card on the right: status, for a worker — the last activity and the next run, for a sync — the mode (**incremental** or **full**), what started it (**manual** or **scheduled**), the start, the finish, the duration and the **Created / updated** counters. If the job failed, the error text is right here too.
+On the right is the selected job's card: status, for a worker — the last activity and the next run, for a sync — the mode (**incremental** or **full**), what started it (**manual** or **scheduled**), the start, the finish, the duration and the **Created / updated** counters. If the job failed, the error text sits below on a red backing. A job's steps, progress and live log, and the 30-day history, are marked “soon” for now.
 
 ## The “journal” badge
 
@@ -56,9 +51,9 @@ The window shows completed runs from the last hour. Older ones drop out of the w
 
 ## Run and stop
 
-**Run now** does the worker's work immediately, without waiting for the next tick. It's what you need when a change has already been made and you don't want to wait a minute — for example, to check whether a notification goes out. The button is only on workers: a one-off sync of a specific integration is started from its own settings, not from here.
+**Run now** (<kbd>R</kbd>) does the worker's work immediately, without waiting for the next tick. It's what you need when a change has already been made and you don't want to wait a minute — for example, to check whether a notification goes out. The button is only on workers: a one-off sync of a specific integration is started from its own settings, not from here.
 
-**Stop** appears on a running job that supports cancellation — right now that's the GitLab syncs. Cancellation isn't instant: the job stops at the nearest safe step, so the row stays in the “running” state for a while. Data already moved isn't rolled back on cancellation — the next pass simply continues from where the previous one got to.
+**Stop** (<kbd>⇧</kbd> <kbd>⌫</kbd>) appears on a running job that supports cancellation — right now that's the GitLab syncs. Cancellation isn't instant: the job stops at the nearest safe step, so the row stays in the “running” state for a while. Data already moved isn't rolled back on cancellation — the next pass simply continues from where the previous one got to.
 
 ## If a job ended with an error
 

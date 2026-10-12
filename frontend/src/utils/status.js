@@ -53,16 +53,26 @@ export function siblingNeighbors(siblings, id) {
   return { before_id: before?.id || null, after_id: after?.id || null }
 }
 
-// The task sitting last (highest position) in `columnId`, self excluded. Sent as
-// before_id when a top-level task changes column, so it lands at the column's
-// end — the same place a drag-and-drop onto empty space would put it. Without
-// it positionBetween(nil, nil) is the constant 65536, which on a populated
-// board means "somewhere near the top", silently reordering the column.
-export function columnTail(tasks, columnId, selfId) {
-  let tail = null
-  for (const t of tasks || []) {
-    if (!t || t.id === selfId || !columnId || t.column_id !== columnId) continue
-    if (!tail || (t.position ?? 0) > (tail.position ?? 0)) tail = t
-  }
-  return tail?.id || null
+// Neighbours for PATCH /tasks/:id/move from the task modal, where the move is a
+// column pick and not a drag — so there is nothing to aim between.
+//
+// A SUBTASK is numbered among its parent's children and changing column does not
+// take it out of that list, so it names the row it already stands on and keeps
+// its place. A TOP-LEVEL card names nothing: the server appends it to the end of
+// the destination column (positionForUnanchoredMove → MaxTaskPositionInColumn).
+//
+// Both clients used to emulate that append by hand, sending the highest-position
+// card of the target column as `before_id`. The list they picked it from is the
+// board's loaded cards — and the board loads a SPRINT-SCOPED slice of them
+// (`?milestone=…`, chosen in the project tree). So on a scoped board the "tail"
+// was the last card of the sprint, not of the column, and `positionBetween(prev,
+// nil)` = prev + 65536 — exactly where the next card sits on an untouched ladder.
+// The card landed mid-column sharing a position with a card it knew nothing
+// about: the tie the move endpoint otherwise refuses (rejectSameNeighbour,
+// positionExhausted), neither of which fires when only `before_id` is given.
+// The server counts the whole column, so leaving the slot to it is both correct
+// under a scope and current with cards this client never loaded (#2932).
+export function moveNeighbors(task, siblings) {
+  if (!task?.parent_id) return { before_id: null, after_id: null }
+  return siblingNeighbors(siblings, task.id)
 }

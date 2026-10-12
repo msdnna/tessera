@@ -1,0 +1,69 @@
+/* Island plumbing: the slot placeholder React portals into must not add a box. */
+.tds-slot {
+  display: contents;
+}
+
+/* Provider wrapper: a plain block (the app root of a design) carrying the scoped
+   --t-* variables, so a nested provider re-themes exactly its own subtree. */
+.tds-root {
+  color: var(--t-text1);
+  /* main.css defines these on :root in terms of --t-primary, but a custom property
+     is computed where it is declared and inherited as the finished gradient — so
+     a nested provider's accent would never reach them. Re-declared here (same
+     formulas) they resolve against the provider's own --t-primary. */
+  --t-accent-grad: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 86%, #000) 0%,
+    var(--t-primary) 50%,
+    color-mix(in srgb, var(--t-primary) 86%, #fff) 100%
+  );
+  --t-accent-grad-subtle: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 92%, #000) 0%,
+    var(--t-primary) 50%,
+    color-mix(in srgb, var(--t-primary) 92%, #fff) 100%
+  );
+  --t-accent-grad-vert: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--t-primary) 86%, #000) 0%,
+    var(--t-primary) 50%,
+    color-mix(in srgb, var(--t-primary) 86%, #fff) 100%
+  );
+}
+
+/* TagPill leaves padding/radius/size to its call site (the card, the modal, a
+   picker). Standalone, it gets the board card's chip metrics so it reads as the
+   app's pill. Two-tone scoped pills size their own segments. */
+.tds-TagPill > .tpill {
+  font-size: 12px;
+  line-height: 18px;
+  box-sizing: border-box;
+}
+.tds-TagPill > .tpill:not(.tt) {
+  padding: 1px 8px;
+  border-radius: 999px;
+}
+.tds-slot-box {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* UserAvatar: the board card's .avatar metrics (v2: 22px, accent-gradient fill,
+   semibold initials); `stacked` adds the cascade — a 2px ring in the card colour
+   and a 6px overlap (TaskCardPills .avatar). */
+.tds-avatar > .ua {
+  width: var(--tds-ava, 22px);
+  height: var(--tds-ava, 22px);
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: var(--t-on-primary);
+  font-size: calc(var(--tds-ava, 22px) * 0.45);
+  font-weight: 600;
+  box-sizing: border-box;
+}
+.tds-avatar-stacked > .ua {
+  box-shadow: 0 0 0 2px var(--t-card);
+}
+.tds-avatar-stacked + .tds-avatar-stacked {
+  margin-left: calc(var(--tds-ava, 22px) * -0.273);
+}

@@ -2,7 +2,6 @@ package gitlab
 
 import (
 	"sort"
-	"strconv"
 	"strings"
 )
 
@@ -18,11 +17,11 @@ type Writeback struct {
 	PushState           bool              `json:"push_state"`
 	PushPriority        bool              `json:"push_priority"`
 	PushComments        bool              `json:"push_comments"`
-	PushLabels          bool              `json:"push_labels"`     // reconcile tag-namespace labels
-	PushDue             bool              `json:"push_due"`        // push the issue's own due_date
-	PushAssignees       bool              `json:"push_assignees"`  // push the resolved assignee set
-	PushEstimate        bool              `json:"push_estimate"`   // push timeEstimate (time unit only)
-	PushMilestone       bool              `json:"push_milestone"`  // push the task's milestone (GitLab-linked only)
+	PushLabels          bool              `json:"push_labels"`    // reconcile tag-namespace labels
+	PushDue             bool              `json:"push_due"`       // push the issue's own due_date
+	PushAssignees       bool              `json:"push_assignees"` // push the resolved assignee set
+	PushEstimate        bool              `json:"push_estimate"`  // push timeEstimate (time unit only)
+	PushMilestone       bool              `json:"push_milestone"` // push the task's milestone (GitLab-linked only)
 	PushTitleDesc       bool              `json:"push_title_desc"`
 	PushCreate          bool              `json:"push_create"`     // allow creating a GitLab issue from a task
 	FetchTemplates      bool              `json:"fetch_templates"` // offer repo issue templates when creating
@@ -56,6 +55,31 @@ type Writeback struct {
 	// Bindings is the customizable trigger→action table. Empty = fall back to the
 	// legacy-flag defaults (effectiveBindings). Non-empty = admin took control.
 	Bindings []Binding `json:"bindings,omitempty"`
+
+	// ConflictPolicy decides a write-back conflict — a field changed on both sides
+	// since the last sync (#3088): ConflictAsk parks it for a person (the default,
+	// and the only behaviour before the policy existed), ConflictTessera pushes
+	// Tessera's value over GitLab's, ConflictGitlab takes GitLab's value into the
+	// task and pushes nothing.
+	ConflictPolicy string `json:"conflict_policy,omitempty"`
+}
+
+// Conflict policies (#3088).
+const (
+	ConflictAsk     = "ask"
+	ConflictTessera = "tessera"
+	ConflictGitlab  = "gitlab"
+)
+
+// EffectiveConflictPolicy is the stored policy, with anything unknown read as
+// ConflictAsk — the one that never loses a value.
+func (w Writeback) EffectiveConflictPolicy() string {
+	switch w.ConflictPolicy {
+	case ConflictTessera, ConflictGitlab:
+		return w.ConflictPolicy
+	default:
+		return ConflictAsk
+	}
 }
 
 // EffectiveGroupLabel is the label the "make this a grouped task" button writes.
@@ -189,7 +213,7 @@ func (w Writeback) effectiveBindings(rules Rules) []Binding {
 			}
 			sort.Ints(levels)
 			for _, lvl := range levels {
-				l := int32(lvl)
+				l := int32(lvl) // #nosec G115 -- levels are int32 map keys widened to int just above
 				add(Binding{
 					Trigger: BindTrigger{Type: TrigPriority, Priority: &l},
 					Action:  BindAction{Type: ActSetLabel, Label: inv[l], ClearPrefix: true},
@@ -357,7 +381,7 @@ func (w Writeback) Allows(kind string) bool {
 // priorityRule returns the first "priority" action rule, or nil.
 func (rs Rules) priorityRule() *Rule {
 	for i := range rs.Rules {
-		if rs.Rules[i].Action == "priority" {
+		if rs.Rules[i].Action == "priority" && !rs.Rules[i].Disabled {
 			return &rs.Rules[i]
 		}
 	}
@@ -376,14 +400,14 @@ func (rs Rules) InversePriority() (map[int32]string, bool) {
 	}
 	out := make(map[int32]string, len(r.ValueMap))
 	for value, lvl := range r.ValueMap {
-		n, err := strconv.Atoi(lvl)
-		if err != nil {
+		n, ok := parsePriority(lvl)
+		if !ok {
 			continue
 		}
-		if _, dup := out[int32(n)]; dup {
+		if _, dup := out[n]; dup {
 			return nil, false // ambiguous inverse
 		}
-		out[int32(n)] = r.Match + value
+		out[n] = r.Match + value
 	}
 	return out, len(out) > 0
 }

@@ -33,6 +33,7 @@ jobs:
       android: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.android == 'true') }}
       mcp:     ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.mcp == 'true') }}
       desktop: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.desktop == 'true') }}
+      security: ${{ steps.guard.outputs.run == 'true' && (github.event_name == 'workflow_dispatch' || steps.filter.outputs.security == 'true') }}
     steps:
       - uses: actions/checkout@v4
 
@@ -84,6 +85,28 @@ jobs:
               - 'desktop/**'
               - 'frontend/**'
               - '.github/workflows/ci.yml'
+            # Dependency and secret scanning: the Go sources (govulncheck walks
+            # the call graph, so any code change can change the verdict), the
+            # lockfiles, and the scanner itself. Not 'frontend/**' — a .vue edit
+            # cannot change what osv-scanner reads out of yarn.lock.
+            security:
+              - 'backend/**'
+              - 'mcp/**'
+              - 'frontend/yarn.lock'
+              - 'frontend/package.json'
+              # Desktop is lockfile-only too (#2938): a Rust source edit cannot
+              # change what osv-scanner reads out of Cargo.lock, and clippy —
+              # the SAST half for Rust — is already a gate in the Desktop job.
+              - 'desktop/src-tauri/Cargo.lock'
+              - 'tools/security-scan.sh'
+              - 'tools/install-scanners.sh'
+              # The ratchet and its baseline (#2939): editing either changes the
+              # verdict of an otherwise unchanged scan, so it has to rerun.
+              - 'tools/security-ratchet.py'
+              - 'tools/security-baseline.json'
+              - '.gitleaks.toml'
+              - 'Makefile'
+              - '.github/workflows/ci.yml'
 
   backend:
     name: Backend
@@ -110,7 +133,7 @@ jobs:
 
       # setup-go's go-version-file reads only the `go` directive and ignores
       # `toolchain`, so it would install go1.25.0 while go.mod pins toolchain
-      # go1.25.9 → "compile: version mismatch". Resolve the toolchain explicitly.
+      # go1.26.9 → "compile: version mismatch". Resolve the toolchain explicitly.
       - name: Resolve Go version from go.mod toolchain directive
         id: gover
         run: |
@@ -336,6 +359,10 @@ jobs:
     needs: changes
     if: ${{ needs.changes.outputs.android == 'true' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The scan step at the end publishes SARIF into the Security tab.
+      security-events: write
     steps:
       - uses: actions/checkout@v4
 
@@ -345,6 +372,10 @@ jobs:
           java-version: '21'
 
       - uses: android-actions/setup-android@v3
+        # Not the default «tools platform-tools»: the legacy `tools` package is gone
+        # from the SDK index (cmdline-tools 16), and sdkmanager fails the step on it.
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK 37 (preview channel)
         run: |
@@ -379,6 +410,35 @@ jobs:
           name: badge-android
           path: _badges/android.json
           retention-days: 1
+
+      # The Android half of the security scan (#2938) lives here rather than in
+      # the Security job because it needs this job's JDK + SDK: detekt is an
+      # Android-variant-aware Gradle task, and the dependency list comes from
+      # resolving releaseRuntimeClasspath. Only osv-scanner is installed — the Go
+      # scanners would drag a Go toolchain into a job that has no use for one.
+      - name: Install osv-scanner
+        run: make scan-tools TOOLS=osv-scanner
+
+      - name: Scan (detekt + osv-scanner over Gradle dependencies)
+        run: make scan-android
+
+      # One upload per report, each under its own category: code scanning no
+      # longer combines several runs uploaded under one category (codeql-action
+      # v4 refuses them), and a category separate from the Security job's keeps
+      # one job's results from replacing the other's.
+      - name: Publish SARIF — detekt
+        if: ${{ always() && hashFiles('reports/security/detekt.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/detekt.sarif
+          category: sast-sca-android/detekt
+
+      - name: Publish SARIF — osv-android
+        if: ${{ always() && hashFiles('reports/security/osv-android.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/osv-android.sarif
+          category: sast-sca-android/osv-android
 
   android-e2e:
     name: Android e2e (JVM)
@@ -428,6 +488,10 @@ jobs:
           java-version: '21'
 
       - uses: android-actions/setup-android@v3
+        # Not the default «tools platform-tools»: the legacy `tools` package is gone
+        # from the SDK index (cmdline-tools 16), and sdkmanager fails the step on it.
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK 37 (preview channel)
         run: |
@@ -510,6 +574,10 @@ jobs:
           java-version: '21'
 
       - uses: android-actions/setup-android@v3
+        # Not the default «tools platform-tools»: the legacy `tools` package is gone
+        # from the SDK index (cmdline-tools 16), and sdkmanager fails the step on it.
+        with:
+          packages: 'platform-tools'
 
       - name: Install Android SDK 37 (preview channel)
         run: |
@@ -617,6 +685,92 @@ jobs:
           workspaces: desktop/src-tauri
       - name: fmt + clippy
         run: make lint-desktop
+
+  security:
+    name: Security (SAST/SCA)
+    needs: changes
+    if: ${{ needs.changes.outputs.security == 'true' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Publishing the SARIF into the Security tab, same as the CodeQL workflow.
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve Go version from go.mod toolchain directive
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      # govulncheck's own go.mod asks for a newer toolchain than this repo pins;
+      # `auto` lets the install fetch it instead of failing the job.
+      - name: Install scanners
+        env:
+          GOTOOLCHAIN: auto
+        run: make scan-tools
+
+      # SCAN_FAIL_ON stays at its default `none` — this job reports, it does not
+      # yet gate. Turning it into a gate is the ratchet in #2939; doing it before
+      # the baseline is triaged would just mean a permanently red develop.
+      # Not `make scan`: that also runs the Android half, which needs the JDK and
+      # the SDK this job deliberately does not install. Android is scanned in the
+      # Android job below, where that toolchain already exists (#2938).
+      - name: Scan (govulncheck + gosec + osv-scanner + gitleaks)
+        run: make scan-backend scan-frontend scan-secrets scan-desktop
+
+      # One upload per scanner, each under its own category: code scanning no
+      # longer combines several SARIF runs uploaded under one category
+      # (codeql-action v4 refuses a directory of them).
+      - name: Publish SARIF — govulncheck
+        if: ${{ always() && hashFiles('reports/security/govulncheck.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/govulncheck.sarif
+          category: sast-sca/govulncheck
+
+      - name: Publish SARIF — gosec
+        if: ${{ always() && hashFiles('reports/security/gosec.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/gosec.sarif
+          category: sast-sca/gosec
+
+      - name: Publish SARIF — osv-frontend
+        if: ${{ always() && hashFiles('reports/security/osv-frontend.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/osv-frontend.sarif
+          category: sast-sca/osv-frontend
+
+      - name: Publish SARIF — osv-desktop
+        if: ${{ always() && hashFiles('reports/security/osv-desktop.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/osv-desktop.sarif
+          category: sast-sca/osv-desktop
+
+      - name: Publish SARIF — gitleaks
+        if: ${{ always() && hashFiles('reports/security/gitleaks.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@v4
+        with:
+          sarif_file: reports/security/gitleaks.sarif
+          category: sast-sca/gitleaks
+
+      - name: Upload reports artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: security-reports
+          path: reports/security/
+          retention-days: 14
 
   # ─── Build verification (push only) ───────────────────────────────────────
   build-verify:

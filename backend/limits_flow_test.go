@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -33,7 +34,9 @@ func TestBodyLimitRoutesExist(t *testing.T) {
 	for _, route := range r.Routes() {
 		registered[route.Path] = true
 	}
-	for _, want := range []string{routeWS, routeUploads, routeAvatar, routeAttachments} {
+	// Every entry of the table the middleware is built from, not a hand-kept
+	// copy of it (#2932).
+	for want := range bodyLimitRoutes(cfg) {
 		if !registered[want] {
 			t.Errorf("body-limit table names %q, which is not a registered route", want)
 		}
@@ -95,6 +98,151 @@ func TestMediaBudgetRefusesOversizedUpload(t *testing.T) {
 	r := uploadFile(t, c, "/uploads", "file", "huge.png", over)
 	if r.Status != http.StatusRequestEntityTooLarge {
 		t.Fatalf("oversized media upload: status %d, want 413\n%s", r.Status, truncate(r.Body))
+	}
+}
+
+// A PDF dropped into an open page goes to a route of its own, and that route's
+// handler allows 20 MiB. Without an entry in the limits table it sits on the
+// blanket 1 MiB JSON budget instead, so the transport refuses the request before
+// the handler ever sees it — and refuses it with "request body too large", which
+// is neither the handler's sentence nor a true one at 2 MiB. Every real PDF is
+// over a megabyte, so the route was unusable for its entire purpose.
+//
+// The pair is the point: one upload the route must carry, one it must refuse
+// with its *own* answer. A budget that merely refuses everything would pass the
+// first half of this on its own.
+func TestDocumentPdfBudgetSurvivesRealPdf(t *testing.T) {
+	c := signup(t)
+	ws := mkWorkspace(t, c, "WS "+t.Name())
+	doc := c.post("/workspaces/"+ws+"/documents", map[string]any{"title": "Страница"}).mapBody(t)
+	id, _ := doc["id"].(string)
+
+	// Over the blanket ceiling, well under the route's own — an ordinary scan.
+	big := append(append([]byte{}, pdfFixture...), make([]byte, 2<<20)...)
+	r := uploadFile(t, c, "/documents/"+id+"/pdf", "file", "Смета.pdf", big)
+	if r.Status != http.StatusCreated {
+		t.Fatalf("2 MiB PDF: status %d, want 201\n%s", r.Status, truncate(r.Body))
+	}
+
+	// Past maxDocImportBytes: still a 413, but the handler's, phrased in the
+	// units it promises. The transport would say "request body too large".
+	over := append(append([]byte{}, pdfFixture...), make([]byte, 21<<20)...)
+	ref := uploadFile(t, c, "/documents/"+id+"/pdf", "file", "Огромная.pdf", over)
+	if ref.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("21 MiB PDF: status %d, want 413\n%s", ref.Status, truncate(ref.Body))
+	}
+	if body := string(ref.Body); !strings.Contains(body, "20 МБ") {
+		t.Fatalf("21 MiB PDF was refused by the transport, not the handler: %s", truncate(ref.Body))
+	}
+}
+
+// docOfBytes builds a valid ProseMirror document of roughly `size` bytes of
+// JSON: `paras` paragraphs, each holding one text node. Node count stays far
+// under maxDocNodes so the only ceiling the request can meet is a size one.
+func docOfBytes(paras, perPara int) map[string]any {
+	line := strings.Repeat("текст ", perPara/len("текст "))
+	content := make([]any, 0, paras)
+	for i := 0; i < paras; i++ {
+		content = append(content, map[string]any{
+			"type":    "paragraph",
+			"content": []any{map[string]any{"type": "text", "text": line}},
+		})
+	}
+	return map[string]any{"type": "doc", "content": content}
+}
+
+// The editor's own route repeats the mistake the constants above are named
+// after, and repeats it where it costs the most. validateDocContent allows a
+// document of MaxDocContentBytes (4 MiB of JSON), but with no entry in the limits
+// table the save runs on the blanket 1 MiB — so a long page is refused by the
+// transport, and the handler's ceiling is unreachable code.
+//
+// What makes this route different from the three above it is that nobody
+// retries a refused upload by hand here: useDocAutosave puts the rejected
+// content back on the queue and keeps saving, so a document that crossed a
+// megabyte simply stops being written while its author keeps typing. The office
+// import lands in the same place — it PATCHes the converted body through this
+// route, and a 20 MiB file the import route deliberately accepts produces far
+// more than a megabyte of JSON, leaving the freshly created document empty.
+//
+// Both halves are asserted for the same reason as the PDF pair: a budget that
+// merely accepted everything would pass the first and lose the handler's own
+// answer on the second.
+func TestDocumentContentBudgetSurvivesLongDocument(t *testing.T) {
+	c := signup(t)
+	ws := mkWorkspace(t, c, "WS "+t.Name())
+	doc := c.post("/workspaces/"+ws+"/documents", map[string]any{"title": "Длинная страница"}).mapBody(t)
+	id, _ := doc["id"].(string)
+	updatedAt, _ := doc["updated_at"].(string)
+
+	// ~2 MiB of JSON: over the blanket ceiling, well under the handler's. An
+	// ordinary long page — a spec, a manual, an imported .docx.
+	big := docOfBytes(2000, 1000)
+	r := c.patch("/documents/"+id+"/content",
+		map[string]any{"content": big, "updated_at": updatedAt})
+	if r.Status != http.StatusOK {
+		t.Fatalf("~2 MiB document: status %d, want 200\n%s", r.Status, truncate(r.Body))
+	}
+	saved := r.mapBody(t)
+	updatedAt, _ = saved["updated_at"].(string)
+
+	// Past MaxDocContentBytes: still refused, but by the validator, in its own
+	// words and with a 400 — the transport would answer 413 "request body too
+	// large", which says nothing about documents. This is what the route's slack
+	// buys: an ordinary overshoot is explained rather than cut off.
+	over := docOfBytes(3500, 1300)
+	ref := c.patch("/documents/"+id+"/content",
+		map[string]any{"content": over, "updated_at": updatedAt})
+	if ref.Status != http.StatusBadRequest {
+		t.Fatalf("~4.5 MiB document: status %d, want 400\n%s", ref.Status, truncate(ref.Body))
+	}
+	if body := string(ref.Body); !strings.Contains(body, "content exceeds") {
+		t.Fatalf("oversized document was refused by the transport, not the validator: %s", truncate(ref.Body))
+	}
+}
+
+// The in-call chat repeats the same omission a fifth time, and this route is the
+// one where the gap is widest: the handler caps a file at maxAttachmentBytes
+// (25 MiB) and the message at maxChatFiles of them, while all three composers —
+// web (utils/confChat.js), Android (util/ConferenceChat.kt) and the handler's own
+// sentence — promise the reader 25 MiB. With no entry in the limits table the
+// request ran on the blanket 1 MiB, so every one of those promises was false past
+// the first megabyte: a screenshot from a phone left the composer, travelled the
+// wire and came back "request body too large", which names nothing the user did.
+//
+// The pair is the point, same as the PDF and document routes above: one upload
+// the route must carry, one it must refuse with its *own* answer. The refusal is
+// the aggregate ceiling, which the route budget exists to make reachable — five
+// files of 25 MiB each is 125 MiB of buffered multipart for one line of chat,
+// which is exactly what maxChatFiles was written to prevent.
+func TestConferenceChatBudgetSurvivesRealAttachment(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	_, confID := mkConference(t, owner, "Летучка с файлом")
+
+	// A 2 MiB screenshot: over the blanket ceiling, far under the route's own.
+	shot := make([]byte, 2<<20)
+	for i := range shot {
+		shot[i] = byte(i)
+	}
+	r := postChat(t, owner, confID, "скрин", map[string][]byte{"Экран.png": shot})
+	if r.Status != http.StatusCreated {
+		t.Fatalf("2 MiB chat attachment: status %d, want 201\n%s", r.Status, truncate(r.Body))
+	}
+
+	// Past the aggregate ceiling but inside the route's slack: refused by the
+	// handler, in its own words and before a byte reaches disk. The transport
+	// would answer "request body too large", which says nothing about files.
+	over := map[string][]byte{}
+	for i := 0; i < 5; i++ {
+		over[fmt.Sprintf("кусок-%d.bin", i)] = make([]byte, 5_400_000) // ~25.8 MiB in total
+	}
+	ref := postChat(t, owner, confID, "пачка", over)
+	if ref.Status != http.StatusRequestEntityTooLarge {
+		t.Fatalf("~25.8 MiB of attachments: status %d, want 413\n%s", ref.Status, truncate(ref.Body))
+	}
+	if body := string(ref.Body); !strings.Contains(body, "attachments exceed") {
+		t.Fatalf("oversized batch was refused by the transport, not the handler: %s", truncate(ref.Body))
 	}
 }
 

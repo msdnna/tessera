@@ -9,6 +9,7 @@ import (
 	"net/url"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // OAuthUserInfo is the subset of GitLab's /user we need to provision an account.
@@ -24,41 +25,88 @@ type OAuthUserInfo struct {
 // self-hosted GitLab's /oauth/token (confidential app: client_id + client_secret,
 // no PKCE). Returns the access token.
 func ExchangeOAuthCode(ctx context.Context, baseURL, clientID, clientSecret, code, redirectURI string) (string, error) {
-	base := strings.TrimRight(baseURL, "/")
-	form := url.Values{
+	g, err := ExchangeOAuthGrant(ctx, baseURL, clientID, clientSecret, code, redirectURI)
+	return g.AccessToken, err
+}
+
+// OAuthGrant is what /oauth/token hands out: the access token, the refresh token
+// that renews it, and how long the access token lives (GitLab: two hours).
+type OAuthGrant struct {
+	AccessToken  string
+	RefreshToken string
+	ExpiresAt    *time.Time // nil when GitLab names no lifetime
+}
+
+// ExchangeOAuthGrant is ExchangeOAuthCode keeping the whole grant — what a GitLab
+// connection made through OAuth (#3083) stores to keep itself alive.
+func ExchangeOAuthGrant(ctx context.Context, baseURL, clientID, clientSecret, code, redirectURI string) (OAuthGrant, error) {
+	return oauthToken(ctx, baseURL, url.Values{
 		"client_id":     {clientID},
 		"client_secret": {clientSecret},
 		"code":          {code},
 		"grant_type":    {"authorization_code"},
 		"redirect_uri":  {redirectURI},
-	}
+	})
+}
+
+// RefreshOAuthGrant renews an access token with its refresh token. GitLab rotates
+// the refresh token too: the old one is spent, the grant carries the new pair.
+func RefreshOAuthGrant(ctx context.Context, baseURL, clientID, clientSecret, refreshToken, redirectURI string) (OAuthGrant, error) {
+	return oauthToken(ctx, baseURL, url.Values{
+		"client_id":     {clientID},
+		"client_secret": {clientSecret},
+		"refresh_token": {refreshToken},
+		"grant_type":    {"refresh_token"},
+		"redirect_uri":  {redirectURI},
+	})
+}
+
+// oauthToken posts one /oauth/token request.
+func oauthToken(ctx context.Context, baseURL string, form url.Values) (OAuthGrant, error) {
+	base := strings.TrimRight(baseURL, "/")
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/oauth/token", strings.NewReader(form.Encode()))
 	if err != nil {
-		return "", err
+		return OAuthGrant{}, err
 	}
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.Header.Set("Accept", "application/json")
 	resp, err := NewHTTPClient().Do(req)
 	if err != nil {
-		return "", err
+		return OAuthGrant{}, err
 	}
 	defer func() { _ = resp.Body.Close() }()
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if resp.StatusCode == http.StatusUnauthorized || resp.StatusCode == http.StatusBadRequest {
+		// invalid_grant: the refresh token was revoked or already spent.
+		return OAuthGrant{}, fmt.Errorf("%w: %s", ErrUnauthorized, strings.TrimSpace(string(body)))
+	}
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("gitlab token exchange: %s: %s", resp.Status, strings.TrimSpace(string(body)))
+		return OAuthGrant{}, fmt.Errorf("gitlab token exchange: %s: %s", resp.Status, strings.TrimSpace(string(body)))
 	}
 	var tok struct {
-		AccessToken string `json:"access_token"`
-		Error       string `json:"error"`
-		ErrorDesc   string `json:"error_description"`
+		AccessToken  string `json:"access_token"`
+		RefreshToken string `json:"refresh_token"`
+		ExpiresIn    int64  `json:"expires_in"`
+		CreatedAt    int64  `json:"created_at"`
+		Error        string `json:"error"`
+		ErrorDesc    string `json:"error_description"`
 	}
 	if err := json.Unmarshal(body, &tok); err != nil {
-		return "", err
+		return OAuthGrant{}, err
 	}
 	if tok.AccessToken == "" {
-		return "", fmt.Errorf("gitlab token exchange: %s %s", tok.Error, tok.ErrorDesc)
+		return OAuthGrant{}, fmt.Errorf("gitlab token exchange: %s %s", tok.Error, tok.ErrorDesc)
 	}
-	return tok.AccessToken, nil
+	g := OAuthGrant{AccessToken: tok.AccessToken, RefreshToken: tok.RefreshToken}
+	if tok.ExpiresIn > 0 {
+		from := time.Now()
+		if tok.CreatedAt > 0 {
+			from = time.Unix(tok.CreatedAt, 0)
+		}
+		at := from.Add(time.Duration(tok.ExpiresIn) * time.Second)
+		g.ExpiresAt = &at
+	}
+	return g, nil
 }
 
 // OAuthUser fetches the authenticated GitLab user with an OAuth access token.

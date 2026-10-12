@@ -3,7 +3,7 @@ title: Comments
 category: Tasks
 order: 32
 keywords: comments, discussion, replies, thread, mention, commands, quick actions, task link, edit, delete
-updated: 2026-08-28
+updated: 2026-10-08
 ---
 
 The **Comments** tab is the discussion of a task. Comments are written with the same [Markdown editor](/help/markdown-editor) as the description, so formatting, images, attachments and diagrams all work in them. On top of that come three things the description doesn't have: reply threads, mentions that notify, and commands.
@@ -12,7 +12,7 @@ The **Comments** tab is the discussion of a task. Comments are written with the 
 
 ## Sending
 
-The input is pinned to the bottom of the tab and doesn't scroll away. Send it with the button or with **Ctrl+Enter**.
+The field is pinned to the bottom and stays put while you scroll. At rest it is one line; step into it and it opens up and grows with the text up to 40% of the window height. The **«Aa»** button opens the formatting row (the editor remembers whether it is open), next to it are «Attach» and «Send». Send with the button or **Ctrl+Enter**. On a phone the field rides above the keyboard.
 
 If the server is unreachable the comment **isn't lost**: “No connection — retrying (1/3)…” appears under the field and the editor tries three more times with a growing pause. Your text stays in the field the whole time, and Cancel stops the wait. Retries only happen when the network is gone: if the server answered with an error, resending is pointless and no retry is made.
 
@@ -80,3 +80,5 @@ Partial success is still success: `/assign @known @unknown` assigns whoever was 
 ## Workspace commands
 
 Besides the built-in ones, a workspace may define **its own commands** — `/approve` for a bot, say. Tessera **recognises but does not execute** them: such a line stays in the comment's text (the hint says so — “will stay as text”), and it is parsed by whoever it is addressed to.
+
+The workspace owner and admins set them up: the workspace menu → Integrations → **Commands**. A row is edited in place — <kbd>Enter</kbd> opens it, a second <kbd>Enter</kbd> saves, <kbd>N</kbd> adds one, <kbd>⌥</kbd> <kbd>↑</kbd> / <kbd>↓</kbd> change the order in the popup, <kbd>⌫</kbd> deletes with an undo. The neighbouring **Built-in** section is a reference of the commands the server runs.

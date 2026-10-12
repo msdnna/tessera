@@ -1,13 +1,16 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
+	"tessera/middleware"
 )
 
 // Milestones («Этап»): a project-scoped planning unit. Native CRUD here; the GitLab
@@ -106,7 +109,7 @@ func (h *API) CreateMilestone(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "milestone.created", m)
+	h.broadcastAs(c, wsID, "milestone.created", m)
 	c.JSON(http.StatusCreated, m)
 }
 
@@ -132,14 +135,16 @@ func (h *API) milestoneWorkspace(c *gin.Context, id uuid.UUID) (db.Milestone, uu
 	return m, wsID, true
 }
 
-// UpdateMilestone edits a milestone (GitLab-sourced ones are guarded on the client;
-// the server still allows local edits — the next pull re-asserts GitLab's values).
+// UpdateMilestone edits a milestone. A GitLab-sourced one (#3010) is editable only
+// while its binding writes to GitLab (else 409 gitlab_readonly — the next pull would
+// undo the edit); the change is then written to GitLab in the same request, and the
+// response carries how that went (gl_sync: ok | failed | conflict).
 func (h *API) UpdateMilestone(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
 		return
 	}
-	_, wsID, ok := h.milestoneWorkspace(c, id)
+	prev, wsID, ok := h.milestoneWorkspace(c, id)
 	if !ok {
 		return
 	}
@@ -147,6 +152,24 @@ func (h *API) UpdateMilestone(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	link, lerr := h.q.GetGitlabMilestoneLink(c, id)
+	linked := lerr == nil
+	if lerr != nil && !errors.Is(lerr, pgx.ErrNoRows) {
+		fail(c, lerr)
+		return
+	}
+	if linked {
+		if !h.requireWritableMilestone(c, link) {
+			return
+		}
+		// A link without a baseline: the stage was read-only until now, so its
+		// values before this edit are the last thing GitLab sent.
+		if _, has := parseMilestoneSnap(link.GlSnapshot); !has {
+			soft(c, "SetGitlabMilestoneSnapshot", h.q.SetGitlabMilestoneSnapshot(c, db.SetGitlabMilestoneSnapshotParams{
+				MilestoneID: id, GlSnapshot: snapOfMilestone(prev).marshal(),
+			}))
+		}
 	}
 	state := req.State
 	if state != "closed" {
@@ -160,8 +183,21 @@ func (h *API) UpdateMilestone(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "milestone.updated", m)
-	c.JSON(http.StatusOK, m)
+	out := milestoneWithSync{Milestone: m}
+	if linked && snapOfMilestone(m) != snapOfMilestone(prev) {
+		actor := middleware.CurrentUser(c)
+		ctx, cancel := gitlabWriteCtx(c)
+		res := h.syncMilestoneToGitlab(ctx, id, &actor)
+		cancel()
+		out.GlSync = &res
+		// The round trip may have brought in what GitLab changed meanwhile.
+		if fresh, gerr := h.q.GetMilestone(c, id); gerr == nil {
+			out.Milestone = fresh
+		}
+	}
+	h.broadcastAs(c, wsID, "milestone.updated", out.Milestone)
+	h.notifyMilestoneClosed(c, prev, out.Milestone, wsID)
+	c.JSON(http.StatusOK, out)
 }
 
 // DeleteMilestone removes a milestone; tasks pointing at it are cleared (SET NULL).

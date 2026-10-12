@@ -18,6 +18,12 @@ import (
 // ContextUserID is the gin context key holding the authenticated user's uuid.
 const ContextUserID = "user_id"
 
+// ContextPATAuth is the gin context key marking a request that arrived on a
+// personal access token rather than on a session. The two are interchangeable
+// almost everywhere — that is the point of PATs — so this exists for the one
+// place where they must not be: minting further tokens.
+const ContextPATAuth = "pat_auth"
+
 // patToucher throttles last_used_at writes. Without it every PAT request spawns
 // a goroutine that takes a pool connection for a single UPDATE — a batching
 // client (MCP, CI) drains the pool with writes nobody reads at second precision.
@@ -75,12 +81,18 @@ func Auth(secret string, q *db.Queries, patTouchInterval time.Duration) gin.Hand
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing bearer token"})
 			return
 		}
-		uid, ok := ResolveBearer(c, secret, q, strings.TrimPrefix(h, "Bearer "), toucher)
+		tok := strings.TrimPrefix(h, "Bearer ")
+		uid, ok := ResolveBearer(c, secret, q, tok, toucher)
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
 			return
 		}
 		c.Set(ContextUserID, uid)
+		// The prefix is what ResolveBearer itself branched on, so reading it again
+		// here names the credential kind without threading it back out.
+		if strings.HasPrefix(tok, auth.PATPrefix) {
+			c.Set(ContextPATAuth, true)
+		}
 		c.Next()
 	}
 }
@@ -130,11 +142,41 @@ func mediaCaller(c *gin.Context, secret string, q *db.Queries) (uuid.UUID, bool)
 		}
 	}
 	if ck, err := c.Cookie(MediaCookieName); err == nil && ck != "" {
-		if uid, err := auth.ParseMediaToken(secret, ck); err == nil {
+		if uid, sid, err := auth.ParseMediaToken(secret, ck); err == nil && mediaSessionLive(c, q, sid, uid) {
 			return uid, true
 		}
 	}
 	return uuid.Nil, false
+}
+
+// mediaSessionLive reports whether the session a media token names is still
+// running, on an account that is still switched on (#2932). The token is
+// verified by signature alone and lives 30 days, so without this lookup the
+// cookie is the one credential neither deactivation nor revocation can reach:
+// the refresh chain is revoked, the PAT lookup joins on `active` and the socket
+// is cut, while the browser that walked away — or the one an intruder left open
+// — keeps reading inline images for the rest of the month.
+//
+// The session, not just the account, because "this account is switched off" and
+// "this session is over" are different facts and only the second one follows a
+// password change or a logout. Binding to the refresh-token row costs nothing at
+// the other end: the cookie is minted beside that row and reissued on every
+// rotation (handlers.issueMode), so the one a browser actually holds always
+// names the session it is actually in.
+//
+// A lookup per image is the same price the PAT path already pays per request,
+// and the route answers from the browser cache anyway (Cache-Control immutable
+// on a UUID name).
+//
+// A lookup that cannot be made is not a pass: q is nil only where no database
+// was wired up, and the enforcing install is exactly the one that asked for the
+// credential to mean something.
+func mediaSessionLive(ctx context.Context, q *db.Queries, sessionID, uid uuid.UUID) bool {
+	if q == nil {
+		return false
+	}
+	live, err := q.MediaSessionLive(ctx, db.MediaSessionLiveParams{ID: sessionID, UserID: uid})
+	return err == nil && live
 }
 
 // ResolveBearer validates a bearer credential — an access JWT or a Personal
@@ -172,6 +214,8 @@ func authenticatePAT(ctx context.Context, q *db.Queries, tok string, toucher *pa
 	// Best-effort, non-blocking: record usage on a detached context so it
 	// survives past the request lifecycle without delaying the response.
 	if toucher.shouldTouch(pat.ID) {
+		// #nosec G118 -- context.Background is the point: the request context is
+		// cancelled the moment the response is written, which would abort the touch
 		go func(id uuid.UUID) {
 			ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer cancel()
@@ -186,4 +230,13 @@ func CurrentUser(c *gin.Context) uuid.UUID {
 	v, _ := c.Get(ContextUserID)
 	id, _ := v.(uuid.UUID)
 	return id
+}
+
+// IsPATAuth reports whether the caller presented a personal access token. It
+// defaults to false, so a route reached by any other path is treated as a
+// session — the restriction it gates is deliberately narrow.
+func IsPATAuth(c *gin.Context) bool {
+	v, _ := c.Get(ContextPATAuth)
+	b, _ := v.(bool)
+	return b
 }

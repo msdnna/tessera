@@ -45,6 +45,17 @@ describe('help index', () => {
     expect(slugs.size).toBe(articles.length)
   })
 
+  // Плоский текст — не только корпус поиска: из него режется фрагмент в строке
+  // выдачи, и оба клиента показывают его как есть. Пока индексатор опускал его
+  // в нижний регистр, каждый результат читался «tessera — таск-трекер…».
+  it('плоский текст статьи сохраняет заглавные', () => {
+    for (const a of articles) {
+      expect(a.text, a.slug).not.toBe(a.text.toLowerCase())
+      if (a.android)
+        expect(a.android.text, `${a.slug}.android`).not.toBe(a.android.text.toLowerCase())
+    }
+  })
+
   it('якоря заголовков уникальны внутри статьи', () => {
     for (const a of articles) {
       const ids = a.headings.map((h) => h.id)
@@ -95,8 +106,12 @@ describe('help index', () => {
 describe('help index: платформы', () => {
   it('у каждой статьи есть список платформ', () => {
     for (const a of articles) {
-      expect(a.platforms, a.slug).toContain('web')
+      expect(a.platforms?.length, a.slug).toBeGreaterThan(0)
     }
+    // Web reads every article except the two sections the web folded into
+    // «Входящие» (#2999); the Android client still has them as screens.
+    const androidOnly = articles.filter((a) => !a.platforms.includes('web')).map((a) => a.slug)
+    expect(androidOnly.sort()).toEqual(['notes', 'reminders'])
   })
 
   it('мобильный вариант не становится отдельной статьёй', () => {

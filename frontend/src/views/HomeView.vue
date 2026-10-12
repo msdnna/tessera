@@ -1,381 +1,544 @@
 <script setup>
-import { ref, computed, reactive, onMounted, watch } from 'vue'
+// The start screen, «Мои задачи» (v2, #2960): the aurora over the top, a
+// greeting with today's counts, the quick entry, my open tasks by due date, and
+// a side column with «Входящие» (today's reminders, latest notes) and the week. The header above goes
+// translucent here (AppLayout) so the aurora runs under it.
+import { ref, computed, onMounted, watch, reactive } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRouter } from 'vue-router'
-import { NSpin } from 'naive-ui'
-import { CheckmarkDoneOutline } from '@vicons/ionicons5'
-import { workspaces as wsApi } from '@/api'
-import EmptyState from '@/components/EmptyState.vue'
+import { NSpin, NButton } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
+import { CheckmarkDoneOutline, CloudOfflineOutline } from '@vicons/ionicons5'
+import { workspaces as wsApi, tasks as tasksApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
-import { PRIORITY_COLORS } from '@/styles/tokens'
-import { hueGrad } from '@/utils/gradient'
-import { taskColumnName } from '@/utils/defaultNames'
-import { useDateLocale } from '@/composables/useDateLocale'
+import { usePaletteStore } from '@/stores/palette'
+import { useInboxStore } from '@/stores/inbox'
+import { useFormat } from '@/composables/useFormat'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { capitalizeFirst } from '@/utils/format'
+import { humanizeError } from '@/utils/errors'
+import {
+  SECTION_KEYS,
+  mineOf,
+  buildSections,
+  reviewCount,
+  weekBars,
+  dueDay,
+} from '@/utils/homeSections'
 import TesseraSpinner from '@/components/TesseraSpinner.vue'
+import EmptyState from '@/components/EmptyState.vue'
+import HomeAurora from '@/components/home/HomeAurora.vue'
+import HomeQuickEntry from '@/components/home/HomeQuickEntry.vue'
+import HomeTaskList from '@/components/home/HomeTaskList.vue'
+import ActionMenu from '@/components/kit/ActionMenu.vue'
+import { taskSnoozeDays, snoozedDue } from '@/utils/taskSnooze'
+import { resolvedTimezone } from '@/utils/format'
+import { useThemeStore } from '@/stores/theme'
+import HomeSideCards from '@/components/home/HomeSideCards.vue'
+import TourChecklist from '@/components/tour/TourChecklist.vue'
+import { useOnboardingStore } from '@/stores/onboarding'
 import UserAvatar from '@/components/UserAvatar.vue'
-import TagPill from '@/components/TagPill.vue'
+import { useResponsive } from '@/composables/useResponsive'
 
 const { t } = useI18n()
+const message = useMessage()
 const router = useRouter()
 const wsStore = useWorkspacesStore()
 const auth = useAuthStore()
+const palette = usePaletteStore()
+// «Входящие» (#2998): the shell keeps the feed; the side block and the header
+// pill read today's reminders from it.
+const inbox = useInboxStore()
+// «Начало работы» (#3000): the first card of the right column, until hidden.
+const onboarding = useOnboardingStore()
+const { formatDate, formatTime, firstDayOfWeek, formatters } = useFormat()
+// A phone (#2976 — package G «Мои задачи»): the screen's own large title with
+// the date and the avatar (to «Ещё») in place of the greeting — there is no
+// header above it.
+const { isMobile } = useResponsive()
 
 const loading = ref(false)
-const summary = ref(null)
-const allTasks = ref([])
-const tagsMap = reactive({})
-// Canonical tag prefix → friendly scope name, workspace-wide (Home spans projects,
-// so it can't reuse a single project's prefix map).
-const prefixNames = reactive({})
-const membersMap = reactive({})
-const filter = ref('me') // me | all | overdue | today | week | completed
+// Non-empty = the last load was refused (#2932). Kept apart from the toast: the
+// toast is gone in seconds, while the list's place has to say why it is empty.
+const loadError = ref('')
+const tasks = ref([])
+const tags = ref([])
+const members = ref([])
 
 const meId = computed(() => auth.user?.id)
+const now = ref(new Date())
 
-// Counts and colours are the fixed part; the label is resolved inside the
-// computed so it follows a language switch (#2799).
-const CARDS = [
-  { key: 'me', field: 'assigned', accent: 'var(--t-primary)' },
-  { key: 'all', field: 'active', accent: 'var(--t-text2)' },
-  { key: 'overdue', field: 'overdue', accent: '#e0533d' },
-  { key: 'today', field: 'due_today', accent: '#e0a418' },
-  { key: 'week', field: 'due_week', accent: '#2f80ed' },
-  { key: 'completed', field: 'completed', accent: '#18a058' },
-]
+// Only the newest request may write to the page. A workspace switch abandons the
+// one before it, and that one is still on its way: without the comparison below
+// the space the reader left decides the screen by finishing last — its tasks
+// under the new space's name, and clicking a row routes to a board outside the
+// current scope. Nothing refetches them, because the switch has already happened.
+let loadSeq = 0
+// The workspace the rows on screen were read for, so a failure can tell «this
+// list is stale» from «this list is fine, only its refresh went missing».
+let loadedWs = ''
 
-const cards = computed(() => {
-  const s = summary.value || {}
-  return CARDS.map((c) => ({
-    key: c.key,
-    label: t(`shell.home.card.${c.key}`),
-    value: s[c.field] ?? 0,
-    accent: c.accent,
-  }))
-})
-
-function matchesDue(task, mode) {
-  if (!task.due_date) return false
-  const now = new Date()
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate())
-  const due = new Date(task.due_date)
-  const day = new Date(due.getFullYear(), due.getMonth(), due.getDate())
-  if (mode === 'overdue') return day < today && !task.completed_at
-  if (mode === 'today') return day.getTime() === today.getTime() && !task.completed_at
-  if (mode === 'week') return day >= today && day - today <= 7 * 86400000 && !task.completed_at
-  return true
+// Разобрать экран: показывать нечего, и ни одна плитка больше ни за что не отвечает.
+function clearPage() {
+  tasks.value = []
+  tags.value = []
+  members.value = []
+  loadedWs = ''
 }
-
-const visibleTasks = computed(() => {
-  const arr = allTasks.value
-  switch (filter.value) {
-    case 'me':
-      return arr.filter(
-        (task) => (task.assignee_ids || []).includes(meId.value) && !task.completed_at,
-      )
-    case 'all':
-      return arr.filter((task) => !task.completed_at)
-    case 'completed':
-      return arr.filter((task) => task.completed_at)
-    default:
-      return arr.filter((task) => matchesDue(task, filter.value))
-  }
-})
 
 async function load() {
   const wsId = wsStore.currentId
+  const mine = ++loadSeq
   if (!wsId) return
   loading.value = true
+  loadError.value = ''
   try {
-    // Destructured as `tasks`, not `t` — the short name is the translation
-    // function in this file now.
-    const [s, tasks, tg, pfx, mem] = await Promise.all([
-      wsApi.summary(wsId),
-      wsApi.tasks(wsId),
+    const [tk, tg, mem] = await Promise.allSettled([
+      wsApi.tasks(wsId, { include_subtasks: 1 }),
       wsApi.tags(wsId),
-      wsApi.tagPrefixes(wsId),
       wsApi.members(wsId),
     ])
-    summary.value = s.data
-    allTasks.value = tasks.data || []
-    for (const k of Object.keys(tagsMap)) delete tagsMap[k]
-    for (const x of tg.data || []) tagsMap[x.id] = x
-    for (const k of Object.keys(prefixNames)) delete prefixNames[k]
-    for (const p of pfx.data || []) prefixNames[p.prefix] = p.label
-    for (const k of Object.keys(membersMap)) delete membersMap[k]
-    for (const m of mem.data || []) membersMap[m.user_id] = m
+    // A workspace switch abandoned this request: the space the reader left must
+    // not decide the screen by finishing last (#2932).
+    if (mine !== loadSeq) return
+    const ok = (r) => (r.status === 'fulfilled' ? r.value.data || [] : [])
+    if (tk.status === 'rejected') {
+      // A refused task list is not «all clear»: say why in the list's place, and
+      // keep this space's rows only if they are this space's (#2932).
+      // The api layer hands over an Error whose message is already humanized.
+      loadError.value = tk.reason?.message || humanizeError('')
+      message.error(loadError.value)
+      if (loadedWs !== wsId) clearPage()
+      return
+    }
+    tasks.value = ok(tk)
+    tags.value = ok(tg)
+    members.value = ok(mem)
+    now.value = new Date()
+    loadedWs = wsId
   } finally {
-    loading.value = false
+    // Only the request that lit the spinner puts it out.
+    if (mine === loadSeq) loading.value = false
   }
 }
 
+// ── greeting ──
+const firstName = computed(
+  () => (auth.user?.name || '').trim().split(/\s+/)[0] || t('shell.home.friend'),
+)
+const greeting = computed(() => {
+  const h = now.value.getHours()
+  const part =
+    h >= 5 && h < 12 ? 'morning' : h >= 12 && h < 17 ? 'day' : h >= 17 ? 'evening' : 'night'
+  return t(`shell.home.greet.${part}`, { name: firstName.value })
+})
+const dateLine = computed(() =>
+  capitalizeFirst(formatDate(now.value, { weekday: 'long', day: 'numeric', month: 'long' })),
+)
+
+// ── my tasks, the sections and the counters ──
+// useFormat speaks Naive's week (0 = Monday); the sections take getDay()'s (1 = Monday).
+const fdow = computed(() => ((firstDayOfWeek.value ?? 0) + 1) % 7)
+const mine = computed(() => mineOf(tasks.value, meId.value))
+const sectionMap = computed(() =>
+  buildSections(mine.value, {
+    now: now.value,
+    firstDayOfWeek: fdow.value,
+    fmt: formatters.value,
+  }),
+)
+const sections = computed(() =>
+  SECTION_KEYS.map((key) => ({ key, tasks: sectionMap.value[key] })).filter((s) => s.tasks.length),
+)
+// Later and undated start folded: the screen is about today.
+const folded = reactive(new Set(['later', 'nodate']))
+function toggleSection(key) {
+  if (folded.has(key)) folded.delete(key)
+  else folded.add(key)
+}
+const todayReminders = computed(() => {
+  const today = new Date(
+    now.value.getFullYear(),
+    now.value.getMonth(),
+    now.value.getDate(),
+  ).getTime()
+  return inbox.reminders
+    .filter((r) => !r.done && dueDay(r.remind_at) === today)
+    .sort((a, b) => a.remind_at.localeCompare(b.remind_at))
+})
+const nextReminder = computed(() =>
+  todayReminders.value.find((r) => Date.parse(r.remind_at) > now.value.getTime()),
+)
+const pills = computed(() => {
+  const out = []
+  const today = sectionMap.value.today.length
+  const over = sectionMap.value.overdue.length
+  const review = reviewCount(tasks.value, meId.value)
+  if (today) out.push({ key: 'today', text: t('shell.home.pill.today', { n: today }) })
+  if (over)
+    out.push({ key: 'overdue', tone: '#e0533d', text: t('shell.home.pill.overdue', { n: over }) })
+  if (review)
+    out.push({
+      key: 'review',
+      tone: '#f0a020',
+      text: t('shell.home.pill.review', review, { named: { n: review } }),
+    })
+  if (nextReminder.value)
+    out.push({
+      key: 'reminder',
+      text: `${formatTime(nextReminder.value.remind_at)} ${nextReminder.value.message || ''}`.trim(),
+      reminder: true,
+    })
+  return out
+})
+const week = computed(() =>
+  weekBars(tasks.value, meId.value, { now: now.value, firstDayOfWeek: fdow.value }),
+)
+
+// ── the selected row and its keys ──
+const selectedId = ref(null)
+const visibleIds = computed(() =>
+  sections.value.filter((s) => !folded.has(s.key)).flatMap((s) => s.tasks.map((x) => x.id)),
+)
+watch(visibleIds, (ids) => {
+  if (!ids.length) selectedId.value = null
+  else if (!ids.includes(selectedId.value)) selectedId.value = ids[0]
+})
+function move(dir) {
+  const ids = visibleIds.value
+  if (!ids.length) return
+  const i = ids.indexOf(selectedId.value)
+  selectedId.value = ids[Math.max(0, Math.min(ids.length - 1, (i < 0 ? -1 : i) + dir))]
+  document
+    .querySelector(`.hl-row[data-task-id="${selectedId.value}"]`)
+    ?.scrollIntoView({ block: 'nearest' })
+}
+const selectedTask = () => mine.value.find((x) => x.id === selectedId.value) || null
+
 function openTask(task) {
-  router.push(`/board/${task.board_id}?task=${task.id}`)
+  router.push(`/board/${task.board_id}?task=${task.number ?? task.id}`)
 }
-const { formatDue: dueLabel } = useDateLocale()
-function isOverdue(task) {
-  return task.due_date && !task.completed_at && new Date(task.due_date) < new Date()
+async function complete(task) {
+  try {
+    await tasksApi.update(task.id, { completed: true })
+    tasks.value = tasks.value.map((x) =>
+      x.id === task.id ? { ...x, completed_at: new Date().toISOString() } : x,
+    )
+  } catch (e) {
+    message.error(humanizeError(e))
+  }
 }
+// «Отложить» (#3108): a swipe on a phone row asks how far; the task's due moves
+// there (its clock kept), and the toast takes it back.
+const theme = useThemeStore()
+const snooze = ref({ show: false, task: null })
+function askSnooze(task) {
+  snooze.value = { show: true, task }
+}
+const snoozeAnchor = () =>
+  document.querySelector(`.hl-row[data-task-id="${snooze.value.task?.id}"]`)
+const snoozeItems = computed(() =>
+  taskSnoozeDays(formatters.value).map((o) => ({
+    key: o.key,
+    label: t(`shell.home.snooze.${o.key}`),
+    note: formatDate(new Date(o.day.year, o.day.month, o.day.day), {
+      weekday: 'short',
+      day: 'numeric',
+      month: 'short',
+    }),
+  })),
+)
+function setDue(task, due) {
+  tasks.value = tasks.value.map((x) => (x.id === task.id ? { ...x, due_date: due } : x))
+}
+async function applySnooze(key) {
+  const task = snooze.value.task
+  const opt = taskSnoozeDays(formatters.value).find((o) => o.key === key)
+  if (!task || !opt) return
+  const was = task.due_date || null
+  const due = snoozedDue(was, opt.day, formatters.value, resolvedTimezone(theme.timezone))
+  try {
+    // A PATCH of the due alone: the rule and the rest stay as stored.
+    await tasksApi.update(task.id, { due_date: due })
+    setDue(task, due)
+    message.success(
+      t('shell.home.snooze.done', { when: snoozeItems.value.find((i) => i.key === key)?.note }),
+      {
+        action: {
+          label: t('common.undo.undo'),
+          run: async () => {
+            await tasksApi.update(task.id, { due_date: was })
+            setDue(task, was)
+          },
+        },
+      },
+    )
+  } catch (e) {
+    message.error(humanizeError(e))
+  }
+}
+
+useShortcuts(
+  {
+    'card.up': () => move(-1),
+    'card.down': () => move(1),
+    'card.open': () => selectedTask() && openTask(selectedTask()),
+    'card.complete': () => selectedTask() && complete(selectedTask()),
+    'card.due': () => selectedTask() && palette.openTask(selectedTask().id, 'due'),
+  },
+  { when: () => !!visibleIds.value.length },
+)
 
 onMounted(load)
 watch(() => wsStore.currentId, load)
 </script>
 
 <template>
-  <n-spin :show="loading" :rotate="false">
-    <template #icon><TesseraSpinner /></template>
-    <div class="home">
-      <h2 class="greeting">
-        {{ $t('shell.home.greeting', { name: auth.user?.name || $t('shell.home.friend') }) }}
-      </h2>
-
-      <div class="cards">
-        <button
-          v-for="c in cards"
-          :key="c.key"
-          class="card"
-          :class="{ active: filter === c.key }"
-          :style="{ '--accent': c.accent }"
-          @click="filter = c.key"
-        >
-          <span class="card-val">{{ c.value }}</span>
-          <span class="card-label">{{ c.label }}</span>
-        </button>
-      </div>
-
-      <div class="list">
-        <div
-          v-for="task in visibleTasks"
-          :key="task.id"
-          class="trow"
-          :class="{ done: task.completed_at }"
-          @click="openTask(task)"
-        >
-          <span
-            class="pr-dot"
-            :style="{
-              background: PRIORITY_COLORS[task.priority]
-                ? hueGrad(PRIORITY_COLORS[task.priority])
-                : 'transparent',
-            }"
-          />
-          <span class="t-num">#{{ task.number }}</span>
-          <span class="t-title">{{ task.title }}</span>
-          <TagPill
-            v-for="tid in (task.tag_ids || []).filter((id) => tagsMap[id]).slice(0, 3)"
-            :key="tid"
-            class="t-tag"
-            :tag="tagsMap[tid]"
-            :prefix-names="prefixNames"
-            variant="ghost"
-          />
-          <span class="t-loc">{{ task.project_name }} / {{ task.board_name }}</span>
-          <span class="t-col" :style="{ '--c': task.column_color || 'var(--t-text3)' }">
-            {{ taskColumnName(task) }}
-          </span>
-          <span v-if="task.due_date" class="t-due" :class="{ overdue: isOverdue(task) }">
-            {{ dueLabel(task.due_date) }}
-          </span>
-          <span class="t-avas">
+  <div class="home" data-testid="home">
+    <HomeAurora />
+    <n-spin :show="loading && !tasks.length" :rotate="false" class="home-spin">
+      <template #icon><TesseraSpinner /></template>
+      <div class="home-inner">
+        <header v-if="isMobile" class="home-mhead">
+          <div class="hg-text">
+            <h1 class="hg-hello" data-testid="home-greeting">{{ t('shell.nav.home') }}</h1>
+            <div class="hg-date">{{ dateLine }}</div>
+          </div>
+          <button
+            type="button"
+            class="hg-me"
+            :aria-label="t('shell.user.more')"
+            data-testid="home-avatar"
+            @click="router.push('/more')"
+          >
             <UserAvatar
-              v-for="uid in (task.assignee_ids || []).slice(0, 3)"
-              :key="uid"
-              class="t-ava"
-              :user-id="uid"
-              :name="membersMap[uid]?.name"
-              :title="membersMap[uid]?.name"
+              :user-id="auth.user?.id || ''"
+              :name="auth.user?.name || auth.user?.email || ''"
+              class="hg-av"
             />
-          </span>
-        </div>
+          </button>
+        </header>
+        <header class="home-greet">
+          <div v-if="!isMobile" class="hg-text">
+            <div class="hg-date">{{ dateLine }}</div>
+            <h1 class="hg-hello" data-testid="home-greeting">{{ greeting }}</h1>
+          </div>
+          <div class="hg-pills">
+            <span
+              v-for="p in pills"
+              :key="p.key"
+              class="hg-pill"
+              :class="{ tone: !!p.tone, rem: p.reminder }"
+              :style="p.tone ? { '--tone': p.tone } : {}"
+              :data-pill="p.key"
+              >{{ p.text }}</span
+            >
+          </div>
+        </header>
 
-        <empty-state
-          v-if="!visibleTasks.length && !loading"
-          :icon="CheckmarkDoneOutline"
-          :text="$t('shell.home.empty')"
-          style="margin-top: 40px"
-        />
+        <HomeQuickEntry :members="members" :tags="tags" @created="load" />
+
+        <div class="home-grid">
+          <div class="home-main">
+            <!-- A refusal is not «empty»: the list's place explains it and offers
+                 a re-read (#2932). -->
+            <EmptyState v-if="loadError && !loading" :icon="CloudOfflineOutline" :text="loadError">
+              <n-button size="small" secondary @click="load">
+                {{ t('common.action.retry') }}
+              </n-button>
+            </EmptyState>
+            <HomeTaskList
+              v-else-if="sections.length"
+              :sections="sections"
+              :folded="folded"
+              :selected-id="selectedId"
+              @select="selectedId = $event"
+              @open="openTask"
+              @complete="complete"
+              @snooze="askSnooze"
+              @toggle="toggleSection"
+            />
+            <EmptyState
+              v-else-if="!loading"
+              :icon="CheckmarkDoneOutline"
+              :text="t('shell.home.allClear')"
+            />
+            <ActionMenu
+              v-model:show="snooze.show"
+              :anchor="snoozeAnchor"
+              :items="snoozeItems"
+              :header="t('shell.mobile.swipeSnooze')"
+              testid="home-snooze"
+              @select="applySnooze"
+            />
+          </div>
+          <aside class="home-side">
+            <TourChecklist v-if="!onboarding.hidden && !isMobile" />
+            <HomeSideCards :reminders="todayReminders" :week="week" />
+          </aside>
+        </div>
       </div>
-    </div>
-  </n-spin>
+    </n-spin>
+  </div>
 </template>
 
 <style scoped>
 .home {
-  max-width: 1100px;
+  position: relative;
+  min-height: 100%;
+}
+/* the aurora reaches up under the translucent header and out to the edges of
+   the content's padding */
+.home :deep(.h-aurora) {
+  top: calc(-1 * (52px + var(--page-pad, 16px)));
+  left: calc(-1 * var(--page-pad, 16px));
+  right: calc(-1 * var(--page-pad, 16px));
+}
+.home-spin {
+  position: relative;
+  z-index: 1;
+}
+.home-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  max-width: 1180px;
   margin: 0 auto;
-  padding: 8px 4px 40px;
+  padding: 16px 24px 24px;
 }
-.greeting {
-  font-size: 22px;
+.home-greet {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.hg-date {
+  font-size: 13.5px;
+  color: var(--t-text2);
+}
+.hg-hello {
+  margin: 4px 0 0;
+  font-size: 32px;
+  line-height: 1.15;
   font-weight: 700;
-  color: var(--t-text1);
-  margin: 4px 0 18px;
-}
-.cards {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 12px;
-  margin-bottom: 24px;
-}
-.card {
-  --card-fill: var(--t-surface);
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  padding: 14px 16px;
-  border-radius: 12px;
-  border: 1px solid var(--t-border);
-  /* 3px gradient left border (of the card's accent) that wraps the rounded
-     corners: transparent left border reveals the gradient on the border-box;
-     the padding-box layer is the (hover/active-aware) fill. */
-  border-left: 3px solid transparent;
-  background:
-    linear-gradient(var(--card-fill), var(--card-fill)) padding-box,
-    linear-gradient(
-        to top,
-        color-mix(in srgb, var(--accent) 86%, #000),
-        var(--accent) 50%,
-        color-mix(in srgb, var(--accent) 86%, #fff)
-      )
-      border-box;
-  cursor: pointer;
-  text-align: left;
-}
-.card:hover {
-  --card-fill: var(--t-hover);
-}
-.card.active {
-  --card-fill: color-mix(in srgb, var(--accent) 12%, var(--t-surface));
-  border-color: var(--accent);
-  border-left-color: transparent;
-}
-.card-val {
-  font-size: 26px;
-  font-weight: 700;
-  color: var(--t-text1);
-  line-height: 1;
-}
-.card-label {
-  font-size: 13px;
-  color: var(--t-text3);
-}
-.list {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-.trow {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 9px 10px;
-  border-radius: 8px;
-  cursor: pointer;
-  font-size: 14px;
-}
-.trow:hover {
-  background: var(--t-surface-alt);
-}
-.trow.done .t-title {
-  text-decoration: line-through;
-  opacity: 0.6;
-}
-.pr-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  flex: none;
-}
-.t-num {
-  color: var(--t-text3);
-  font-variant-numeric: tabular-nums;
-  flex: none;
-  font-size: 12px;
-}
-.t-title {
-  flex: 1;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  letter-spacing: -0.015em;
   color: var(--t-text1);
 }
-.t-tag {
-  font-size: 11px;
-  padding: 1px 8px;
-  border-radius: 10px;
-  flex: none;
+.hg-pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
 }
-.t-loc {
-  font-size: 12px;
-  color: var(--t-text3);
-  flex: none;
-  max-width: 200px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.t-col {
-  font-size: 11px;
-  /* gradient text of the column hue (border stays a soft solid of the hue) */
-  background-image: linear-gradient(
-    to top right,
-    color-mix(in srgb, var(--c) 86%, #000),
-    var(--c) 50%,
-    color-mix(in srgb, var(--c) 86%, #fff)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-  border: 1px solid color-mix(in srgb, var(--c) 50%, transparent);
-  border-radius: 10px;
-  padding: 1px 8px;
-  flex: none;
-}
-.t-due {
-  font-size: 12px;
-  color: var(--t-text3);
-  flex: none;
-}
-.t-due.overdue {
-  font-weight: 600;
-  background-image: linear-gradient(
-    to top right,
-    color-mix(in srgb, #e0533d 86%, #000),
-    #e0533d 50%,
-    color-mix(in srgb, #e0533d 86%, #fff)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  color: transparent;
-}
-.t-avas {
+.hg-pill {
   display: inline-flex;
-  flex: none;
+  align-items: center;
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--t-pill) 80%, transparent);
+  color: var(--t-text1);
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
 }
-.t-ava {
-  width: 24px;
-  height: 24px;
-  border-radius: 50%;
-  background: var(--t-accent-grad);
-  color: var(--t-on-primary);
-  font-size: 10px;
+.hg-pill.tone {
+  background: color-mix(in srgb, var(--tone) 18%, transparent);
+  color: var(--tone);
   font-weight: 600;
+}
+.hg-pill.rem {
+  max-width: 260px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.home-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 24px;
+  align-items: start;
+}
+.home-side {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+}
+@media (max-width: 1100px) {
+  .home-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+@media (max-width: 640px) {
+  .home-inner {
+    padding: 8px 4px 24px;
+  }
+  .hg-hello {
+    font-size: 26px;
+  }
+}
+/* ── a phone (#2976) ── */
+.home-mhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 4px 0;
+}
+.home-mhead .hg-hello {
+  margin: 0 0 4px;
+  font-size: 28px;
+}
+.hg-me {
+  flex: none;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  margin-left: -8px;
-  box-shadow: 0 0 0 2px var(--t-bg);
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
 }
-.t-ava:first-child {
-  margin-left: 0;
+.hg-av {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
 }
 @media (max-width: 768px) {
-  .t-loc,
-  .t-tag {
+  /* No header above: the aurora starts at the status bar. */
+  .home :deep(.h-aurora) {
+    top: calc(-1 * (var(--page-pad, 12px) + var(--safe-top)));
+  }
+  .home-inner {
+    gap: 14px;
+  }
+  /* The counts in one row that scrolls sideways, 34px chips. */
+  .home-greet:has(.hg-pills:empty) {
     display: none;
+  }
+  .hg-pills {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    margin: 0 -4px;
+    padding: 0 4px;
+    scrollbar-width: none;
+  }
+  .hg-pills::-webkit-scrollbar {
+    display: none;
+  }
+  .hg-pill {
+    flex: none;
+    height: 34px;
+    padding: 0 14px;
+    border-radius: 17px;
   }
 }
 </style>

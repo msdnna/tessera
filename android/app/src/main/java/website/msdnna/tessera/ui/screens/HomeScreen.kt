@@ -43,6 +43,7 @@ import website.msdnna.tessera.ui.components.LoadingState
 import website.msdnna.tessera.ui.components.TagChip
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
@@ -50,8 +51,9 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.HomeFilter
 import website.msdnna.tessera.ui.viewmodels.HomeUiState
 import website.msdnna.tessera.ui.viewmodels.HomeViewModel
-import website.msdnna.tessera.util.isoDateKey
+import website.msdnna.tessera.util.dueDayKey
 import website.msdnna.tessera.util.shortDate
+import website.msdnna.tessera.util.todayKey
 
 private data class StatCard(
     val filter: HomeFilter,
@@ -83,6 +85,11 @@ fun HomeScreen(
     val c = Tessera.colors
     val vm: HomeViewModel = viewModel()
     val state by vm.state.collectAsStateWithLifecycle()
+
+    // Календарь пользователя — вниз, в состояние: список бакетится тем же префом
+    // `timezone`, который запрос сводки уже сообщил серверу как `?tz=`.
+    val fmt = LocalDateFormat.current
+    LaunchedEffect(fmt) { vm.setDateFormat(fmt) }
 
     LaunchedEffect(workspaceId, userId) {
         if (workspaceId.isNotBlank()) vm.load(workspaceId, userId)
@@ -160,8 +167,8 @@ private fun StatCardView(card: StatCard, count: Int, selected: Boolean, onClick:
 private fun TaskRow(task: WorkspaceTask, state: HomeUiState, onClick: () -> Unit) {
     val c = Tessera.colors
     val priorityColor = PriorityColors.getOrElse(task.priority) { PriorityColors[0] }
-    val today = isoDateKey(nowIsoDate())
-    val due = isoDateKey(task.dueDate)
+    val today = todayKey(state.dateFormat)
+    val due = dueDayKey(task.dueDate, state.dateFormat)
     val overdue = due.isNotEmpty() && due < today && !task.isCompleted
 
     Row(
@@ -211,13 +218,4 @@ private fun TaskRow(task: WorkspaceTask, state: HomeUiState, onClick: () -> Unit
             }
         }
     }
-}
-
-/** Today's date as a UTC-midnight ISO key, to compare with due-date keys. */
-private fun nowIsoDate(): String {
-    val cal = java.util.Calendar.getInstance()
-    val y = cal.get(java.util.Calendar.YEAR)
-    val m = (cal.get(java.util.Calendar.MONTH) + 1).toString().padStart(2, '0')
-    val d = cal.get(java.util.Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
-    return "$y-$m-${d}T00:00:00Z"
 }

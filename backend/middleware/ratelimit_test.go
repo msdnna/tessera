@@ -165,6 +165,44 @@ func TestRateLimitKeysByEmailAcrossAddresses(t *testing.T) {
 	}
 }
 
+// The limiter and the handler must agree on what counts as a parseable body. A
+// body the handler accepts but peekEmail rejects gets no email bucket at all,
+// which drops the per-account ceiling and leaves only the per-IP one — exactly
+// the protection ByEmail exists to provide against a pool of addresses.
+//
+// gin binds with json.Decoder.Decode, which reads one value and ignores whatever
+// follows it; json.Unmarshal refuses the same bytes. So a single junk byte after
+// the closing brace used to be enough.
+func TestRateLimitKeysByEmailDespiteTrailingBytes(t *testing.T) {
+	rules := map[string]RateRule{"/api/auth/login": {Every: 6 * time.Second, Burst: 2, ByEmail: true}}
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(RateLimit(rules))
+	// Binds exactly like AuthHandler.Login, so "the handler accepted it" is the
+	// test's own observation rather than an assumption about gin.
+	r.POST("/api/auth/login", func(c *gin.Context) {
+		var body struct {
+			Email string `json:"email" binding:"required,email"`
+		}
+		if err := c.ShouldBindJSON(&body); err != nil {
+			c.String(http.StatusBadRequest, err.Error())
+			return
+		}
+		c.Status(http.StatusOK)
+	})
+
+	const body = `{"email":"victim@example.com","password":"guess"}X`
+	for i := range 2 {
+		w := postLogin(r, "/api/auth/login", body, "10.0.0."+string(rune('1'+i)))
+		if w.Code != http.StatusOK {
+			t.Fatalf("request %d: got %d (%s), want the handler to accept it", i+1, w.Code, w.Body.String())
+		}
+	}
+	if got := postLogin(r, "/api/auth/login", body, "10.0.0.9").Code; got != http.StatusTooManyRequests {
+		t.Fatalf("trailing byte after the JSON: got %d, want 429 — the per-account budget was bypassed", got)
+	}
+}
+
 func TestRateLimitLeavesBodyReadable(t *testing.T) {
 	rules := map[string]RateRule{"/api/auth/login": {Every: time.Second, Burst: 5, ByEmail: true}}
 	gin.SetMode(gin.TestMode)

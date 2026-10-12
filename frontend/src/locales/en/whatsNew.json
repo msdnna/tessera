@@ -1,4 +1,39 @@
 {
+  "featuresV2": {
+    "title": "New in v2",
+    "item1": "A 30-day trash for tasks and documents, archived projects, undo for deleted boards and columns. Follow a task: «Following / Unfollow».",
+    "item2": "GitLab: merge requests and pipelines in a task (from other projects too), several projects per board, sign in with GitLab, a «label → stage» rule, a conflict policy and resolving conflicts in a batch.",
+    "item3": "⌘K palette commands: your own commands (>bug, >deploy) with keys and task templates — «Bug report», «Release checklist». Export a board to CSV/JSON and import tasks with a preview.",
+    "item4": "Time tracking — «spent» next to the estimate (and the /spend command). «Looking now» on a board, favourite boards, a link to a fragment of a description or a comment.",
+    "item5": "Notifications on their own page with filters, a sound for pop-up notifications, «Do not disturb», RSVP to a meeting. Meetings with repeat and duration, reactions and commands in the chat.",
+    "item6": "Sign in with a code from an email, an invite link to a workspace, handing ownership over and access requests. Admin: workspaces and last sign-in of users, all invitations, CSV export.",
+    "item7": "«Inbox» works offline: a record is kept on the device and goes out by itself. On a phone a task can be put off with a swipe. Background jobs show history, steps and a live log."
+  },
+  "appV2": {
+    "title": "A new look for the whole app",
+    "item1": "«Inbox» replaces the «Notes» and «Reminders» sections: one feed on the right (G I), capture in one line from anywhere (N M — note, N R — reminder), linking to a task and private notes.",
+    "item2": "The «Project» window (⌘,) with General · Tags · Milestones · Estimation tabs, a milestone page with a burn-up and a milestone strip above the board. Board settings and views live in the «Board view» panel (⇧V); views can be personal or shared.",
+    "item3": "New board views — List, Calendar and Matrix. GitLab, members, commands, background jobs and conflicts open in large windows with sections.",
+    "item4": "Task properties — one kind of popover with search and keys (S A P D L, O — estimate, M — milestone, U — parent, ⇧L — relation). A due date can be typed in words («fri 18:00», «tomorrow») or picked in a keyboard-driven calendar.",
+    "item5": "Editor: an «Aa» formatting row, {'@'} # / at the caret, «Quote in reply» from a selection, a full-screen mode «Write · Side by side · Preview». The description opens with I.",
+    "item6": "Pop-up notifications: at the bottom — answers to your actions and «Undo», top right — what colleagues did with your tasks. A «Do not disturb» mode and a setting in «Notifications». On a phone — bottom navigation and bottom sheets."
+  },
+  "interactionV2": {
+    "title": "Fewer windows, more editing in place",
+    "item1": "Columns, groups, projects and boards are renamed in place — double-click or F2. New projects, groups, boards and workspaces are created from a short form at the «+» button or as a row right in the tree, without separate windows.",
+    "item2": "Deleting a column or a board can be undone: an «Undo» toast appears at the bottom (⌘Z / Ctrl+Z). Tasks of a deleted column are not lost — they move to the first column and go back when you undo.",
+    "item3": "The sidebar and the rail work from the keyboard: G S — to the tree, G W — to workspaces, arrows — between rows, «.» — the row menu. In ⌘K, «Create project / board / group / workspace» open a step-by-step form right inside the palette."
+  },
+  "redesignV2": {
+    "title": "Tessera's new design",
+    "item1": "A refreshed interface: no divider lines, columns are coloured lanes, priority is a bar on the card's edge, assignees stack as avatars. On the left, the workspace rail: each space has its own colour and icon, set from the workspace menu.",
+    "item2": "Everything from the keyboard: ⌘K (Ctrl K) finds tasks, boards and commands, and Tab opens actions for the task you found. Arrows pick a card on the board, E completes it, S/A/P/D/L set status, assignees, priority, due date and tags, N opens quick actions. The full list is behind «?».",
+    "item3": "The task window is rebuilt: properties live in the right-hand panel, each with its own key; edits save as you make them, so there is no Save button any more; J/K step to neighbouring tasks, and the «All» feed shows moves between columns.",
+    "item4": "Gantt and timeline: Days / Weeks / Months scales, grouping by milestone, weekends and today on the grid. Home became «My tasks»: your tasks by due date and a quick-entry field — «tomorrow 10:00 !high #tag {'@'}name».",
+    "item5": "A broad reliability and security pass: archived tasks open read-only, search finds a task by its number and treats % and _ as text, says honestly when there are more results than shown, and the task's property menus work from the keyboard.",
+    "spotlightTitle": "Here it is — «My tasks»",
+    "spotlightBody": "What used to be Home: your open tasks by due date, today's reminders and quick entry. From the keyboard — G, then M."
+  },
   "gitlabWebhook": {
     "title": "GitLab: a webhook for instant sync",
     "item1": "The GitLab binding settings gained a «Webhook» section: generate a secret and URL and paste them into your project's Settings → Webhooks — changes then arrive within seconds instead of waiting for the periodic poll. The secret is shown once and can be regenerated or disabled; the last-event time sits next to it."

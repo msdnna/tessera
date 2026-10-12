@@ -29,10 +29,7 @@ import {
   parseImportPayload,
   sendToHost,
 } from '@/utils/docEmbed'
-import { htmlToDoc } from '@/utils/docImport'
-import { normalizeOfficeHtml } from '@/utils/docOfficeHtml'
-import { withImportedPage } from '@/utils/docOffice'
-import { pdfDocument } from '@/utils/docPdf'
+import { importedBody } from '@/utils/docOffice'
 import { userColor } from '@/utils/userColor'
 import { onColor } from '@/utils/gradient'
 
@@ -255,11 +252,9 @@ onMounted(async () => {
     applyImport(raw) {
       const payload = parseImportPayload(raw)
       if (!payload || !doc.value?.id) return false
-      // A PDF was stored, not converted: there is no HTML to parse, and the
-      // body is the single block that points at the file.
-      const json = payload.pdf
-        ? pdfDocument(payload.pdf)
-        : withImportedPage(htmlToDoc(normalizeOfficeHtml(payload.html)), payload.page)
+      // Same body the web import writes, built by the same function — including
+      // the block ids, which a PDF body used to be saved without (#2932).
+      const json = importedBody(payload)
       content.value = json
       comments.setDoc(json)
       scheduleSave(json)

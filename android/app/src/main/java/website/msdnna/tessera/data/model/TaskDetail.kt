@@ -20,6 +20,11 @@ data class TaskDetail(
     @SerializedName("estimate") val estimate: Double? = null,
     @SerializedName("created_by") val createdBy: String? = null,
     @SerializedName("completed_at") val completedAt: String? = null,
+    // The task's OWN archive state. Read-only used to be derived from the board's
+    // archive scope alone, but half the doors into the modal walk past it — a
+    // relation, a notification, a `#N` chip, a reminder deep-link all open the task
+    // on the live board — and the backend has no archive guard of its own (#2932).
+    @SerializedName("archived_at") val archivedAt: String? = null,
     @SerializedName("number") val number: Long? = null,
     @SerializedName("recurrence") val recurrence: Recurrence? = null,
     @SerializedName("due_lead_minutes") val dueLeadMinutes: Int? = null,
@@ -35,23 +40,46 @@ data class TaskDetail(
     @SerializedName("subtasks") private val subtasksRaw: List<Task>? = null,
     // GitLab provenance — present when this task mirrors a GitLab issue.
     @SerializedName("gitlab") val gitlab: GitlabLink? = null,
+    // Who hears about the task (#2963): the author, the assignees and the
+    // commenters unless they unfollowed, plus whoever followed it; `subscribed` —
+    // whether the viewer is among them.
+    @SerializedName("subscribers") private val subscribersRaw: List<AssigneeUser>? = null,
+    @SerializedName("subscribed") val subscribed: Boolean = false,
+    // Merge requests working on the task (#2964) — «Разработка». Read-only here.
+    @SerializedName("code_links") private val codeLinksRaw: List<CodeLink>? = null,
 ) {
     val isCompleted: Boolean get() = completedAt != null
+    val isArchived: Boolean get() = archivedAt != null
     val tags: List<Tag> get() = tagsRaw.orEmpty()
     val assignees: List<AssigneeUser> get() = assigneesRaw.orEmpty()
     val gitlabAssignees: List<GitlabAssignee> get() = gitlabAssigneesRaw.orEmpty()
     val subtasks: List<Task> get() = subtasksRaw.orEmpty()
-
-    /** A lightweight [Task] view of this detail, for reusing card-level pickers. */
-    fun asTask(): Task = Task(
-        id = id, boardId = boardId, columnId = columnId, parentId = parentId,
-        title = title, description = description, priority = priority, dueDate = dueDate,
-        startDate = startDate, estimate = estimate,
-        createdBy = createdBy, completedAt = completedAt, number = number, recurrence = recurrence,
-        milestoneId = milestoneId,
-        tagIds = tags.map { it.id }, assigneeIds = assignees.map { it.id },
-    )
+    val subscribers: List<AssigneeUser> get() = subscribersRaw.orEmpty()
+    val codeLinks: List<CodeLink> get() = codeLinksRaw.orEmpty()
 }
+
+/** Body of `PUT /tasks/:id/subscription` (#2963). */
+data class SetSubscriptionRequest(@SerializedName("subscribed") val subscribed: Boolean)
+
+/**
+ * A code change linked to the task (#2964) — today a GitLab merge request. The
+ * backend serves it provider-neutral: `state` is open | merged | closed, `ci_status`
+ * the latest CI run ('' | success | running | failed | canceled | manual).
+ */
+data class CodeLink(
+    @SerializedName("provider") val provider: String = "",
+    @SerializedName("kind") val kind: String = "",
+    @SerializedName("number") val number: Long = 0,
+    @SerializedName("repo") val repo: String = "",
+    @SerializedName("url") val url: String = "",
+    @SerializedName("title") val title: String = "",
+    @SerializedName("state") val state: String = "open",
+    @SerializedName("draft") val draft: Boolean = false,
+    @SerializedName("source_branch") val sourceBranch: String = "",
+    @SerializedName("target_branch") val targetBranch: String = "",
+    @SerializedName("ci_status") val ciStatus: String = "",
+    @SerializedName("ci_url") val ciUrl: String = "",
+)
 
 /** A task assignee — mirrors `ListTaskAssigneesRow`. */
 data class AssigneeUser(
@@ -148,12 +176,53 @@ data class Attachment(
     @SerializedName("uploader_name") val uploaderName: String? = null,
 )
 
-/** A task journal entry — mirrors the backend `taskEventResp`. `data` is opaque. */
+/** A task journal entry — mirrors the backend `taskEventResp`. */
 data class TaskEvent(
     @SerializedName("id") val id: String = "",
     @SerializedName("kind") val kind: String = "",
+    @SerializedName("data") val data: TaskEventData? = null,
     @SerializedName("created_at") val createdAt: String = "",
     @SerializedName("actor_name") val actorName: String? = null,
+)
+
+/**
+ * The facts of a journal entry, from which the client words the line — see
+ * `util/TaskJournal.kt`. The server stores only the facts; the sentence is the
+ * reader's, in the reader's language.
+ *
+ * Every field is nullable and every kind carries only the keys it needs (the
+ * backend substitutes an empty object for an entry that carries none, so an old
+ * record arrives as `{}` rather than as null). [to] is deliberately a String: the
+ * same key holds the new title for `renamed` and the new level for `priority`, and
+ * Gson reads a JSON number into a String.
+ */
+data class TaskEventData(
+    @SerializedName("to") val to: String? = null,
+    /** Key of a server-seeded column name (#2800); absent for one the user named. */
+    @SerializedName("to_key") val toKey: String? = null,
+    /** Whether the date/estimate was set or cleared — `due`, `start`, `estimate`. */
+    @SerializedName("set") val set: Boolean? = null,
+    /** Number of the task on the other end of a relation. */
+    @SerializedName("related") val related: Long? = null,
+    /** Name of the file attached/removed — `attachment`, `attachment_removed`.
+     *  By name, like the tag below: the row is gone by the time the removal is
+     *  read back, so an id would dangle. */
+    @SerializedName("filename") val filename: String? = null,
+    /** Name of the tag attached/detached — `tagged`, `untagged`. Stored by name,
+     *  not by id, so history survives the tag being renamed or deleted. */
+    @SerializedName("tag") val tag: String? = null,
+    /** Title of the milestone pinned/unpinned — `milestone`, `milestone_removed`.
+     *  By title for the tag's reason: the task's milestone_id is ON DELETE SET
+     *  NULL, so an id would dangle the moment the stage is deleted. */
+    @SerializedName("title") val title: String? = null,
+    @SerializedName("applied") val applied: List<String>? = null,
+    @SerializedName("failed") val failed: List<String>? = null,
+    /** Provider that wrote the entry — `user`/`gitlab`, see `util/Sources.kt`. */
+    @SerializedName("source") val source: String? = null,
+    /** A merge request's number, state and branch — `code_change` (#2964). */
+    @SerializedName("number") val number: Long? = null,
+    @SerializedName("state") val state: String? = null,
+    @SerializedName("branch") val branch: String? = null,
 )
 
 /** `{ "url": "/api/uploads/<uuid>.<ext>" }` from `POST /api/uploads`. */
@@ -169,7 +238,16 @@ data class CreateCommentRequest(
     @SerializedName("parent_id") val parentId: String? = null,
 )
 
-data class UpdateCommentRequest(@SerializedName("body") val body: String)
+/**
+ * An edited body plus the people the edit ADDED to it — not everyone the new
+ * text mentions. The server cannot tell the two apart: it keeps the old body as
+ * plain text, without the roster a handle is rendered against, so it would
+ * either notify nobody or notify everyone named again on every typo fix.
+ */
+data class UpdateCommentRequest(
+    @SerializedName("body") val body: String,
+    @SerializedName("mentions") val mentions: List<String> = emptyList(),
+)
 
 data class AddRelationRequest(
     @SerializedName("number") val number: Long,

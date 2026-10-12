@@ -1,7 +1,6 @@
 package website.msdnna.tessera.ui.screens
 
 import android.content.Intent
-import android.content.res.Resources
 import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedContent
@@ -14,6 +13,7 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -29,6 +29,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -56,6 +57,7 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
@@ -81,7 +83,9 @@ import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
 import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
+import website.msdnna.tessera.data.model.AssigneeUser
 import website.msdnna.tessera.data.model.BoardColumn
+import website.msdnna.tessera.data.model.CodeLink
 import website.msdnna.tessera.data.model.Comment
 import website.msdnna.tessera.data.model.GitlabAssignee
 import website.msdnna.tessera.data.model.GitlabLink
@@ -115,6 +119,7 @@ import website.msdnna.tessera.ui.components.UnderlineTabs
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.popupAppear
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.theme.ConflictAmber
 import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.PriorityColors
 import website.msdnna.tessera.ui.theme.RadiusLg
@@ -128,23 +133,33 @@ import website.msdnna.tessera.ui.tour.TourHost
 import website.msdnna.tessera.ui.tour.TourLayer
 import website.msdnna.tessera.ui.tour.tourAnchor
 import website.msdnna.tessera.ui.viewmodels.TaskDetailViewModel
+import website.msdnna.tessera.util.ATTACHMENT_MAX_BYTES
 import website.msdnna.tessera.util.CommandItem
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.MentionItem
+import website.msdnna.tessera.util.PickRefusal
 import website.msdnna.tessera.util.TourKeys
+import website.msdnna.tessera.util.attachmentPickError
+import website.msdnna.tessera.util.attachmentSizeText
+import website.msdnna.tessera.util.avatarInitials
+import website.msdnna.tessera.util.branchLine
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.changeStatus
+import website.msdnna.tessera.util.ciStatus
 import website.msdnna.tessera.util.columnById
 import website.msdnna.tessera.util.columnCaption
 import website.msdnna.tessera.util.doneTarget
 import website.msdnna.tessera.util.dueLabel
 import website.msdnna.tessera.util.groupThreads
 import website.msdnna.tessera.util.isExternalSource
+import website.msdnna.tessera.util.journalText
 import website.msdnna.tessera.util.moveNeighbors
 import website.msdnna.tessera.util.nextColumn
 import website.msdnna.tessera.util.onColor
 import website.msdnna.tessera.util.parseHexColor
 import website.msdnna.tessera.util.readableHue
+import website.msdnna.tessera.util.relationPickerMatches
 import website.msdnna.tessera.util.shortDate
 import website.msdnna.tessera.util.siblingNeighbors
 import website.msdnna.tessera.util.sortedColumns
@@ -208,6 +223,16 @@ fun TaskModal(
      *  navigate — the tab then lists the documents without pretending the rows
      *  lead anywhere. */
     onOpenDocument: ((documentId: String) -> Unit)? = null,
+    /** The task is being looked at, not worked on — the board's archive scope
+     *  (`BoardUiState.archivedMode`), where the card already refuses drag and its
+     *  pills swallow edit taps. Everything that writes is withdrawn here too: the
+     *  buttons are not drawn, and [TaskDetailViewModel] refuses anyway (#2932, web
+     *  parity). Reading stays whole — including downloading a file, which is most
+     *  of why an archived task gets opened. */
+    readonly: Boolean = false,
+    /** The task went to the board's trash from here (#3004): the host shows the
+     *  undo toast — the modal closes, so it cannot. */
+    onDeleted: ((taskId: String, number: Long?, title: String) -> Unit)? = null,
     onClose: (changed: Boolean) -> Unit,
 ) {
     val c = Tessera.colors
@@ -216,7 +241,7 @@ fun TaskModal(
     val me by AppContainer.prefs.user.collectAsStateWithLifecycle(initialValue = null)
 
     var currentId by remember { mutableStateOf(initialTaskId) }
-    LaunchedEffect(currentId) { vm.load(currentId, workspaceId, projectId) }
+    LaunchedEffect(currentId, readonly) { vm.load(currentId, workspaceId, projectId, readonly) }
 
     // Report what the backend actually did with the comment's quick actions: intent
     // and result can differ (a recurring task bounces straight out of the done
@@ -282,7 +307,6 @@ fun TaskModal(
     var tab by remember { mutableStateOf(0) }
     val tabState = rememberSaveableStateHolder()
     var confirmArchive by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
     var showTransfer by remember { mutableStateOf(false) }
     // Milestones inline-created from the picker, merged with the board's list so a
     // freshly-made «Этап» shows immediately (the board reloads on close).
@@ -344,7 +368,7 @@ fun TaskModal(
                     Box(Modifier.weight(1f).fillMaxWidth()) {
                         ErrorState(
                             message = errorText ?: stringResource(R.string.common_error),
-                            onRetry = { vm.load(currentId, workspaceId, projectId) },
+                            onRetry = { vm.load(currentId, workspaceId, projectId, readonly) },
                         )
                     }
                 } else {
@@ -352,52 +376,74 @@ fun TaskModal(
                         Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(18.dp),
                     ) {
                         if (detail != null) {
-                            HeadRow(breadcrumb, detail.number, onTransfer = { showTransfer = true })
+                            HeadRow(
+                                breadcrumb,
+                                detail.number,
+                                onTransfer = { if (!readonly) showTransfer = true },
+                            )
                             Spacer(Modifier.height(10.dp))
-                            TitleField(title, onChange = { title = it })
+                            TitleField(title, onChange = { title = it }, readonly = readonly)
                             Spacer(Modifier.height(14.dp))
 
-                            PropertyGrid(
-                                vm = vm,
-                                taskId = detail.id,
-                                columnId = detail.columnId,
-                                doneColumnId = state.doneColumnId,
-                                moving = state.moving,
-                                boardTasks = boardTasks,
-                                priority = detail.priority,
-                                dueIso = detail.dueDate,
-                                startIso = detail.startDate,
-                                recurrence = detail.recurrence,
-                                estimate = detail.estimate,
-                                estimation = estimation,
-                                subtasks = detail.subtasks,
-                                columns = state.columns,
-                                notifyEnabled = detail.dueNotifyEnabled,
-                                notifyLead = detail.dueLeadMinutes,
-                                notifyRepeat = detail.dueRepeatMinutes,
-                                completed = detail.isCompleted,
-                                assignees = detail.assignees.map { it.id },
-                                gitlabAssignees = detail.gitlabAssignees,
-                                createdBy = detail.createdBy,
-                                gitlab = detail.gitlab,
-                                gitlabCreate = gitlabCreate,
-                                gitlabCanGroup = gitlabCanGroup,
-                                glCreating = state.glCreating,
-                                glTemplates = state.glTemplates,
-                                onLoadTemplates = { vm.loadGitlabTemplates(gitlabCreate.integrationId) },
-                                onApplyTemplate = { description = it },
-                                onCreateIssue = { vm.createGitlabIssue(title, description) },
-                                taskTagIds = detail.tags.map { it.id },
-                                parentId = detail.parentId,
-                                milestoneId = detail.milestoneId,
-                                milestones = allMilestones,
-                                onCreateMilestone = { t -> vm.createMilestoneAndAssign(t) { m -> extraMilestones = extraMilestones + m } },
-                                tags = tags,
-                                prefixNames = prefixNames,
-                                metaTagPrefixes = metaTagPrefixes,
-                                members = members,
-                                gitlabMembers = gitlabMembers,
-                                parentCandidates = parentCandidates,
+                            // Read-only: the property pills stay visible but stop being
+                            // editors. A transparent lid rather than a flag threaded
+                            // through every row of the grid — the same shape the archived
+                            // card uses over its own pills (TaskCard), and the same thing
+                            // the web modal does with `pointer-events: none` (#2932).
+                            Box {
+                                PropertyGrid(
+                                    vm = vm,
+                                    taskId = detail.id,
+                                    columnId = detail.columnId,
+                                    doneColumnId = state.doneColumnId,
+                                    moving = state.moving,
+                                    boardTasks = boardTasks,
+                                    priority = detail.priority,
+                                    dueIso = detail.dueDate,
+                                    startIso = detail.startDate,
+                                    recurrence = detail.recurrence,
+                                    estimate = detail.estimate,
+                                    estimation = estimation,
+                                    subtasks = detail.subtasks,
+                                    columns = state.columns,
+                                    notifyEnabled = detail.dueNotifyEnabled,
+                                    notifyLead = detail.dueLeadMinutes,
+                                    notifyRepeat = detail.dueRepeatMinutes,
+                                    completed = detail.isCompleted,
+                                    assignees = detail.assignees.map { it.id },
+                                    gitlabAssignees = detail.gitlabAssignees,
+                                    createdBy = detail.createdBy,
+                                    gitlab = detail.gitlab,
+                                    codeLinks = detail.codeLinks,
+                                    gitlabCreate = gitlabCreate,
+                                    gitlabCanGroup = gitlabCanGroup,
+                                    glCreating = state.glCreating,
+                                    glTemplates = state.glTemplates,
+                                    onLoadTemplates = { vm.loadGitlabTemplates(gitlabCreate.integrationId) },
+                                    onApplyTemplate = { description = it },
+                                    onCreateIssue = { vm.createGitlabIssue(title, description) },
+                                    taskTagIds = detail.tags.map { it.id },
+                                    parentId = detail.parentId,
+                                    milestoneId = detail.milestoneId,
+                                    milestones = allMilestones,
+                                    onCreateMilestone = { t -> vm.createMilestoneAndAssign(t) { m -> extraMilestones = extraMilestones + m } },
+                                    tags = tags,
+                                    prefixNames = prefixNames,
+                                    metaTagPrefixes = metaTagPrefixes,
+                                    members = members,
+                                    gitlabMembers = gitlabMembers,
+                                    parentCandidates = parentCandidates,
+                                )
+                                if (readonly) {
+                                    Spacer(Modifier.matchParentSize().clickableNoRipple {})
+                                }
+                            }
+                            // «Подписаны» (#2963) sits outside the read-only veil: following
+                            // an archived task is reading it, not changing it.
+                            SubscribersRow(
+                                subscribers = detail.subscribers,
+                                subscribed = detail.subscribed,
+                                onToggle = { vm.toggleSubscription() },
                             )
 
                             Spacer(Modifier.height(18.dp))
@@ -479,6 +525,7 @@ fun TaskModal(
                                                 uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
                                                 mentions = buildMentionItems(members, gitlabMembers),
                                                 onTaskRef = openTaskRef,
+                                                readonly = readonly,
                                             )
                                         }
 
@@ -492,12 +539,14 @@ fun TaskModal(
                                             preview = state.commandPreview,
                                             previewCustom = state.commandCustom,
                                             onTaskRef = openTaskRef,
+                                            readonly = readonly,
                                         )
 
                                         2 -> SubtasksTab(
                                             vm, detail.columnId, detail.subtasks, state.columns,
                                             showGitlab = gitlabCanGroup && detail.gitlab != null,
                                             parentGrouped = detail.gitlab?.isGroup == true,
+                                            readonly = readonly,
                                         ) { currentId = it }
 
                                         3 -> RelationsTab(
@@ -506,14 +555,16 @@ fun TaskModal(
                                             candidates = state.relationCandidates,
                                             currentTaskId = detail.id,
                                             onOpen = { currentId = it },
+                                            readonly = readonly,
                                         )
 
-                                        4 -> FilesTab(vm, state.attachments)
+                                        4 -> FilesTab(vm, state.attachments, readonly = readonly)
 
                                         5 -> DocumentsTab(
                                             vm = vm,
                                             links = state.documents,
                                             onOpen = onOpenDocument,
+                                            readonly = readonly,
                                         )
 
                                         else -> HistoryTab(state.events)
@@ -530,45 +581,62 @@ fun TaskModal(
                     Modifier.fillMaxWidth().padding(horizontal = 14.dp, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
-                    Box {
-                        GhostIconButton(Ion.ARCHIVE, c.primary) { confirmArchive = true }
-                        TConfirmPopover(
-                            expanded = confirmArchive,
-                            message = stringResource(R.string.task_archive_confirm),
-                            confirmText = stringResource(R.string.task_archive_action),
-                            danger = false,
-                            onConfirm = {
-                                confirmArchive = false
-                                vm.archive { close() }
+                    if (readonly) {
+                        // Nothing in this modal writes, so the footer says why instead
+                        // of offering «Сохранить» that would silently do nothing — the
+                        // same note the web modal ends with (#2932). Archive and delete
+                        // go with it: restore and «удалить навсегда» live on the
+                        // archived card's own menu, which is where they still work.
+                        Text(
+                            stringResource(R.string.task_readonly_note),
+                            color = ConflictAmber,
+                            fontSize = 12.sp,
+                            modifier = Modifier.testTag(TestTags.TASK_READONLY_NOTE).weight(1f),
+                        )
+                        Spacer(Modifier.width(8.dp))
+                        TButton(
+                            stringResource(R.string.common_close),
+                            kind = TButtonKind.Secondary,
+                            onClick = { close() },
+                        )
+                    } else {
+                        Box {
+                            GhostIconButton(Ion.ARCHIVE, c.primary) { confirmArchive = true }
+                            TConfirmPopover(
+                                expanded = confirmArchive,
+                                message = stringResource(R.string.task_archive_confirm),
+                                confirmText = stringResource(R.string.task_archive_action),
+                                danger = false,
+                                onConfirm = {
+                                    confirmArchive = false
+                                    vm.archive { close() }
+                                },
+                                onDismiss = { confirmArchive = false },
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Box {
+                            // Into the trash at once; the board offers the undo (#3004).
+                            GhostIconButton(Ion.TRASH, DangerRed) {
+                                val d = state.detail
+                                vm.delete {
+                                    if (d != null) onDeleted?.invoke(d.id, d.number, d.title)
+                                    close()
+                                }
+                            }
+                        }
+                        Spacer(Modifier.weight(1f))
+                        TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Secondary, onClick = { close() })
+                        Spacer(Modifier.width(8.dp))
+                        TButton(
+                            stringResource(R.string.common_save),
+                            modifier = Modifier.testTag(TestTags.TASK_SAVE).tourAnchor(TourKeys.TM_SAVE),
+                            onClick = {
+                                vm.saveCore(title, description)
+                                onClose(true)
                             },
-                            onDismiss = { confirmArchive = false },
                         )
                     }
-                    Spacer(Modifier.width(8.dp))
-                    Box {
-                        GhostIconButton(Ion.TRASH, DangerRed) { confirmDelete = true }
-                        TConfirmPopover(
-                            expanded = confirmDelete,
-                            message = stringResource(R.string.task_delete_confirm),
-                            confirmText = stringResource(R.string.common_delete),
-                            onConfirm = {
-                                confirmDelete = false
-                                vm.delete { close() }
-                            },
-                            onDismiss = { confirmDelete = false },
-                        )
-                    }
-                    Spacer(Modifier.weight(1f))
-                    TButton(stringResource(R.string.common_cancel), kind = TButtonKind.Secondary, onClick = { close() })
-                    Spacer(Modifier.width(8.dp))
-                    TButton(
-                        stringResource(R.string.common_save),
-                        modifier = Modifier.testTag(TestTags.TASK_SAVE).tourAnchor(TourKeys.TM_SAVE),
-                        onClick = {
-                            vm.saveCore(title, description)
-                            onClose(true)
-                        },
-                    )
                 }
             }
 
@@ -605,11 +673,14 @@ private fun HeadRow(breadcrumb: List<String>, number: Long?, onTransfer: () -> U
 }
 
 @Composable
-private fun TitleField(title: String, onChange: (String) -> Unit) {
+private fun TitleField(title: String, onChange: (String) -> Unit, readonly: Boolean = false) {
     val c = Tessera.colors
     BasicTextField(
         value = title,
         onValueChange = onChange,
+        // The field stays (the title has to be readable and selectable) but takes no
+        // input in the archive scope — there is no «Сохранить» under it to send it.
+        readOnly = readonly,
         textStyle = TextStyle(color = c.text1, fontSize = 18.sp, fontWeight = FontWeight.SemiBold),
         cursorBrush = SolidColor(c.primary),
         modifier = Modifier.fillMaxWidth().testTag(TestTags.TASK_TITLE),
@@ -653,6 +724,8 @@ private fun PropertyGrid(
     gitlabAssignees: List<GitlabAssignee>,
     createdBy: String?,
     gitlab: GitlabLink?,
+    /** Merge requests working on the task (#2964) — read-only cards under the GitLab row. */
+    codeLinks: List<CodeLink>,
     /** Whether this board's GitLab binding allows creating an issue from a task (and
      *  prefilling it from a repo template) — resolved by the board view-model. */
     gitlabCreate: website.msdnna.tessera.util.GitlabCreateCaps,
@@ -748,6 +821,16 @@ private fun PropertyGrid(
                 )
             }
         }
+        // «Разработка» (#2964): the merge requests working on the task, full width
+        // under the GitLab row — the value column is too narrow for a branch line.
+        if (codeLinks.isNotEmpty()) {
+            Column(
+                Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                codeLinks.forEach { CodeLinkCard(it) }
+            }
+        }
         // Grouped-task marker (#2592): the parent half of the GitLab hierarchy. Shown
         // only when the issue actually carries the label — web pairs the badge with a
         // set/clear button, so its row is worth keeping even when empty; here the row
@@ -793,8 +876,10 @@ private fun PropertyGrid(
         val siblings = remember(boardTasks, parentId) {
             if (parentId == null) emptyList() else boardTasks.filter { it.parentId == parentId }.sortedBy { it.position }
         }
-        fun neighboursFor(target: String) =
-            moveNeighbors(taskId, parentId, target, siblings, parentCandidates)
+        // Same neighbours whatever the target column: a subtask pins its row in the
+        // parent's list, a top-level card names none and is appended by the server —
+        // see moveNeighbors for why this client must not compute the column's end.
+        val neighbours = moveNeighbors(taskId, parentId, siblings)
         val doneCol = doneTarget(columns, doneColumnId)
         PropRow(Ion.CHECK, stringResource(R.string.task_prop_status)) {
             StatusValue(
@@ -802,13 +887,13 @@ private fun PropertyGrid(
                 columnId = columnId,
                 completed = completed,
                 moving = moving,
-                onMove = { target -> vm.moveToColumn(target, neighboursFor(target)) },
+                onMove = { target -> vm.moveToColumn(target, neighbours) },
                 onToggleDone = {
                     when {
                         completed -> vm.setCompleted(false)
 
                         doneCol != null && doneCol.id != columnId ->
-                            vm.moveToColumn(doneCol.id, neighboursFor(doneCol.id))
+                            vm.moveToColumn(doneCol.id, neighbours)
 
                         else -> vm.setCompleted(true)
                     }
@@ -1065,6 +1150,7 @@ private fun EstimateValue(
 ) {
     val c = Tessera.colors
     val res = LocalResources.current
+    val estCtx = androidx.compose.ui.platform.LocalContext.current
     val scaleOptions = website.msdnna.tessera.util.Estimation.scaleOptions(cfg)
     val isPoints = scaleOptions.isNotEmpty()
     val label = website.msdnna.tessera.util.Estimation.format(res, estimate, cfg)
@@ -1116,7 +1202,18 @@ private fun EstimateValue(
             placeholder = website.msdnna.tessera.util.Estimation.placeholder(res, cfg),
             onConfirm = {
                 dialog = false
-                onSet(website.msdnna.tessera.util.Estimation.parse(it, cfg))
+                // Непонятый ввод не стирает оценку: поле свободное («1ч 30»,
+                // «3д 4ч», «полдня»), а onSet(parse(...)) превращал любую опечатку
+                // в тихое снятие — число, с которым человек планировал, исчезало
+                // молча. Снять оценку можно строкой «Не задана» рядом.
+                val parsed = website.msdnna.tessera.util.Estimation.parse(it, cfg)
+                if (parsed == null) {
+                    android.widget.Toast
+                        .makeText(estCtx, res.getString(R.string.task_estimate_unreadable, it), android.widget.Toast.LENGTH_LONG)
+                        .show()
+                } else {
+                    onSet(parsed)
+                }
             },
             onDismiss = { dialog = false },
         )
@@ -1241,10 +1338,56 @@ private fun MemberAvatar(size: Dp, name: String, userId: String? = null, avatarU
     ) {
         // Initials underneath; the image overlays and shows through if it fails
         // to load (e.g. an unreachable GitLab avatar) rather than leaving a blank.
-        Text(initials(name), color = if (muted) Color.White else c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        Text(avatarInitials(name), color = if (muted) Color.White else c.onPrimary, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(size).clip(CircleShape))
         }
+    }
+}
+
+/**
+ * «Подписаны» (#2963, TaskModal.dc): who hears about the task — a cascade of
+ * avatars — and a plain text button to follow / unfollow. The author, the
+ * assignees and the commenters follow implicitly; the list comes computed.
+ */
+@Composable
+private fun SubscribersRow(subscribers: List<AssigneeUser>, subscribed: Boolean, onToggle: () -> Unit) {
+    val c = Tessera.colors
+    Row(
+        Modifier.fillMaxWidth().padding(top = 10.dp).testTag(TestTags.TASK_SUBSCRIBERS),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(stringResource(R.string.task_subscribers_title), color = c.text3, fontSize = 13.sp)
+        Spacer(Modifier.width(10.dp))
+        if (subscribers.isEmpty()) {
+            Text(stringResource(R.string.task_subscribers_nobody), color = c.text3, fontSize = 13.sp)
+        } else {
+            Row(horizontalArrangement = Arrangement.spacedBy((-6).dp)) {
+                subscribers.take(5).forEach { u ->
+                    Box(Modifier.border(2.dp, c.surface, CircleShape)) {
+                        MemberAvatar(22.dp, u.name.ifBlank { u.email }, userId = u.id)
+                    }
+                }
+            }
+            if (subscribers.size > 5) {
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(R.string.task_subscribers_more, subscribers.size - 5), color = c.text3, fontSize = 13.sp)
+            }
+        }
+        Spacer(Modifier.weight(1f))
+        Text(
+            stringResource(if (subscribed) R.string.task_subscribers_unsubscribe else R.string.task_subscribers_subscribe),
+            color = c.text2,
+            fontSize = 14.sp,
+            modifier = Modifier
+                .testTag(TestTags.TASK_SUBSCRIBE_TOGGLE)
+                .clip(RoundedCornerShape(8.dp))
+                .clickable(onClick = onToggle)
+                // 44dp touch target, like the rest of the modal's controls.
+                .heightIn(min = 44.dp)
+                .wrapContentHeight()
+                .padding(horizontal = 8.dp),
+        )
     }
 }
 
@@ -1279,6 +1422,80 @@ private fun GitlabLinkValue(gitlab: GitlabLink) {
         Text("!${gitlab.iid}", fontSize = 14.sp, style = TextStyle(brush = accentGradient(c.primary)))
         Spacer(Modifier.width(6.dp))
         IonIcon(Ion.LINK, size = 13.dp, tint = c.text3)
+    }
+}
+
+/**
+ * One merge request of «Разработка» (#2964), after the web card: «!418 · title ·
+ * state pill» over «source → target · pipeline». Read-only — a tap opens the MR in
+ * the browser.
+ */
+@Composable
+private fun CodeLinkCard(link: CodeLink) {
+    val c = Tessera.colors
+    val ctx = LocalContext.current
+    val status = changeStatus(link)
+    val ci = ciStatus(link.ciStatus)
+    val branches = branchLine(link)
+    Column(
+        Modifier.fillMaxWidth()
+            .testTag(TestTags.TASK_MR)
+            .clip(RoundedCornerShape(11.dp))
+            .background(c.surfaceAlt)
+            .clickableNoRipple {
+                if (link.url.isNotBlank()) {
+                    runCatching { ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(link.url))) }
+                }
+            }
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IonIcon(Ion.GIT_MERGE, size = 15.dp, tint = c.text2)
+            Spacer(Modifier.width(8.dp))
+            Text("!${link.number}", color = c.text1, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                link.title,
+                color = c.text2,
+                fontSize = 13.sp,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Spacer(Modifier.width(8.dp))
+            val hue = status.hex?.let { parseHexColor(it, c.text2) }
+            Text(
+                stringResource(status.label),
+                color = hue?.let { readableHue(it, c.isDark) } ?: c.text2,
+                fontSize = 11.5.sp,
+                fontWeight = FontWeight.Medium,
+                maxLines = 1,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(hue?.let { accentGradient(lerp(c.surfaceAlt, it, 0.18f)) } ?: SolidColor(c.border))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
+            )
+        }
+        if (branches.isNotEmpty() || ci != null) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    branches,
+                    color = c.text3,
+                    fontSize = 12.sp,
+                    fontFamily = FontFamily.Monospace,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f),
+                )
+                if (ci != null) {
+                    Spacer(Modifier.width(8.dp))
+                    IonIcon(ci.icon, size = 13.dp, tint = ci.hex?.let { parseHexColor(it, c.text3) } ?: c.text3)
+                    Spacer(Modifier.width(5.dp))
+                    Text(stringResource(ci.label), color = c.text3, fontSize = 12.sp, maxLines = 1)
+                }
+            }
+        }
     }
 }
 
@@ -1593,7 +1810,23 @@ private fun DescriptionTab(
     uploadImage: suspend (ByteArray, String, String?) -> String?,
     mentions: List<MentionItem>,
     onTaskRef: (Int) -> Unit,
+    readonly: Boolean = false,
 ) {
+    if (readonly) {
+        // Rendered text instead of the editor, exactly as the web tab does in the
+        // archive: the toolbar, the image upload and the save-on-blur all belong to
+        // a task being worked on. An empty description still says so — a blank tab
+        // reads as «not loaded» (#2932).
+        RichContent(
+            value.ifBlank { stringResource(R.string.task_description_empty) },
+            mentions = mentions,
+            mentionCards = true,
+            taskRefs = true,
+            onTaskRef = onTaskRef,
+            modifier = Modifier.testTag(TestTags.TASK_DESCRIPTION_READONLY),
+        )
+        return
+    }
     MarkdownEditor(
         value = value,
         onValueChange = onValueChange,
@@ -1611,13 +1844,16 @@ private fun DescriptionTab(
  * One comment — avatar, header, body (or its editor). [actions] renders the
  * links under the text (Ответить / Свернуть ответы), which differ between a
  * thread root and a reply.
+ *
+ * Takes callbacks rather than the view-model so the row can be drawn against a
+ * comment alone — the same shape as [ConferenceChatSheet], and for the same
+ * reason: what a destructive button does is worth a spec.
  */
 @Composable
-private fun CommentRow(
+internal fun CommentRow(
     cm: Comment,
     avatarSize: Dp,
     meId: String?,
-    vm: TaskDetailViewModel,
     mentionItems: List<MentionItem>,
     onTaskRef: (Int) -> Unit,
     editing: Boolean,
@@ -1627,9 +1863,18 @@ private fun CommentRow(
     onToggleEditPreview: () -> Unit,
     onStartEdit: () -> Unit,
     onEndEdit: () -> Unit,
+    onSaveEdit: (String) -> Unit,
+    onToggleCheck: (Int) -> Unit,
+    onDelete: () -> Unit,
+    /** Whether an own comment may be touched at all. False in the archive scope,
+     *  where ✎ and ✕ are withdrawn and the checkboxes stop being live (#2932). */
+    editable: Boolean = true,
     actions: @Composable () -> Unit,
 ) {
     val c = Tessera.colors
+    // Кому принадлежит открытый попап подтверждения — ключом по id, чтобы
+    // «да» не переехало на соседний комментарий, когда список перестроится.
+    var confirmDelete by remember(cm.id) { mutableStateOf(false) }
     Row(Modifier.fillMaxWidth().padding(vertical = 8.dp)) {
         MemberAvatar(
             avatarSize,
@@ -1653,10 +1898,34 @@ private fun CommentRow(
                 }
                 Spacer(Modifier.width(6.dp))
                 Text(whenLabel(LocalResources.current, cm.createdAt, LocalDateFormat.current), color = c.text3, fontSize = 11.sp)
-                if (cm.authorId != null && cm.authorId == meId) {
+                if (cm.authorId != null && cm.authorId == meId && editable) {
                     Spacer(Modifier.weight(1f))
                     IonIconButton(Ion.PENCIL, onStartEdit, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
-                    IonIconButton(Ion.CLOSE, { vm.deleteComment(cm.id) }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                    // Удаление своего комментария — только через подтверждение, как на
+                    // вебе и как у всего остального разрушительного рядом (архив задачи,
+                    // снятие связи, комментарий документа). Промах по иконке 26dp иначе
+                    // стирал текст без отката, а для корня ветки ещё и поднимал чужой
+                    // ответ в корень.
+                    Box {
+                        IonIconButton(
+                            Ion.CLOSE,
+                            { confirmDelete = true },
+                            modifier = Modifier.testTag(TestTags.taskCommentDelete(cm.id)),
+                            boxSize = 26.dp,
+                            iconSize = 14.dp,
+                            tint = c.text3,
+                        )
+                        TConfirmPopover(
+                            expanded = confirmDelete,
+                            message = stringResource(R.string.task_comment_delete_confirm),
+                            confirmTag = TestTags.TASK_COMMENT_DELETE_CONFIRM,
+                            onConfirm = {
+                                confirmDelete = false
+                                onDelete()
+                            },
+                            onDismiss = { confirmDelete = false },
+                        )
+                    }
                 }
             }
             Spacer(Modifier.height(2.dp))
@@ -1673,7 +1942,7 @@ private fun CommentRow(
                 Spacer(Modifier.height(6.dp))
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TButton(stringResource(R.string.common_save), onClick = {
-                        vm.editComment(cm.id, editBody)
+                        onSaveEdit(editBody)
                         onEndEdit()
                     }, modifier = Modifier.height(34.dp))
                     Spacer(Modifier.width(6.dp))
@@ -1687,7 +1956,7 @@ private fun CommentRow(
                     MarkdownModeToggle(preview = editPreview, onToggle = onToggleEditPreview)
                 }
             } else {
-                val own = cm.authorId != null && cm.authorId == meId
+                val own = cm.authorId != null && cm.authorId == meId && editable
                 RichContent(
                     cm.body,
                     mentions = mentionItems,
@@ -1695,11 +1964,7 @@ private fun CommentRow(
                     taskRefs = true,
                     onTaskRef = onTaskRef,
                     interactive = own,
-                    onToggleCheck = if (own) {
-                        { i -> vm.editComment(cm.id, toggleTaskMarker(cm.body, i)) }
-                    } else {
-                        null
-                    },
+                    onToggleCheck = if (own) onToggleCheck else null,
                 )
             }
             actions()
@@ -1753,6 +2018,7 @@ private fun CommentsTab(
     preview: List<website.msdnna.tessera.data.model.CommandOutcome>,
     previewCustom: List<String>,
     onTaskRef: (Int) -> Unit,
+    readonly: Boolean = false,
 ) {
     val c = Tessera.colors
     var draft by remember { mutableStateOf("") }
@@ -1799,7 +2065,6 @@ private fun CommentsTab(
                 cm = t.root,
                 avatarSize = 26.dp,
                 meId = meId,
-                vm = vm,
                 mentionItems = mentionItems,
                 onTaskRef = onTaskRef,
                 editing = editingId == t.root.id,
@@ -1813,9 +2078,17 @@ private fun CommentsTab(
                     editPreview = false
                 },
                 onEndEdit = { editingId = null },
+                // The body as it stood before the edit + the roster: together they
+                // say whom this edit newly mentions (vm.editComment).
+                onSaveEdit = { vm.editComment(t.root.id, it, t.root.body, mentionItems) },
+                onToggleCheck = { i -> vm.editComment(t.root.id, toggleTaskMarker(t.root.body, i)) },
+                onDelete = { vm.deleteComment(t.root.id) },
+                editable = !readonly,
             ) {
                 Row {
-                    CommentLink(stringResource(R.string.task_comment_reply)) { startReply(t.root.id, t.root) }
+                    if (!readonly) {
+                        CommentLink(stringResource(R.string.task_comment_reply)) { startReply(t.root.id, t.root) }
+                    }
                     if (t.replies.isNotEmpty()) {
                         // Число ответов — через plurals: русские формы (1 ответ /
                         // 2 ответа / 5 ответов) считает система, а не наш when.
@@ -1837,7 +2110,6 @@ private fun CommentsTab(
                             cm = r,
                             avatarSize = 22.dp,
                             meId = meId,
-                            vm = vm,
                             mentionItems = mentionItems,
                             onTaskRef = onTaskRef,
                             editing = editingId == r.id,
@@ -1851,8 +2123,14 @@ private fun CommentsTab(
                                 editPreview = false
                             },
                             onEndEdit = { editingId = null },
+                            onSaveEdit = { vm.editComment(r.id, it, r.body, mentionItems) },
+                            onToggleCheck = { i -> vm.editComment(r.id, toggleTaskMarker(r.body, i)) },
+                            onDelete = { vm.deleteComment(r.id) },
+                            editable = !readonly,
                         ) {
-                            CommentLink(stringResource(R.string.task_comment_reply)) { startReply(t.root.id, r) }
+                            if (!readonly) {
+                                CommentLink(stringResource(R.string.task_comment_reply)) { startReply(t.root.id, r) }
+                            }
                         }
                     }
                 }
@@ -1877,7 +2155,7 @@ private fun CommentsTab(
                             modifier = Modifier.height(34.dp).testTag(TestTags.TASK_REPLY_SUBMIT),
                             onClick = {
                                 if (replyDraft.isNotBlank()) {
-                                    vm.postComment(replyDraft, members, t.root.id)
+                                    vm.postComment(replyDraft, mentionItems, t.root.id)
                                     replyDraft = ""
                                     replyingTo = null
                                 }
@@ -1899,43 +2177,48 @@ private fun CommentsTab(
                 }
             }
         }
-        Spacer(Modifier.height(8.dp))
-        MarkdownEditor(
-            value = draft,
-            onValueChange = { draft = it },
-            placeholder = if (commands.isEmpty()) {
-                stringResource(R.string.task_comment_placeholder)
-            } else {
-                stringResource(R.string.task_comment_placeholder_commands)
-            },
-            minHeight = 56.dp,
-            uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
-            mentions = mentionItems,
-            commands = commands,
-            onTaskRef = onTaskRef,
-            fieldTag = TestTags.TASK_COMMENT_INPUT,
-            previewOverride = draftPreview,
-        )
-        // Dry-run the draft against the backend's parser instead of re-implementing
-        // it here: the hint can never disagree with what will actually happen.
-        LaunchedEffect(draft) {
-            delay(CommandPreviewDebounceMs)
-            vm.previewCommands(draft)
-        }
-        if (preview.isNotEmpty() || previewCustom.isNotEmpty()) {
-            Spacer(Modifier.height(6.dp))
-            CommandPreviewStrip(preview, previewCustom)
-        }
-        Spacer(Modifier.height(8.dp))
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            TButton(stringResource(R.string.task_comment_send), modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
-                if (draft.isNotBlank()) {
-                    vm.postComment(draft, members)
-                    draft = ""
-                }
-            })
-            Spacer(Modifier.weight(1f))
-            MarkdownModeToggle(preview = draftPreview, onToggle = { draftPreview = !draftPreview })
+        // The composer is the whole point of the tab, so in the archive it goes
+        // rather than sits there refusing: an editor with a Send that does nothing
+        // is the worst of the three (#2932).
+        if (!readonly) {
+            Spacer(Modifier.height(8.dp))
+            MarkdownEditor(
+                value = draft,
+                onValueChange = { draft = it },
+                placeholder = if (commands.isEmpty()) {
+                    stringResource(R.string.task_comment_placeholder)
+                } else {
+                    stringResource(R.string.task_comment_placeholder_commands)
+                },
+                minHeight = 56.dp,
+                uploadImage = { b, n, m -> vm.uploadMediaUrl(b, n, m) },
+                mentions = mentionItems,
+                commands = commands,
+                onTaskRef = onTaskRef,
+                fieldTag = TestTags.TASK_COMMENT_INPUT,
+                previewOverride = draftPreview,
+            )
+            // Dry-run the draft against the backend's parser instead of re-implementing
+            // it here: the hint can never disagree with what will actually happen.
+            LaunchedEffect(draft) {
+                delay(CommandPreviewDebounceMs)
+                vm.previewCommands(draft)
+            }
+            if (preview.isNotEmpty() || previewCustom.isNotEmpty()) {
+                Spacer(Modifier.height(6.dp))
+                CommandPreviewStrip(preview, previewCustom)
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                TButton(stringResource(R.string.task_comment_send), modifier = Modifier.testTag(TestTags.TASK_COMMENT_SUBMIT), onClick = {
+                    if (draft.isNotBlank()) {
+                        vm.postComment(draft, mentionItems)
+                        draft = ""
+                    }
+                })
+                Spacer(Modifier.weight(1f))
+                MarkdownModeToggle(preview = draftPreview, onToggle = { draftPreview = !draftPreview })
+            }
         }
     }
 }
@@ -1950,6 +2233,7 @@ private fun SubtasksTab(
      *  no row here can say anything true about GitLab, so the whole column is hidden. */
     showGitlab: Boolean,
     parentGrouped: Boolean,
+    readonly: Boolean = false,
     onOpen: (String) -> Unit,
 ) {
     val c = Tessera.colors
@@ -1972,7 +2256,15 @@ private fun SubtasksTab(
                     if (sub.isCompleted) Ion.CHECK_CIRCLE else Ion.ELLIPSE,
                     size = 17.dp,
                     tint = if (sub.isCompleted) c.primary else c.text3,
-                    modifier = Modifier.clip(CircleShape).clickableNoRipple { vm.toggleSubtaskDone(sub.id, !sub.isCompleted) },
+                    // Still drawn in the archive — it is the row's completion state,
+                    // not only its switch — but it stops being a switch.
+                    modifier = Modifier.clip(CircleShape).then(
+                        if (readonly) {
+                            Modifier
+                        } else {
+                            Modifier.clickableNoRipple { vm.toggleSubtaskDone(sub.id, !sub.isCompleted) }
+                        },
+                    ),
                 )
                 Spacer(Modifier.width(8.dp))
                 if (sub.priority > 0) {
@@ -2000,7 +2292,7 @@ private fun SubtasksTab(
                     GlSubtaskChip(sub, parentGrouped)
                 }
                 // Status of the subtask, changeable without opening it.
-                if (columns.isNotEmpty()) {
+                if (columns.isNotEmpty() && !readonly) {
                     ColumnChipPicker(
                         columns = columns,
                         columnId = sub.columnId,
@@ -2021,7 +2313,9 @@ private fun SubtasksTab(
                 modifier = Modifier.testTag(TestTags.TASK_SUBTASK_GL_HINT).padding(vertical = 4.dp),
             )
         }
-        InlineEnterField(stringResource(R.string.task_subtask_new_hint)) { vm.addSubtask(columnId, it) }
+        if (!readonly) {
+            InlineEnterField(stringResource(R.string.task_subtask_new_hint)) { vm.addSubtask(columnId, it) }
+        }
     }
 }
 
@@ -2086,6 +2380,7 @@ private fun RelationsTab(
     candidates: List<website.msdnna.tessera.data.model.WorkspaceTask>,
     currentTaskId: String,
     onOpen: (String) -> Unit,
+    readonly: Boolean = false,
 ) {
     val c = Tessera.colors
     var kind by remember { mutableStateOf("relates") }
@@ -2095,7 +2390,8 @@ private fun RelationsTab(
     // id of the relation whose delete-confirm popover is open (null = none)
     var confirmRemove by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) { vm.ensureRelationCandidates() }
+    // The candidate list feeds the picker alone, and the archive has no picker.
+    LaunchedEffect(readonly) { if (!readonly) vm.ensureRelationCandidates() }
 
     Column(Modifier.fillMaxWidth()) {
         if (relations.isEmpty()) {
@@ -2129,105 +2425,108 @@ private fun RelationsTab(
                         textDecoration = if (r.relatedCompletedAt != null) TextDecoration.LineThrough else null,
                     )
                 }
-                Box {
-                    IonIconButton(Ion.CLOSE, { confirmRemove = r.id }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
-                    // Deleting an integration-owned relation only holds until the next
-                    // sync re-projects it — say so instead of promising it stays gone.
-                    TConfirmPopover(
-                        expanded = confirmRemove == r.id,
-                        message = if (isExternalSource(r.source)) {
-                            stringResource(R.string.task_relation_remove_external, sourceMeta(r.source).label)
-                        } else {
-                            stringResource(R.string.task_relation_remove_confirm)
-                        },
-                        onConfirm = {
-                            vm.removeRelation(r.id)
-                            confirmRemove = null
-                        },
-                        onDismiss = { confirmRemove = null },
-                    )
-                }
-            }
-        }
-
-        Spacer(Modifier.height(10.dp))
-        // ── add a relation: kind picker + cross-board task autocomplete ──
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Box {
-                Row(
-                    Modifier.clip(RoundedCornerShape(RadiusMd)).border(1.dp, c.border, RoundedCornerShape(RadiusMd))
-                        .clickableNoRipple { kindMenu = true }.padding(horizontal = 10.dp, vertical = 9.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Text(relKindLabel(kind), color = c.text1, fontSize = 13.sp)
-                    Spacer(Modifier.width(4.dp))
-                    IonIcon(Ion.CHEVRON_DOWN, size = 14.dp, tint = c.text3)
-                }
-                TDropdown(expanded = kindMenu, onDismiss = { kindMenu = false }) {
-                    RelKindOrder.forEach { k ->
-                        TMenuItem(relKindLabel(k), onClick = {
-                            kind = k
-                            kindMenu = false
-                        })
+                if (!readonly) {
+                    Box {
+                        IonIconButton(Ion.CLOSE, { confirmRemove = r.id }, boxSize = 26.dp, iconSize = 14.dp, tint = c.text3)
+                        // Deleting an integration-owned relation only holds until the next
+                        // sync re-projects it — say so instead of promising it stays gone.
+                        TConfirmPopover(
+                            expanded = confirmRemove == r.id,
+                            message = if (isExternalSource(r.source)) {
+                                stringResource(R.string.task_relation_remove_external, sourceMeta(r.source).label)
+                            } else {
+                                stringResource(R.string.task_relation_remove_confirm)
+                            },
+                            onConfirm = {
+                                vm.removeRelation(r.id)
+                                confirmRemove = null
+                            },
+                            onDismiss = { confirmRemove = null },
+                        )
                     }
                 }
             }
-            Spacer(Modifier.width(8.dp))
-            Box(
-                Modifier.weight(1f).clip(RoundedCornerShape(RadiusMd)).background(c.surface)
-                    .border(1.dp, c.border, RoundedCornerShape(RadiusMd)).padding(horizontal = 12.dp, vertical = 10.dp),
-            ) {
-                BasicTextField(
-                    value = query,
-                    onValueChange = { query = it },
-                    singleLine = true,
-                    textStyle = TextStyle(color = c.text1, fontSize = 14.sp),
-                    cursorBrush = SolidColor(c.primary),
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-                    modifier = Modifier.fillMaxWidth(),
-                    decorationBox = { inner ->
-                        if (query.isEmpty()) {
-                            Text(
-                                stringResource(R.string.task_relation_search_hint),
-                                color = c.placeholder,
-                                fontSize = 14.sp,
-                            )
-                        }
-                        inner()
-                    },
-                )
-            }
         }
 
-        val q = query.trim().lowercase()
-        if (q.isNotEmpty()) {
-            val matches = candidates.asSequence()
-                .filter { it.id != currentTaskId && it.number != null }
-                .filter { "#${it.number}".contains(q) || it.title.lowercase().contains(q) }
-                .take(30)
-                .toList()
-            Spacer(Modifier.height(6.dp))
-            if (matches.isEmpty()) {
-                Text(
-                    stringResource(R.string.common_nothing_found),
-                    color = c.text3,
-                    fontSize = 12.sp,
-                    modifier = Modifier.padding(vertical = 4.dp),
-                )
-            } else {
-                matches.forEach { t ->
+        // ── add a relation: kind picker + cross-board task autocomplete ──
+        if (!readonly) {
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box {
                     Row(
-                        Modifier.fillMaxWidth().clickableNoRipple {
-                            t.number?.let { vm.addRelation(it, kind) }
-                            query = ""
-                        }.padding(vertical = 8.dp),
+                        Modifier.clip(RoundedCornerShape(RadiusMd)).border(1.dp, c.border, RoundedCornerShape(RadiusMd))
+                            .clickableNoRipple { kindMenu = true }.padding(horizontal = 10.dp, vertical = 9.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        Text("#${t.number}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, style = TextStyle(brush = accentGradient(c.primary)))
-                        Spacer(Modifier.width(8.dp))
-                        Column(Modifier.weight(1f)) {
-                            Text(t.title, color = c.text1, fontSize = 13.sp, maxLines = 1)
-                            Text("${t.projectName} / ${t.boardName}", color = c.text3, fontSize = 11.sp, maxLines = 1)
+                        Text(relKindLabel(kind), color = c.text1, fontSize = 13.sp)
+                        Spacer(Modifier.width(4.dp))
+                        IonIcon(Ion.CHEVRON_DOWN, size = 14.dp, tint = c.text3)
+                    }
+                    TDropdown(expanded = kindMenu, onDismiss = { kindMenu = false }) {
+                        RelKindOrder.forEach { k ->
+                            TMenuItem(relKindLabel(k), onClick = {
+                                kind = k
+                                kindMenu = false
+                            })
+                        }
+                    }
+                }
+                Spacer(Modifier.width(8.dp))
+                Box(
+                    Modifier.weight(1f).clip(RoundedCornerShape(RadiusMd)).background(c.surface)
+                        .border(1.dp, c.border, RoundedCornerShape(RadiusMd)).padding(horizontal = 12.dp, vertical = 10.dp),
+                ) {
+                    BasicTextField(
+                        value = query,
+                        onValueChange = { query = it },
+                        singleLine = true,
+                        textStyle = TextStyle(color = c.text1, fontSize = 14.sp),
+                        cursorBrush = SolidColor(c.primary),
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                        modifier = Modifier.fillMaxWidth(),
+                        decorationBox = { inner ->
+                            if (query.isEmpty()) {
+                                Text(
+                                    stringResource(R.string.task_relation_search_hint),
+                                    color = c.placeholder,
+                                    fontSize = 14.sp,
+                                )
+                            }
+                            inner()
+                        },
+                    )
+                }
+            }
+
+            val q = query.trim().lowercase()
+            if (q.isNotEmpty()) {
+                // Правило подсказки — в util (relationPickerMatches), общее с web: уже
+                // связанные выбранным видом связи в список не попадают, иначе тап по такой
+                // строке ничего не меняет и ничем себя не выдаёт.
+                val matches = relationPickerMatches(candidates, currentTaskId, relations, kind, query)
+                Spacer(Modifier.height(6.dp))
+                if (matches.isEmpty()) {
+                    Text(
+                        stringResource(R.string.common_nothing_found),
+                        color = c.text3,
+                        fontSize = 12.sp,
+                        modifier = Modifier.padding(vertical = 4.dp),
+                    )
+                } else {
+                    matches.forEach { t ->
+                        Row(
+                            Modifier.fillMaxWidth().clickableNoRipple {
+                                t.number?.let { vm.addRelation(it, kind) }
+                                query = ""
+                            }.padding(vertical = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            Text("#${t.number}", fontSize = 13.sp, fontWeight = FontWeight.SemiBold, style = TextStyle(brush = accentGradient(c.primary)))
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text(t.title, color = c.text1, fontSize = 13.sp, maxLines = 1)
+                                Text("${t.projectName} / ${t.boardName}", color = c.text3, fontSize = 11.sp, maxLines = 1)
+                            }
                         }
                     }
                 }
@@ -2249,6 +2548,7 @@ private fun DocumentsTab(
     vm: TaskDetailViewModel,
     links: List<website.msdnna.tessera.data.model.TaskDocumentLink>,
     onOpen: ((documentId: String) -> Unit)?,
+    readonly: Boolean = false,
 ) {
     val c = Tessera.colors
     var confirmUnlink by remember { mutableStateOf<String?>(null) }
@@ -2306,12 +2606,14 @@ private fun DocumentsTab(
                         )
                     }
                 }
-                IonIconButton(
-                    Ion.CLOSE,
-                    onClick = { confirmUnlink = link.id },
-                    boxSize = 32.dp,
-                    modifier = Modifier.testTag(TestTags.taskDocumentRemove(link.id)),
-                )
+                if (!readonly) {
+                    IonIconButton(
+                        Ion.CLOSE,
+                        onClick = { confirmUnlink = link.id },
+                        boxSize = 32.dp,
+                        modifier = Modifier.testTag(TestTags.taskDocumentRemove(link.id)),
+                    )
+                }
             }
         }
     }
@@ -2330,7 +2632,11 @@ private fun DocumentsTab(
 }
 
 @Composable
-private fun FilesTab(vm: TaskDetailViewModel, attachments: List<website.msdnna.tessera.data.model.Attachment>) {
+private fun FilesTab(
+    vm: TaskDetailViewModel,
+    attachments: List<website.msdnna.tessera.data.model.Attachment>,
+    readonly: Boolean = false,
+) {
     val c = Tessera.colors
     val scope = rememberCoroutineScope()
     val ctx = androidx.compose.ui.platform.LocalContext.current
@@ -2342,6 +2648,18 @@ private fun FilesTab(vm: TaskDetailViewModel, attachments: List<website.msdnna.t
     ) { uri ->
         if (uri != null) {
             scope.launch {
+                // Say what the server would say, before the file is read (the next line
+                // pulls it into a ByteArray whole) and before it is sent. The server's
+                // own refusal is a hardcoded Russian sentence that arrives only once
+                // 25 MB have gone over a phone connection — see util/Uploads.kt.
+                if (attachmentPickError(fileSize(ctx, uri)) != PickRefusal.NONE) {
+                    android.widget.Toast.makeText(
+                        ctx,
+                        res.getString(R.string.task_file_too_large, ATTACHMENT_MAX_BYTES / (1 shl 20)),
+                        android.widget.Toast.LENGTH_LONG,
+                    ).show()
+                    return@launch
+                }
                 val bytes = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
                     ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() }
                 }
@@ -2374,22 +2692,36 @@ private fun FilesTab(vm: TaskDetailViewModel, attachments: List<website.msdnna.t
                     }
                 },
                 onDelete = { vm.removeAttachment(a.id) },
+                // Downloading survives the archive — it is most of why an archived
+                // task gets opened at all; attaching and deleting do not (#2932).
+                canDelete = !readonly,
             )
         }
-        Spacer(Modifier.height(8.dp))
-        TButton(
-            stringResource(R.string.task_file_attach),
-            kind = TButtonKind.Secondary,
-            onClick = { picker.launch("*/*") },
-        )
+        if (!readonly) {
+            Spacer(Modifier.height(8.dp))
+            TButton(
+                stringResource(R.string.task_file_attach),
+                kind = TButtonKind.Secondary,
+                onClick = { picker.launch("*/*") },
+            )
+        }
     }
 }
 
+/**
+ * One attachment — its name, its size, and the two buttons that differ by scope:
+ * downloading survives the archive, deleting does not.
+ *
+ * Takes callbacks rather than the view-model, like [CommentRow] and for the same
+ * reason: what a destructive button does (and when it is not offered at all) is
+ * worth a spec.
+ */
 @Composable
-private fun AttachmentRow(
+internal fun AttachmentRow(
     attachment: website.msdnna.tessera.data.model.Attachment,
     onDownload: () -> Unit,
     onDelete: () -> Unit,
+    canDelete: Boolean = true,
 ) {
     val c = Tessera.colors
     val res = LocalResources.current
@@ -2399,21 +2731,37 @@ private fun AttachmentRow(
         Spacer(Modifier.width(8.dp))
         Column(Modifier.weight(1f)) {
             Text(attachment.filename, color = c.text1, fontSize = 13.sp, maxLines = 2)
-            Text(fmtSize(res, attachment.size), color = c.text3, fontSize = 11.sp)
+            Text(attachmentSizeText(res, attachment.size), color = c.text3, fontSize = 11.sp)
         }
         Spacer(Modifier.width(6.dp))
-        IonIconButton(Ion.DOWNLOAD, onDownload, boxSize = 44.dp, iconSize = 20.dp, tint = c.text2)
-        Box {
-            IonIconButton(Ion.TRASH, { confirmDelete = true }, boxSize = 44.dp, iconSize = 20.dp, tint = c.text2)
-            TConfirmPopover(
-                expanded = confirmDelete,
-                message = stringResource(R.string.task_attachment_delete_confirm),
-                onConfirm = {
-                    confirmDelete = false
-                    onDelete()
-                },
-                onDismiss = { confirmDelete = false },
-            )
+        IonIconButton(
+            Ion.DOWNLOAD,
+            onDownload,
+            modifier = Modifier.testTag(TestTags.taskAttachmentDownload(attachment.id)),
+            boxSize = 44.dp,
+            iconSize = 20.dp,
+            tint = c.text2,
+        )
+        if (canDelete) {
+            Box {
+                IonIconButton(
+                    Ion.TRASH,
+                    { confirmDelete = true },
+                    modifier = Modifier.testTag(TestTags.taskAttachmentDelete(attachment.id)),
+                    boxSize = 44.dp,
+                    iconSize = 20.dp,
+                    tint = c.text2,
+                )
+                TConfirmPopover(
+                    expanded = confirmDelete,
+                    message = stringResource(R.string.task_attachment_delete_confirm),
+                    onConfirm = {
+                        confirmDelete = false
+                        onDelete()
+                    },
+                    onDismiss = { confirmDelete = false },
+                )
+            }
         }
     }
 }
@@ -2435,13 +2783,23 @@ private fun HistoryTab(events: List<website.msdnna.tessera.data.model.TaskEvent>
                 Modifier.fillMaxWidth().padding(vertical = 6.dp).testTag(TestTags.taskEventRow(e.id)),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
+                // A merge request's line (#2964) is the provider's, not a person's:
+                // a merge glyph and «GitLab ·» instead of initials and a name.
+                val fromCode = e.kind == "code_change"
                 Box(Modifier.size(22.dp).clip(CircleShape).background(c.surfaceAlt), contentAlignment = Alignment.Center) {
-                    Text(initials(e.actorName ?: "?"), color = c.text2, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                    if (fromCode) {
+                        IonIcon(Ion.GIT_MERGE, size = 12.dp, tint = c.text2)
+                    } else {
+                        Text(avatarInitials(e.actorName ?: "?"), color = c.text2, fontSize = 9.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
                 Spacer(Modifier.width(8.dp))
-                val actor = e.actorName ?: stringResource(R.string.task_someone)
+                val actor = when {
+                    fromCode -> "${sourceMeta(e.data?.source).label} ·"
+                    else -> e.actorName ?: stringResource(R.string.task_someone)
+                }
                 Text(
-                    "$actor ${eventText(e.kind)}",
+                    "$actor ${journalText(LocalResources.current, e)}",
                     color = c.text2,
                     fontSize = 13.sp,
                     modifier = Modifier.weight(1f),
@@ -2499,18 +2857,6 @@ private fun InlineEnterField(placeholder: String, prefix: String? = null, onComm
             },
         )
     }
-}
-
-private fun initials(name: String): String {
-    val s = name.trim()
-    if (s.isEmpty()) return "?"
-    if (s.contains('.')) {
-        val parts = s.split('.').map { it.trim() }.filter { it.isNotEmpty() }
-        if (parts.size >= 2) return "${parts[0].first()}${parts[1].first()}".uppercase()
-    }
-    val words = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
-    if (words.size >= 2) return "${words[0].first()}${words[1].first()}".uppercase()
-    return s.take(2).uppercase()
 }
 
 /**
@@ -2624,22 +2970,6 @@ private fun TransferBoardPicker(workspaceId: String, onPick: (String) -> Unit, o
     }
 }
 
-/** Размер вложения: число форматируем сами, единицу берём из ресурсов —
- *  [res] приходит из композиции, чтобы «МБ»/«MB» шли за языком профиля. */
-private fun fmtSize(res: Resources, bytes: Long): String = when {
-    bytes >= 1 shl 20 -> res.getString(
-        R.string.task_file_size_mb,
-        String.format(java.util.Locale.US, "%.1f", bytes / (1 shl 20).toDouble()),
-    )
-
-    bytes >= 1 shl 10 -> res.getString(
-        R.string.task_file_size_kb,
-        String.format(java.util.Locale.US, "%.0f", bytes / (1 shl 10).toDouble()),
-    )
-
-    else -> res.getString(R.string.task_file_size_b, bytes)
-}
-
 private fun fileName(ctx: android.content.Context, uri: android.net.Uri): String? = runCatching {
     ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
         val idx = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
@@ -2647,25 +2977,11 @@ private fun fileName(ctx: android.content.Context, uri: android.net.Uri): String
     }
 }.getOrNull()
 
-/** Формулировка события истории. Неизвестный вид (бэкенд ушёл вперёд клиента)
- *  показываем сырым ключом — так же, как было до перевода на ресурсы. */
-@Composable
-private fun eventText(kind: String): String = when (kind) {
-    "created" -> stringResource(R.string.task_event_created)
-    "renamed" -> stringResource(R.string.task_event_renamed)
-    "description" -> stringResource(R.string.task_event_description)
-    "priority" -> stringResource(R.string.task_event_priority)
-    "due" -> stringResource(R.string.task_event_due)
-    "completed" -> stringResource(R.string.task_event_completed)
-    "reopened" -> stringResource(R.string.task_event_reopened)
-    "recurred" -> stringResource(R.string.task_event_recurred)
-    "moved" -> stringResource(R.string.task_event_moved)
-    "assigned" -> stringResource(R.string.task_event_assigned)
-    "unassigned" -> stringResource(R.string.task_event_unassigned)
-    "comment" -> stringResource(R.string.task_event_comment)
-    "relation" -> stringResource(R.string.task_event_relation)
-    "attachment" -> stringResource(R.string.task_event_attachment)
-    "archived" -> stringResource(R.string.task_event_archived)
-    "restored" -> stringResource(R.string.task_event_restored)
-    else -> kind
-}
+/** How big the picked file is, or null when the provider will not say — which
+ *  [attachmentPickError] treats as "let the server decide". */
+private fun fileSize(ctx: android.content.Context, uri: android.net.Uri): Long? = runCatching {
+    ctx.contentResolver.query(uri, null, null, null, null)?.use { cursor ->
+        val idx = cursor.getColumnIndex(android.provider.OpenableColumns.SIZE)
+        if (idx >= 0 && cursor.moveToFirst() && !cursor.isNull(idx)) cursor.getLong(idx) else null
+    }
+}.getOrNull()

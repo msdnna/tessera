@@ -12,10 +12,49 @@ import (
 	"github.com/google/uuid"
 )
 
+const createUserCode = `-- name: CreateUserCode :one
+INSERT INTO user_tokens (user_id, kind, token_hash, expires_at, email)
+VALUES ($1, $2, $3, $4, $5)
+RETURNING id, user_id, kind, token_hash, expires_at, used_at, created_at, attempts, email
+`
+
+type CreateUserCodeParams struct {
+	UserID    uuid.UUID `json:"user_id"`
+	Kind      string    `json:"kind"`
+	TokenHash string    `json:"token_hash"`
+	ExpiresAt time.Time `json:"expires_at"`
+	Email     *string   `json:"email"`
+}
+
+// A one-time code (#3035): kind 'verify_code' or 'email_change'; email is the
+// address an 'email_change' code is proving.
+func (q *Queries) CreateUserCode(ctx context.Context, arg CreateUserCodeParams) (UserToken, error) {
+	row := q.db.QueryRow(ctx, createUserCode,
+		arg.UserID,
+		arg.Kind,
+		arg.TokenHash,
+		arg.ExpiresAt,
+		arg.Email,
+	)
+	var i UserToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Kind,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.CreatedAt,
+		&i.Attempts,
+		&i.Email,
+	)
+	return i, err
+}
+
 const createUserToken = `-- name: CreateUserToken :one
 INSERT INTO user_tokens (user_id, kind, token_hash, expires_at)
 VALUES ($1, $2, $3, $4)
-RETURNING id, user_id, kind, token_hash, expires_at, used_at, created_at
+RETURNING id, user_id, kind, token_hash, expires_at, used_at, created_at, attempts, email
 `
 
 type CreateUserTokenParams struct {
@@ -41,6 +80,8 @@ func (q *Queries) CreateUserToken(ctx context.Context, arg CreateUserTokenParams
 		&i.ExpiresAt,
 		&i.UsedAt,
 		&i.CreatedAt,
+		&i.Attempts,
+		&i.Email,
 	)
 	return i, err
 }
@@ -59,8 +100,53 @@ func (q *Queries) DeleteUserTokensOfKind(ctx context.Context, arg DeleteUserToke
 	return err
 }
 
+const deleteUserTokensOfKinds = `-- name: DeleteUserTokensOfKinds :exec
+DELETE FROM user_tokens WHERE user_id = $1 AND kind = ANY($2::text[])
+`
+
+type DeleteUserTokensOfKindsParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	Kinds  []string  `json:"kinds"`
+}
+
+func (q *Queries) DeleteUserTokensOfKinds(ctx context.Context, arg DeleteUserTokensOfKindsParams) error {
+	_, err := q.db.Exec(ctx, deleteUserTokensOfKinds, arg.UserID, arg.Kinds)
+	return err
+}
+
+const getLiveUserCode = `-- name: GetLiveUserCode :one
+SELECT id, user_id, kind, token_hash, expires_at, used_at, created_at, attempts, email FROM user_tokens
+WHERE user_id = $1 AND kind = ANY($2::text[]) AND used_at IS NULL AND expires_at > now()
+ORDER BY created_at DESC
+LIMIT 1
+`
+
+type GetLiveUserCodeParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	Kinds  []string  `json:"kinds"`
+}
+
+// The newest code of the kinds that can still be tried. A fresh code supersedes
+// (marks used) the previous ones, so at most one is ever live.
+func (q *Queries) GetLiveUserCode(ctx context.Context, arg GetLiveUserCodeParams) (UserToken, error) {
+	row := q.db.QueryRow(ctx, getLiveUserCode, arg.UserID, arg.Kinds)
+	var i UserToken
+	err := row.Scan(
+		&i.ID,
+		&i.UserID,
+		&i.Kind,
+		&i.TokenHash,
+		&i.ExpiresAt,
+		&i.UsedAt,
+		&i.CreatedAt,
+		&i.Attempts,
+		&i.Email,
+	)
+	return i, err
+}
+
 const getUserToken = `-- name: GetUserToken :one
-SELECT id, user_id, kind, token_hash, expires_at, used_at, created_at FROM user_tokens WHERE token_hash = $1 AND kind = $2
+SELECT id, user_id, kind, token_hash, expires_at, used_at, created_at, attempts, email FROM user_tokens WHERE token_hash = $1 AND kind = $2
 `
 
 type GetUserTokenParams struct {
@@ -79,6 +165,8 @@ func (q *Queries) GetUserToken(ctx context.Context, arg GetUserTokenParams) (Use
 		&i.ExpiresAt,
 		&i.UsedAt,
 		&i.CreatedAt,
+		&i.Attempts,
+		&i.Email,
 	)
 	return i, err
 }
@@ -89,5 +177,75 @@ UPDATE user_tokens SET used_at = now() WHERE id = $1
 
 func (q *Queries) MarkUserTokenUsed(ctx context.Context, id uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markUserTokenUsed, id)
+	return err
+}
+
+const recentUserCodes = `-- name: RecentUserCodes :one
+SELECT count(*)::int AS n,
+       COALESCE(min(created_at), 'epoch'::timestamptz)::timestamptz AS first_sent,
+       COALESCE(max(created_at) FILTER (WHERE lower(email) = lower($2::text)),
+                'epoch'::timestamptz)::timestamptz AS last_sent
+FROM user_tokens
+WHERE user_id = $1 AND kind IN ('verify_code', 'email_change') AND created_at > $3::timestamptz
+`
+
+type RecentUserCodesParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	Target string    `json:"target"`
+	Since  time.Time `json:"since"`
+}
+
+type RecentUserCodesRow struct {
+	N         int32     `json:"n"`
+	FirstSent time.Time `json:"first_sent"`
+	LastSent  time.Time `json:"last_sent"`
+}
+
+// Codes issued to the user since a moment — the hourly cap — and when the latest
+// of them went to this very address — the pause between resends. The pause is
+// per address: a sign-up correcting a typo must not wait out the code that just
+// went to the wrong mailbox.
+func (q *Queries) RecentUserCodes(ctx context.Context, arg RecentUserCodesParams) (RecentUserCodesRow, error) {
+	row := q.db.QueryRow(ctx, recentUserCodes, arg.UserID, arg.Target, arg.Since)
+	var i RecentUserCodesRow
+	err := row.Scan(&i.N, &i.FirstSent, &i.LastSent)
+	return i, err
+}
+
+const spendUserCodeAttempt = `-- name: SpendUserCodeAttempt :one
+UPDATE user_tokens SET attempts = attempts + 1
+WHERE id = $1 AND used_at IS NULL AND expires_at > now() AND attempts < $2::int
+RETURNING attempts
+`
+
+type SpendUserCodeAttemptParams struct {
+	ID          uuid.UUID `json:"id"`
+	MaxAttempts int32     `json:"max_attempts"`
+}
+
+// Counts one attempt against a live code *before* it is compared, atomically, so
+// parallel guesses cannot exceed the budget. No row back = no attempts left, or
+// the code was spent / superseded / expired meanwhile.
+func (q *Queries) SpendUserCodeAttempt(ctx context.Context, arg SpendUserCodeAttemptParams) (int32, error) {
+	row := q.db.QueryRow(ctx, spendUserCodeAttempt, arg.ID, arg.MaxAttempts)
+	var attempts int32
+	err := row.Scan(&attempts)
+	return attempts, err
+}
+
+const supersedeUserCodes = `-- name: SupersedeUserCodes :exec
+UPDATE user_tokens SET used_at = now()
+WHERE user_id = $1 AND kind = ANY($2::text[]) AND used_at IS NULL
+`
+
+type SupersedeUserCodesParams struct {
+	UserID uuid.UUID `json:"user_id"`
+	Kinds  []string  `json:"kinds"`
+}
+
+// Retires every still-live code of the given kinds: a fresh code replaces the
+// previous one rather than opening a second door.
+func (q *Queries) SupersedeUserCodes(ctx context.Context, arg SupersedeUserCodesParams) error {
+	_, err := q.db.Exec(ctx, supersedeUserCodes, arg.UserID, arg.Kinds)
 	return err
 }

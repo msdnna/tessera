@@ -7,6 +7,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.Milestone
 import website.msdnna.tessera.data.model.WorkspaceMilestone
 import website.msdnna.tessera.data.repository.MilestoneRepository
@@ -117,14 +118,37 @@ class MilestoneViewModel(
         dueDate: String?,
         state: String,
     ) = mutateManager {
-        repo.update(milestoneId, title, description, startDate, dueDate, state)
+        reportSync(repo.update(milestoneId, title, description, startDate, dueDate, state))
     }
 
     fun toggleState(m: Milestone) = mutateManager {
-        repo.update(
-            m.id, m.title, m.description, m.startDate, m.dueDate,
-            if (m.isClosed) "active" else "closed",
+        if (!m.canEdit) return@mutateManager
+        reportSync(
+            repo.update(
+                m.id, m.title, m.description, m.startDate, m.dueDate,
+                if (m.isClosed) "active" else "closed",
+            ),
         )
+    }
+
+    /** «Повторить» for a stage whose GitLab write was refused (#3010). */
+    fun retryGitlab(milestoneId: String) = mutateManager {
+        reportSync(repo.retryGitlab(milestoneId))
+    }
+
+    /**
+     * A GitLab stage's write answers how GitLab took it (#3010): refused — the edit
+     * is kept and the reason shown; changed in GitLab too — the conflict waits in
+     * the web conflicts window (the phone has no resolver yet).
+     */
+    private fun reportSync(m: Milestone) {
+        val sync = m.glSync ?: return
+        val notice = when (sync.status) {
+            "failed" -> UiText.Res(R.string.milestones_gitlab_failed, listOf(sync.error.orEmpty()))
+            "conflict" -> UiText.Res(R.string.milestones_gitlab_conflict)
+            else -> null
+        }
+        if (notice != null) _manager.update { it?.copy(error = notice) }
     }
 
     fun deleteMilestone(milestoneId: String) = mutateManager {

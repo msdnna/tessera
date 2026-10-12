@@ -12,7 +12,7 @@
 
 | Каталог     | Компонент                                                    |
 |-------------|-------------------------------------------------------------|
-| `backend/`  | Go 1.25 + gin + PostgreSQL 17 (sqlc, pgx/v5, golang-migrate) |
+| `backend/`  | Go 1.26 + gin + PostgreSQL 17 (sqlc, pgx/v5, golang-migrate) |
 | `frontend/` | Vue 3 + Vite + Naive UI + Pinia (Yarn 4 через Corepack)      |
 | `android/`  | Kotlin + Jetpack Compose (online-first)                     |
 | `desktop/`  | Tauri v2 (Rust-оболочка вокруг того же Vue-фронтенда)        |
@@ -20,7 +20,7 @@
 
 ## Требования
 
-- **Go 1.25.x** (в Makefile — переменная `GO`, по умолчанию `go1.25.9`; в CI — `go`).
+- **Go 1.26.x** (в Makefile — переменная `GO`, по умолчанию `go1.26.9`; в CI — `go`).
 - **Node 22+** и **Corepack** (Yarn 4 — только `corepack yarn ...`, не плейн `yarn`).
 - **Docker** + Docker Compose (Postgres для dev/тестов).
 - **JDK 21** + Android SDK (compileSdk 37) — для `android/`.
@@ -90,6 +90,18 @@ make coverage-report          # сводный HTML-отчёт покрытия 
 - **Sentry** — опциональный self-hosted трекинг ошибок (выключен без DSN). В dev
   ошибки смотрим по логам; при поднятом Sentry — через него (см. skill
   `tessera-sentry`).
+
+## Безопасность кода
+
+Перед сдачей изменения гоняем скан затронутого компонента: `make scan-backend` /
+`scan-frontend` / `scan-android` / `scan-desktop` / `scan-secrets` (тулы ставятся
+`make scan-tools`). Сканы намеренно **не входят** в `make lint`/`make test` — они
+ходят в сеть и идут минутами.
+
+Гейт работает **храповиком**: текущие находки заморожены в
+`tools/security-baseline.json`, список может сокращаться, но не расти. Починил
+находку — перегенерируй базовую линию (`make scan-baseline-update`) и закоммить
+диff вместе с правкой. Подробности — [`docs/security-scanning.md`](docs/security-scanning.md).
 
 ## Pull requests
 

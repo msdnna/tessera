@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, vi } from 'vitest'
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 
@@ -142,40 +142,52 @@ describe('ColumnHeader.vue', () => {
   })
 })
 
-// ── ProjectCreateModal ────────────────────────────────────────────────────────
+// ── ProjectCreatePopover ──────────────────────────────────────────────────────
 // The name a project is created with decides its URL address, which is assigned
 // once — so the preview has to track what the server would derive, and the
-// manual-address control has to stay manager-only (the server refuses others).
-describe('ProjectCreateModal.vue', () => {
+// address field has to stay manager-only (the server refuses others). The form
+// took over from ProjectCreateModal (#2969).
+describe('ProjectCreatePopover.vue', () => {
   beforeEach(() => setActivePinia(createPinia()))
+  afterEach(() => {
+    document.body.innerHTML = ''
+  })
 
-  const mountModal = async (role) => {
+  const mountForm = async (role) => {
     const { useWorkspacesStore } = await import('@/stores/workspaces')
     const store = useWorkspacesStore()
     store.list = [{ id: 'ws1', name: 'WS', my_role: role }]
     store.currentId = 'ws1'
-    const ProjectCreateModal = (await import('@/components/ProjectCreateModal.vue')).default
-    return mount(ProjectCreateModal, {
-      props: { show: true },
-      global: {
-        // n-modal teleports its body out of the wrapper; keep it inline so the
-        // rendered card is what `w.text()` sees.
-        stubs: { ...naiveStubs, teleport: true },
-      },
+    const ProjectCreatePopover = (await import('@/components/sidebar/ProjectCreatePopover.vue'))
+      .default
+    const w = mount(ProjectCreatePopover, {
+      props: { show: false, anchor: () => ({ x: 0, y: 0 }) },
+      attachTo: document.body,
+      global: { stubs: { ...naiveStubs } },
     })
+    await w.setProps({ show: true })
+    await w.vm.$nextTick()
+    return w
   }
+  const form = () => document.body.querySelector('[data-testid="project-create"]')
 
   it('previews the address the server would derive from the name', async () => {
-    const w = await mountModal('owner')
-    w.vm.name = 'Мой Проект!'
+    const w = await mountForm('owner')
+    const name = form().querySelector('[data-testid="project-create-name"]')
+    name.value = 'Мой Проект!'
+    name.dispatchEvent(new Event('input'))
     await w.vm.$nextTick()
-    expect(w.text()).toContain('/project/moy-proekt')
+    expect(form().textContent).toContain('moy-proekt')
+    w.unmount()
   })
 
-  it('offers the manual-address control to managers only', async () => {
-    const asOwner = await mountModal('owner')
-    expect(asOwner.text()).toContain('Задать адрес вручную')
-    const asMember = await mountModal('member')
-    expect(asMember.text()).not.toContain('Задать адрес вручную')
+  it('offers the address field to managers only', async () => {
+    const asOwner = await mountForm('owner')
+    expect(form().querySelector('[data-testid="project-create-slug"]')).not.toBeNull()
+    asOwner.unmount()
+    document.body.innerHTML = ''
+    const asMember = await mountForm('member')
+    expect(form().querySelector('[data-testid="project-create-slug"]')).toBeNull()
+    asMember.unmount()
   })
 })

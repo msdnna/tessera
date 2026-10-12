@@ -2,6 +2,7 @@
 title: Notes
 category: Notes
 order: 50
+platforms: android
 keywords: notes, records, draft, markdown, project, search
 updated: 2026-08-21
 ---

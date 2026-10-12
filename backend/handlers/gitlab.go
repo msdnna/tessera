@@ -10,7 +10,9 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+	"unicode/utf8"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -38,9 +40,7 @@ func (h *API) GetGitlabConnection(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"connected": true, "base_url": cred.BaseUrl, "gl_username": cred.GlUsername,
-	})
+	c.JSON(http.StatusOK, credentialView(cred))
 }
 
 // ConnectGitlab validates a base URL + personal access token by resolving the
@@ -78,20 +78,24 @@ func (h *API) ConnectGitlab(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	uid := middleware.CurrentUser(c)
 	cred, err := h.q.UpsertGitlabCredential(c, db.UpsertGitlabCredentialParams{
-		UserID:     middleware.CurrentUser(c),
+		UserID:     uid,
 		BaseUrl:    req.BaseURL,
 		TokenEnc:   enc,
 		GlUserID:   user.ID,
 		GlUsername: user.Username,
+		AuthKind:   "pat",
+		// When the token runs out (#3084) — shown as «Токен до …».
+		TokenExpiresAt: tokenExpiryDate(c, client),
 	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{
-		"connected": true, "base_url": cred.BaseUrl, "gl_username": cred.GlUsername,
-	})
+	// A reconnect is the «Переподключить» of a paused binding (#3084).
+	h.resumeAfterReconnect(c, &uid)
+	c.JSON(http.StatusOK, credentialView(cred))
 }
 
 // DisconnectGitlab removes the current user's stored credential.
@@ -131,6 +135,15 @@ type gitlabIntegrationView struct {
 	WebhookEnabled bool       `json:"webhook_enabled"`
 	LastWebhookAt  *time.Time `json:"last_webhook_at"`
 	WebhookURL     string     `json:"webhook_url,omitempty"`
+	// Import filter (#3085): only issues carrying every one of these labels.
+	ImportLabels []string `json:"import_labels"`
+	// Paused sync (#3084): GitLab refused the credential; reconnect to resume.
+	PausedAt    *time.Time `json:"paused_at"`
+	PauseReason string     `json:"pause_reason,omitempty"`
+	// The credential the binding syncs under (#3084): service | pat | oauth, and
+	// when a token runs out (YYYY-MM-DD, null = never or unknown).
+	AuthKind       string  `json:"auth_kind,omitempty"`
+	TokenExpiresAt *string `json:"token_expires_at"`
 	// Resolved estimation unit for the integration board (project→workspace→time),
 	// so the UI can disable the estimate write-back toggle when it isn't "time".
 	EstimationUnit string `json:"estimation_unit,omitempty"`
@@ -150,6 +163,8 @@ func integrationView(integ db.GitlabIntegration) gitlabIntegrationView {
 		Writeback:  parseWriteback(integ.Writeback),
 		// Webhook: state only. The secret stays encrypted at rest.
 		WebhookEnabled: integ.WebhookEnabled, LastWebhookAt: integ.LastWebhookAt,
+		ImportLabels: gitlab.CleanLabels(integ.ImportLabels),
+		PausedAt:     integ.PausedAt, PauseReason: integ.PauseReason,
 	}
 }
 
@@ -192,7 +207,9 @@ func (h *API) personalGitlabConn(ctx context.Context, userID uuid.UUID) (baseURL
 	if err != nil {
 		return "", "", false
 	}
-	t, derr := h.sealer.Decrypt(cred.TokenEnc)
+	// An OAuth connection (#3083) is refreshed here when due, and comes back
+	// marked for gitlab.New.
+	t, derr := h.credentialToken(ctx, cred)
 	if derr != nil {
 		return "", "", false
 	}
@@ -275,6 +292,7 @@ func (h *API) assigneeGlUserID(ctx context.Context, userID uuid.UUID) (int64, bo
 func (h *API) fullIntegrationView(c *gin.Context, integ db.GitlabIntegration) gitlabIntegrationView {
 	view := integrationView(integ)
 	view.EstimationUnit = h.integrationEstimationUnit(c, integ)
+	view.AuthKind, view.TokenExpiresAt = h.integrationCredential(c, integ)
 	if pid, perr := h.q.ProjectIDForBoard(c, integ.BoardID); perr == nil {
 		view.ProjectID = &pid
 	}
@@ -333,6 +351,8 @@ type integrationRequest struct {
 	RelationsSync       string          `json:"relations_sync"`
 	LabelRules          json.RawMessage `json:"label_rules"`
 	Writeback           json.RawMessage `json:"writeback"`
+	// ImportLabels (#3085): import only issues with every one of these labels.
+	ImportLabels []string `json:"import_labels"`
 }
 
 // normalize validates and defaults the request fields in place.
@@ -380,6 +400,7 @@ func (req *integrationRequest) normalize() {
 	}
 	req.ProjectPath = strings.TrimSpace(req.ProjectPath)
 	req.Name = strings.TrimSpace(req.Name)
+	req.ImportLabels = gitlab.CleanLabels(req.ImportLabels)
 }
 
 // rulesOrDefault seeds label rules with the default taxonomy when empty.
@@ -435,9 +456,12 @@ func (h *API) CreateGitlabIntegration(c *gin.Context) {
 		ClosedPolicy:        req.ClosedPolicy,
 		ClosedAfter:         req.ClosedAfter,
 		RelationsSync:       req.RelationsSync,
+		ImportLabels:        req.ImportLabels,
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
+		// A board may take several projects now (#3082); what stays refused is the
+		// same project bound twice in one workspace.
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this GitLab project is already bound in this workspace"})
 		return
 	}
 	c.JSON(http.StatusOK, h.fullIntegrationView(c, integ))
@@ -487,9 +511,12 @@ func (h *API) UpdateGitlabIntegration(c *gin.Context) {
 		ClosedPolicy:        req.ClosedPolicy,
 		ClosedAfter:         req.ClosedAfter,
 		RelationsSync:       req.RelationsSync,
+		ImportLabels:        req.ImportLabels,
 	})
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "this board or project is already bound to a GitLab integration"})
+		// A board may take several projects now (#3082); what stays refused is the
+		// same project bound twice in one workspace.
+		c.JSON(http.StatusBadRequest, gin.H{"error": "this GitLab project is already bound in this workspace"})
 		return
 	}
 	c.JSON(http.StatusOK, h.fullIntegrationView(c, updated))
@@ -507,6 +534,14 @@ func (h *API) DeleteGitlabIntegration(c *gin.Context) {
 	if err := h.q.DeleteGitlabIntegration(c, integ.ID); err != nil {
 		fail(c, err)
 		return
+	}
+	// The binding's merge requests (#2964) live in the provider-neutral
+	// task_code_links, which has no FK into GitLab's tables — clean them here.
+	// Best-effort: an orphan row only shows a stale MR on a task.
+	if err := h.q.DeleteCodeLinksForSource(c, db.DeleteCodeLinksForSourceParams{
+		Provider: codeProviderGitlab, SourceID: integ.ID,
+	}); err != nil {
+		log.Printf("gitlab integration %s: drop code links: %v", integ.ID, err)
 	}
 	c.Status(http.StatusNoContent)
 }
@@ -677,8 +712,8 @@ func fmtSyncDuration(d time.Duration) string {
 // stable per integration so a manual and an auto run can't overlap (busy-guard).
 func gitlabSyncKey(integrationID uuid.UUID) string { return "gitlab_sync:" + integrationID.String() }
 
-// gitlabSyncJournalPrefix names a sync run in the jobs panel. Shared with the journal
-// side (syncRunToDTO) so a run doesn't get renamed the moment it finishes.
+// gitlabSyncJournalPrefix names a sync run in the jobs panel — live and in the
+// history — so a run doesn't get renamed the moment it finishes.
 const gitlabSyncJournalPrefix = "Синхронизация GitLab · "
 
 // gitlabSyncNameKey is the catalog key for that same phrase; the integration label
@@ -829,7 +864,40 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		// Use a cancellation-detached context so the journal still records even when
 		// the originating request was cancelled mid-sync.
 		h.flushJournal(context.WithoutCancel(ctx), j)
+		// A refused credential pauses the binding, a sync that got through lifts
+		// the pause (#3084).
+		h.noteSyncOutcome(ctx, integ, err)
 	}()
+
+	// The binding's board is soft-deleted (0078): the sync sits out until the
+	// board is restored or purged. The scheduled paths already skip such
+	// bindings; this is the gate for the manual and webhook ones.
+	if b, berr := h.q.GetBoardAny(ctx, integ.BoardID); berr == nil && b.DeletedAt != nil {
+		return 0, 0, errors.New("integration board is deleted")
+	}
+	// The same for a binding in an archived project (0086): read-only until the
+	// project is restored.
+	if archived, aerr := h.q.ProjectArchivedForBoard(ctx, integ.BoardID); aerr == nil && archived {
+		return 0, 0, errors.New("integration project is archived")
+	}
+
+	// The run's entry in the jobs window (#3067): steps, progress and a live log.
+	live := h.jobs.Live(gitlabSyncKey(integ.ID))
+	j.live = live
+	live.SetMeta("mode", j.mode)
+	live.SetQuietable(j.trigger != "manual")
+	if j.actorID != nil {
+		live.SetTrigger(j.trigger, actorTag(*j.actorID))
+	} else {
+		live.SetTrigger(j.trigger, "")
+	}
+	live.Steps(
+		jobs.Step{Key: "connect", Label: "Подключение к GitLab"},
+		jobs.Step{Key: "fetch", Label: "Загрузка задач"},
+		jobs.Step{Key: "mirror", Label: "Задачи и комментарии"},
+		jobs.Step{Key: "links", Label: "Связи и merge request'ы"},
+	)
+	live.Step("connect")
 
 	client, assignUser, cerr := h.syncClient(ctx, cred)
 	if cerr != nil {
@@ -845,23 +913,40 @@ func (h *API) runSyncJournal(ctx context.Context, integ db.GitlabIntegration, cr
 		boards:       map[uuid.UUID]*syncBoard{},
 	}
 
+	live.Step("fetch")
 	issues, linkedIids, ferr := r.fetchIssues(ctx)
 	if ferr != nil {
 		return 0, 0, ferr
 	}
 	issues = filterClosedPolicy(integ, issues, linkedIids)
+	if !r.incremental {
+		if issues, ferr = r.hydrateNotes(ctx, issues); ferr != nil {
+			return 0, 0, ferr
+		}
+	}
+	live.StepCount(len(issues), 0)
+	live.Logf(jobs.LevelInfo, "%s: задач к синхронизации — %d", integ.ProjectPath, len(issues))
 	r.refreshMembers(ctx)
 	if _, berr := r.loadBoard(ctx, integ.BoardID); berr != nil {
 		return 0, 0, fmt.Errorf("integration board has no columns")
 	}
 
 	claimed, childrenOf, distrusted := r.fetchGroupedChildren(ctx, issues)
+	live.Step("mirror")
 	created, updated, syncedIIDs := r.mirrorIssues(ctx, issues, claimed, childrenOf, distrusted)
+	live.Step("links")
 
 	// Linked items last: every task the links can point at has been mirrored by now,
 	// so a link between two issues of this run resolves on the first pass.
 	h.syncRelations(ctx, integ, client, syncedIIDs, j)
 	r.markSynced(ctx, issues, childrenOf)
+	// Merge requests and their pipelines (#2964) last: they hang off the tasks the
+	// steps above just mirrored. Best-effort — never fails the pull.
+	h.syncMergeRequests(ctx, integ, client)
+	// …and the MRs of other projects that GitLab relates to the issues of this run.
+	h.syncForeignMergeRequests(ctx, integ, client, syncedIIDs)
+	// Stage writes that failed earlier go out again now that GitLab answered (#3010).
+	h.retryMilestonePushes(ctx, integ)
 
 	// One board-level reload signal (no per-task toasts) so open boards refresh once.
 	if created+updated > 0 {
@@ -878,8 +963,11 @@ func (h *API) syncClient(ctx context.Context, cred db.GitlabCredential) (*gitlab
 	if baseURL, token, ok := h.serviceGitlabConn(ctx); ok {
 		return gitlab.New(baseURL, token), "", nil
 	}
-	token, err := h.sealer.Decrypt(cred.TokenEnc)
+	token, err := h.credentialToken(ctx, cred)
 	if err != nil {
+		if gitlab.IsUnauthorized(err) {
+			return nil, "", err // a dead OAuth grant: the binding pauses (#3084)
+		}
 		return nil, "", fmt.Errorf("decrypt stored token: %w", err)
 	}
 	return gitlab.New(cred.BaseUrl, token), cred.GlUsername, nil
@@ -896,21 +984,22 @@ func (h *API) syncClient(ctx context.Context, cred db.GitlabCredential) (*gitlab
 // GraphQL page instead of a few thousand. A full pull leaves the filter off and
 // additionally refetches every already-linked issue (to catch a reassignment away
 // from the owner and to detect deletes).
+//
+// A full pull is the first of two phases (#3105): it lists the issues WITHOUT their
+// discussions — the part GitLab times out on — and hydrateNotes then fetches the
+// discussions of only the issues that are new or changed.
 func (r *syncRun) fetchIssues(ctx context.Context) ([]gitlab.Issue, []int64, error) {
 	var since *time.Time
 	if r.incremental && r.integ.LastSyncedAt != nil {
 		s := r.integ.LastSyncedAt.Add(-syncOverlap)
 		since = &s
 	}
-	var (
-		assigned []gitlab.Issue
-		err      error
-	)
-	if r.integ.Scope == "all" || r.assignUser == "" {
-		assigned, err = r.client.AllIssuesSince(ctx, r.integ.ProjectPath, since)
-	} else {
-		assigned, err = r.client.AssignedIssuesSince(ctx, r.integ.ProjectPath, r.assignUser, since)
+	// The import filter (#3085) rides in the same request as the list itself.
+	filter := gitlab.IssueFilter{Since: since, Light: !r.incremental, Labels: r.integ.ImportLabels}
+	if r.integ.Scope != "all" && r.assignUser != "" {
+		filter.Assignee = r.assignUser
 	}
+	assigned, err := r.client.ListIssues(ctx, r.integ.ProjectPath, filter)
 	if err != nil {
 		return nil, nil, err
 	}
@@ -921,15 +1010,65 @@ func (r *syncRun) fetchIssues(ctx context.Context) ([]gitlab.Issue, []int64, err
 		// re-delivered but whose GitLab updatedAt is unchanged (nothing to do).
 		return r.h.dropUnchangedIssues(ctx, r.integ.ID, assigned), linkedIids, nil
 	}
+	// Only refetch linked issues the pull above did not already bring: every issue
+	// comes with all its discussions, so asking for the same ones twice doubled the
+	// cost of a sweep on exactly the projects where it was already too slow.
+	fetched := make(map[int64]bool, len(assigned))
+	for _, is := range assigned {
+		fetched[is.IID] = true
+	}
 	iidStrs := make([]string, 0, len(linkedIids))
 	for _, id := range linkedIids {
-		iidStrs = append(iidStrs, strconv.FormatInt(id, 10))
+		if !fetched[id] {
+			iidStrs = append(iidStrs, strconv.FormatInt(id, 10))
+		}
 	}
-	linked, lerr := r.client.IssuesByIIDs(ctx, r.integ.ProjectPath, iidStrs)
+	if len(iidStrs) == 0 {
+		return assigned, linkedIids, nil
+	}
+	linked, lerr := r.client.IssuesByIIDsLight(ctx, r.integ.ProjectPath, iidStrs)
 	if lerr != nil {
 		return nil, nil, lerr
 	}
 	return gitlab.MergeIssues(assigned, linked), linkedIids, nil
+}
+
+// hydrateNotes is the second phase of a full sweep (#3105): the discussions of the
+// issues the light list says are new or changed since their link's last sync. An
+// unchanged issue keeps NotesLoaded=false, and the comment sync leaves its task
+// alone. A closed issue the closed-issue policy archives right away gets none
+// either — nobody reads a thread on an archived mirror, and a later reopen
+// changes updatedAt anyway.
+//
+// A failure fails the run rather than mirroring the changed issues without their
+// comments: the run stores their new updatedAt, so the next sweep would read them
+// as unchanged and their new comments would never arrive.
+func (r *syncRun) hydrateNotes(ctx context.Context, issues []gitlab.Issue) ([]gitlab.Issue, error) {
+	keys, err := r.h.q.LinkedSyncKeysForIntegration(ctx, r.integ.ID)
+	if err != nil {
+		return nil, err
+	}
+	known := make(map[string]gitlab.SyncKey, len(keys))
+	for _, k := range keys {
+		known[k.GlGlobalID] = gitlab.SyncKey{UpdatedAt: k.GlUpdatedAt, TitleHash: k.TitleHash, LabelsHash: k.LabelsHash}
+	}
+	archives := r.integ.ClosedPolicy == "archive_closed_sprints"
+	var recent *time.Time
+	if r.integ.LastSyncedAt != nil {
+		v := r.integ.LastSyncedAt.Add(-syncOverlap)
+		recent = &v
+	}
+	iids := gitlab.NeedNotes(issues, known, recent, func(is gitlab.Issue) bool {
+		return archives && is.State == "closed" && is.MilestoneState == "closed"
+	})
+	if len(iids) == 0 {
+		return issues, nil
+	}
+	full, err := r.client.IssuesByIIDs(ctx, r.integ.ProjectPath, iids)
+	if err != nil {
+		return nil, fmt.Errorf("fetch discussions: %w", err)
+	}
+	return gitlab.WithNotes(issues, full), nil
 }
 
 // filterClosedPolicy applies closed_policy=period: don't import NEW closed issues
@@ -1142,7 +1281,10 @@ func (r *syncRun) distrustChildren(ctx context.Context, issue gitlab.Issue, dist
 // parent down into its children. Per-issue failures are skipped, not fatal. The
 // returned iids are the ones actually mirrored — the scope of the linked-items pass.
 func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claimed map[string]bool, childrenOf map[string][]gitlab.Issue, distrusted map[string]bool) (created, updated int, syncedIIDs []int64) {
-	for _, issue := range issues {
+	for i, issue := range issues {
+		// Progress of the run in the jobs window (#3067).
+		r.j.live.Progress(i+1, len(issues))
+		r.j.live.StepCount(i+1, len(issues))
 		if claimed[issue.GlobalID] {
 			continue // synced as a subtask under its parent
 		}
@@ -1165,8 +1307,15 @@ func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claim
 		}
 		// Grouped parent → mirror its GitLab children as Tessera subtasks (under
 		// the parent's board/column; completion follows the child's own state).
-		if res.Group {
-			c, u, kidIIDs := r.mirrorChildren(ctx, childrenOf[issue.GlobalID], taskID, bc, col)
+		//
+		// Keyed off childrenOf rather than res.Group, which is the same question
+		// asked twice: fetchGroupedChildren fills it exactly for the issues it
+		// asked — grouped now, or grouped according to the link — and only when
+		// the answer had children in it. Whatever it CLAIMED has to be mirrored
+		// here, or the claim ("synced as a subtask under its parent") is a lie and
+		// the child is passed over by both halves of the pass.
+		if kids := childrenOf[issue.GlobalID]; len(kids) > 0 {
+			c, u, kidIIDs := r.mirrorChildren(ctx, kids, taskID, bc, col, childrenOf, map[string]bool{issue.GlobalID: true})
 			created += c
 			updated += u
 			syncedIIDs = append(syncedIIDs, kidIIDs...)
@@ -1181,8 +1330,27 @@ func (r *syncRun) mirrorIssues(ctx context.Context, issues []gitlab.Issue, claim
 // parent's column rather than falling back to the default (#2819 — that fallback would
 // yank every statusless child to "К работе" on each pull). Completion follows the
 // column the child actually lands in, so `completed` and the column cannot disagree.
-func (r *syncRun) mirrorChildren(ctx context.Context, kids []gitlab.Issue, parentID uuid.UUID, bc *syncBoard, col db.BoardColumn) (created, updated int, syncedIIDs []int64) {
+//
+// Recurses, because a GitLab hierarchy is not one level deep and neither is a Tessera
+// one: an epic groups an issue that groups a task. fetchGroupedChildren asks EVERY
+// grouped issue of the run for its children, so a grandchild is claimed by the middle
+// issue and skipped by mirrorIssues — and this function, which mirrors that middle
+// issue, used to stop right there. Nobody mirrored the grandchild then: on a first
+// sync it got no task at all (and the delete-detection pass still saw its issue in the
+// fetch, so nothing reported it missing), and on an already-mirrored board its task
+// silently stopped being updated, every later run passing it over the same way.
+//
+// `visited` carries the GlobalIDs already placed on this branch, seeded with the root
+// parent. Nothing on the Tessera side could survive a ring (a subtask reachable from no
+// root is drawn nowhere), and GitLab's own hierarchy forbids one — but the children
+// come off the wire, and an unbounded descent over a ring is a hung sync worker rather
+// than a wrong board. The same reason TaskAncestorIDs dedups its walk.
+func (r *syncRun) mirrorChildren(ctx context.Context, kids []gitlab.Issue, parentID uuid.UUID, bc *syncBoard, col db.BoardColumn, childrenOf map[string][]gitlab.Issue, visited map[string]bool) (created, updated int, syncedIIDs []int64) {
 	for _, kid := range kids {
+		if visited[kid.GlobalID] {
+			continue
+		}
+		visited[kid.GlobalID] = true
 		kres := r.rules.Resolve(kid.Labels)
 		kcol, kdone := col, (*time.Time)(nil)
 		if kres.StatusSet || kid.State == "closed" {
@@ -1202,6 +1370,15 @@ func (r *syncRun) mirrorChildren(ctx context.Context, kids []gitlab.Issue, paren
 			created++
 		} else {
 			updated++
+		}
+		// The kid's own children, in the board and column IT landed in — the same
+		// placement rule one level down, so a grandchild with no status of its own
+		// stays with its parent instead of jumping to the epic's column.
+		if grandkids := childrenOf[kid.GlobalID]; len(grandkids) > 0 {
+			gc, gu, gIIDs := r.mirrorChildren(ctx, grandkids, ktid, bc, kcol, childrenOf, visited)
+			created += gc
+			updated += gu
+			syncedIIDs = append(syncedIIDs, gIIDs...)
 		}
 	}
 	return created, updated, syncedIIDs
@@ -1246,14 +1423,14 @@ func (h *API) RunSyncWorker(ctx context.Context) {
 	ticker := time.NewTicker(tick)
 	defer ticker.Stop()
 	h.tick(jobGitlabSyncCron, opSyncScan)
-	h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.autoSyncDue(ctx) }) // catch up at startup
+	h.withAdvisoryLock(ctx, gitlabSyncLock, func() { h.autoSyncDue(ctx) }) // catch up at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobGitlabSyncCron, opSyncScan)
-			h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.autoSyncDue(ctx) })
+			h.withAdvisoryLock(ctx, gitlabSyncLock, func() { h.autoSyncDue(ctx) })
 		}
 	}
 }
@@ -1299,7 +1476,7 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		// incremental pull can't see). full_sync_interval_sec = 0 disables the forced
 		// sweep (full then only runs on the very first sync).
 		mode := "incremental"
-		if fullSyncDue(integ) {
+		if fullSyncDue(integ) && !fullSweepBackingOff(integ, time.Now()) {
 			mode = "full"
 		}
 		handle.SetOp(syncOpKey(mode), syncOpLabel(mode))
@@ -1307,6 +1484,13 @@ func (h *API) autoSyncDue(ctx context.Context) {
 		handle.SetCounts(created, updated)
 		handle.Finish(serr)
 		cancel()
+		if mode == "full" {
+			if serr != nil {
+				fullSweepFailedAt.Store(integ.ID, time.Now())
+			} else {
+				fullSweepFailedAt.Delete(integ.ID)
+			}
+		}
 		if serr != nil {
 			log.Printf("gitlab auto-sync ws=%s: %v", integ.WorkspaceID, serr)
 			continue
@@ -1329,6 +1513,30 @@ func fullSyncDue(integ db.GitlabIntegration) bool {
 		return false
 	}
 	return time.Since(*integ.LastFullSyncedAt) >= time.Duration(integ.FullSyncIntervalSec)*time.Second
+}
+
+// fullSweepRetryAfter is how long the auto worker waits after a failed periodic
+// full sweep before trying another one. In between it keeps pulling
+// incrementally: a sweep that keeps failing (GitLab timing out on a big project)
+// used to be retried every tick as "full" again, so not even the cheap delta got
+// through and the board stopped updating altogether.
+const fullSweepRetryAfter = time.Hour
+
+// fullSweepFailedAt remembers when an integration's last automatic full sweep
+// failed (integration id → time.Time). In memory on purpose: a restart simply
+// tries the sweep again.
+var fullSweepFailedAt sync.Map
+
+// fullSweepBackingOff reports whether a due periodic sweep should yield to an
+// incremental pull because the previous attempt failed less than
+// fullSweepRetryAfter ago. A binding that has never had a full sync is never
+// held back — there is no delta to pull without one.
+func fullSweepBackingOff(integ db.GitlabIntegration, now time.Time) bool {
+	if integ.LastFullSyncedAt == nil {
+		return false
+	}
+	v, ok := fullSweepFailedAt.Load(integ.ID)
+	return ok && now.Sub(v.(time.Time)) < fullSweepRetryAfter
 }
 
 // ── helpers ────────────────────────────────────────────────
@@ -1411,6 +1619,48 @@ func resolveParentRef(claimedBy *uuid.UUID, hierarchyKnown bool) parentRef {
 	}
 }
 
+// ringWithParent reports whether hanging taskID under parentID would close a
+// parent ring — that is, whether the proposed parent is the task itself or sits
+// somewhere below it. The same question applyParent asks before every manual
+// attach, and for the same reason: a subtask is drawn under its parent and
+// ListBoardTasksWithMeta takes only parent_id IS NULL, so a ring reachable from no
+// root is drawn on no board, and the cards are gone for every member with nothing
+// in the UI left to undo it with.
+//
+// The pull normally cannot build one: a mirrored issue nobody claimed is detached
+// to top level before its own children are placed, so an issue that becomes the
+// parent of its current Tessera parent loses that parent in the same run. The
+// exception is the one branch that deliberately keeps a stale parent — a grouped
+// parent whose children could not be listed leaves its subtasks alone (#2592) —
+// and there one half of a run kept А under Б while the other half put Б under А.
+// Every later run then wrote nothing at all, the claim being already satisfied.
+//
+// Refusing leaves the task where it is: the GitLab hierarchy is re-applied by the
+// next run, once the side that must move has moved. A failed lookup refuses too —
+// an unverifiable parent is not a reason to risk the shape of the board.
+func (h *API) ringWithParent(ctx context.Context, taskID uuid.UUID, parentID *uuid.UUID, iid int64, j *syncJournal) bool {
+	if parentID == nil {
+		return false // a detach cannot close anything
+	}
+	ancestors, err := h.q.TaskAncestorIDs(ctx, *parentID)
+	if err != nil {
+		log.Printf("gitlab sync: ancestors of proposed parent %s failed: %v", parentID, err)
+		return true
+	}
+	for _, id := range ancestors {
+		if id != taskID {
+			continue
+		}
+		log.Printf("gitlab sync: refusing to hang task %s under its own descendant %s", taskID, parentID)
+		j.add(journalAction{
+			Direction: "pull", EntityType: "task", Op: "skip", TaskID: &taskID, GlIid: &iid,
+			Summary: "иерархия #" + strconv.FormatInt(iid, 10) + ": родитель из GitLab — подзадача этой же задачи, связь не применена",
+		})
+		return true
+	}
+	return false
+}
+
 // sameUUIDPtr reports whether two optional UUIDs are equal.
 func sameUUIDPtr(a, b *uuid.UUID) bool {
 	if a == nil || b == nil {
@@ -1466,8 +1716,8 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		if res.Group {
 			soft(ctx, "SetGitlabLinkGroup", h.q.SetGitlabLinkGroup(ctx, db.SetGitlabLinkGroupParams{TaskID: t.ID, GlIsGroup: true}))
 		}
-		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, false)
-		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags)
+		h.reconcileTaskMilestone(ctx, integ, projectID, t.ID, issue, res.Milestone, false, true, actorID)
+		meta := h.reconcileTaskMeta(ctx, t.ID, wsID, projectID, issue, res.Tags, nil)
 		h.logEventActor(ctx, t.ID, actorID, "synced", map[string]any{"source": "gitlab", "iid": issue.IID, "url": issue.WebURL})
 		// No per-task broadcast during sync: a full import would flood every watcher
 		// with thousands of "created" activity toasts. runSync emits one board-level
@@ -1493,7 +1743,19 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		return uuid.Nil, false, false
 	default:
 		// Snapshot the pre-update task so the journal can diff what changed.
-		old, _ := h.q.GetTask(ctx, link.TaskID)
+		// GetTaskAny: a mirror in the task trash (0086) still has its link, and
+		// must be recognised as already imported rather than read as missing.
+		old, _ := h.q.GetTaskAny(ctx, link.TaskID)
+		// A mirror in the trash — its own (0086) or its board's (0078) — stays
+		// there. Updating it would route it through its labels back onto a live
+		// board, out from under both the restore and the purge; the link stays,
+		// so the issue is never imported anew either.
+		if old.DeletedAt != nil {
+			return link.TaskID, false, true
+		}
+		if ob, berr := h.q.GetBoardAny(ctx, old.BoardID); berr == nil && ob.DeletedAt != nil {
+			return link.TaskID, false, true
+		}
 		// Fields with an open write-back conflict are frozen: don't overwrite the
 		// user's pending value from GitLab until they resolve it. title/description
 		// are written in the bulk update below, so resolve the freeze up here.
@@ -1520,13 +1782,37 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		}
 		// Re-parent if the grouping changed (e.g. an issue became a child, or a
 		// child was detached). SetTaskParent also fixes board/column. Skipped entirely
-		// when the parent is unknown this run — see parentRef.
-		if parent.known && !sameUUIDPtr(t.ParentID, parentID) {
+		// when the parent is unknown this run — see parentRef — and when the move
+		// would close a ring (see ringWithParent).
+		if parent.known && !sameUUIDPtr(t.ParentID, parentID) && !h.ringWithParent(ctx, link.TaskID, parentID, iid, j) {
 			if reparented, perr := h.q.SetTaskParent(ctx, db.SetTaskParentParams{
 				ID: link.TaskID, ParentID: parentID, BoardID: boardID, ColumnID: columnID,
 			}); perr == nil {
 				t = reparented
 			}
+		}
+		// A board rule ("B: вторая" → that board's id) routes an issue to a board of
+		// its own, so a label added in GitLab moves an already-mirrored task. Both
+		// statements above write board_id onto THAT TASK ALONE — and a task's subtasks
+		// are not all mirrors of GitLab children: anything typed into the modal as a
+		// checklist item has no link of its own and is never visited by the sync, so
+		// it kept the board its parent had just left.
+		//
+		// A subtask is drawn only under a parent card present on the same board, so
+		// such a row is on nobody's board — and board_id/column_id are ON DELETE
+		// CASCADE, so deleting that stale column later takes it along. Every other door
+		// onto board_id already handles this: applyParent carries the subtree,
+		// TransferTask refuses to leave one behind by detaching.
+		//
+		// Linked children of a grouped parent are re-placed right after this by
+		// mirrorChildren, into the board and column their own labels resolve to, so
+		// moving them here costs nothing and covers the run that stops before it
+		// reaches them.
+		if boardID != old.BoardID {
+			rootID := link.TaskID
+			soft(ctx, "MoveSubtreeToBoard", h.q.MoveSubtreeToBoard(ctx, db.MoveSubtreeToBoardParams{
+				ParentID: &rootID, BoardID: boardID, ColumnID: t.ColumnID,
+			}))
 		}
 		if _, uerr := h.q.UpdateGitlabLink(ctx, db.UpdateGitlabLinkParams{
 			TaskID: link.TaskID, GlIid: issue.IID, GlWebUrl: issue.WebURL,
@@ -1546,7 +1832,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 		if link.GlIsGroup != res.Group {
 			soft(ctx, "SetGitlabLinkGroup", h.q.SetGitlabLinkGroup(ctx, db.SetGitlabLinkGroupParams{TaskID: link.TaskID, GlIsGroup: res.Group}))
 		}
-		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, link.MilestoneOverridden)
+		h.reconcileTaskMilestone(ctx, integ, projectID, link.TaskID, issue, res.Milestone, link.MilestoneOverridden, false, actorID)
 		// Sync the due date only when GitLab has one and the user hasn't overridden.
 		dueApplied := false
 		if !link.DueOverridden && !frozen["due"] && dueDate != nil {
@@ -1567,7 +1853,7 @@ func (h *API) syncOneIssue(ctx context.Context, integ db.GitlabIntegration, issu
 			soft(ctx, "UpdateTaskEstimate", h.q.UpdateTaskEstimate(ctx, db.UpdateTaskEstimateParams{ID: link.TaskID, Estimate: estimate}))
 			t.Estimate = estimate
 		}
-		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags)
+		meta := h.reconcileTaskMeta(ctx, link.TaskID, wsID, projectID, issue, res.Tags, frozen)
 		// No per-task broadcast during sync (see the create branch) — one reload
 		// event is emitted at the end of runSync.
 
@@ -1697,11 +1983,23 @@ func journalNoun(entity string, created bool) string {
 // reconcileTaskMeta applies a synced issue's tags, assignees and comments to its
 // Tessera task. Each is "mixed": the sync owns the gitlab-sourced set (added,
 // refreshed and pruned to match GitLab) and never touches what the user added
-// manually. Returns what changed, for the sync journal.
-func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID, projectID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag) metaDelta {
-	added, removed := h.reconcileTags(ctx, taskID, wsID, projectID, tags)
-	h.reconcileAssignees(ctx, wsID, taskID, issue.Assignees)
-	commentsAdded, newBodies := h.syncComments(ctx, taskID, wsID, issue.Notes)
+// manually. Returns what changed, for the sync journal. frozen holds the kinds
+// with an open write-back conflict (#3089): their side stays as the user left it
+// until the conflict is decided.
+func (h *API) reconcileTaskMeta(ctx context.Context, taskID, wsID, projectID uuid.UUID, issue gitlab.Issue, tags []gitlab.Tag, frozen map[string]bool) metaDelta {
+	var added, removed []string
+	if !frozen["labels"] {
+		added, removed = h.reconcileTags(ctx, taskID, wsID, projectID, tags)
+	}
+	if !frozen["assignees"] {
+		h.reconcileAssignees(ctx, wsID, taskID, issue.Assignees)
+	}
+	// A light issue (#3105) came without its discussions: nothing to reconcile.
+	var commentsAdded int
+	var newBodies []string
+	if issue.NotesLoaded {
+		commentsAdded, newBodies = h.syncComments(ctx, taskID, wsID, issue.Notes)
+	}
 	names := make([]string, 0, len(issue.Assignees))
 	for _, p := range issue.Assignees {
 		if p.Name != "" {
@@ -1724,7 +2022,7 @@ func (h *API) reconcileTags(ctx context.Context, taskID, wsID, projectID uuid.UU
 		if color == "" {
 			color = autoTagColor(t.Name)
 		}
-		tag, err := h.q.EnsureTag(ctx, db.EnsureTagParams{WorkspaceID: wsID, ProjectID: projectID, Name: t.Name, Color: color})
+		tag, err := h.ensureProjectTag(ctx, wsID, projectID, t.Name, color)
 		if err != nil {
 			continue
 		}
@@ -1735,6 +2033,40 @@ func (h *API) reconcileTags(ctx context.Context, taskID, wsID, projectID uuid.UU
 	}
 	removed, _ = h.q.DeleteStaleGitlabTaskTags(ctx, db.DeleteStaleGitlabTaskTagsParams{TaskID: taskID, Column2: ids})
 	return added, removed
+}
+
+// ensureProjectTag is the sync's door onto the project tag vocabulary: the tag this
+// GitLab label stands for, created if the project has nothing for it yet.
+//
+// `EnsureTag` alone is not that door. Its ON CONFLICT rides the byte-exact
+// UNIQUE (project_id, name), so a label GitLab spells «Сложность::высокая» inserts a
+// SECOND row next to the «сложность::высокая» somebody made by hand — and this is the
+// likeliest way a project ever gets such a pair, since a GitLab label vocabulary is
+// authored by strangers to Tessera. What follows is the split the handlers' own
+// `tagNameFree` describes: two lanes with the same caption, half the cards behind
+// each, and the sync steadily pushing its issues into the one nobody filters by.
+//
+// So the existing tag is looked up the way readers compare names first, and only its
+// colour follows GitLab — the name stays as the project spells it, which is also what
+// keeps the sync from renaming a tag under the reader on every pull. Only when there
+// is no such tag does EnsureTag run, and it keeps handling the exact-match race (#2932).
+func (h *API) ensureProjectTag(ctx context.Context, wsID, projectID uuid.UUID, name, color string) (db.Tag, error) {
+	existing, err := h.q.GetProjectTagByName(ctx, db.GetProjectTagByNameParams{ProjectID: projectID, Name: name})
+	switch {
+	case err == nil:
+		if color == "" || existing.Color == color {
+			return existing, nil
+		}
+		updated, uErr := h.q.SetTagColor(ctx, db.SetTagColorParams{ID: existing.ID, Color: color})
+		if uErr != nil {
+			// The colour is cosmetic; the pairing this tag is about is not.
+			return existing, nil
+		}
+		return updated, nil
+	case !errors.Is(err, pgx.ErrNoRows):
+		return db.Tag{}, err
+	}
+	return h.q.EnsureTag(ctx, db.EnsureTagParams{WorkspaceID: wsID, ProjectID: projectID, Name: name, Color: color})
 }
 
 // syncProjectMembers refreshes the integration's assignable GitLab member roster
@@ -1749,6 +2081,7 @@ func (h *API) syncProjectMembers(ctx context.Context, client *gitlab.Client, int
 	for _, m := range members {
 		soft(ctx, "UpsertGitlabProjectMember", h.q.UpsertGitlabProjectMember(ctx, db.UpsertGitlabProjectMemberParams{
 			IntegrationID: integ.ID, GlUserID: m.ID, GlUsername: m.Username, GlName: m.Name,
+			// #nosec G115 -- GitLab access_level is a fixed 0..50 enum
 			GlAvatarUrl: h.avatarProxyURL(integ.WorkspaceID, m.AvatarURL), AccessLevel: int32(m.AccessLevel),
 		}))
 		keep = append(keep, m.ID)
@@ -1757,9 +2090,10 @@ func (h *API) syncProjectMembers(ctx context.Context, client *gitlab.Client, int
 }
 
 // reconcileAssignees rebuilds the GitLab-sourced assignee set: a GitLab assignee
-// whose username maps to a Tessera user becomes a real (gitlab-sourced) assignee;
-// the rest are stored as external display-only assignees. Manual ('user')
-// assignees are left untouched.
+// whose username maps to a Tessera user *of this workspace* (resolveAssignee)
+// becomes a real (gitlab-sourced) assignee; the rest — outsiders included — are
+// stored as external display-only assignees. Manual ('user') assignees are left
+// untouched.
 // applyClosedPolicy archives (or un-archives) a synced task per the integration's
 // closed_policy. For archive_closed_sprints a closed issue in a closed milestone is
 // moved to the archive; anything else (open issue, or closed issue in an open/no
@@ -1779,14 +2113,7 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 	soft(ctx, "DeleteGitlabSourcedAssignees", h.q.DeleteGitlabSourcedAssignees(ctx, taskID)) // only the sync-made set is rebuilt
 	tesseraIDs := make([]uuid.UUID, 0, len(people))
 	for _, p := range people {
-		// Resolve the GitLab assignee to a Tessera user. Prefer the "Login with
-		// GitLab" OAuth identity (the canonical, self-owned link) over a legacy
-		// connected-PAT credential — so a person's tasks land on the account they
-		// actually sign in with, not on whoever configured the integration token.
-		uid, err := h.q.GetUserIDByOAuthUsername(ctx, p.Login)
-		if err != nil {
-			uid, err = h.q.GetUserIDByGitlabUsername(ctx, p.Login)
-		}
+		uid, err := h.resolveAssignee(ctx, wsID, p.Login)
 		if err == nil {
 			soft(ctx, "AddTaskAssigneeSourced", h.q.AddTaskAssigneeSourced(ctx, db.AddTaskAssigneeSourcedParams{TaskID: taskID, UserID: uid, Source: "gitlab"}))
 			tesseraIDs = append(tesseraIDs, uid)
@@ -1798,6 +2125,73 @@ func (h *API) reconcileAssignees(ctx context.Context, wsID, taskID uuid.UUID, pe
 		}
 	}
 	soft(ctx, "DeleteStaleGitlabAssignees", h.q.DeleteStaleGitlabAssignees(ctx, db.DeleteStaleGitlabAssigneesParams{TaskID: taskID, Column2: tesseraIDs}))
+}
+
+// resolveAssignee maps a GitLab username to the Tessera user who may hold a task
+// in wsID, or reports an error so the caller stores the person as an external
+// (display-only) assignee instead.
+//
+// The OAuth identity wins over a legacy connected-PAT credential: it is the
+// canonical, self-owned link, so a person's tasks land on the account they
+// actually sign in with rather than on whoever configured the integration token.
+//
+// The membership check is the part that cannot be dropped. Both lookups are keyed
+// by GitLab username *alone* — neither table knows about workspaces, and a
+// username is not even scoped to one GitLab instance, so the row they find may
+// belong to someone who has never been in wsID. Writing them into task_assignees
+// breaks an invariant this codebase states in three other places: AddTaskAssignee
+// verifies membership for a user_id that arrives in a request body,
+// notifyMentions and notifyThread skip a non-member outright, and
+// TransferProject runs StripNonMemberAssignees to clear the ones a move left
+// behind. The harm is what ListTaskAssignees reads back — it selects u.email
+// along with u.name — so the team that merely bound its board to a GitLab
+// project was handed the address and name of an outsider.
+//
+// A non-member is not an error case for the sync: the "no Tessera account at all"
+// branch is exactly right for them, and keeps the issue's assignee visible on the
+// card under their GitLab name and avatar.
+//
+// An ambiguous login takes that same branch. A GitLab username is unique on the
+// instance *right now*, but both tables keep what was true at some past login:
+// a rename is only written back when its owner signs in (or reconnects their
+// PAT) again, so between the rename and that login the old name still names its
+// former owner. Let someone else take the freed login — GitLab frees it
+// immediately — and the same string maps to two people. Neither is "the" match,
+// and picking one is not a coin flip in the user's favour: the stale row is the
+// older one, so the plan tends to return exactly the wrong person, who then gets
+// the task in "my tasks" and its notifications while the issue's real assignee
+// never sees it. Membership does not catch this — both are usually colleagues.
+func (h *API) resolveAssignee(ctx context.Context, wsID uuid.UUID, login string) (uuid.UUID, error) {
+	uid, err := oneUser(h.q.GetUserIDsByOAuthUsername(ctx, login))
+	if err != nil {
+		uid, err = oneUser(h.q.GetUserIDsByGitlabUsername(ctx, login))
+	}
+	if err != nil {
+		return uuid.Nil, err
+	}
+	if _, err := h.q.GetMembership(ctx, db.GetMembershipParams{WorkspaceID: wsID, UserID: uid}); err != nil {
+		return uuid.Nil, err
+	}
+	return uid, nil
+}
+
+// errAmbiguousLogin reports a GitLab username that names more than one Tessera
+// user — see resolveAssignee for how that happens.
+var errAmbiguousLogin = errors.New("gitlab login resolves to more than one user")
+
+// oneUser unwraps a username lookup: exactly one user is a match, none or several
+// are not.
+func oneUser(ids []uuid.UUID, err error) (uuid.UUID, error) {
+	switch {
+	case err != nil:
+		return uuid.Nil, err
+	case len(ids) == 1:
+		return ids[0], nil
+	case len(ids) == 0:
+		return uuid.Nil, pgx.ErrNoRows
+	default:
+		return uuid.Nil, errAmbiguousLogin
+	}
 }
 
 // syncComments upserts each GitLab note as a comment, idempotent by note id, with
@@ -2065,8 +2459,29 @@ func (h *API) ListGitlabMembers(c *gin.Context) {
 	c.JSON(http.StatusOK, out)
 }
 
+// maxGitlabAssigneeFieldLen bounds the two strings a pin carries. GitLab itself
+// stops a username at 255 characters and a display name at 255, so anything past
+// that describes no real member — it is only a way to grow the row. The username
+// is refused (it is half the primary key, and a truncated one would pin somebody
+// else and write back to them); the name is truncated, since it is a label under
+// a face and a call that fails because a label was long is worse than a short label.
+const maxGitlabAssigneeFieldLen = 255
+
 // PinTaskGitlabAssignee pins a GitLab project member (who may have no Tessera
 // account) as an assignee of a task, surviving the sync rebuild (source='user').
+//
+// The face is looked up, never accepted. Every other path that hands a GitLab
+// avatar to a client wraps it in avatarProxyURL — a same-origin, HMAC-signed
+// "/api/gitlab/avatar?…" link this server fetches itself — which is the whole
+// point of GitlabAvatar: no client ever opens a connection to the GitLab instance
+// to paint a member. This route used to take gl_avatar_url off the request body
+// and store it verbatim, so any member could pin an assignee whose avatar was an
+// arbitrary absolute URL; it is rendered as <img src> by the task modal, the card
+// pills, the mention list and the facet menus (and by MemberAvatar on Android),
+// the SPA declares no img-src and the Android client has no CSP at all, so the
+// address became a beacon telling its owner the IP, the user agent and the moment
+// of everyone who opened the task. The client has nothing here the server can't
+// read out of the synced roster, so it reads it (#2932).
 func (h *API) PinTaskGitlabAssignee(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -2077,21 +2492,49 @@ func (h *API) PinTaskGitlabAssignee(c *gin.Context) {
 		return
 	}
 	var req struct {
-		GlUsername  string `json:"gl_username" binding:"required"`
-		GlName      string `json:"gl_name"`
-		GlAvatarURL string `json:"gl_avatar_url"`
+		GlUsername string `json:"gl_username" binding:"required"`
+		GlName     string `json:"gl_name"`
+		// gl_avatar_url is deliberately absent: both clients still send one (they
+		// echo the roster row they picked) and it is ignored.
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	username := strings.TrimSpace(req.GlUsername)
+	if username == "" {
+		// binding:"required" only rejects the empty string; a username of spaces
+		// pins a member nobody can name and write-back has nothing to address.
+		c.JSON(http.StatusBadRequest, gin.H{"error": "gl_username must not be blank"})
+		return
+	}
+	if utf8.RuneCountInString(username) > maxGitlabAssigneeFieldLen {
+		c.JSON(http.StatusBadRequest, gin.H{
+			"error": fmt.Sprintf("gl_username exceeds %d characters", maxGitlabAssigneeFieldLen),
+		})
+		return
+	}
+	name := truncateRunes(strings.TrimSpace(req.GlName), maxGitlabAssigneeFieldLen)
+	// A rostered member is described by the roster, not by the caller. An unknown
+	// username (a GitLab account this workspace never synced, or a legacy pin) keeps
+	// the caller's name and gets no avatar — the clients already fall back to
+	// initials on an empty string.
+	avatar := ""
+	if m, err := h.q.GetGitlabMemberByUsername(c, db.GetGitlabMemberByUsernameParams{
+		WorkspaceID: wsID, GlUsername: username,
+	}); err == nil {
+		avatar = m.GlAvatarUrl
+		if m.GlName != "" {
+			name = m.GlName
+		}
+	}
 	if err := h.q.PinGitlabAssignee(c, db.PinGitlabAssigneeParams{
-		TaskID: id, GlUsername: req.GlUsername, GlName: req.GlName, GlAvatarUrl: req.GlAvatarURL,
+		TaskID: id, GlUsername: username, GlName: name, GlAvatarUrl: avatar,
 	}); err != nil {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "gl_username": req.GlUsername})
+	h.broadcast(wsID, "task.assigned", gin.H{"task_id": id, "gl_username": username})
 	h.enqueueWriteback(c, id, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	c.Status(http.StatusNoContent)
 }

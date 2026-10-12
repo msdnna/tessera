@@ -23,7 +23,15 @@ import { WHATS_NEW } from '@/data/whatsNew'
 
 const WHATSNEW_PREFIX = 'whatsnew:'
 const WHATSNEW_WEB_PREFIX = 'whatsnew:web:'
-const SPOTLIGHT_PREFIX = 'spotlight:'
+export const SPOTLIGHT_PREFIX = 'spotlight:'
+// Settings → «Подсказки» (#3101): a kind of hint switched off. `new` — «Что
+// нового» and the hints at what changed; `ctx` — hints at first encounter.
+export const HINTS_OFF_PREFIX = 'hints:off:'
+// The v2 release card with the «Что изменилось» mini-tour (#3000), shown once
+// to an account that used v1. `…:later` — «Позже» sent the mini-tour's points
+// to the spotlight queue instead.
+export const V2_INTRO = 'whatschanged:v2'
+export const V2_LATER = 'whatschanged:later'
 
 // The release version an ack key vouches for on web, or null if it doesn't count
 // here. Mirrors Android's whatsNewVersion: web-namespaced keys always count; a
@@ -58,7 +66,11 @@ const currentVersion = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ 
 export const useWhatsNewStore = defineStore('whatsNew', () => {
   const tour = useTourStore()
   const acked = ref(new Set())
+  // key → when it was first set, for «показана 6 окт.» in Settings → «Подсказки».
+  const ackedAt = ref({})
   const loaded = ref(false)
+  // The v2 card replaces the release list once for a v1 user (load() decides).
+  const v2Intro = ref(false)
   // The release entries to show in the modal this session (computed on load).
   const pendingRaw = ref([])
   // While the Get Started guide is running it owns the screen: the changelog
@@ -67,7 +79,11 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
   // next load). Autostart alone can't collide (a brand-new account gets the
   // changelog baselined silently), but «Обучение» in the footer can be pressed
   // by anyone, at any time.
-  const pending = computed(() => (tour.active ? [] : pendingRaw.value))
+  const pending = computed(() =>
+    tour.active || has(HINTS_OFF_PREFIX + 'new') ? [] : pendingRaw.value,
+  )
+  // The v2 card is on screen: same gate as the release list.
+  const showV2Intro = computed(() => v2Intro.value && !tour.active && !historyOpen.value)
   // Spotlight hints to show one-at-a-time AFTER the modal is dismissed. Kept
   // separate from `pending` so dismissing the modal doesn't wipe the queue.
   const spotlightQueue = ref([])
@@ -103,12 +119,36 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
 
   async function ack(key) {
     if (acked.value.has(key)) return
-    acked.value.add(key) // optimistic; the endpoint is idempotent
+    // optimistic; the endpoint is idempotent. A fresh Set so computed readers
+    // (the checklist, the hint queue) see the change.
+    acked.value = new Set([...acked.value, key])
+    ackedAt.value = { ...ackedAt.value, [key]: new Date().toISOString() }
     try {
       await acknowledgements.ack(key)
     } catch {
       /* offline — the optimistic add keeps it hidden this session; a failed
          write just means it may reappear next session, which is acceptable */
+    }
+  }
+
+  // Clear flags (#3100): one key, or every key under a namespace prefix.
+  async function forget(key) {
+    if (!acked.value.has(key)) return
+    const next = new Set(acked.value)
+    next.delete(key)
+    acked.value = next
+    try {
+      await acknowledgements.forget({ key })
+    } catch {
+      /* offline — it comes back on the next load; nothing is lost */
+    }
+  }
+  async function forgetPrefix(prefix) {
+    acked.value = new Set([...acked.value].filter((k) => !k.startsWith(prefix)))
+    try {
+      await acknowledgements.forget({ prefix })
+    } catch {
+      /* offline — see forget() */
     }
   }
 
@@ -125,6 +165,7 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
     try {
       const { data } = await acknowledgements.list()
       acked.value = new Set((data || []).map((a) => a.key))
+      ackedAt.value = Object.fromEntries((data || []).map((a) => [a.key, a.ack_at]))
     } catch {
       loaded.value = true
       return false // offline / unauth — surface nothing rather than risk a double-show
@@ -142,6 +183,15 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
       await ack(WHATSNEW_WEB_PREFIX + currentVersion)
       return true
     }
+
+    // A v1 user — they walked or skipped the old guide, or have read a release
+    // card — gets the v2 card once instead of the list (#3000). A brand-new
+    // account never does: it has nothing to compare with.
+    const usedV1 = [...acked.value].some(
+      (k) => k.startsWith('getstarted:') || k.startsWith(WHATSNEW_PREFIX),
+    )
+    v2Intro.value =
+      usedV1 && !isBrandNewAccount() && !has(V2_INTRO) && !has(HINTS_OFF_PREFIX + 'new')
 
     const highest = ackedVersions.reduce((m, v) => (cmp(v, m) > 0 ? v : m), '0.0.0')
     const releases = WHATS_NEW.filter(
@@ -173,10 +223,21 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
   // while the guide is drawing its own arrows, nor while the history is open
   // (`pending` is empty exactly then, so the arrow would land on top of it).
   const currentSpotlight = computed(() =>
-    pending.value.length === 0 && !tour.active && !historyOpen.value
+    pending.value.length === 0 && !tour.active && !historyOpen.value && !showV2Intro.value
       ? spotlightQueue.value[0] || null
       : null,
   )
+
+  // The v2 card is answered: «Показать, что изменилось» (tour = true) or
+  // «Позже». Either way the releases it stood in for are read, and the card
+  // never comes back. «Позже» sends the mini-tour's points to the spotlight
+  // queue (stores/hints.js reads V2_LATER).
+  async function closeV2Intro({ tour: walk = false } = {}) {
+    v2Intro.value = false
+    const keys = [V2_INTRO]
+    if (!walk) keys.push(V2_LATER)
+    await Promise.all([...keys.map(ack), dismissModal()])
+  }
 
   async function dismissSpotlight(navKey) {
     spotlightQueue.value = spotlightQueue.value.filter((s) => s.navKey !== navKey)
@@ -185,7 +246,10 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
 
   return {
     acked,
+    ackedAt,
     loaded,
+    v2Intro,
+    showV2Intro,
     pending,
     entries,
     historyOpen,
@@ -195,6 +259,9 @@ export const useWhatsNewStore = defineStore('whatsNew', () => {
     load,
     has,
     ack,
+    forget,
+    forgetPrefix,
+    closeV2Intro,
     openHistory,
     closeHistory,
     dismissModal,

@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script><style>html,body{background:#ececf0 !important;color-scheme:light}</style></helmet>
+<div style="display:flex;flex-direction:column;gap:64px;width:1440px;padding:48px 48px 96px;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#26262e">
+<div style="display:flex;flex-direction:column;gap:18px;max-width:1100px">
+<div style="font-size:13px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:#7c5cff">Tessera v2 · Пакет F</div>
+<div style="font-size:34px;font-weight:700;letter-spacing:-.015em;line-height:1.15">Крупные окна</div>
+<div style="font-size:15px;line-height:1.55;color:#4a4a55;text-wrap:pretty">Пять окон яруса 2, собранных как модалка задачи и окно «Проект»: радиус 18, --v-pop, тень 4, --v-scrim под окном. Шапка 56px с крошками и закрытием по Esc, слева утопленная колонка навигации 220px на --v-sub. Кнопки «Сохранить» нет — изменения применяются сразу, кроме разрешения конфликтов.</div>
+<div style="font-size:12.5px;color:#767682">Кадры 1440×900, тёмная тема, акцент purple. «Участники» — также в светлой.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">1 · GitLab-интеграция</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Окно привязано к доске: на одну доску можно подключить несколько проектов GitLab. Сверху в навигации — переключатель доски, ниже четыре раздела. Статус синхронизации и «Синхронизировать» (⇧S) всегда видны в шапке.</div>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Подключения · одно с истёкшим токеном в фокусе, новое подключение на шаге 2</div>
+<dc-import name="FrameA" scene="fGlConn" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Правила лейблов · выбрана строка, внизу проверка лейбла</div>
+<dc-import name="FrameA" scene="fGlRules" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Обратная запись · связки «событие → действие»</div>
+<dc-import name="FrameA" scene="fGlWrite" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Журнал синхронизаций · выбран упавший push</div>
+<dc-import name="FrameA" scene="fGlLog" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:28px;margin-top:14px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Подключения</div><div>Карточка 64px на --v-sub, радиус 14, плитка 40 в оранжевом градиенте GitLab. Направление — сегменты Pull / Pull и push. Ошибка — красная подложка 8–14% и основная кнопка «Переподключить». Новое подключение идёт тремя шагами по месту, без отдельной модалки: OAuth → проект → направление. Tab — вперёд, ⇧Tab — назад, Esc — отмена.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Правила</div><div>Строка 40px: лейбл моноширинным чипом с цветом GitLab, поле, значение пиллом Tessera. Порядок важен: ⌥↑/⌥↓ или перетаскивание за ручку. Space — включить или выключить, Enter — правка по месту, ⌫ — удаление с undo-тостом. «Проверить лейбл» показывает, какое правило сработает и сколько задач затронет.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Обратная запись</div><div>Связки событие → действие с выбором проектов. Ниже — политика конфликтов («Спросить меня» по умолчанию) и расписание синхронизации. Поля, которых нет в GitLab, перечислены в подсказке, чтобы не было вопросов, почему они не уходят.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Журнал</div><div>Сводка из трёх плиток, фильтр, список запусков 340px и деталь на --v-sub. Деталь — дифф по задачам: старое значение зачёркнуто text3, новое — пиллом. У упавшего push две кнопки: «Разрешить конфликт» (C) открывает окно конфликтов поверх, «Повторить» (R).</div></div>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">2 · Разрешение конфликтов</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Сравнение трёх версий: база (последняя синхронизация), Tessera, GitLab — поле за полем. Поля, изменённые только с одной стороны, принимаются автоматически и показаны приглушённо. Слева — очередь задач с конфликтами.</div>
+<dc-import name="FrameA" scene="fConflict" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:1000px">Строка поля — сетка 112 + 3 колонки, ячейки на --v-sub радиус 10. Выбранная версия — мягкий accent 14–24% и кольцо 2px с галочкой. Автовыбор — тот же тон, но слабее и без кольца. Строка в фокусе — --v-hover и полупрозрачное кольцо. Клавиши: ↑↓ — поле, B / T / G — база / Tessera / GitLab, M — объединить вручную в Markdown-редакторе, ⌘[ ⌘] — соседняя задача, ⌘↵ — применить и отправить. Esc закрывает окно, но решения сохраняются как черновик.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">3 · Фоновые задания</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Список с фильтрами по статусу и типу, справа — выбранное задание: прогресс, шаги и живой лог.</div>
+<dc-import name="FrameA" scene="fJobs" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:1000px">Строка 52px: плитка типа в мягком тоне, справа прогресс 56px, пилл «В очереди» или «Ошибка», либо зелёная галочка со временем. Полоса прогресса в детали — 8px accent-градиент. Лог моноширинный 12px на --v-sub, уровни окрашены только в тексте: INFO text3, WARN orange, ERR red. «Следить» (F) держит прокрутку у конца. ⇧⌫ — остановить, ⌘C — скопировать лог. Окно открывается по G J и из счётчика в топбаре.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">4 · Участники пространства</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Приглашение по email (адреса превращаются в чипы, неверный подсвечен) и по ссылке. Ниже — ожидающие приглашения и участники. У Ильи открыто меню роли.</div>
+<dc-import name="FrameA" scene="fMembers" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;font-weight:600;color:#767682;margin-top:6px">Светлая</div>
+<dc-import name="FrameA" scene="fMembers" mode="light" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:1000px">Поле приглашения 38px: Enter, запятая или пробел превращают адрес в чип, ⌫ в пустом поле удаляет последний чип. Роль владельца — в accent, админа — в синем, остальные нейтральные. Меню роли — поповер 300px, радиус 16, тень 3, клавиши 1–4. «Убрать из пространства» — двухшаговый пункт из пакета A. Отзыв приглашения обратим и показывает undo-тост.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">5 · Команды пространства</div>
+<div style="font-size:14px;line-height:1.5;color:#5a5a66;max-width:1100px;text-wrap:pretty">Свои команды для палитры ⌘K и горячих клавиш. Строки редактируются по месту: Enter раскрывает строку в форму, второй Enter сохраняет.</div>
+<dc-import name="FrameA" scene="fCmds" mode="dark" accent="{{ accent }}" style="width:1440px;height:900px" hint-size="1440px,900px"></dc-import>
+<div style="font-size:13px;line-height:1.55;color:#4a4a55;max-width:1000px">Строка 46px; в режиме правки — блок на --v-sub радиус 14 с кольцом 2px. Поля: название, вызов (вид «&gt;слово» — как команды в палитре), действие, клавиши (запись сочетания с проверкой на конфликт), параметры чипами, видимость. Tab — следующее поле, Enter — сохранить, Esc — отменить. Выключенная команда остаётся в списке с прозрачностью 50%.</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">Лист состояний</div>
+<dc-import name="FrameA" what="catalogF" mode="dark" accent="{{ accent }}" style="width:1440px;height:1640px" hint-size="1440px,1640px"></dc-import>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px">
+<div style="font-size:22px;font-weight:650">Проверка акцентов · teal и orange</div>
+<div style="display:flex;gap:24px">
+<dc-import name="FrameA" scene="fGlRules" crop="subbarR" mode="dark" accent="teal" style="width:708px;height:600px" hint-size="708px,600px"></dc-import>
+<dc-import name="FrameA" scene="fGlRules" crop="subbarR" mode="dark" accent="orange" style="width:708px;height:600px" hint-size="708px,600px"></dc-import>
+</div>
+</div>
+<div style="display:flex;flex-direction:column;gap:14px;max-width:1100px">
+<div style="font-size:22px;font-weight:650">Общее для яруса 2</div>
+<div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:28px;font-size:13px;line-height:1.55;color:#4a4a55">
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Размеры и поверхности</div><div>Окно 1080×760, радиус 18, --v-pop, тень --v-sh-drag, фон --v-scrim. Шапка 56px: плитка 24 в градиенте, крошки 13.5 text3 → 15/650, справа статус и закрытие с kbd Esc. Навигация 220px на --v-sub, радиус 14, пункты 34px, активный — --v-active. Контент с отступами 28px. Новых токенов нет.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Esc по слоям и фокус</div><div>Esc закрывает самый верхний слой: меню или поповер → правка по месту → выделение → окно. После закрытия окна фокус возвращается на элемент, который его открыл. Цифры 1–4 переключают разделы навигации, / ставит фокус в фильтр, N создаёт новую строку раздела.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Отступления от handoff</div><div>В окне конфликтов есть явная кнопка «Применить и отправить»: решения уходят в GitLab одним push, и автосохранение каждого поля дало бы частичную отправку. Пока не решены все поля, кнопка неактивна.</div></div>
+<div style="display:flex;flex-direction:column;gap:6px"><div style="font-weight:650;color:#26262e">Синхронизация</div><div>Отдельного раздела «Синхронизация» нет: статус и «Синхронизировать сейчас» вынесены в шапку окна, расписание — в «Обратную запись», история — в «Журнал». Так статус виден из любого раздела.</div></div>
+</div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;purple&quot;,&quot;blue&quot;,&quot;teal&quot;,&quot;green&quot;,&quot;orange&quot;,&quot;red&quot;,&quot;pink&quot;],&quot;default&quot;:&quot;purple&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() { return { accent: this.props.accent || 'purple' }; }
+}
+</script>
+</body>
+</html>

@@ -8,8 +8,11 @@ import { useFormat } from '@/composables/useFormat'
 import {
   approvalProgress,
   approvalStatusLabel,
+  canCancelApproval,
   canDecideNow,
+  MAX_APPROVERS,
   orderedSteps,
+  routeApproversRefusal,
   stepState,
   stepStatusLabel,
 } from '@/utils/docApprovals'
@@ -24,6 +27,9 @@ const props = defineProps({
   // view who "me" is in this room.
   userId: { type: String, default: '' },
   wsId: { type: String, default: '' },
+  // Owner or admin of the workspace — the pair `requireManager` accepts, and
+  // with the route's author the only people allowed to withdraw a route.
+  canManage: { type: Boolean, default: false },
   canRaise: { type: Boolean, default: true },
   loading: { type: Boolean, default: false },
   error: { type: String, default: '' },
@@ -60,7 +66,19 @@ function openPicker() {
 // Already-linked tasks are dropped from the picker rather than shown and
 // refused: re-linking the same pair is a no-op server-side, so offering it would
 // be a button that appears to do nothing.
-const linkedIds = computed(() => new Set(props.links.map((l) => l.task_id)))
+//
+// "The same pair" is the link's own key — (документ, задача, блок), not the task
+// alone. A task linked to the document as a whole may also be linked to the
+// clause it implements; that is what the key is for (миграция 0059). Filtering by
+// task id alone made that second link unreachable: «Связать блок» opened a picker
+// the task had silently dropped out of. So only the links sitting on the armed
+// anchor count as already linked.
+const linkedIds = computed(
+  () =>
+    new Set(
+      props.links.filter((l) => (l.block_id || '') === props.anchorBlockId).map((l) => l.task_id),
+    ),
+)
 const candidates = computed(() => {
   const q = query.value.trim().toLowerCase()
   // Named `task`, not `t`: `t` is the translation function in this file now.
@@ -93,9 +111,22 @@ const modeOptions = computed(() => [
   { label: t('documents.links.mode.parallel'), value: 'parallel' },
 ])
 
-const memberOptions = computed(() =>
-  members.value.map((m) => ({ label: m.name || m.email, value: m.user_id })),
-)
+// Why the composed route would be refused — asked before the press rather than
+// read off a 400 that also takes the picked names with it (submitRoute clears
+// the form on emit, so a refusal means composing the whole route again).
+const routeRefusal = computed(() => routeApproversRefusal(routeApprovers.value))
+
+// At the cap the remaining names go grey instead of the 26th pick failing later.
+// Already-picked ones stay enabled — otherwise a full route could not be edited,
+// only cleared.
+const memberOptions = computed(() => {
+  const full = routeApprovers.value.length >= MAX_APPROVERS
+  return members.value.map((m) => ({
+    label: m.name || m.email,
+    value: m.user_id,
+    disabled: full && !routeApprovers.value.includes(m.user_id),
+  }))
+})
 
 async function openRaise() {
   raising.value = true
@@ -110,7 +141,7 @@ async function openRaise() {
 }
 
 function submitRoute() {
-  if (!routeApprovers.value.length) return
+  if (routeRefusal.value) return
   emit('raise', {
     title: routeTitle.value,
     mode: routeMode.value,
@@ -141,6 +172,12 @@ function submitDecision(approval, decision) {
 
 function mayDecide(approval) {
   return canDecideNow(approval, props.userId)
+}
+
+// Withdrawing is the route author's and the managers' — see canCancelApproval.
+// Everyone else was shown a button that answered 403.
+function mayCancel(approval) {
+  return canCancelApproval(approval, props.userId, props.canManage)
 }
 
 function progressLabel(approval) {
@@ -312,9 +349,9 @@ function approvalMeta(a) {
           </template>
         </div>
 
-        <n-popconfirm v-if="a.status === 'pending'" @positive-click="emit('cancel', a.id)">
+        <n-popconfirm v-if="mayCancel(a)" @positive-click="emit('cancel', a.id)">
           <template #trigger>
-            <n-button size="tiny" quaternary block>
+            <n-button size="tiny" quaternary block data-testid="doc-approval-cancel">
               {{ $t('documents.links.cancelRoute') }}
             </n-button>
           </template>
@@ -353,11 +390,19 @@ function approvalMeta(a) {
             data-testid="doc-approval-approvers"
             :options="memberOptions"
           />
+          <n-text
+            v-if="routeRefusal === 'tooMany'"
+            type="error"
+            class="empty"
+            data-testid="doc-approval-too-many"
+          >
+            {{ $t('documents.links.approversTooMany', { max: MAX_APPROVERS }) }}
+          </n-text>
           <div class="row">
             <n-button
               size="tiny"
               type="primary"
-              :disabled="!routeApprovers.length"
+              :disabled="!!routeRefusal"
               data-testid="doc-approval-submit"
               @click="submitRoute"
             >
@@ -393,8 +438,11 @@ function approvalMeta(a) {
   color: var(--t-text2);
 }
 .panel-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .grow {
   flex: 1;
@@ -504,19 +552,18 @@ function approvalMeta(a) {
   display: flex;
   flex-direction: column;
   gap: 4px;
-  padding: 8px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  padding: 10px 10px 10px 12px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 12px;
+  background: var(--t-card);
 }
-/* The open route takes the accent; closed ones stay neutral — the panel is read
-   to find out what is being asked of you now. */
+/* The open route takes the accent strip (v2, задача 3106); closed ones stay neutral —
+   the panel is read to find out what is being asked of you now. */
 .approval.pending {
-  border-color: transparent;
   background:
-    linear-gradient(var(--t-surface), var(--t-surface)) padding-box,
-    var(--t-accent-grad) border-box;
-  border: 1px solid transparent;
+    linear-gradient(var(--t-card), var(--t-card)) padding-box,
+    var(--t-accent-grad-vert) border-box;
 }
 .approval-head {
   display: flex;
@@ -567,7 +614,7 @@ function approvalMeta(a) {
   flex-wrap: wrap;
   font-size: 11px;
   padding-left: 6px;
-  border-left: 2px solid var(--t-border);
+  border-left: 2px solid var(--t-ctl);
 }
 .step.signed,
 .step.current {
@@ -579,7 +626,7 @@ function approvalMeta(a) {
 .step.rejected {
   border-left-color: transparent;
   background:
-    linear-gradient(var(--t-surface), var(--t-surface)) padding-box,
+    linear-gradient(var(--t-card), var(--t-card)) padding-box,
     var(--t-error-grad) border-box;
 }
 .step-name {

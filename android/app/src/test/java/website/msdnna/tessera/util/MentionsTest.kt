@@ -53,6 +53,25 @@ class MentionsTest {
     }
 
     @Test
+    fun `a pat-linked gitlab row lends its login just like an oauth one`() {
+        // Only `tessera_user_id_pat` is set: this person connected a PAT instead of
+        // signing in through GitLab. The roster row still names them, so the mention
+        // has to insert the login — a comment goes to GitLab verbatim and «@Евгений
+        // Полянский» resolves to nobody there.
+        val gl = GitlabMember(glUserId = 7, glUsername = "e.polyansky", glName = "Evgeny", tesseraUserIdPat = "u1")
+        val items = buildMentionItems(listOf(member), listOf(gl))
+        // Folded into the member — one row, not the member plus an "outsider".
+        assertEquals(1, items.size)
+        assertEquals("e.polyansky", items[0].insert)
+        assertEquals("Евгений Полянский", items[0].display)
+        assertEquals("u1", items[0].avatarUserId)
+        // …and whichever of the two rows the picker offered, the handle resolves back
+        // to the member, so the server is still told to notify them.
+        assertEquals("u1", resolveMention(items, "e.polyansky")?.avatarUserId)
+        assertEquals(listOf("u1"), mentionIdsIn("привет @e.polyansky", items))
+    }
+
+    @Test
     fun `a gitlab user with no tessera account is listed on their own`() {
         val gl = GitlabMember(glUserId = 8, glUsername = "outsider", glName = "Out Sider")
         val items = buildMentionItems(listOf(member), listOf(gl))
@@ -85,10 +104,147 @@ class MentionsTest {
     }
 
     @Test
+    fun `the at-trigger opens after a boundary and points at its own sign`() {
+        assertEquals(MentionQuery(start = 0, query = ""), detectMentionQuery("@"))
+        assertEquals(MentionQuery(start = 7, query = "pol"), detectMentionQuery("привет @pol"))
+        assertEquals(MentionQuery(start = 7, query = "pol"), detectMentionQuery("строка\n@pol"))
+        // An address is one word, not a mention, and a closed handle is not a query.
+        assertNull(detectMentionQuery("mail@example"))
+        assertNull(detectMentionQuery("@pol готово"))
+        assertNull(detectMentionQuery("без собаки"))
+        assertNull(detectMentionQuery(null))
+    }
+
+    @Test
+    fun `a finished line closes the at-query`() {
+        // Same java `$` trap as the `/`-trigger: a handle already ended with Enter
+        // would otherwise keep the popup open, and `start` would be measured from
+        // the newline — picking a row would then splice a second '@' into the text
+        // and the comment would notify nobody.
+        assertNull(detectMentionQuery("@pol\n"))
+        assertNull(detectMentionQuery("привет @pol\n"))
+        assertNull(detectMentionQuery("@pol\n\n"))
+    }
+
+    @Test
     fun `a handle nobody owns resolves to nothing`() {
         val items = buildMentionItems(listOf(linked), emptyList())
         assertNull(resolveMention(items, "root"))
         assertNull(resolveMention(items, "  "))
+    }
+
+    /**
+     * Кого уведомит комментарий — должно совпадать с тем, чей чип нарисован.
+     *
+     * Таблица снята с самого рендерера: разметка прогнана через marked 18 и через
+     * дословную копию `highlightMentions`/`replaceOutsideCode` из `RichContent.kt`,
+     * ожидания здесь — его чипы. Расхождение опасно в обе стороны: «@Иван» в
+     * примере кода нарисован текстом и никого не зовёт, а имя, набранное руками,
+     * рисует чип и обязано позвать.
+     */
+    private val roster = listOf(
+        Member(userId = "u1", name = "Иван"),
+        Member(userId = "u2", name = "Иван Петров"),
+        Member(userId = "u3", name = "root"),
+        Member(userId = "u4", name = "Ян"),
+        linked.copy(userId = "u5"),
+    )
+
+    private fun ids(src: String, gl: List<GitlabMember> = emptyList()) =
+        mentionIdsIn(src, buildMentionItems(roster, gl))
+
+    @Test
+    fun `mentions are read the way the renderer draws them`() {
+        val table = listOf(
+            // текст → кого зовём
+            "Привет @Иван, глянь" to listOf("u1"),
+            "@Иван глянь" to listOf("u1"),
+            "```\n@Иван\n```" to emptyList(),
+            "```sh\nsudo -u @root ls\n```" to emptyList(),
+            "команда `@Иван` тут" to emptyList(),
+            "    @Иван\n" to emptyList(),
+            "(@Иван) глянь" to listOf("u1"),
+            "*@Иван* глянь" to listOf("u1"),
+            "**@Иван** глянь" to listOf("u1"),
+            "@Иван, глянь" to listOf("u1"),
+            "mail@root тут" to emptyList(),
+            // Хендл кончается там, где кончается слово. «@Янис» — не участник «Ян»
+            // с хвостом: до #2932 совпадение по префиксу звало его и рисовало чип
+            // «@Ян», хотя в тексте написано другое имя.
+            "@Янис привет" to emptyList(),
+            "@Иванов привет" to emptyList(),
+            "@Иван-2 привет" to emptyList(),
+            "@root2 привет" to emptyList(),
+            "@root.dev привет" to emptyList(),
+            // …но точка в конце предложения слово не продолжает.
+            "спроси @Иван." to listOf("u1"),
+            "@Иван! срочно" to listOf("u1"),
+            "@Иван Петров глянь" to listOf("u2"),
+            "> @Иван глянь" to listOf("u1"),
+            "- @Иван глянь" to listOf("u1"),
+            "[@Иван](http://x) глянь" to listOf("u1"),
+            "[тут](http://x/@Иван) глянь" to emptyList(),
+            "@e.polyansky глянь" to listOf("u5"),
+            "@Иван и снова @Иван" to listOf("u1"),
+            "# @Иван глянь" to listOf("u1"),
+            "| кто |\n| --- |\n| @Иван |" to listOf("u1"),
+            "строка\n@Иван глянь" to listOf("u1"),
+            "<b>@Иван</b> глянь" to listOf("u1"),
+            "_@Иван_ глянь" to listOf("u1"),
+            "~~@Иван~~ глянь" to listOf("u1"),
+            "| кто |\n| --- |\n|@Иван|" to listOf("u1"),
+            "mail_@root тут" to emptyList(),
+            "«@Иван» глянь" to emptyList(),
+            "\"@Иван\" глянь" to emptyList(),
+            "-@Иван глянь" to emptyList(),
+            "/@Иван глянь" to emptyList(),
+            "@@Иван глянь" to emptyList(),
+            "кому:@Иван глянь" to emptyList(),
+            "строка\n\n@Иван глянь" to listOf("u1"),
+            ">@Иван глянь" to listOf("u1"),
+            "-   @Иван глянь" to listOf("u1"),
+            "http://x/@Иван глянь" to emptyList(),
+            ".@Иван глянь" to emptyList(),
+            "<http://x/@Иван> глянь" to emptyList(),
+            "\\@Иван глянь" to listOf("u1"),
+            "строка\n    @Иван глянь" to listOf("u1"),
+            "строка\n\n    @Иван глянь" to emptyList(),
+            "- пункт\n\n    @Иван глянь" to listOf("u1"),
+            "- пункт\n\n        @Иван глянь" to emptyList(),
+            "```\nкод\n```\n@Иван глянь" to listOf("u1"),
+            "~~~\n@Иван\n~~~" to emptyList(),
+            "```\n@Иван глянь" to emptyList(),
+            "``@Иван`` глянь" to emptyList(),
+            "`@Иван глянь" to emptyList(),
+            "> ```\n> @Иван\n> ```" to emptyList(),
+        )
+        table.forEach { (src, expected) ->
+            assertEquals("разметка: ${src.replace("\n", "\\n")}", expected, ids(src))
+        }
+    }
+
+    /** Порядок — как в тексте, повторы схлопнуты: список уходит на сервер как есть. */
+    @Test
+    fun `mentions keep the order they are written in, without repeats`() {
+        assertEquals(listOf("u2", "u1", "u4"), ids("@Иван Петров, @Иван и @Ян — и снова @Иван"))
+    }
+
+    /**
+     * Логин из ростера GitLab — то, что вставляет пикер и что рисует чип, даже
+     * когда на строке участника своего `gl_username` нет. Раньше уведомление
+     * искало только имя и `gl_username` участника, так что чип был, а звонка не было.
+     */
+    @Test
+    fun `a login borrowed from the gitlab roster notifies its owner`() {
+        val gl = GitlabMember(glUserId = 7, glUsername = "i.petrov", glName = "Ivan", tesseraUserId = "u2")
+        assertEquals(listOf("u2"), ids("@i.petrov глянь", listOf(gl)))
+    }
+
+    /** У гостя из GitLab нет аккаунта в Tessera — звать некого, текст остаётся ему. */
+    @Test
+    fun `a gitlab-only handle notifies nobody`() {
+        val gl = GitlabMember(glUserId = 8, glUsername = "outsider", glName = "Out Sider")
+        assertEquals(emptyList<String>(), ids("@outsider глянь", listOf(gl)))
     }
 
     @Test

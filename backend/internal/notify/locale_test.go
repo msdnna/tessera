@@ -46,8 +46,21 @@ func TestBundlesCarryTheSameKeys(t *testing.T) {
 	base := bundles[i18n.Default]
 	for _, lang := range i18n.Supported {
 		b := bundles[lang]
-		if b.ctx == "" || b.fallbackKind == "" || b.digestTitle == "" {
+		if b.ctx == "" || b.fallbackKind == "" || b.digestTitle == "" || b.unknownReason == "" {
 			t.Fatalf("%s: bundle is incomplete", lang)
+		}
+		// Both joiners, not just the comma: a language that forgot listLast would
+		// glue the last two words together rather than fail.
+		if b.listSep == "" || b.listLast == "" {
+			t.Errorf("%s: list joiners are incomplete (sep %q, last %q)", lang, b.listSep, b.listLast)
+		}
+		// All three forms, even where a language only distinguishes two: the
+		// header is rendered through the same rule for every language, and an
+		// empty form would render as a missing word rather than as an error.
+		for i, form := range b.digestNoun {
+			if form == "" {
+				t.Errorf("%s: digestNoun form %d is empty", lang, i)
+			}
 		}
 		for k := range base.events {
 			if _, ok := b.events[k]; !ok {
@@ -101,7 +114,22 @@ func TestSentenceWording(t *testing.T) {
 			name:    "updated lists changed fields in catalog order",
 			payload: map[string]any{"event": "task_updated", "actor": "Alice", "task_number": float64(7), "fields": []any{"due", "title"}},
 			lang:    "en",
-			want:    "Alice updated task #7: title, due date",
+			want:    "Alice updated task #7: title and due date",
+		},
+		{
+			// The same list the web bell feed words with Intl.ListFormat — see
+			// frontend/tests/ut-format.spec.js. A comma before the last item made
+			// one edit read two different ways depending on where it was delivered.
+			name:    "updated joins the last changed field with a conjunction",
+			payload: map[string]any{"event": "task_updated", "actor": "Алиса", "task_number": float64(7), "fields": []any{"title", "priority", "due"}},
+			lang:    "ru",
+			want:    "Алиса изменил(а) задачу #7: название, приоритет и срок",
+		},
+		{
+			name:    "updated joins three changed fields without an Oxford comma",
+			payload: map[string]any{"event": "task_updated", "actor": "Alice", "task_number": float64(7), "fields": []any{"title", "due", "start"}},
+			lang:    "en",
+			want:    "Alice updated task #7: title, due date and start date",
 		},
 		{
 			name:    "updated drops a field this build doesn't know",
@@ -121,6 +149,29 @@ func TestSentenceWording(t *testing.T) {
 			lang:    "ru",
 			want:    "GitLab: синхронизация не удалась — 401 (за меньше секунды)",
 		},
+		// A sync can fail with nothing to blame: the producer leaves `reason` out
+		// of the payload then (the same way it leaves a reminder's empty message
+		// out), because a default written here would be spliced into a sentence of
+		// the reader's language. This renderer serves the deliveries that leave the
+		// app, so it owns the default — without one the line breaks off at the dash.
+		{
+			name:    "sync failure with nothing to blame names it in ru",
+			payload: map[string]any{"event": "integration_sync_failed", "label": "GitLab", "seconds": float64(5)},
+			lang:    "ru",
+			want:    "GitLab: синхронизация не удалась — неизвестная ошибка (за 5 с)",
+		},
+		{
+			name:    "sync failure with nothing to blame names it in en",
+			payload: map[string]any{"event": "integration_sync_failed", "label": "GitLab", "seconds": float64(5)},
+			lang:    "en",
+			want:    "GitLab: sync failed — unknown error (after 5s)",
+		},
+		{
+			name:    "a blank reason counts as no reason",
+			payload: map[string]any{"event": "integration_sync_failed", "label": "GitLab", "reason": "   ", "seconds": float64(5)},
+			lang:    "en",
+			want:    "GitLab: sync failed — unknown error (after 5s)",
+		},
 		{
 			name:    "reminder keeps the user's own words",
 			payload: map[string]any{"event": "reminder", "message": "Позвонить в банк"},
@@ -138,6 +189,27 @@ func TestSentenceWording(t *testing.T) {
 			payload: map[string]any{"event": "task_mention", "actor": "Alice"},
 			lang:    "en",
 			want:    "Alice mentioned you in #?",
+		},
+		// A seeded column is a server-born name with a name_key (#2800), exactly
+		// like the personal workspace: the reader must see the caption their own
+		// board shows them, not the Russian string the seeder stored.
+		{
+			name:    "moved captions a seeded column in the reader's language",
+			payload: map[string]any{"event": "task_moved", "actor": "Alice", "task_number": float64(42), "column": "Готово", "column_key": "done"},
+			lang:    "en",
+			want:    "Alice moved task #42 → “Done”",
+		},
+		{
+			name:    "moved keeps a user-named column verbatim",
+			payload: map[string]any{"event": "task_moved", "actor": "Alice", "task_number": float64(42), "column": "Протестировано"},
+			lang:    "en",
+			want:    "Alice moved task #42 → “Протестировано”",
+		},
+		{
+			name:    "moved falls back to the stored name for a key this build doesn't know",
+			payload: map[string]any{"event": "task_moved", "actor": "Алиса", "task_number": float64(42), "column": "Приёмка", "column_key": "acceptance"},
+			lang:    "ru",
+			want:    "Алиса переместил(а) задачу #42 → «Приёмка»",
 		},
 	}
 	for _, c := range cases {
@@ -197,8 +269,37 @@ func TestTitleAndDigest(t *testing.T) {
 	if got, want := DigestHeader(3, "en"), "Digest — 3 notifications:"; got != want {
 		t.Errorf("DigestHeader(3, en) = %q, want %q", got, want)
 	}
-	if got, want := DigestHeader(3, "ru"), "Сводка — 3 уведомлений:"; got != want {
-		t.Errorf("DigestHeader(3, ru) = %q, want %q", got, want)
+}
+
+// A digest opens with a count, so its noun has to agree with it. Russian needs
+// all three CLDR forms, and the range a digest actually lands in — drainDeliveries
+// only combines two rows or more — is precisely the "few" one that a single frozen
+// form gets wrong.
+func TestDigestHeaderAgreesWithItsCount(t *testing.T) {
+	cases := []struct {
+		count int
+		lang  string
+		want  string
+	}{
+		{1, "ru", "Сводка — 1 уведомление:"},
+		{2, "ru", "Сводка — 2 уведомления:"},
+		{3, "ru", "Сводка — 3 уведомления:"},
+		{5, "ru", "Сводка — 5 уведомлений:"},
+		{11, "ru", "Сводка — 11 уведомлений:"},
+		{21, "ru", "Сводка — 21 уведомление:"},
+		{22, "ru", "Сводка — 22 уведомления:"},
+		{25, "ru", "Сводка — 25 уведомлений:"},
+		{111, "ru", "Сводка — 111 уведомлений:"},
+		{1, "en", "Digest — 1 notification:"},
+		{2, "en", "Digest — 2 notifications:"},
+		{21, "en", "Digest — 21 notifications:"},
+		// An unsupported language falls back to the server's own, agreement included.
+		{2, "de", "Сводка — 2 уведомления:"},
+	}
+	for _, c := range cases {
+		if got := DigestHeader(c.count, c.lang); got != c.want {
+			t.Errorf("DigestHeader(%d, %q) = %q, want %q", c.count, c.lang, got, c.want)
+		}
 	}
 }
 

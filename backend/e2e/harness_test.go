@@ -94,13 +94,13 @@ func runSuite(m *testing.M) int {
 		adminDBURL = defaultDBURL
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
 	// Mirror the in-process harness: an unreachable database is a skip, not a
 	// red run — the suite has to be a no-op on a box with no Postgres. It is
 	// still announced loudly, and TESSERA_TEST_REQUIRE_DB turns it red (#2736).
-	if err := pingDB(ctx, adminDBURL); err != nil {
+	pingCtx, cancelPing := context.WithTimeout(context.Background(), 30*time.Second)
+	err = pingDB(pingCtx, adminDBURL)
+	cancelPing()
+	if err != nil {
 		return testutil.SkipOrFail("e2e", fmt.Errorf("no database reachable at %s: %w", redactDBURL(adminDBURL), err))
 	}
 
@@ -139,8 +139,12 @@ func runSuite(m *testing.M) int {
 		}
 	}
 
+	// A fresh deadline: the builds above take longer than 30 s on a cold CI
+	// runner, and a context started before them expired before the first query.
+	dbCtx, cancelDB := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancelDB()
 	dbName := "tessera_e2e_" + runID
-	if err := createDatabase(ctx, dbName); err != nil {
+	if err := createDatabase(dbCtx, dbName); err != nil {
 		log.Printf("e2e: create database %s: %v", dbName, err)
 		return 1
 	}
@@ -159,7 +163,7 @@ func runSuite(m *testing.M) int {
 
 // goTool picks the Go that must do the building. `go test` doesn't hand the test
 // binary its own toolchain path, and on this box the pinned toolchain is the
-// versioned wrapper (go1.25.9) while plain `go` may be older — building with
+// versioned wrapper (go1.26.9) while plain `go` may be older — building with
 // that one fails on the toolchain directive. So: an explicit E2E_GO wins (the
 // Makefile passes it), otherwise try the wrapper named after the version this
 // binary was compiled with, otherwise plain `go` (the CI layout, where setup-go

@@ -20,6 +20,10 @@ object ReminderNotifications {
     /** Deep-link extra read by MainActivity to open a task on launch. */
     const val EXTRA_OPEN_TASK_ID = "open_task_id"
 
+    /** Тот же приём для приглашения в звонок: у такой строки задачи нет вовсе,
+     *  открывать нужно саму конференцию. */
+    const val EXTRA_OPEN_CONFERENCE_ID = "open_conference_id"
+
     /** Creates the reminders channel (idempotent) on the profile's language.
      *  Safe to call on every launch; the language lives in DataStore, hence suspend. */
     suspend fun ensureChannel(context: Context) = ensureChannel(context, AppContainer.language())

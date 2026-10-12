@@ -65,4 +65,4 @@ Empty columns can collapse by themselves — the auto-collapse switch lives in t
 
 At the end of the row of columns there is a **“+ Column”** tile with a dashed border. A tap turns it into an input field: type a name and the column appears at the end; an empty entry brings the tile back.
 
-Deleting lives in the “⋯” menu and asks for confirmation with the column name — for good reason: **the column is deleted together with all of its tasks**, and they do not go to the archive. If you need those tasks, move them to another column first: on the phone the quickest way is to drop each card onto the collapsed strip of a neighbouring column.
+Deleting lives in the “⋯” menu and asks for confirmation with the column name. The column's tasks are **not deleted** — they move to the board's first column (from the done column, to the one that becomes the done column instead). A board's last column can't be deleted.

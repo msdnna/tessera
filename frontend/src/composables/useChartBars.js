@@ -1,7 +1,8 @@
-import { ref, computed, onBeforeUnmount } from 'vue'
+import { ref, computed, unref, onBeforeUnmount } from 'vue'
 import { tasks as tasksApi } from '@/api'
 import { formatEstimate, estimateToDays, estimateTooltip } from '@/utils/estimation'
 import { useFormat } from '@/composables/useFormat'
+import { useToast } from '@/composables/useToast'
 import {
   DAY_MS,
   HOUR_MS,
@@ -24,6 +25,10 @@ import { SUB_STEP, SUB_TOP0 } from './useChartRows'
  *     persists it;
  *   - `renderRows` — the windowed rows with all of the above precomputed once per
  *     render (the templates used to call geom() six times per row).
+ *
+ * `readonly` (ref/getter/boolean) is the archive view: a bar still renders, but no
+ * drag starts, so no PATCH goes out. The archive is a read-only look at cards that
+ * are already out of the way — rescheduling one from there edits a live task.
  */
 export function useChartBars({
   tier,
@@ -35,8 +40,13 @@ export function useChartBars({
   rowHeight,
   findTask,
   onChanged,
+  readonly,
 }) {
   const { formatters } = useFormat()
+  // A refused reschedule is invisible without this: `onChanged()` re-reads the
+  // board, the bar slides back to the dates it had, and the gesture looks like one
+  // that simply did not catch. Same rule the card and its context menu follow.
+  const toast = useToast()
   // During a drag we hold a transient preview so only the dragged bar re-renders.
   const drag = ref(null) // { id, mode, startX, baseStart, baseDue, hasStart, hasDue }
   const preview = ref(null) // { id, start, due }
@@ -90,6 +100,7 @@ export function useChartBars({
   // ── drag-to-reschedule (move whole bar / resize an edge) ──
   function onBarDown(e, t, mode) {
     if (e.button != null && e.button !== 0) return
+    if (typeof readonly === 'function' ? readonly() : unref(readonly)) return
     e.preventDefault()
     e.stopPropagation()
     const s = parse(t.start_date)
@@ -167,7 +178,29 @@ export function useChartBars({
         completed: !!t.completed_at,
       })
       onChanged()
-    } catch {
+    } catch (e) {
+      toast?.error(e?.message || String(e))
+      onChanged()
+    }
+  }
+
+  // ⇧←/⇧→ on a selected bar (v2, #2959): both ends move by whole days, the same
+  // full-replace PATCH the drag sends.
+  async function shiftDays(t, n) {
+    if (!t || !n) return
+    const s = parse(t.start_date)
+    const d = parse(t.due_date)
+    if (s == null && d == null) return
+    try {
+      await tasksApi.update(t.id, {
+        title: t.title,
+        priority: t.priority || 0,
+        due_date: d != null ? new Date(d + n * DAY_MS).toISOString() : null,
+        start_date: s != null ? new Date(s + n * DAY_MS).toISOString() : null,
+        recurrence: t.recurrence || null,
+        completed: !!t.completed_at,
+      })
+    } finally {
       onChanged()
     }
   }
@@ -181,7 +214,7 @@ export function useChartBars({
   // untouched, task rows carry the bar, the ghost envelope and the sub-bars.
   const renderRows = computed(() =>
     vwindow.value.rows.map((r) => {
-      if (r.t === 'lane') return r
+      if (r.t !== 'task') return r
       const ghost = ghostGeom(r.task)
       return {
         t: 'task',
@@ -201,5 +234,5 @@ export function useChartBars({
     }),
   )
 
-  return { drag, preview, geom, ghostGeom, ghostTitle, onBarDown, renderRows }
+  return { drag, preview, geom, ghostGeom, ghostTitle, onBarDown, renderRows, shiftDays }
 }

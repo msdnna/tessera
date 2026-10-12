@@ -1,0 +1,34 @@
+{
+  "builtin": {
+    "assign": { "description": "Assign an assignee", "example": "/assign {'@'}msdnna" },
+    "unassign": {
+      "description": "Remove an assignee (no argument — all of them)",
+      "example": "/unassign {'@'}msdnna"
+    },
+    "due": { "description": "Set the due date", "example": "/due 2026-08-14" },
+    "remove_due": { "description": "Clear the due date", "example": "/remove_due" },
+    "start": { "description": "Set the start date", "example": "/start tomorrow" },
+    "remove_start": { "description": "Clear the start date", "example": "/remove_start" },
+    "estimate": { "description": "Set the estimate", "example": "/estimate 2h30m" },
+    "remove_estimate": { "description": "Clear the estimate", "example": "/remove_estimate" },
+    "spend": { "description": "Log time spent", "example": "/spend 1h30m" },
+    "priority": { "description": "Set the priority", "example": "/priority high" },
+    "title": { "description": "Change the title", "example": "/title New title" },
+    "tag": { "description": "Add a tag (comma-separated)", "example": "/tag backend, urgent" },
+    "untag": { "description": "Remove a tag", "example": "/untag backend" },
+    "milestone": { "description": "Set the milestone", "example": "/milestone Release 1.0" },
+    "remove_milestone": { "description": "Clear the milestone", "example": "/remove_milestone" },
+    "move": { "description": "Move to a column", "example": "/move In progress" },
+    "close": { "description": "Close the task", "example": "/close" },
+    "reopen": { "description": "Reopen the task", "example": "/reopen" },
+    "archive": { "description": "Archive the task", "example": "/archive" },
+    "relate": { "description": "Relate to a task", "example": "/relate #2591" },
+    "blocks": { "description": "Blocks a task", "example": "/blocks #2591" },
+    "blocked_by": { "description": "Blocked by a task", "example": "/blocked_by #2591" },
+    "duplicates": { "description": "Duplicates a task", "example": "/duplicates #2591" },
+    "unlink": { "description": "Remove a task link", "example": "/unlink #2591" },
+    "subtask": { "description": "Create a subtask", "example": "/subtask Write tests" },
+    "parent": { "description": "Make it a subtask of a task", "example": "/parent #2591" },
+    "unparent": { "description": "Detach from the parent", "example": "/unparent" }
+  }
+}

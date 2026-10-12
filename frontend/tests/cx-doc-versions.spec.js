@@ -87,6 +87,52 @@ describe('useDocVersions', () => {
     expect(api.version.mock.calls.filter(([id]) => id === 'v3')).toHaveLength(2)
   })
 
+  // The journal is read *while* editing: every autosave reloads it (#2731), and
+  // the reload drops the live body the selection is compared against. Refetching
+  // it is the composable's job — the reader picked a comparison and nothing on
+  // screen asks them to pick it again, so without this the panel sits on
+  // «Загружаем версию…» from the next keystroke on.
+  it('keeps the open comparison alive across a reload', async () => {
+    const v = useDocVersions()
+    await v.open('doc-1')
+    await v.select('v1')
+    expect(v.ready.value).toBe(true)
+    await v.load()
+    expect(v.ready.value).toBe(true)
+    expect(v.rows.value.length).toBeGreaterThan(0)
+    // …against the *fresh* body of the live version, not the dropped copy.
+    expect(api.version.mock.calls.filter(([id]) => id === 'v3')).toHaveLength(2)
+  })
+
+  // A save that starts a new session leaves the selection comparing against an
+  // entry that did not exist a moment ago, and whose body was never fetched.
+  it('picks up a newly appeared live version as the baseline', async () => {
+    const v = useDocVersions()
+    await v.open('doc-1')
+    await v.select('v1')
+    api.versions.mockResolvedValue({ data: [entry(4), entry(3), entry(2), entry(1)] })
+    await v.load()
+    expect(v.baseline.value.revision).toBe(4)
+    expect(v.ready.value).toBe(true)
+    expect(api.version).toHaveBeenCalledWith('v4')
+  })
+
+  // Pruning (the server keeps 50 automatic entries) can retire the version the
+  // reader pinned as the other side. Holding the dead id keeps `baseline` null
+  // and the diff unreachable; falling back to the newest answers the question
+  // the panel opens with.
+  it('drops a compare pin whose version is gone', async () => {
+    const v = useDocVersions()
+    await v.open('doc-1')
+    await v.compareWith('v2')
+    await v.select('v1')
+    api.versions.mockResolvedValue({ data: [entry(3), entry(1)] })
+    await v.load()
+    expect(v.compareId.value).toBe('')
+    expect(v.baseline.value.revision).toBe(3)
+    expect(v.ready.value).toBe(true)
+  })
+
   it('orders the comparison by revision, whichever side was picked', async () => {
     api.version.mockImplementation((id) =>
       Promise.resolve({

@@ -17,6 +17,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 
@@ -28,16 +29,20 @@ import (
 
 	"tessera/config"
 	"tessera/handlers"
+	"tessera/internal/auth"
 	"tessera/internal/database"
 	"tessera/internal/db"
-	"tessera/internal/mail"
 	"tessera/internal/realtime"
 	"tessera/internal/testutil"
 	"tessera/migrations"
 )
 
 var (
-	testServer  *httptest.Server
+	testServer *httptest.Server
+	// testRouter is the very engine testServer serves, kept so a test can read
+	// the route table instead of restating it (see authz_matrix_test.go: a
+	// hand-written route list silently stops covering what it doesn't list).
+	testRouter  *gin.Engine
 	testPool    *pgxpool.Pool
 	testQueries *db.Queries
 	testAPI     *handlers.API // spawn Run*Worker(ctx) again to drain an outbox now (workers drain once at startup)
@@ -79,6 +84,8 @@ func TestMain(m *testing.M) {
 	_, _ = mig.Close()
 
 	ctx := context.Background()
+	// Hundreds of test users: bcrypt at its minimum cost (production keeps the default).
+	auth.UseTestHashCost()
 	testPool = database.Connect(ctx, dbURL)
 	testQueries = db.New(testPool)
 
@@ -111,8 +118,11 @@ func TestMain(m *testing.M) {
 		// production ceilings, so the rest of the suite runs against them.
 		RateLimitEnabled: false,
 	}
-	router, rh := newRouter(cfg, testQueries, testPool, hub, mail.New(mail.Config{}))
+	// The no-op mailer's contract (Enabled false, letters only logged), plus a
+	// copy of every letter so the code flows (#3035) can read their codes.
+	router, rh := newRouter(cfg, testQueries, testPool, hub, testMail)
 	testAPI = rh
+	testRouter = router
 	testServer = httptest.NewServer(router)
 	defer testServer.Close()
 
@@ -120,7 +130,13 @@ func TestMain(m *testing.M) {
 	// (GitLab write-back, notifications) created by the flow tests.
 	rh.RegisterBackgroundWorkers()
 	workerCtx, stopWorkers := context.WithCancel(ctx)
+	// Work a request starts but does not wait for (the jobs panel's "run now")
+	// belongs to the same scope as the loops below, as it does in main: it runs
+	// the same sweeps against the same pool, and teardown closes that pool.
+	var detached sync.WaitGroup
+	rh.WireBackgroundScope(workerCtx, &detached)
 	go rh.RunSyncWorker(workerCtx)
+	go rh.RunJobPublisher(workerCtx)
 	go rh.RunGitlabWriteBackWorker(workerCtx)
 	go rh.RunNotificationWorker(workerCtx)
 	go rh.RunNotificationScanner(workerCtx)
@@ -133,6 +149,7 @@ func TestMain(m *testing.M) {
 
 	code := m.Run()
 	stopWorkers()
+	detached.Wait()
 	testPool.Close()
 	os.Exit(code)
 }
@@ -250,11 +267,11 @@ func (c *client) do(method, path string, body any) resp {
 }
 
 // get/post/patch/put/del are one-line sugar over do.
-func (c *client) get(path string) resp               { return c.do(http.MethodGet, path, nil) }
-func (c *client) post(path string, body any) resp    { return c.do(http.MethodPost, path, body) }
-func (c *client) patch(path string, body any) resp   { return c.do(http.MethodPatch, path, body) }
-func (c *client) put(path string, body any) resp     { return c.do(http.MethodPut, path, body) }
-func (c *client) del(path string) resp               { return c.do(http.MethodDelete, path, nil) }
+func (c *client) get(path string) resp             { return c.do(http.MethodGet, path, nil) }
+func (c *client) post(path string, body any) resp  { return c.do(http.MethodPost, path, body) }
+func (c *client) patch(path string, body any) resp { return c.do(http.MethodPatch, path, body) }
+func (c *client) put(path string, body any) resp   { return c.do(http.MethodPut, path, body) }
+func (c *client) del(path string) resp             { return c.do(http.MethodDelete, path, nil) }
 func (c *client) expect(t *testing.T, r resp, want int) map[string]any {
 	t.Helper()
 	if r.Status != want {

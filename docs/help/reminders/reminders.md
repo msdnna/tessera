@@ -2,6 +2,7 @@
 title: Напоминания
 category: Напоминания
 order: 55
+platforms: android
 keywords: напоминания, напомнить, уведомления, push, срок, будильник, android
 updated: 2026-08-21
 ---

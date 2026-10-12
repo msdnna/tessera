@@ -12,20 +12,27 @@ import (
 )
 
 const createNote = `-- name: CreateNote :one
-INSERT INTO notes (workspace_id, project_id, author_id, title, body, slug)
-VALUES ($1, $2, $3, $4, $5, $6)
-RETURNING id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug
+INSERT INTO notes (id, workspace_id, project_id, author_id, title, body, slug, task_id, visibility, tags, mentions)
+VALUES (COALESCE($9::uuid, gen_random_uuid()), $1, $2, $3, $4, $5, $6, $7, $8, $10::text[], $11::uuid[])
+RETURNING id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug, task_id, visibility, tags, mentions
 `
 
 type CreateNoteParams struct {
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	ProjectID   *uuid.UUID `json:"project_id"`
-	AuthorID    *uuid.UUID `json:"author_id"`
-	Title       string     `json:"title"`
-	Body        string     `json:"body"`
-	Slug        string     `json:"slug"`
+	WorkspaceID uuid.UUID   `json:"workspace_id"`
+	ProjectID   *uuid.UUID  `json:"project_id"`
+	AuthorID    *uuid.UUID  `json:"author_id"`
+	Title       string      `json:"title"`
+	Body        string      `json:"body"`
+	Slug        string      `json:"slug"`
+	TaskID      *uuid.UUID  `json:"task_id"`
+	Visibility  string      `json:"visibility"`
+	ClientID    *uuid.UUID  `json:"client_id"`
+	Tags        []string    `json:"tags"`
+	Mentions    []uuid.UUID `json:"mentions"`
 }
 
+// client_id (#3042): a capture queued offline names its record itself, so a
+// resend after a lost answer finds the first one instead of making a twin.
 func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, error) {
 	row := q.db.QueryRow(ctx, createNote,
 		arg.WorkspaceID,
@@ -34,6 +41,11 @@ func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, e
 		arg.Title,
 		arg.Body,
 		arg.Slug,
+		arg.TaskID,
+		arg.Visibility,
+		arg.ClientID,
+		arg.Tags,
+		arg.Mentions,
 	)
 	var i Note
 	err := row.Scan(
@@ -46,6 +58,10 @@ func (q *Queries) CreateNote(ctx context.Context, arg CreateNoteParams) (Note, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Slug,
+		&i.TaskID,
+		&i.Visibility,
+		&i.Tags,
+		&i.Mentions,
 	)
 	return i, err
 }
@@ -60,7 +76,7 @@ func (q *Queries) DeleteNote(ctx context.Context, id uuid.UUID) error {
 }
 
 const getNote = `-- name: GetNote :one
-SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug FROM notes WHERE id = $1
+SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug, task_id, visibility, tags, mentions FROM notes WHERE id = $1
 `
 
 func (q *Queries) GetNote(ctx context.Context, id uuid.UUID) (Note, error) {
@@ -76,16 +92,31 @@ func (q *Queries) GetNote(ctx context.Context, id uuid.UUID) (Note, error) {
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Slug,
+		&i.TaskID,
+		&i.Visibility,
+		&i.Tags,
+		&i.Mentions,
 	)
 	return i, err
 }
 
-const listNotes = `-- name: ListNotes :many
-SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug FROM notes WHERE workspace_id = $1 ORDER BY updated_at DESC
+const inboxNotes = `-- name: InboxNotes :many
+SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug, task_id, visibility, tags, mentions FROM notes
+WHERE workspace_id = $1
+  AND (visibility = 'workspace' OR author_id = $2::uuid)
+ORDER BY updated_at DESC
+LIMIT 300
 `
 
-func (q *Queries) ListNotes(ctx context.Context, workspaceID uuid.UUID) ([]Note, error) {
-	rows, err := q.db.Query(ctx, listNotes, workspaceID)
+type InboxNotesParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Viewer      uuid.UUID `json:"viewer"`
+}
+
+// InboxNotes is ListNotes for the «Входящие» feed (#2972), capped: the feed is a
+// list of recent records, not an archive.
+func (q *Queries) InboxNotes(ctx context.Context, arg InboxNotesParams) ([]Note, error) {
+	rows, err := q.db.Query(ctx, inboxNotes, arg.WorkspaceID, arg.Viewer)
 	if err != nil {
 		return nil, err
 	}
@@ -103,6 +134,106 @@ func (q *Queries) ListNotes(ctx context.Context, workspaceID uuid.UUID) ([]Note,
 			&i.CreatedAt,
 			&i.UpdatedAt,
 			&i.Slug,
+			&i.TaskID,
+			&i.Visibility,
+			&i.Tags,
+			&i.Mentions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listNotes = `-- name: ListNotes :many
+SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug, task_id, visibility, tags, mentions FROM notes
+WHERE workspace_id = $1
+  AND (visibility = 'workspace' OR author_id = $2::uuid)
+ORDER BY updated_at DESC
+`
+
+type ListNotesParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Viewer      uuid.UUID `json:"viewer"`
+}
+
+// ListNotes lists the notes of a workspace the viewer may read: the shared ones
+// and their own private ones (0081). A private note is its author's alone — it
+// never shows up in a colleague's list, search or socket.
+func (q *Queries) ListNotes(ctx context.Context, arg ListNotesParams) ([]Note, error) {
+	rows, err := q.db.Query(ctx, listNotes, arg.WorkspaceID, arg.Viewer)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Note
+	for rows.Next() {
+		var i Note
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProjectID,
+			&i.AuthorID,
+			&i.Title,
+			&i.Body,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Slug,
+			&i.TaskID,
+			&i.Visibility,
+			&i.Tags,
+			&i.Mentions,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listTaskNotes = `-- name: ListTaskNotes :many
+SELECT id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug, task_id, visibility, tags, mentions FROM notes
+WHERE task_id = $1
+  AND (visibility = 'workspace' OR author_id = $2::uuid)
+ORDER BY updated_at DESC
+`
+
+type ListTaskNotesParams struct {
+	TaskID *uuid.UUID `json:"task_id"`
+	Viewer uuid.UUID  `json:"viewer"`
+}
+
+// ListTaskNotes lists the notes tied to a task that the viewer may read.
+func (q *Queries) ListTaskNotes(ctx context.Context, arg ListTaskNotesParams) ([]Note, error) {
+	rows, err := q.db.Query(ctx, listTaskNotes, arg.TaskID, arg.Viewer)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Note
+	for rows.Next() {
+		var i Note
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProjectID,
+			&i.AuthorID,
+			&i.Title,
+			&i.Body,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.Slug,
+			&i.TaskID,
+			&i.Visibility,
+			&i.Tags,
+			&i.Mentions,
 		); err != nil {
 			return nil, err
 		}
@@ -160,6 +291,38 @@ func (q *Queries) NotesMissingSlug(ctx context.Context) ([]NotesMissingSlugRow, 
 	return items, nil
 }
 
+const projectNoteSlugs = `-- name: ProjectNoteSlugs :many
+SELECT id, slug FROM notes WHERE project_id = $1 AND slug <> '' ORDER BY created_at
+`
+
+type ProjectNoteSlugsRow struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+}
+
+// ProjectNoteSlugs lists the addresses a project's notes occupy, for the same
+// reason as ProjectDocumentSlugs: notes_ws_slug_key is per workspace and a
+// transfer carries the notes into one that may already use those addresses.
+func (q *Queries) ProjectNoteSlugs(ctx context.Context, projectID *uuid.UUID) ([]ProjectNoteSlugsRow, error) {
+	rows, err := q.db.Query(ctx, projectNoteSlugs, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectNoteSlugsRow
+	for rows.Next() {
+		var i ProjectNoteSlugsRow
+		if err := rows.Scan(&i.ID, &i.Slug); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reassignProjectNotesWorkspace = `-- name: ReassignProjectNotesWorkspace :exec
 UPDATE notes SET workspace_id = $2 WHERE project_id = $1
 `
@@ -192,19 +355,32 @@ func (q *Queries) SetNoteSlug(ctx context.Context, arg SetNoteSlugParams) error 
 
 const updateNote = `-- name: UpdateNote :one
 UPDATE notes
-SET title = $2, body = $3, updated_at = now()
+SET title = $2, body = $3, task_id = $4, visibility = $5,
+    tags = $6::text[], mentions = $7::uuid[], updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug
+RETURNING id, workspace_id, project_id, author_id, title, body, created_at, updated_at, slug, task_id, visibility, tags, mentions
 `
 
 type UpdateNoteParams struct {
-	ID    uuid.UUID `json:"id"`
-	Title string    `json:"title"`
-	Body  string    `json:"body"`
+	ID         uuid.UUID   `json:"id"`
+	Title      string      `json:"title"`
+	Body       string      `json:"body"`
+	TaskID     *uuid.UUID  `json:"task_id"`
+	Visibility string      `json:"visibility"`
+	Tags       []string    `json:"tags"`
+	Mentions   []uuid.UUID `json:"mentions"`
 }
 
 func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) (Note, error) {
-	row := q.db.QueryRow(ctx, updateNote, arg.ID, arg.Title, arg.Body)
+	row := q.db.QueryRow(ctx, updateNote,
+		arg.ID,
+		arg.Title,
+		arg.Body,
+		arg.TaskID,
+		arg.Visibility,
+		arg.Tags,
+		arg.Mentions,
+	)
 	var i Note
 	err := row.Scan(
 		&i.ID,
@@ -216,6 +392,10 @@ func (q *Queries) UpdateNote(ctx context.Context, arg UpdateNoteParams) (Note, e
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Slug,
+		&i.TaskID,
+		&i.Visibility,
+		&i.Tags,
+		&i.Mentions,
 	)
 	return i, err
 }

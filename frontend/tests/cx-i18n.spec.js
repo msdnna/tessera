@@ -55,14 +55,17 @@ describe('locale bundles', () => {
   // Key parity is blind to the values: `"save": "Сохранить"` sitting in the en
   // bundle passes every check above and then shows Russian to an English user.
   // The exceptions are text that is deliberately not translated, listed with a
-  // reason — an endonym in the language picker, and two references to a board
-  // column whose name is server-seeded Russian user data (pitfalls 3–4 of #2796).
+  // reason — an endonym in the language picker, and a sample GitLab label that
+  // really is Russian on the GitLab side (pitfalls 3–4 of #2796).
+  //
+  // The two tour steps that used to sit here quoted a seeded board column «by
+  // its actual name»: true when the server's Russian name was all the client
+  // had, wrong since #2800 gave seeded columns a name_key and the caption began
+  // following the reader's language. They interpolate the caption now (#2932).
   const CYRILLIC_IN_EN_ALLOWED = {
     'common.language.ru': 'endonym — the picker names each language in itself',
     'gitlab.modal.writeback.groupLabelPlaceholder':
       'sample of a real GitLab label, seeded in Russian',
-    'tour.steps.task-create.body': 'quotes the «К работе» column by its actual name',
-    'tour.steps.dnd-card.body': 'quotes the «К работе» column by its actual name',
   }
 
   it('has no Russian left in the en bundle', () => {

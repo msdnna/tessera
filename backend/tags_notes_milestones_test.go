@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"net/http"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -20,10 +21,11 @@ func TestTagFlow(t *testing.T) {
 		t.Fatalf("tag scoping: %v", tag)
 	}
 
-	// Duplicate name in the same project violates UNIQUE(project_id, name).
-	// FACT: the handler maps it to a generic 500 (no 409 branch) — see report.
-	if r := c.post("/projects/"+s.Project+"/tags", map[string]any{"name": "bug"}); r.Status != http.StatusInternalServerError {
-		t.Fatalf("duplicate tag: status %d, expected current behavior 500\n%s", r.Status, r.Body)
+	// Duplicate name in the same project violates UNIQUE(project_id, name), and
+	// that is a refusal the reader can act on — 409 with a sentence, not the
+	// generic 500 this used to answer (#2932).
+	if r := c.post("/projects/"+s.Project+"/tags", map[string]any{"name": "bug"}); r.Status != http.StatusConflict {
+		t.Fatalf("duplicate tag: status %d, want 409\n%s", r.Status, r.Body)
 	}
 
 	c.expect(t, c.post("/projects/"+s.Project+"/tags", map[string]any{"name": "feature"}), http.StatusCreated)
@@ -162,6 +164,76 @@ func TestWorkspaceTagPrefixes(t *testing.T) {
 	// The repeated prefix keeps exactly one of the two labels (first wins).
 	if l := byPrefix["effort::"]; l != "Сложность" && l != "Другая подпись" {
 		t.Fatalf("effort:: label = %q, want one of the two project labels", l)
+	}
+}
+
+// The workspace-wide label of a shared prefix must be the same label tomorrow.
+//
+// The list is deduped by taking the first row per prefix, so which project's
+// wording Home shows is decided by the order the rows come back in. Ordering by
+// prefix alone leaves that to physical row order — and SetTagPrefixes is
+// DELETE-then-INSERT over the project's whole set, so editing ANY label in one
+// project moves all of its rows to the end of the table and hands the shared
+// group the other project's wording, with nothing in the request saying so
+// (#2932).
+func TestWorkspaceTagPrefixLabelDoesNotDrift(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	p2 := mkProject(t, c, s.WS, s.Group, "Второй проект "+t.Name())
+
+	c.put("/projects/"+s.Project+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{
+			{"prefix": "effort::", "label": "Сложность"},
+			{"prefix": "prio:", "label": "Приоритет"},
+		},
+	})
+	c.put("/projects/"+p2+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{{"prefix": "effort::", "label": "Другая подпись"}},
+	})
+
+	label := func() string {
+		r := c.get("/workspaces/" + s.WS + "/tag-prefixes")
+		if r.Status != http.StatusOK {
+			t.Fatalf("list ws prefixes: status %d\n%s", r.Status, r.Body)
+		}
+		for _, p := range r.listBody(t) {
+			if p["prefix"] == "effort::" {
+				return p["label"].(string)
+			}
+		}
+		t.Fatalf("effort:: missing from the workspace list")
+		return ""
+	}
+
+	// The project that defined the prefix first is the one whose wording the
+	// workspace shows — a rule that survives every later edit.
+	const want = "Сложность"
+	if got := label(); got != want {
+		t.Fatalf("effort:: label = %q, want %q (the older project's wording)", got, want)
+	}
+
+	// An edit that does not touch the shared prefix at all: the first project
+	// renames its OWN other group.
+	c.put("/projects/"+s.Project+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{
+			{"prefix": "effort::", "label": "Сложность"},
+			{"prefix": "prio:", "label": "Важность"},
+		},
+	})
+	if got := label(); got != want {
+		t.Fatalf("after an unrelated rename effort:: label = %q, want %q", got, want)
+	}
+
+	// And one in the second project, which does not own the wording.
+	c.put("/projects/"+p2+"/tag-prefixes", map[string]any{
+		"prefixes": []map[string]any{
+			{"prefix": "effort::", "label": "Другая подпись"},
+			{"prefix": "area::", "label": "Область"},
+		},
+	})
+	if got := label(); got != want {
+		t.Fatalf("after the second project's edit effort:: label = %q, want %q", got, want)
 	}
 }
 
@@ -391,6 +463,49 @@ func TestWorkspaceSearchMatchesSubstringAndBodies(t *testing.T) {
 	res = c.expect(t, c.get("/workspaces/"+s.WS+"/search?q="+query+"zzz"), http.StatusOK)
 	if len(res["tasks"].([]any)) != 0 || len(res["notes"].([]any)) != 0 {
 		t.Fatalf("no-hit query: %v", res)
+	}
+}
+
+// Search for the ⌘K palette (#2957): a task's number finds it and sorts first,
+// task rows carry the status column and board/project names, and boards are
+// found by their own or their project's name.
+func TestWorkspaceSearchByNumberAndBoards(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Палитра без номера в заголовке")
+	num := fmt.Sprint(int(task["number"].(float64)))
+
+	for _, q := range []string{num, "%23" + num} { // «2950» and «#2950»
+		res := c.expect(t, c.get("/workspaces/"+s.WS+"/search?q="+q), http.StatusOK)
+		tasks, _ := res["tasks"].([]any)
+		if len(tasks) == 0 {
+			t.Fatalf("q=%s: no task hits\n%v", q, res)
+		}
+		row := tasks[0].(map[string]any)
+		if row["id"] != task["id"] {
+			t.Fatalf("q=%s: exact number must sort first, got %v", q, row)
+		}
+		for _, k := range []string{"column_name", "board_name", "project_name", "column_color"} {
+			if _, ok := row[k]; !ok {
+				t.Fatalf("q=%s: task row lacks %q: %v", q, k, row)
+			}
+		}
+	}
+
+	board := c.expect(t, c.get("/boards/"+s.Board), http.StatusOK)
+	name := board["name"].(string)
+	res := c.expect(t, c.get("/workspaces/"+s.WS+"/search?q="+url.QueryEscape(name)), http.StatusOK)
+	boards, _ := res["boards"].([]any)
+	found := false
+	for _, b := range boards {
+		if b.(map[string]any)["id"] == s.Board {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("board %q not found by name: %v", name, res["boards"])
 	}
 }
 

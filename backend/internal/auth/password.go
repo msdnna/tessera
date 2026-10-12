@@ -1,14 +1,66 @@
 package auth
 
 import (
+	"errors"
 	"sync"
+	"unicode/utf8"
 
 	"golang.org/x/crypto/bcrypt"
 )
 
+// MaxPasswordBytes is bcrypt's own ceiling, re-exported so the handlers can
+// refuse a password before hashing it rather than after.
+//
+// It is bytes, not characters, and that is what makes it reachable: a Russian
+// passphrase of 37 letters is 74 bytes. x/crypto returns ErrPasswordTooLong
+// instead of truncating, so anything over this arrived at the callers as an
+// error indistinguishable from a real failure and became a 500 (#2932).
+//
+// MinPasswordRunes is the other end, in the unit the request binding already
+// counts (`binding:"min=8"` is runes). Both live here so the two doors that set
+// a password and the one that resets it cannot drift apart.
+const (
+	MaxPasswordBytes = 72
+	MinPasswordRunes = 8
+)
+
+// ErrPasswordTooLong is returned by CheckPasswordPolicy for a password bcrypt
+// cannot hash. Named rather than inlined so a caller can tell it apart from a
+// password that is merely too short.
+var ErrPasswordTooLong = errors.New("password exceeds 72 bytes")
+
+// ErrPasswordTooShort is returned by CheckPasswordPolicy below the minimum.
+var ErrPasswordTooShort = errors.New("password is shorter than 8 characters")
+
+// CheckPasswordPolicy reports whether a new password can be stored.
+//
+// Both bounds are checked here even though the binding tag already covers the
+// lower one: ResetPassword and ChangeMyPassword share this, and a rule enforced
+// in two places with two different units is how the upper bound went missing in
+// the first place.
+func CheckPasswordPolicy(plain string) error {
+	if utf8.RuneCountInString(plain) < MinPasswordRunes {
+		return ErrPasswordTooShort
+	}
+	if len(plain) > MaxPasswordBytes {
+		return ErrPasswordTooLong
+	}
+	return nil
+}
+
+// hashCost is bcrypt.DefaultCost everywhere but in the HTTP test harness, which
+// lowers it (UseTestHashCost): every test user is a bcrypt hash, and under -race
+// the full suite spent minutes in key expansion alone.
+var hashCost = bcrypt.DefaultCost
+
+// UseTestHashCost drops the bcrypt cost to the minimum. For test harnesses only —
+// call it before the first hash; the dummy hash follows it, so the login timing
+// parity (DummyHash vs a stored hash) still holds inside the test run.
+func UseTestHashCost() { hashCost = bcrypt.MinCost }
+
 // HashPassword returns a bcrypt hash at the default cost.
 func HashPassword(plain string) (string, error) {
-	b, err := bcrypt.GenerateFromPassword([]byte(plain), bcrypt.DefaultCost)
+	b, err := bcrypt.GenerateFromPassword([]byte(plain), hashCost)
 	return string(b), err
 }
 
@@ -28,7 +80,7 @@ func CheckPassword(hash, plain string) bool {
 // Computed lazily rather than at init: it costs a bcrypt round, and processes
 // that never serve a login (the migration runner, tooling) should not pay it.
 var dummyHash = sync.OnceValue(func() string {
-	h, err := bcrypt.GenerateFromPassword([]byte("tessera-dummy-account-not-found"), bcrypt.DefaultCost)
+	h, err := bcrypt.GenerateFromPassword([]byte("tessera-dummy-account-not-found"), hashCost)
 	if err != nil {
 		// GenerateFromPassword errors only on an invalid cost; DefaultCost is valid.
 		panic(err)

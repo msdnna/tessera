@@ -1,7 +1,8 @@
 import { test, expect, column, cardsIn, openBoard } from '../fixtures.js'
 
 // Search filters the cards already on the board — no reload, no refetch — so the
-// assertion is about what the composer does to the rendered lists.
+// assertion is about what the header search (on a board it is the board's title
+// filter, v2 #2954) does to the rendered lists.
 test('поиск по названию оставляет на доске только совпавшие карточки', async ({
   page,
   backend,
@@ -16,7 +17,7 @@ test('поиск по названию оставляет на доске тол
   await openBoard(page, board.id)
   await expect(cardsIn(page, columns[0].name)).toHaveCount(2)
 
-  const search = page.getByTestId('board-search')
+  const search = page.getByTestId('header-search')
   await search.fill('Найди меня')
   await expect(cardsIn(page, columns[0].name).filter({ hasText: keep })).toBeVisible()
   await expect(cardsIn(page, columns[0].name).filter({ hasText: drop })).toHaveCount(0)
@@ -24,6 +25,27 @@ test('поиск по названию оставляет на доске тол
   // Clearing restores the full board: the filter is a view, it deletes nothing.
   await search.fill('')
   await expect(cardsIn(page, columns[0].name)).toHaveCount(2)
+})
+
+// Nothing on this board matches → the header search widens to the workspace,
+// and picking a task from another board goes there (v2, #2954).
+test('поиск без совпадений на доске показывает задачи пространства и ведёт на их доску', async ({
+  page,
+  backend,
+}) => {
+  const { project, board } = await backend.freshBoard('flt-ws')
+  const other = await backend.post(`/projects/${project.id}/boards`, { name: 'Соседняя доска' })
+  const otherCols = await backend.get(`/boards/${other.id}/columns`)
+  const title = `Где-то рядом ${Date.now().toString(36)}`
+  await backend.post(`/boards/${other.id}/tasks`, { column_id: otherCols[0].id, title })
+
+  await openBoard(page, board.id)
+  await page.getByTestId('header-search').fill(title)
+
+  const hit = page.locator('.search .panel .row').filter({ hasText: title })
+  await expect(hit).toBeVisible()
+  await hit.click()
+  await expect(page).toHaveURL(new RegExp(`/board/${other.slug}\\?task=`))
 })
 
 // Grouping the board by tags — columns become tags — is the feature Tessera has

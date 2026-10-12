@@ -3,7 +3,7 @@ title: Notes
 category: Notes
 order: 50
 keywords: notes, records, draft, markdown, project, search, app
-updated: 2026-08-24
+updated: 2026-10-10
 ---
 
 A note is a short record that doesn't need a task: the outcome of a call, a list of questions, a draft of some wording. The section opens from the **“Notes”** item in the side menu (the “☰” on the left of the top bar).
@@ -19,6 +19,8 @@ Changes are recorded with the **“Save”** button: go back without it and your
 The text is plain Markdown, the same as on the web: a note started on a phone opens on a computer as-is.
 
 Notes belong to a workspace: switch the workspace in the side-menu header and you see its notes.
+
+Tags and mentions a note got on the web in the Inbox (`#tag`, `@person`) show in the list as a line under its title: “#release #ideas @Anna”. For now they can only be changed on the web; editing the title and text in the app leaves them as they are.
 
 ## A note or a document
 

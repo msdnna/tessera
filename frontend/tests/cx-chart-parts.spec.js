@@ -21,16 +21,33 @@ vi.mock('@/api', () => ({
 
 import ChartTaskRow from '@/components/chart/ChartTaskRow.vue'
 import ChartLaneHeader from '@/components/chart/ChartLaneHeader.vue'
-import ChartToolbar from '@/components/chart/ChartToolbar.vue'
+import ChartControls from '@/components/chart/ChartControls.vue'
 import ChartAxisHeader from '@/components/chart/ChartAxisHeader.vue'
 import ChartUnscheduled from '@/components/chart/ChartUnscheduled.vue'
 import { useChartBars } from '@/composables/useChartBars'
 import { SUB_STEP, SUB_TOP0 } from '@/composables/useChartRows'
 import { DAY_MS } from '@/utils/timeAxis'
 
+const popoverStub = {
+  template: '<div class="n-popover-stub"><slot name="trigger" /><slot /></div>',
+}
+const switchStub = {
+  props: ['value'],
+  emits: ['update:value'],
+  template: '<button class="n-switch-stub" @click="$emit(\'update:value\', !value)" />',
+}
+// <script setup> components resolve Naive's own names ('Popover'), not the N-aliases.
 const stubs = {
+  Popover: popoverStub,
+  Switch: switchStub,
   NIcon: { template: '<i class="n-icon-stub" />' },
   NTooltip: { template: '<div class="n-tooltip-stub"><slot name="trigger" /><slot /></div>' },
+  NPopover: { template: '<div class="n-popover-stub"><slot name="trigger" /><slot /></div>' },
+  NSwitch: {
+    props: ['value'],
+    emits: ['update:value'],
+    template: '<button class="n-switch-stub" @click="$emit(\'update:value\', !value)" />',
+  },
 }
 
 const day = (n) => new Date(2026, 0, n).toISOString()
@@ -149,6 +166,46 @@ describe('ChartTaskRow.vue', () => {
     expect(w.text()).toContain('3 д')
   })
 
+  // v2 (#2959): a click selects the bar, a double click opens the task; the cell
+  // on the left still opens on a single click.
+  it('selects on click and opens on double click', async () => {
+    const w = mountRow()
+    await w.find('.bar').trigger('click')
+    expect(w.emitted('select')[0]).toEqual(['t1'])
+    expect(w.emitted('open')).toBeUndefined()
+    await w.find('.bar').trigger('dblclick')
+    expect(w.emitted('open')[0]).toEqual(['t1'])
+    await w.find('.tl-left').trigger('click')
+    expect(w.emitted('open')).toHaveLength(2)
+  })
+
+  it('draws the progress line, the overdue pill and the selected tooltip', () => {
+    expect(mountRow().find('.bar-prog').exists()).toBe(false)
+    const w = mountRow({}, { progress: 0.5, overdue: 3, overdueText: 'просрочено на 3 дня' })
+    expect(w.find('.bar-prog > span').attributes('style')).toContain('width: 50%')
+    expect(w.find('.overdue-pill').text()).toBe('просрочено на 3 дня')
+    // The overdue bar turns red whatever its column.
+    expect(w.find('.bar').attributes('style')).toContain('--c: #e0533d')
+
+    const sel = mountRow(
+      { selected: true, selLabel: { range: '1 – 9 янв.', days: '7 раб. дн.' } },
+      { overdue: 3, overdueText: 'просрочено на 3 дня' },
+    )
+    expect(sel.find('.bar').classes()).toContain('sel')
+    expect(sel.find('.bar-tip').text()).toContain('1 – 9 янв.')
+    // The tooltip takes the place after the bar; the pill comes back on deselect.
+    expect(sel.find('.overdue-pill').exists()).toBe(false)
+  })
+
+  it('puts a title that does not fit after the bar', () => {
+    const wide = mountRow({}, { geom: geom(0, 400) })
+    expect(wide.find('.bar-title').exists()).toBe(true)
+    expect(wide.find('.after-title').exists()).toBe(false)
+    const narrow = mountRow({}, { geom: geom(0, 30) })
+    expect(narrow.find('.bar-title').exists()).toBe(false)
+    expect(narrow.find('.after-title').text()).toBe('Задача')
+  })
+
   it('carries the chart-level state its scoped CSS keys on', () => {
     const w = mountRow({ tier: 'weeks', collapsed: true, animate: true })
     const cls = w.find('.tl-row').classes()
@@ -158,15 +215,38 @@ describe('ChartTaskRow.vue', () => {
 
 // ── ChartLaneHeader ───────────────────────────────────────────────────────────
 describe('ChartLaneHeader.vue', () => {
-  const lane = { label: 'Иван', color: '#7c5cff', tasks: [{ id: 'a' }, { id: 'b' }] }
+  const lane = {
+    key: 'l1',
+    label: 'Иван',
+    color: '#7c5cff',
+    done: 1,
+    tasks: [{ id: 'a' }, { id: 'b' }],
+  }
 
-  it('renders the lane name and task count', () => {
+  it('renders the lane name and «done of total»', () => {
     const w = mount(ChartLaneHeader, {
       props: { lane, leftW: 224, axisW: 800, tier: 'days' },
       global: { stubs },
     })
     expect(w.find('.lane-name').text()).toBe('Иван')
-    expect(w.find('.lane-count').text()).toBe('2')
+    expect(w.find('.lane-count').text()).toBe('1 из 2')
+  })
+
+  it('draws the summary bar filled by the done share, and folds on click', async () => {
+    const w = mount(ChartLaneHeader, {
+      props: {
+        lane,
+        leftW: 224,
+        axisW: 800,
+        tier: 'days',
+        summary: { left: 40, width: 200, pct: 0.5 },
+      },
+      global: { stubs },
+    })
+    expect(w.find('.lane-sum').attributes('style')).toContain('left: 40px')
+    expect(w.find('.lane-sum-fill').attributes('style')).toContain('width: 50%')
+    await w.find('.tl-left').trigger('click')
+    expect(w.emitted('toggle')[0]).toEqual(['l1'])
   })
 
   it('hides the effort chip when the lane has no estimate', () => {
@@ -184,51 +264,66 @@ describe('ChartLaneHeader.vue', () => {
   })
 })
 
-// ── ChartToolbar ──────────────────────────────────────────────────────────────
-describe('ChartToolbar.vue', () => {
-  const base = { zoomIdx: 2, zoomCount: 5 }
-
-  it('disables each zoom button at its end of the range', () => {
-    const atMin = mount(ChartToolbar, { props: { ...base, zoomIdx: 0 }, global: { stubs } })
-    const [out, inn] = atMin.findAll('.tl-zoom-btn')
-    expect(out.attributes('disabled')).toBeDefined()
-    expect(inn.attributes('disabled')).toBeUndefined()
-
-    const atMax = mount(ChartToolbar, { props: { ...base, zoomIdx: 4 }, global: { stubs } })
-    expect(atMax.findAll('.tl-zoom-btn')[1].attributes('disabled')).toBeDefined()
+// ── ChartControls (v2 sub-toolbar part) ──────────────────────────────────────
+describe('ChartControls.vue', () => {
+  const ctlOf = (extra = {}) => ({
+    scale: 'days',
+    setScale: vi.fn(),
+    canZoomIn: true,
+    canZoomOut: false,
+    zoomIn: vi.fn(),
+    zoomOut: vi.fn(),
+    today: vi.fn(),
+    leftCollapsed: false,
+    toggleLeft: vi.fn(),
+    counters: [],
+    hint: '',
+    ...extra,
   })
 
-  it('renders counters and flags the overdue one', () => {
-    const w = mount(ChartToolbar, {
-      props: {
-        ...base,
-        counters: [
-          { key: 'overdue', text: '3 просрочено', overdue: true },
-          { key: 'unsched', text: '2 без дат' },
-        ],
-      },
-      global: { stubs },
-    })
-    const chips = w.findAll('.tl-counter')
-    expect(chips.map((c) => c.text())).toEqual(['3 просрочено', '2 без дат'])
-    expect(chips[0].classes()).toContain('overdue')
-    expect(chips[1].classes()).not.toContain('overdue')
+  it('marks the current scale and switches to another', async () => {
+    const ctl = ctlOf()
+    const w = mount(ChartControls, { props: { ctl }, global: { stubs } })
+    const segs = w.findAll('.cc-seg-btn')
+    expect(segs.map((b) => b.classes().includes('on'))).toEqual([true, false, false, false])
+    await segs[2].trigger('click')
+    expect(ctl.setScale).toHaveBeenCalledWith('months')
   })
 
-  it('shows the hint only when one is given (the Gantt has it, the Timeline does not)', () => {
-    expect(mount(ChartToolbar, { props: base, global: { stubs } }).find('.tl-hint').exists()).toBe(
-      false,
-    )
-    const w = mount(ChartToolbar, { props: { ...base, hint: 'Тяните' }, global: { stubs } })
-    expect(w.find('.tl-hint').text()).toBe('Тяните')
+  it('jumps to today and zooms only where the range allows', async () => {
+    const ctl = ctlOf()
+    const w = mount(ChartControls, { props: { ctl }, global: { stubs } })
+    await w.find('[data-testid="chart-today"]').trigger('click')
+    expect(ctl.today).toHaveBeenCalledOnce()
+    const [zin, zout] = w.findAll('.cc-kbd-btn')
+    expect(zin.attributes('disabled')).toBeUndefined()
+    expect(zout.attributes('disabled')).toBeDefined()
   })
 
-  it('emits today / toggle-left', async () => {
-    const w = mount(ChartToolbar, { props: base, global: { stubs } })
-    await w.find('.tl-today-btn').trigger('click')
-    expect(w.emitted('today')).toHaveLength(1)
-    await w.findAll('.tl-zoom-btn')[2].trigger('click')
-    expect(w.emitted('toggle-left')).toHaveLength(1)
+  it('drops the text hints when the sub-toolbar asks', () => {
+    expect(
+      mount(ChartControls, { props: { ctl: ctlOf() }, global: { stubs } })
+        .find('.cc-hints')
+        .exists(),
+    ).toBe(true)
+    expect(
+      mount(ChartControls, { props: { ctl: ctlOf(), hints: false }, global: { stubs } })
+        .find('.cc-hints')
+        .exists(),
+    ).toBe(false)
+  })
+
+  it('has no settings of its own — they live in the board view panel (#2986)', () => {
+    const w = mount(ChartControls, { props: { ctl: ctlOf() }, global: { stubs } })
+    expect(w.find('[data-testid="chart-settings"]').exists()).toBe(false)
+  })
+
+  it('renders nothing until a chart view is open', () => {
+    expect(
+      mount(ChartControls, { props: { ctl: null }, global: { stubs } })
+        .find('.cc')
+        .exists(),
+    ).toBe(false)
   })
 })
 
@@ -243,17 +338,35 @@ describe('ChartAxisHeader.vue', () => {
       { day: 2, dow: 'пт', weekend: false, isToday: false },
     ],
     weekBands: [{ key: 'w1', label: '1 янв', span: 7 }],
+    weekRangeBands: [{ key: 'r1', label: '29 дек. – 4 янв.', span: 4 }],
+    yearBands: [{ key: 2026, label: '2026', span: 365 }],
     hourTicks: [{ key: 'h6', label: '06', left: 8 }],
+    count: 14,
   }
 
-  it('swaps the day band for the week band in the weeks tier', () => {
+  it('reads week ranges over day numbers in the days tier', () => {
     const days = mount(ChartAxisHeader, { props: { ...bands, tier: 'days' }, global: { stubs } })
     expect(days.findAll('.tl-dayh')).toHaveLength(2)
-    expect(days.find('.tl-weeksrow').exists()).toBe(false)
+    expect(days.find('.tl-b1').text()).toBe('29 дек. – 4 янв.')
+    expect(days.find('.tl-weekh').exists()).toBe(false)
+    expect(days.find('.tc-count').text()).toBe('14')
+  })
 
+  it('swaps the day band for the week band in the weeks tier', () => {
     const weeks = mount(ChartAxisHeader, { props: { ...bands, tier: 'weeks' }, global: { stubs } })
-    expect(weeks.find('.tl-weeksrow').exists()).toBe(true)
+    expect(weeks.find('.tl-weekh').text()).toBe('1 янв')
+    expect(weeks.find('.tl-b1').text()).toBe('январь')
     expect(weeks.find('.tl-daysrow').exists()).toBe(false)
+  })
+
+  it('reads years over months in the months tier', () => {
+    const months = mount(ChartAxisHeader, {
+      props: { ...bands, tier: 'months' },
+      global: { stubs },
+    })
+    expect(months.find('.tl-b1').text()).toBe('2026')
+    expect(months.find('.tl-weekh').text()).toBe('январь')
+    expect(months.find('.tl-daysrow').exists()).toBe(false)
   })
 
   it('adds hour ticks only in the hours tier', () => {

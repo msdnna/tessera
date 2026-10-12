@@ -7,6 +7,7 @@ package db
 
 import (
 	"context"
+	"time"
 
 	"github.com/google/uuid"
 )
@@ -14,7 +15,7 @@ import (
 const createOAuthUser = `-- name: CreateOAuthUser :one
 INSERT INTO users (email, name, password_hash, is_admin, provider, email_verified)
 VALUES ($1, $2, '', $3, $4, true)
-RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title
+RETURNING id, email, name, password_hash, is_admin, created_at, updated_at, provider, active, email_verified, last_name, first_name, middle_name, bio, company, job_title, last_seen_at
 `
 
 type CreateOAuthUserParams struct {
@@ -51,6 +52,7 @@ func (q *Queries) CreateOAuthUser(ctx context.Context, arg CreateOAuthUserParams
 		&i.Bio,
 		&i.Company,
 		&i.JobTitle,
+		&i.LastSeenAt,
 	)
 	return i, err
 }
@@ -133,7 +135,7 @@ func (q *Queries) GetOAuthIdentity(ctx context.Context, arg GetOAuthIdentityPara
 
 const getOAuthProvider = `-- name: GetOAuthProvider :one
 
-SELECT provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback FROM oauth_providers WHERE provider = $1
+SELECT provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback, service_token_expires_at FROM oauth_providers WHERE provider = $1
 `
 
 // OAuth provider config + external identities (see migration 0042).
@@ -151,21 +153,60 @@ func (q *Queries) GetOAuthProvider(ctx context.Context, provider string) (OauthP
 		&i.UpdatedAt,
 		&i.ServiceTokenEnc,
 		&i.SudoWriteback,
+		&i.ServiceTokenExpiresAt,
 	)
 	return i, err
 }
 
-const getUserIDByOAuthUsername = `-- name: GetUserIDByOAuthUsername :one
-SELECT user_id FROM oauth_identities WHERE provider = 'gitlab' AND provider_username = $1
+const getUserIDsByOAuthUsername = `-- name: GetUserIDsByOAuthUsername :many
+SELECT DISTINCT user_id FROM oauth_identities WHERE provider = 'gitlab' AND provider_username = $1
 `
 
-// GetUserIDByOAuthUsername resolves a GitLab username to a Tessera user via a
-// recorded OAuth identity (login-grade link, complements gitlab_credentials).
-func (q *Queries) GetUserIDByOAuthUsername(ctx context.Context, providerUsername string) (uuid.UUID, error) {
-	row := q.db.QueryRow(ctx, getUserIDByOAuthUsername, providerUsername)
-	var user_id uuid.UUID
-	err := row.Scan(&user_id)
-	return user_id, err
+// GetUserIDsByOAuthUsername resolves a GitLab username to the Tessera users that
+// recorded it (login-grade link, complements gitlab_credentials).
+//
+// :many, not :one, because a username names at most one person *at a moment* and
+// this table spans time: UNIQUE is on (provider, provider_user_id), the numeric
+// id, while provider_username is only indexed. A row's name is refreshed by its
+// owner's next login, so a rename in GitLab leaves the old name recorded until
+// then — and if someone else takes the freed login and signs in, two live rows
+// carry it. The caller must see both and decline to guess; as :one it silently
+// got whichever row the plan returned first (in practice the stale one, which is
+// physically older).
+func (q *Queries) GetUserIDsByOAuthUsername(ctx context.Context, providerUsername string) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, getUserIDsByOAuthUsername, providerUsername)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var user_id uuid.UUID
+		if err := rows.Scan(&user_id); err != nil {
+			return nil, err
+		}
+		items = append(items, user_id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setServiceTokenExpiry = `-- name: SetServiceTokenExpiry :exec
+UPDATE oauth_providers SET service_token_expires_at = $2 WHERE provider = $1
+`
+
+type SetServiceTokenExpiryParams struct {
+	Provider              string     `json:"provider"`
+	ServiceTokenExpiresAt *time.Time `json:"service_token_expires_at"`
+}
+
+// SetServiceTokenExpiry records when the instance service token expires (#3084),
+// NULL = never or unknown.
+func (q *Queries) SetServiceTokenExpiry(ctx context.Context, arg SetServiceTokenExpiryParams) error {
+	_, err := q.db.Exec(ctx, setServiceTokenExpiry, arg.Provider, arg.ServiceTokenExpiresAt)
+	return err
 }
 
 const upsertOAuthIdentity = `-- name: UpsertOAuthIdentity :one
@@ -226,7 +267,7 @@ SET client_id = EXCLUDED.client_id,
     service_token_enc = EXCLUDED.service_token_enc,
     sudo_writeback = EXCLUDED.sudo_writeback,
     updated_at = now()
-RETURNING provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback
+RETURNING provider, client_id, client_secret_enc, gl_base_url, enabled, org_map, created_at, updated_at, service_token_enc, sudo_writeback, service_token_expires_at
 `
 
 type UpsertOAuthProviderParams struct {
@@ -264,6 +305,7 @@ func (q *Queries) UpsertOAuthProvider(ctx context.Context, arg UpsertOAuthProvid
 		&i.UpdatedAt,
 		&i.ServiceTokenEnc,
 		&i.SudoWriteback,
+		&i.ServiceTokenExpiresAt,
 	)
 	return i, err
 }

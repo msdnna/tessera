@@ -1,20 +1,70 @@
 <script setup>
-import { computed, onMounted, onUnmounted, watch } from 'vue'
+import { computed, onMounted, onUnmounted, provide, watch, watchEffect } from 'vue'
 import { useRouter } from 'vue-router'
-import { NConfigProvider, NGlobalStyle, NMessageProvider } from 'naive-ui'
+import { NConfigProvider, NGlobalStyle } from 'naive-ui'
 import { useThemeStore } from '@/stores/theme'
 import { useAuthStore } from '@/stores/auth'
 import { setI18nLocale } from '@/i18n'
 import { naivePack } from '@/i18n/naive'
 import { PRIORITY_COLORS } from '@/styles/tokens'
 import AppConnectionOverlay from '@/components/AppConnectionOverlay.vue'
-import UpdateToast from '@/components/UpdateToast.vue'
+import { useToastsStore } from '@/stores/toasts'
+import { messageApi, MESSAGE_KEY } from '@/composables/useMessage'
+import { useAppUpdate } from '@/composables/useAppUpdate'
+import AppRail from '@/components/rail/AppRail.vue'
 import ConferenceMiniWindow from '@/components/conference/ConferenceMiniWindow.vue'
 import ConferenceAudioSink from '@/components/conference/ConferenceAudioSink.vue'
-import { listenDesktopOAuth, OAUTH_DONE_EVENT } from '@/composables/useDesktopOAuth'
+import {
+  consumeOAuthState,
+  exchangeOAuthCode,
+  listenDesktopOAuth,
+  OAUTH_DONE_EVENT,
+} from '@/composables/useDesktopOAuth'
+import { isTauri } from '@/utils/serverBase'
+import { invitePath } from '@/utils/inviteRoute'
+import { takePendingInvite } from '@/utils/pendingInvite'
+import { useResponsive } from '@/composables/useResponsive'
 
 const theme = useThemeStore()
 const router = useRouter()
+
+// The answers to my own actions are toasts of the bottom lane (#3117): the
+// message API is provided under the key naive's <n-message-provider> used, so
+// any `useMessage()` — ours or naive's — lands there.
+const toasts = useToastsStore()
+provide(MESSAGE_KEY, messageApi(toasts))
+
+// «Доступно обновление» (PWA prompt-mode update, #2748 → a top-lane toast,
+// #3117). Web only: mounting the watcher registers the service worker, and on
+// desktop the SW has no business running — it precaches the app shell and then
+// serves a stale one across app updates (#2930 rework; see the desktop SW purge
+// in main.js); desktop updates ship as new app builds. Kept at the app root so
+// the worker is registered on the sign-in screen too.
+if (!isTauri()) {
+  const { needRefresh, updateServiceWorker } = useAppUpdate()
+  toasts.setReloader(() => updateServiceWorker(true))
+  watch(
+    needRefresh,
+    (v) => {
+      if (v) toasts.update()
+    },
+    { immediate: true },
+  )
+}
+
+// Desktop rail: servers and their workspaces (#2930, #2955). On desktop it lives
+// at the app root — NOT inside AppLayout —
+// so it is reachable on the login and "no connection" screens too: those render
+// outside AppLayout, and a stuck/expired server would otherwise trap the user
+// with no way to switch away (the rework follow-up). It reserves a gutter via the
+// global `--app-rail-w` custom property, which AppLayout and the connection
+// overlay read to inset themselves past it.
+const { isMobile } = useResponsive()
+const showRail = computed(() => isTauri() && !isMobile.value)
+watchEffect(() => {
+  if (typeof document === 'undefined') return
+  document.documentElement.style.setProperty('--app-rail-w', showRail.value ? '56px' : '0px')
+})
 
 // Language (#2797). The watch — rather than a call in the settings screen —
 // is what makes every source of the preference land: the localStorage cache
@@ -43,16 +93,35 @@ onUnmounted(() => window.removeEventListener('auth:expired', onExpired))
 // loader before the router settles. LoginView only needs to know the wait is over,
 // which it learns from OAUTH_DONE_EVENT.
 let unlistenOAuth = null
-async function onDesktopOAuth({ access, refresh, error }) {
+async function onDesktopOAuth({ code, state, error }) {
+  // tessera:// is an OS-wide scheme, so this handler hears from any web page that cares
+  // to open one. Only a handoff carrying the nonce of the login this app started is a
+  // login; anything else is dropped without a trace — no routing, no OAUTH_DONE_EVENT,
+  // so a forged link can neither sign the user in (#2932) nor cancel a real sign-in.
+  if (!consumeOAuthState(state)) return
+  // Same detour as on web, same rule: taken on every return, spent only on a
+  // sign-in that worked (#2932).
+  const invite = takePendingInvite()
   let reason = error
   if (!reason) {
+    // The deep link carries a one-time code, not the session (#2932) — redeem it. Its own
+    // try/catch: a code that expired or was already spent is a different failure from a
+    // profile fetch that fell over, and the login screen names them differently.
+    let tokens = null
     try {
-      await useAuthStore().loginWithTokens(access, refresh)
-      window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: null } }))
-      router.replace('/')
-      return
+      tokens = await exchangeOAuthCode(code)
     } catch {
-      reason = 'userinfo_failed'
+      reason = 'handoff_failed'
+    }
+    if (tokens) {
+      try {
+        await useAuthStore().loginWithTokens(tokens.access, tokens.refresh)
+        window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: null } }))
+        router.replace(invite ? invitePath(invite) : '/')
+        return
+      } catch {
+        reason = 'userinfo_failed'
+      }
     }
   }
   window.dispatchEvent(new CustomEvent(OAUTH_DONE_EVENT, { detail: { error: reason } }))
@@ -107,24 +176,41 @@ onUnmounted(() => unlistenOAuth?.())
     :date-locale="naiveDateLocale"
   >
     <n-global-style />
-    <n-message-provider>
-      <router-view v-slot="{ Component }">
-        <transition name="fade" mode="out-in">
-          <component :is="Component" />
-        </transition>
-      </router-view>
-      <!-- Minimised conference (#2888): a floating window that keeps a call alive
+    <!-- Desktop server hotbar, docked at the app root so it survives on the
+           login and offline screens (which live outside AppLayout). A fixed
+           gutter on the left; AppLayout and the connection overlay inset
+           themselves past it via --app-rail-w. -->
+    <div v-if="showRail" class="app-rail-dock"><AppRail /></div>
+    <router-view v-slot="{ Component }">
+      <transition name="fade" mode="out-in">
+        <component :is="Component" />
+      </transition>
+    </router-view>
+    <!-- Minimised conference (#2888): a floating window that keeps a call alive
            across route changes. Paints nothing unless a session is live and the
            open route is not that call's own room. -->
-      <conference-mini-window />
-      <!-- The call's audio, mounted for the life of the session so it plays on
+    <conference-mini-window />
+    <!-- The call's audio, mounted for the life of the session so it plays on
            every route — the mini-window shows one tile, but the room must still
            be heard in full (#2888). -->
-      <conference-audio-sink />
-    </n-message-provider>
+    <conference-audio-sink />
     <!-- Global "server slow / unreachable" overlay (branded loader + retry). -->
     <app-connection-overlay />
-    <!-- Global "new version deployed" toast (PWA prompt-mode update, #2748). -->
-    <update-toast />
   </n-config-provider>
 </template>
+
+<style scoped>
+/* Server hotbar gutter, pinned to the viewport so it stays put across the login,
+   offline and in-app screens alike (#2930). Width comes from the rail itself
+   (56px). Kept below Naive's teleported modals/dropdowns (~2000+) so the rail's
+   own edit modal opens over it, and the connection overlay insets past it rather
+   than covering it — so a server can be switched even while the current one is
+   unreachable. */
+.app-rail-dock {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+}
+</style>

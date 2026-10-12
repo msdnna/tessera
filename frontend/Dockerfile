@@ -25,10 +25,17 @@ RUN corepack yarn install --immutable
 
 # Help-centre content, resolved by the globs at ../../../docs/help → /app/docs/help.
 COPY docs/help /app/docs/help
+# The product release («Tessera 2.0», docs/versioning.md): vite.config.js reads
+# ../release.json for the version shown in the app.
+COPY release.json /app/release.json
 COPY frontend/ ./
 RUN corepack yarn build
 
 FROM nginx:1.27-alpine
 COPY frontend/nginx.conf /etc/nginx/conf.d/default.conf
+# Included by every self-served location in that config (#2932). Not in conf.d/:
+# nginx includes that whole directory into http{}, and a bare add_header there
+# would be a second, silent copy of the policy.
+COPY frontend/security-headers.conf /etc/nginx/security-headers.conf
 COPY --from=build /app/frontend/dist /usr/share/nginx/html
 EXPOSE 80

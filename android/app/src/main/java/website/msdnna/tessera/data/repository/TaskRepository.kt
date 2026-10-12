@@ -33,15 +33,25 @@ class TaskRepository {
         body: String,
         mentions: List<String>,
         parentId: String? = null,
-    ): CommentResult = api.createComment(taskId, CreateCommentRequest(body, mentions, parentId))
+    ): CommentResult =
+        // Зона автора: «/due сегодня» в теле резолвит сервер (#2932).
+        api.createComment(taskId, CreateCommentRequest(body, mentions, parentId), AppContainer.callerZone())
 
     /** Dry-runs the draft against the backend's own parser: what each `/`-command
-     *  in it would do, without executing anything. */
+     *  in it would do, without executing anything. Зона — та же, что у настоящего
+     *  POST, иначе подсказка назовёт не тот день. */
     suspend fun previewCommands(taskId: String, body: String): CommandPreview =
-        api.previewCommands(taskId, PreviewCommandsRequest(body))
-    suspend fun editComment(commentId: String, body: String): Comment =
-        api.updateComment(commentId, UpdateCommentRequest(body))
+        api.previewCommands(taskId, PreviewCommandsRequest(body), AppContainer.callerZone())
+
+    /** [mentions] — ids the edit ADDED (see [UpdateCommentRequest]); empty for an
+     *  edit that names nobody new, e.g. ticking a checkbox. */
+    suspend fun editComment(commentId: String, body: String, mentions: List<String> = emptyList()): Comment =
+        api.updateComment(commentId, UpdateCommentRequest(body, mentions))
     suspend fun deleteComment(commentId: String) = api.deleteComment(commentId)
+
+    /** Follow ([subscribed] = true) or unfollow a task (#2963). */
+    suspend fun setSubscription(taskId: String, subscribed: Boolean) =
+        api.setTaskSubscription(taskId, website.msdnna.tessera.data.model.SetSubscriptionRequest(subscribed))
 
     suspend fun relations(taskId: String): List<Relation> = api.relations(taskId).orEmpty()
     suspend fun addRelation(taskId: String, number: Long, kind: String) =

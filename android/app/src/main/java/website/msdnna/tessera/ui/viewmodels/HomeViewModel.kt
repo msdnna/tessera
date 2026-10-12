@@ -2,7 +2,6 @@ package website.msdnna.tessera.ui.viewmodels
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import java.util.Calendar
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -13,8 +12,10 @@ import website.msdnna.tessera.data.model.WorkspaceSummary
 import website.msdnna.tessera.data.model.WorkspaceTask
 import website.msdnna.tessera.data.repository.HomeRepository
 import website.msdnna.tessera.ui.UiText
+import website.msdnna.tessera.util.DateFormatPrefs
+import website.msdnna.tessera.util.dayKeyIn
+import website.msdnna.tessera.util.dueDayKey
 import website.msdnna.tessera.util.errorMessage
-import website.msdnna.tessera.util.isoDateKey
 
 enum class HomeFilter { Me, All, Overdue, Today, Week, Completed }
 
@@ -26,14 +27,26 @@ data class HomeUiState(
     val tags: Map<String, Tag> = emptyMap(),
     val filter: HomeFilter = HomeFilter.Me,
     val meId: String = "",
+    /**
+     * Календарь пользователя, пришедший из композиции через [HomeViewModel.setDateFormat].
+     *
+     * Плитки над списком считает СЕРВЕР, и зону для них клиент сообщает сам —
+     * `?tz=` из `AppContainer.callerZone()` (преф профиля, иначе зона устройства).
+     * Пока список под ними бакетился зоной устройства, у человека с префом,
+     * разошедшимся с телефоном, «Просрочено: 3» стояло над списком из другого числа
+     * задач. Здесь тот же преф, чтобы половины одного экрана считали один календарь.
+     */
+    val dateFormat: DateFormatPrefs = DateFormatPrefs.Default,
 ) {
     /** The task list for the active filter — mirrors HomeView's per-card filter. */
     val visibleTasks: List<WorkspaceTask>
         get() {
-            val today = dateKeyOffset(0)
-            val weekEnd = dateKeyOffset(DAYS_IN_WEEK)
+            val today = dayKeyIn(dateFormat.zone, 0)
+            val weekEnd = dayKeyIn(dateFormat.zone, DAYS_IN_WEEK)
             return tasks.filter { t ->
-                val due = isoDateKey(t.dueDate)
+                // День срока — тот же, что на карточке (dueDayKey), а не срез сырой
+                // строки; и границы выше, и он сам читаются в [dateFormat].
+                val due = dueDayKey(t.dueDate, dateFormat)
                 when (filter) {
                     HomeFilter.Me -> !t.isCompleted && meId in t.assigneeIds
                     HomeFilter.All -> !t.isCompleted
@@ -79,6 +92,16 @@ class HomeViewModel(
 
     fun setFilter(filter: HomeFilter) = _state.update { it.copy(filter = filter) }
 
+    /**
+     * The calendar the list buckets days in, handed down from composition
+     * (`LocalDateFormat`) — the same preference the summary request already sends
+     * the server as `?tz=`. See [HomeUiState.dateFormat].
+     */
+    fun setDateFormat(fmt: DateFormatPrefs) {
+        if (_state.value.dateFormat == fmt) return
+        _state.update { it.copy(dateFormat = fmt) }
+    }
+
     private fun launchCatching(block: suspend () -> Unit) {
         viewModelScope.launch {
             val result = runCatching { block() }
@@ -90,12 +113,3 @@ class HomeViewModel(
 }
 
 private const val DAYS_IN_WEEK = 7
-
-/** A local `yyyy-MM-dd` key for today + [days], matching due-date keys. */
-private fun dateKeyOffset(days: Int): String {
-    val cal = Calendar.getInstance().apply { add(Calendar.DAY_OF_MONTH, days) }
-    val y = cal.get(Calendar.YEAR)
-    val m = (cal.get(Calendar.MONTH) + 1).toString().padStart(2, '0')
-    val d = cal.get(Calendar.DAY_OF_MONTH).toString().padStart(2, '0')
-    return "$y-$m-$d"
-}

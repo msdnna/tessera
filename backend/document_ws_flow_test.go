@@ -8,6 +8,8 @@
 package main
 
 import (
+	"errors"
+	"net"
 	"net/http"
 	"strings"
 	"testing"
@@ -303,10 +305,57 @@ func TestDocumentWSDroppedOnDelete(t *testing.T) {
 
 	// The socket must end, not go quiet: a client that is merely starved of
 	// frames keeps showing the document as live.
+	awaitDocSocketClosed(t, conn)
+}
+
+// TestDocumentWSDroppedOnWorkspaceDelete is the same teardown one container
+// wider. Deleting a workspace takes its documents by cascade, and the delete
+// already resolves their ids to sweep the image directories the rows named — the
+// rooms keyed by those same ids are owed the teardown too. It is the gesture
+// after which nobody is left to notice: the owner is gone from the board, while
+// anyone still holding the document sees a live editor, keeps their block locks,
+// and only learns on the next autosave.
+func TestDocumentWSDroppedOnWorkspaceDelete(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	wsID, docID := mkDoc(t, owner, "Документ удаляемого пространства")
+	mate := signup(t)
+	owner.expect(t, owner.post("/workspaces/"+wsID+"/members",
+		map[string]any{"email": mate.Email}), http.StatusCreated)
+
+	conn, status := dialDocWS(t, mate.token, docID)
+	if conn == nil {
+		t.Fatalf("member handshake = %d", status)
+	}
+	defer conn.Close()
+	if welcome := awaitFrame(t, conn, "welcome", 5*time.Second); welcome == nil {
+		t.Fatal("no welcome on the document")
+	}
+
+	owner.expect(t, owner.del("/workspaces/"+wsID), http.StatusNoContent)
+
+	awaitDocSocketClosed(t, conn)
+}
+
+// awaitDocSocketClosed fails unless the socket actually ends.
+//
+// The read deadline has to be told apart from the close, or the assertion is
+// toothless: a room that was never dropped simply stops having anything to say,
+// and "ReadMessage returned an error" is then satisfied by the timeout — which
+// is precisely the state under test. A client merely starved of frames goes on
+// showing the document as live and open for editing.
+func awaitDocSocketClosed(t *testing.T, conn *websocket.Conn) {
+	t.Helper()
 	_ = conn.SetReadDeadline(time.Now().Add(5 * time.Second))
 	for {
-		if _, _, err := conn.ReadMessage(); err != nil {
-			return // closed, as it should be
+		_, _, err := conn.ReadMessage()
+		if err == nil {
+			continue // a frame that was already in flight when the teardown ran
 		}
+		var ne net.Error
+		if errors.As(err, &ne) && ne.Timeout() {
+			t.Fatal("the socket outlived the document: it went quiet, but never closed")
+		}
+		return // closed, as it should be
 	}
 }

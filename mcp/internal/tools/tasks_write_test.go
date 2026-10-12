@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"tessera-mcp/internal/model"
 )
@@ -90,7 +91,7 @@ func TestGetTaskByNumberLoadsSubtasks(t *testing.T) {
 	full.Subtasks = []model.Task{{ID: "st1", Title: "Этап 2", Number: &num}}
 	c, _ := newMux(t, map[string]any{
 		"/api/workspaces/w1/tasks/by-number/2821": model.Task{ID: "par"}, // bare stub
-		"/api/tasks/par":                          full,                  // full detail by id
+		"/api/tasks/par": full, // full detail by id
 	})
 	_, out, err := getTask(c)(context.Background(), nil, getTaskInput{WorkspaceID: "w1", Number: 2821})
 	if err != nil {
@@ -98,6 +99,41 @@ func TestGetTaskByNumberLoadsSubtasks(t *testing.T) {
 	}
 	if len(out.Subtasks) != 1 || out.Subtasks[0].Title != "Этап 2" {
 		t.Fatalf("by-number get_task didn't surface subtasks: %+v", out.Subtasks)
+	}
+}
+
+// The two halves of the anti-duplicate guard have to agree about an archived
+// child. The detail endpoint returns every subtask, archived ones included, and
+// the create side skips only live titles — so get_task must say which is which,
+// or a stateless re-run reads the archived title as "already decomposed" and
+// never recreates the child create_subtasks would have made.
+func TestGetTaskFlagsArchived(t *testing.T) {
+	live, gone := int64(2830), int64(2831)
+	when := time.Date(2026, 9, 15, 10, 0, 0, 0, time.UTC)
+	parent := detail("par", "b1")
+	parent.ColumnID = "c1"
+	parent.ArchivedAt = &when
+	parent.Subtasks = []model.Task{
+		{ID: "st1", Title: "Этап 1", Number: &live},
+		{ID: "st2", Title: "Этап 2", Number: &gone, ArchivedAt: &when},
+	}
+	c, _ := newMux(t, map[string]any{"/api/tasks/par": parent})
+
+	_, out, err := getTask(c)(context.Background(), nil, getTaskInput{TaskID: "par"})
+	if err != nil {
+		t.Fatalf("getTask: %v", err)
+	}
+	if !out.Archived {
+		t.Fatal("an archived task came back looking like an open one")
+	}
+	if len(out.Subtasks) != 2 {
+		t.Fatalf("subtasks = %+v", out.Subtasks)
+	}
+	if out.Subtasks[0].Archived {
+		t.Fatalf("live subtask flagged archived: %+v", out.Subtasks[0])
+	}
+	if !out.Subtasks[1].Archived {
+		t.Fatalf("archived subtask indistinguishable from a live one: %+v", out.Subtasks[1])
 	}
 }
 
@@ -110,7 +146,7 @@ func TestCreateSubtasksSkipsExistingTitle(t *testing.T) {
 	parent.Subtasks = []model.Task{{ID: "st1", Title: "Этап 2", Number: &existing}}
 	c, mux := newMux(t, map[string]any{
 		"/api/workspaces/w1/tasks/by-number/2821": model.Task{ID: "par"},
-		"/api/tasks/par":                          parent,
+		"/api/tasks/par": parent,
 	})
 	_, out, err := createSubtasks(c)(context.Background(), nil, createSubtasksInput{
 		WorkspaceID: "w1", Number: 2821,
@@ -174,7 +210,7 @@ func TestUpdateTaskSendsOnlyGivenFields(t *testing.T) {
 	empty, zero, bad := "  ", 0.0, 9
 	for name, in := range map[string]updateTaskInput{
 		"empty title":   {TaskID: "t1", Title: &empty},
-		"zero estimate": {TaskID: "t1", EstimateHours: &zero},
+		"zero estimate": {TaskID: "t1", Estimate: &zero},
 		"bad priority":  {TaskID: "t1", Priority: &bad},
 		"unknown clear": {TaskID: "t1", Clear: []string{"title"}},
 	} {
@@ -185,7 +221,7 @@ func TestUpdateTaskSendsOnlyGivenFields(t *testing.T) {
 
 	title := "Renamed"
 	_, out, err := updateTask(c)(ctx, nil, updateTaskInput{
-		TaskID: "t1", Title: &title, Clear: []string{"estimate_hours"},
+		TaskID: "t1", Title: &title, Clear: []string{"estimate"},
 	})
 	if err != nil || len(out.Changed) != 2 {
 		t.Fatalf("updateTask: %+v %v", out, err)
@@ -262,18 +298,18 @@ func TestMoveDescriptionWritesTargetBeforeClearingSource(t *testing.T) {
 }
 
 func TestParseDate(t *testing.T) {
-	if got, err := parseDate(""); err != nil || got != nil {
+	if got, err := parseDateIn("", time.Local); err != nil || got != nil {
 		t.Fatalf("empty date = %v %v", got, err)
 	}
-	got, err := parseDate("2026-08-21")
+	got, err := parseDateIn("2026-08-21", time.Local)
 	if err != nil || got.Year() != 2026 || got.Month() != 8 || got.Day() != 21 {
 		t.Fatalf("iso date = %v %v", got, err)
 	}
-	if _, err := parseDate("2026-08-21T10:30:00Z"); err != nil {
+	if _, err := parseDateIn("2026-08-21T10:30:00Z", time.Local); err != nil {
 		t.Fatalf("rfc3339: %v", err)
 	}
 	// Relative wording belongs to the backend's quick actions, not here.
-	if _, err := parseDate("завтра"); err == nil {
+	if _, err := parseDateIn("завтра", time.Local); err == nil {
 		t.Fatal("expected an error for relative wording")
 	}
 }

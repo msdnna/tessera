@@ -1,6 +1,7 @@
 package gitlab
 
 import (
+	"math"
 	"regexp"
 	"strconv"
 	"strings"
@@ -24,6 +25,9 @@ type Rules struct {
 //	action "board"    → ValueMap[value] is a target Tessera board id (uuid string)
 //	action "tag"      → the label becomes a tag (KeepPrefix decides the name)
 //	action "group"    → marks the task as a grouped parent (subtasks handled later)
+//	action "milestone"→ the task's stage (#3086): ValueMap[value] when listed, else
+//	                    Template with {value} substituted ("Спринт {value}"), else
+//	                    the value itself. A native GitLab milestone wins over it.
 //	action "ignore"   → the label is dropped
 //
 // "value" is the label title with the matched prefix trimmed (prefix match) or
@@ -31,11 +35,35 @@ type Rules struct {
 type Rule struct {
 	Match      string            `json:"match"`       // prefix string or regex pattern
 	MatchType  string            `json:"match_type"`  // "prefix" (default) | "regex"
-	Action     string            `json:"action"`      // status|priority|board|tag|group|ignore
-	ValueMap   map[string]string `json:"value_map"`   // for status/priority/board
+	Action     string            `json:"action"`      // status|priority|board|tag|group|milestone|ignore
+	ValueMap   map[string]string `json:"value_map"`   // for status/priority/board/milestone
 	KeepPrefix bool              `json:"keep_prefix"` // for tag action
+	// Template names the stage of a milestone rule; "{value}" is the label's value.
+	Template string `json:"template,omitempty"`
+	// Disabled switches the rule off without deleting it (#3087): the engine passes
+	// over it as if it were not there. Stored inverted so every rule saved before
+	// the switch existed stays on.
+	Disabled bool `json:"disabled,omitempty"`
 
 	re *regexp.Regexp // compiled lazily for regex rules
+}
+
+// ValuePlaceholder is what a milestone rule's Template substitutes.
+const ValuePlaceholder = "{value}"
+
+// stageTitle renders the stage a milestone rule gives a matched value: a value-map
+// entry wins, then the template, then the bare value.
+func (r *Rule) stageTitle(value string) string {
+	if v, ok := r.lookup(value); ok {
+		return strings.TrimSpace(v)
+	}
+	if tpl := strings.TrimSpace(r.Template); tpl != "" {
+		if strings.Contains(tpl, ValuePlaceholder) {
+			return strings.TrimSpace(strings.ReplaceAll(tpl, ValuePlaceholder, value))
+		}
+		return tpl
+	}
+	return strings.TrimSpace(value)
 }
 
 // Label is a GitLab label reduced to what the rule engine needs.
@@ -58,6 +86,7 @@ type Resolution struct {
 	Tags       []Tag  // labels to attach as tags (deduped, in order)
 	BoardID    string // target board id when a board rule matched, else ""
 	Group      bool   // a group rule matched (subtask grouping handled later)
+	Milestone  string // stage title a milestone rule gave (#3086), "" when none
 }
 
 // DefaultGroupLabel is the label put on an issue to mark it a grouped parent when the
@@ -122,6 +151,17 @@ func (r *Rule) matches(title string) (string, bool) {
 	return "", false
 }
 
+// parsePriority turns a value-map entry ("2") into a task priority. Rules are
+// admin-authored JSONB, so the number is untrusted: anything outside int32 (the
+// DB column) is rejected rather than silently wrapped into a bogus priority.
+func parsePriority(s string) (int32, bool) {
+	n, err := strconv.Atoi(s)
+	if err != nil || n < math.MinInt32 || n > math.MaxInt32 {
+		return 0, false
+	}
+	return int32(n), true // #nosec G109 -- range-checked on the line above
+}
+
 // lookup resolves a matched value against the rule's ValueMap. The match is
 // case-insensitive: GitLab label capitalisation ("S: In Progress") should still
 // hit a value-map key written in another case ("In progress"). Exact match wins;
@@ -138,27 +178,62 @@ func (r *Rule) lookup(value string) (string, bool) {
 	return "", false
 }
 
+// LabelOutcome is what one label of an issue turned into — the dry-run answer of
+// «Проверить лейбл» (#3087) and the unit the per-rule counters count.
+type LabelOutcome struct {
+	Label string `json:"label"`
+	// Rule is the index of the rule that decided the label, -1 when no rule
+	// matched and the default action applied.
+	Rule   int    `json:"rule"`
+	Action string `json:"action"` // the deciding action; for Rule == -1 the default ("tag" | "ignore")
+	// Value is the label's value as the rule saw it (prefix trimmed).
+	Value string `json:"value,omitempty"`
+	// Result is what the action made of it: a column name, a priority level, a
+	// board id, a tag name, a stage title. "" when the action produced nothing
+	// (e.g. a status value the map does not list).
+	Result string `json:"result,omitempty"`
+	// Shadowed is set when the rule fired but an earlier label already took the
+	// same first-match-wins slot (status, priority, board, stage), so this label
+	// changed nothing.
+	Shadowed bool `json:"shadowed,omitempty"`
+}
+
+// Explain walks an issue's labels through the rules exactly as Resolve does and
+// reports each label's fate. Resolve is built on it, so the dry-run cannot drift
+// from what the sync really applies.
+func (rs Rules) Explain(labels []Label) []LabelOutcome {
+	var out []LabelOutcome
+	rs.walk(labels, func(o LabelOutcome) { out = append(out, o) })
+	return out
+}
+
 // Resolve maps an issue's labels to board state. Pure & deterministic in input
-// order. Each label takes the first rule that matches; status/priority/board are
-// first-match-wins across all labels.
+// order. Each label takes the first enabled rule that matches;
+// status/priority/board/stage are first-match-wins across all labels.
 func (rs Rules) Resolve(labels []Label) Resolution {
+	return rs.walk(labels, nil)
+}
+
+// walk is Resolve with a per-label report (nil = none wanted).
+func (rs Rules) walk(labels []Label, report func(LabelOutcome)) Resolution {
 	res := Resolution{ColumnName: rs.DefaultColumn}
-	prioSet, boardSet := false, false
+	prioSet, boardSet, stageSet := false, false, false
 	seen := map[string]struct{}{}
 
-	addTag := func(title, color string, keepPrefix bool) {
+	addTag := func(title, color string, keepPrefix bool) string {
 		name := title
 		if !keepPrefix {
 			name = stripNamespace(title)
 		}
 		if name == "" {
-			return
+			return ""
 		}
 		if _, dup := seen[name]; dup {
-			return
+			return name
 		}
 		seen[name] = struct{}{}
 		res.Tags = append(res.Tags, Tag{Name: name, Color: color})
+		return name
 	}
 
 	for _, l := range labels {
@@ -166,49 +241,98 @@ func (rs Rules) Resolve(labels []Label) Resolution {
 		if title == "" {
 			continue
 		}
+		o := LabelOutcome{Label: title, Rule: -1}
 		matched := false
 		for i := range rs.Rules {
 			rule := &rs.Rules[i]
+			if rule.Disabled {
+				continue
+			}
 			value, ok := rule.matches(title)
 			if !ok {
 				continue
 			}
 			matched = true
+			o.Rule, o.Action, o.Value = i, rule.Action, value
 			switch rule.Action {
 			case "status":
-				if !res.StatusSet {
-					if col, ok := rule.lookup(value); ok {
+				if col, ok := rule.lookup(value); ok {
+					o.Result = col
+					if !res.StatusSet {
 						res.ColumnName, res.StatusSet = col, true
+					} else {
+						o.Shadowed = true
 					}
 				}
 			case "priority":
-				if !prioSet {
-					if lvl, ok := rule.lookup(value); ok {
-						if n, err := strconv.Atoi(lvl); err == nil {
-							res.Priority, prioSet = int32(n), true
+				if lvl, ok := rule.lookup(value); ok {
+					if n, ok := parsePriority(lvl); ok {
+						o.Result = lvl
+						if !prioSet {
+							res.Priority, prioSet = n, true
+						} else {
+							o.Shadowed = true
 						}
 					}
 				}
 			case "board":
-				if !boardSet {
-					if bid, ok := rule.lookup(value); ok && bid != "" {
+				if bid, ok := rule.lookup(value); ok && bid != "" {
+					o.Result = bid
+					if !boardSet {
 						res.BoardID, boardSet = bid, true
+					} else {
+						o.Shadowed = true
+					}
+				}
+			case "milestone":
+				if stage := rule.stageTitle(value); stage != "" {
+					o.Result = stage
+					if !stageSet {
+						res.Milestone, stageSet = stage, true
+					} else {
+						o.Shadowed = true
 					}
 				}
 			case "group":
 				res.Group = true
 			case "tag":
-				addTag(title, l.Color, rule.KeepPrefix)
+				o.Result = addTag(title, l.Color, rule.KeepPrefix)
 			case "ignore":
 				// dropped
 			}
 			break // first matching rule wins for this label
 		}
-		if !matched && rs.DefaultAction != "ignore" {
-			addTag(title, l.Color, rs.TagKeepPrefix)
+		if !matched {
+			o.Action = "ignore"
+			if rs.DefaultAction != "ignore" {
+				o.Action = "tag"
+				o.Result = addTag(title, l.Color, rs.TagKeepPrefix)
+			}
+		}
+		if report != nil {
+			report(o)
 		}
 	}
 	return res
+}
+
+// RuleHits counts, for each rule, how many of the given label sets it decided at
+// least one label of — the «Задач» counter by a rule (#3087), when each set is the
+// labels of one linked issue. Disabled rules count zero: they decide nothing.
+func (rs Rules) RuleHits(sets [][]Label) []int {
+	hits := make([]int, len(rs.Rules))
+	for _, labels := range sets {
+		fired := map[int]bool{}
+		for _, o := range rs.Explain(labels) {
+			if o.Rule >= 0 {
+				fired[o.Rule] = true
+			}
+		}
+		for i := range fired {
+			hits[i]++
+		}
+	}
+	return hits
 }
 
 // TagLabelClass reports whether a GitLab label title would resolve to a Tessera
@@ -222,6 +346,9 @@ func (rs Rules) TagLabelClass(title string) bool {
 	}
 	for i := range rs.Rules {
 		rule := &rs.Rules[i]
+		if rule.Disabled {
+			continue
+		}
 		if _, ok := rule.matches(title); !ok {
 			continue
 		}
@@ -240,7 +367,7 @@ func (rs Rules) TagsInvertible() bool {
 		return false
 	}
 	for i := range rs.Rules {
-		if rs.Rules[i].Action == "tag" && !rs.Rules[i].KeepPrefix {
+		if !rs.Rules[i].Disabled && rs.Rules[i].Action == "tag" && !rs.Rules[i].KeepPrefix {
 			return false
 		}
 	}

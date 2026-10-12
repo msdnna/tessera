@@ -106,8 +106,9 @@ func LayoutSections(html string, setups []PageSetup) (string, bool) {
 // node stores.
 //
 // Single-quoted attribute because the value is JSON and JSON is full of double
-// quotes; the geometry is six numbers, so there is nothing in it that could
-// close the quote early.
+// quotes. The geometry is six numbers today, so nothing in it could close the
+// quote early — but that holds only while PageSetup stays all-numeric, so the
+// value is escaped for a single-quoted attribute anyway (singleQuotedAttr).
 func sectionBreakHTML(p PageSetup) string {
 	raw, err := json.Marshal(p)
 	if err != nil {
@@ -116,5 +117,13 @@ func sectionBreakHTML(p PageSetup) string {
 		// visible and the user can set its page from the toolbar.
 		return `<div data-section-break=""></div>`
 	}
-	return `<div data-section-break="" data-page='` + string(raw) + `'></div>`
+	return `<div data-section-break="" data-page='` + singleQuotedAttr(string(raw)) + `'></div>`
+}
+
+// singleQuotedAttr escapes s for an HTML attribute value delimited by single
+// quotes: & first (so the entities below are not themselves re-escaped), then
+// the quote. The browser's parser undoes both, so the editor reads s verbatim.
+func singleQuotedAttr(s string) string {
+	s = strings.ReplaceAll(s, "&", "&amp;")
+	return strings.ReplaceAll(s, "'", "&#39;")
 }

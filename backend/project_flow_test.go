@@ -215,14 +215,18 @@ func TestProjectSlugChoiceAndRename(t *testing.T) {
 		map[string]any{"name": "Доска"}), http.StatusCreated)
 	bSlug := b["slug"].(string)
 
-	// Renaming the address: the new one resolves, the old one is gone.
+	// Renaming the address: the new one resolves, and the old one still leads
+	// here for a while (#3012), naming the current address.
 	upd := owner.expect(t, owner.patch("/projects/"+pID+"/slug",
 		map[string]any{"slug": "Новый Слаг"}), http.StatusOK)
 	if upd["slug"] != "novyy-slag" {
 		t.Fatalf("renamed slug = %v, want novyy-slag", upd["slug"])
 	}
 	owner.expect(t, owner.get("/board-by-slug?project=novyy-slag&board="+bSlug), http.StatusOK)
-	owner.expect(t, owner.get("/board-by-slug?project=custom-address&board="+bSlug), http.StatusNotFound)
+	old := owner.expect(t, owner.get("/board-by-slug?project=custom-address&board="+bSlug), http.StatusOK)
+	if old["project_slug"] != "novyy-slag" {
+		t.Fatalf("old address resolved with project_slug = %v, want novyy-slag", old["project_slug"])
+	}
 
 	// Re-submitting the current address is a no-op, not a conflict with itself.
 	same := owner.expect(t, owner.patch("/projects/"+pID+"/slug",
@@ -292,5 +296,22 @@ func TestEstimationConfig(t *testing.T) {
 	cleared := c.expect(t, c.put("/projects/"+s.Project+"/estimation", nil), http.StatusOK)
 	if cleared["estimation"] != nil {
 		t.Fatalf("cleared project estimation = %v, want null", cleared["estimation"])
+	}
+
+	// A unit-less body clears it the same way. This is not a curiosity of the
+	// parser: Android has no other way to say "inherit" — Retrofit refuses a null
+	// `@Body` before the call leaves the device — so the phone sends `{"unit":""}`
+	// (data/model EstimationConfig.INHERIT) where the web omits the body (#2932).
+	c.expect(t, c.put("/projects/"+s.Project+"/estimation",
+		map[string]any{"unit": "points", "points_scale": "linear"}), http.StatusOK)
+	cleared = c.expect(t, c.put("/projects/"+s.Project+"/estimation",
+		map[string]any{"unit": ""}), http.StatusOK)
+	if cleared["estimation"] != nil {
+		t.Fatalf("unit-less project estimation = %v, want null", cleared["estimation"])
+	}
+	wsCleared := c.expect(t, c.put("/workspaces/"+s.WS+"/estimation",
+		map[string]any{"unit": ""}), http.StatusOK)
+	if wsCleared["estimation"] != nil {
+		t.Fatalf("unit-less workspace estimation = %v, want null", wsCleared["estimation"])
 	}
 }

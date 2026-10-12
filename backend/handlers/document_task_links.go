@@ -17,6 +17,31 @@ import (
 // text.
 const maxDocLinkQuote = 500
 
+// maxDocLinkBlockID bounds the anchor. The ids the editor draws are sixteen hex
+// characters (newBlockId in docExtensions/blockId.js), with a `-<n>` suffix in the
+// degraded-randomness branch, so this leaves room to spare for a value that is
+// not free text at all.
+//
+// Refused rather than truncated, unlike the quote next to it: the quote is a
+// label and a shortened one still reads, while the anchor is an identity —
+// trimming it would store a link pointing at a block that does not exist and
+// report success, which is the one outcome worse than saying no.
+const maxDocLinkBlockID = 64
+
+// maxDocTaskLinks caps how many tasks one document may name, for the reason
+// maxBoardViews caps a board's saved layouts: nothing else bounded this table.
+// The pair is an upsert, so re-linking the same task to the same block only
+// refreshes the quote — but block_id is the third column of that key and it
+// arrives from the client, so a *fresh* id always inserts, and there is no
+// retention pass anywhere. A member could therefore keep POSTing distinct
+// anchors, each row carrying up to maxDocLinkQuote of text, and grow the database
+// until the disk ran out (#2932).
+//
+// Generously above anything a document does by hand — a spec that names five
+// hundred separate tasks is not a document anybody reads — because the bound is
+// here to stop unbounded growth, not to ration links.
+const maxDocTaskLinks = 500
+
 // ListDocumentTaskLinks returns the tasks linked to a document, each carrying
 // enough of the task to render the row and navigate to it.
 func (h *API) ListDocumentTaskLinks(c *gin.Context) {
@@ -51,6 +76,10 @@ func (h *API) CreateDocumentTaskLink(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if len([]rune(req.BlockID)) > maxDocLinkBlockID {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "block id is too long"})
+		return
+	}
 	// The task has to live in the document's workspace. Membership is per
 	// workspace, so a cross-workspace link would render as a row nobody on either
 	// side can open — and it would leak the task's title to people who cannot see
@@ -67,6 +96,14 @@ func (h *API) CreateDocumentTaskLink(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "task belongs to another workspace"})
 		return
 	}
+	// Counted before the upsert, and only a call that would add a row is refused.
+	// A document sitting at the cap has to keep being able to refresh the links it
+	// already has — the panel re-links to update a quote after the paragraph was
+	// edited, and a cap that froze those would break the feature instead of
+	// bounding the table.
+	if ok := h.docLinkRoomLeft(c, doc.ID, req.TaskID, req.BlockID); !ok {
+		return
+	}
 	uid := middleware.CurrentUser(c)
 	link, err := h.q.CreateDocumentTaskLink(c, db.CreateDocumentTaskLinkParams{
 		DocumentID: doc.ID,
@@ -81,6 +118,29 @@ func (h *API) CreateDocumentTaskLink(c *gin.Context) {
 	}
 	h.notifyDocLinks(doc.ID)
 	c.JSON(http.StatusCreated, link)
+}
+
+// docLinkRoomLeft reports whether this document may take the asked-for link,
+// writing the refusal itself when it may not. Separate from the handler because
+// it is three statements and one rule, and the handler above already reads as a
+// list of the checks a link has to pass.
+//
+// A read that fails is not a refusal: the cap is a guard against a member
+// hammering the endpoint, and letting a hiccup in count(*) block an ordinary link
+// would trade a bound nobody reaches for a button that sometimes does not work.
+func (h *API) docLinkRoomLeft(c *gin.Context, docID, taskID uuid.UUID, blockID string) bool {
+	count, err := h.q.CountDocumentTaskLinks(c, docID)
+	if err != nil || count < maxDocTaskLinks {
+		return true
+	}
+	exists, err := h.q.DocumentTaskLinkExists(c, db.DocumentTaskLinkExistsParams{
+		DocumentID: docID, TaskID: taskID, BlockID: blockID,
+	})
+	if err != nil || exists {
+		return true
+	}
+	c.JSON(http.StatusConflict, gin.H{"error": "link limit reached"})
+	return false
 }
 
 // DeleteDocumentTaskLink unlinks. Open to any member rather than to the person

@@ -28,8 +28,12 @@ func TestWebhookDecision(t *testing.T) {
 		{"no project in payload", `{"object_kind":"issue"}`, hookRelevant},
 
 		{"push is not ours", `{"object_kind":"push","project":{"path_with_namespace":"pamir/scrum"}}`, hookIgnored},
-		{"pipeline is not ours", `{"object_kind":"pipeline","project":{"path_with_namespace":"pamir/scrum"}}`, hookIgnored},
-		{"merge request is not ours", `{"object_kind":"merge_request","project":{"path_with_namespace":"pamir/scrum"}}`, hookIgnored},
+		{"tag push is not ours", `{"object_kind":"tag_push","project":{"path_with_namespace":"pamir/scrum"}}`, hookIgnored},
+
+		// #2964: merge requests and pipelines feed «Разработка».
+		{"merge request", `{"object_kind":"merge_request","project":{"path_with_namespace":"pamir/scrum"}}`, hookMergeRequest},
+		{"pipeline", `{"object_kind":"pipeline","project":{"path_with_namespace":"pamir/scrum"}}`, hookPipeline},
+		{"another project's pipeline", `{"object_kind":"pipeline","project":{"path_with_namespace":"someone/else"}}`, hookForeign},
 
 		{"another project's issue", `{"object_kind":"issue","project":{"path_with_namespace":"someone/else"}}`, hookForeign},
 
@@ -122,6 +126,69 @@ func TestWebhookQueueKeepsDeliveryArrivedDuringSync(t *testing.T) {
 	still := q.due(base.Add(time.Hour), webhookDebounce, webhookMaxWait)
 	if len(still) != 1 {
 		t.Fatalf("delivery arrived during the sync was swallowed: %d due", len(still))
+	}
+}
+
+// A delivery surviving a sync leaves the mark in place — and that mark must open a
+// *new* burst, not go on aging inside the one the sync already covered.
+//
+// Carrying the old firstSeen forward puts the entry permanently past maxWait, so it
+// fires on every tick from then on: under a stream long enough to keep landing a
+// delivery inside each run (a mass label edit, an import), the debounce stops
+// existing and the worker runs back-to-back full pulls against GitLab — the exact
+// traffic the queue was written to collapse.
+func TestWebhookQueueReopensBurstAfterPartialClear(t *testing.T) {
+	var q webhookQueue
+	id := uuid.New()
+	base := time.Now()
+
+	// One burst runs past maxWait and is synced, as the stream keeps coming.
+	q.mark(id, base)
+	q.mark(id, base.Add(webhookMaxWait))
+	at := base.Add(webhookMaxWait)
+	due := q.due(at, webhookDebounce, webhookMaxWait)
+	if len(due) != 1 {
+		t.Fatalf("maxWait did not force a sync: %d due", len(due))
+	}
+	// The pull runs for a second and a delivery lands inside it, so the mark stays.
+	q.mark(id, at.Add(time.Second))
+	q.clear(id, due[0].mark.lastSeen)
+
+	// That leftover is one delivery old: it owes a full debounce before the next
+	// pull, exactly like any other fresh burst.
+	early := at.Add(time.Second + webhookDebounce - time.Millisecond)
+	if again := q.due(early, webhookDebounce, webhookMaxWait); len(again) != 0 {
+		t.Fatalf("leftover mark fired %v after its delivery, before the debounce", webhookDebounce)
+	}
+	if again := q.due(at.Add(time.Second+webhookDebounce), webhookDebounce, webhookMaxWait); len(again) != 1 {
+		t.Fatalf("leftover delivery never became due: %d", len(again))
+	}
+}
+
+// The reopened burst still has a ceiling: a stream that never goes quiet after a
+// partial clear must fire again within maxWait of the leftover, not be postponed.
+func TestWebhookQueueReopenedBurstStillBoundedByMaxWait(t *testing.T) {
+	var q webhookQueue
+	id := uuid.New()
+	base := time.Now()
+
+	q.mark(id, base)
+	due := q.due(base.Add(webhookDebounce), webhookDebounce, webhookMaxWait)
+	if len(due) != 1 {
+		t.Fatalf("want one due integration, got %d", len(due))
+	}
+	covered := due[0].mark.lastSeen
+	q.mark(id, base.Add(webhookDebounce+time.Second))
+	q.clear(id, covered)
+
+	// The stream carries on, never quiet for a whole debounce…
+	now := base.Add(webhookDebounce + time.Second)
+	for now.Sub(covered) < webhookMaxWait {
+		now = now.Add(webhookDebounce / 2)
+		q.mark(id, now)
+	}
+	if again := q.due(now, webhookDebounce, webhookMaxWait); len(again) != 1 {
+		t.Fatalf("reopened burst never hit its maxWait ceiling: %d due", len(again))
 	}
 }
 

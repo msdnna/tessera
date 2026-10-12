@@ -32,7 +32,17 @@ test('неверный пароль оставляет на странице в�
   await page.getByTestId('register-password').locator('input').fill(creds.password)
   await page.getByTestId('register-submit').click()
   await expect(page.getByTestId('sidebar')).toBeVisible()
+  // A fresh account gets the Get Started guide, and its mask takes every click
+  // outside the step's anchor — the «⋯» menu below included. It starts after the
+  // first screen settles, so a test that clicks first races it: wait and skip.
+  await expect(page.getByTestId('tour-pop')).toBeVisible({ timeout: 15000 })
+  // v2 (#3000): «Прервать» asks first; «Завершить обучение» ends it.
+  await page.getByTestId('tour-skip').click()
+  await page.getByTestId('tour-finish').click()
+  await expect(page.getByTestId('tour-pop')).toHaveCount(0)
 
+  // «Выйти» sits in the footer's «⋯» menu (v2, #2953).
+  await page.getByTestId('user-menu').click()
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
 
@@ -73,13 +83,23 @@ test('логаут разлогинивает и защищает приватн
   await page.getByTestId('register-password').locator('input').fill(creds.password)
   await page.getByTestId('register-submit').click()
   await expect(page.getByTestId('sidebar')).toBeVisible()
+  // A fresh account gets the Get Started guide, and its mask takes every click
+  // outside the step's anchor — the «⋯» menu below included. It starts after the
+  // first screen settles, so a test that clicks first races it: wait and skip.
+  await expect(page.getByTestId('tour-pop')).toBeVisible({ timeout: 15000 })
+  // v2 (#3000): «Прервать» asks first; «Завершить обучение» ends it.
+  await page.getByTestId('tour-skip').click()
+  await page.getByTestId('tour-finish').click()
+  await expect(page.getByTestId('tour-pop')).toHaveCount(0)
 
+  // «Выйти» sits in the footer's «⋯» menu (v2, #2953).
+  await page.getByTestId('user-menu').click()
   await page.getByTestId('logout').click()
   await expect(page).toHaveURL(/\/login/)
 
   // The guard must hold after a fresh load too — logout revokes the refresh
   // token server-side, so bootstrap has nothing left to trade.
-  await page.goto('/notes')
+  await page.goto('/documents')
   await expect(page).toHaveURL(/\/login/)
 })
 
@@ -139,4 +159,34 @@ test.describe('язык экранов входа, системный англи
     await expect(authTitle(page)).toHaveText(loginTitle.en)
     await expect(langToggle(page)).toHaveText('EN')
   })
+})
+
+// #3107: a wrong password is the form's own refusal — it used to run the whole
+// sign-out teardown, which put the screen back on the browser's language under
+// the «wrong password» banner.
+test.describe('язык экрана входа после неверного пароля', () => {
+  test.use({ locale: 'de-DE' }) // → Russian by default; the toggle picks English
+
+  test('ошибка входа не сбрасывает выбранный язык', async ({ page }) => {
+    await page.goto('/login')
+    await langToggle(page).click()
+    await expect(authTitle(page)).toHaveText(loginTitle.en)
+
+    await page.getByTestId('login-email').locator('input').fill('nobody@test.local')
+    await page.getByTestId('login-password').locator('input').fill('definitely-wrong')
+    await page.getByTestId('login-submit').click()
+
+    await expect(page.locator('.auth-error')).toBeVisible()
+    await expect(authTitle(page)).toHaveText(loginTitle.en)
+    await expect(langToggle(page)).toHaveText('EN')
+  })
+})
+
+// v2 (#3107): the account screens share one frame — the 404 included, which
+// takes ↵ home.
+test('404 в каркасе входа уводит на главную по ↵', async ({ page }) => {
+  await page.goto('/no/such/page')
+  await expect(page.getByTestId('not-found')).toBeVisible()
+  await page.keyboard.press('Enter')
+  await expect(page).toHaveURL(/\/login|\/$/)
 })

@@ -1,0 +1,12 @@
+{
+  "product": "2.0.0",
+  "name": "Tessera 2",
+  "date": "2026-10-12",
+  "components": {
+    "backend": "0.112.0",
+    "frontend": "0.190.0",
+    "android": "0.77.0",
+    "desktop": "0.4.1",
+    "mcp": "0.6.0"
+  }
+}

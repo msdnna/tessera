@@ -13,6 +13,8 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+
+	"tessera/internal/logsafe"
 )
 
 // Event is a server→client message. Scope is the workspace id the event belongs
@@ -20,11 +22,22 @@ import (
 // not a member of that workspace. Actor, when set, carries the id of the user
 // who triggered the event so clients can attribute board-activity ("X created
 // …"); it is absent for system/worker actions (GitLab sync, recurrence).
+//
+// User narrows delivery further to a single addressee inside that workspace, for
+// events that are one person's business (a notification carries its text, and a
+// reminder's text is the user's own private message). It is server-side only —
+// the wire format is unchanged — and unset means "everyone in scope".
+//
+// Admin routes an instance-level event (the background-jobs window, #3067) to the
+// sockets of global administrators instead of a workspace: Scope is then empty and
+// ignored. Server-side only as well.
 type Event struct {
 	Scope string          `json:"scope"`
 	Type  string          `json:"type"`
 	Actor string          `json:"actor,omitempty"`
 	Data  json.RawMessage `json:"data,omitempty"`
+	User  uuid.UUID       `json:"-"`
+	Admin bool            `json:"-"`
 }
 
 // Hub fans out Events to the clients authorised to receive them.
@@ -40,6 +53,8 @@ type Hub struct {
 	// shutdown parks nobody on an unread channel.
 	done      chan struct{}
 	closeOnce sync.Once
+	// presence: who is on which board right now (#3116, presence.go).
+	presence *presence
 }
 
 // NewHub returns an initialised Hub ready to Run.
@@ -51,6 +66,7 @@ func NewHub() *Hub {
 		dropUser:   make(chan uuid.UUID, 8),
 		broadcast:  make(chan Event, 64),
 		done:       make(chan struct{}),
+		presence:   newPresence(),
 	}
 }
 
@@ -99,7 +115,7 @@ func (h *Hub) Run() {
 		case ev := <-h.broadcast:
 			h.mu.RLock()
 			for c := range h.clients {
-				if !c.canSee(ev.Scope) {
+				if !c.shouldReceive(ev) {
 					continue
 				}
 				select {
@@ -147,6 +163,6 @@ func (h *Hub) DropUser(userID uuid.UUID) {
 	default:
 		// Run is busy; the membership change still lands on the next
 		// reconnect rather than blocking the request that triggered it.
-		log.Printf("realtime: drop-user buffer full, skipping drop for %s", userID)
+		logsafe.Printf("realtime: drop-user buffer full, skipping drop for %s", userID)
 	}
 }

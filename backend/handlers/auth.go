@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 
@@ -26,6 +27,56 @@ type AuthHandler struct {
 	sealer    *secrets.Sealer // decrypts the OAuth client secret at rest
 	mailer    mail.Mailer
 	publicURL string
+	// One-time codes for the desktop OAuth deep link — see oauth_handoff.go.
+	handoff *oauthHandoffStore
+	// revokeSockets cuts the user's live WebSockets when their password changes
+	// (#2932). Optional: tests that build an AuthHandler directly leave it nil,
+	// and a nil revoker simply means "no sockets to cut here".
+	revokeSockets func(uuid.UUID, string)
+	// rescopeSockets re-resolves the workspaces a user's live board sockets may
+	// receive events for, after this layer has *granted* a membership (#2932).
+	// Optional, like revokeSockets.
+	rescopeSockets func(uuid.UUID)
+}
+
+// WireSocketRevoker injects the socket revocation behaviour owned by API (see
+// API.SocketRevoker). Called once at router construction, before any request.
+func (h *AuthHandler) WireSocketRevoker(revoke func(uuid.UUID, string)) { h.revokeSockets = revoke }
+
+// WireScopeRefresher injects the re-scoping behaviour owned by API (see
+// API.ScopeRefresher). Called once at router construction, before any request.
+func (h *AuthHandler) WireScopeRefresher(rescope func(uuid.UUID)) { h.rescopeSockets = rescope }
+
+// dropSockets ends every live connection the user holds. Both password doors
+// call it: a socket authenticates once, at the upgrade, and then lives on
+// ping/pong for as long as the process does — so revoking the refresh chain
+// alone leaves whoever the password change was aimed at still connected,
+// receiving the account's events in real time.
+func (h *AuthHandler) dropSockets(userID uuid.UUID, reason string) {
+	if h.revokeSockets != nil {
+		h.revokeSockets(userID, reason)
+	}
+}
+
+// rescope tells the user's live board sockets that their workspace list grew.
+//
+// The scopes are resolved once, at the upgrade, and are immutable for the life
+// of the connection — so every membership change has to reach the socket from
+// the outside. Removal is loud (revokeSockets) and the workspace endpoints
+// already drop the user on add/accept; this is the same reflex for the two
+// grants that happen *inside* the auth layer, where a session is typically
+// already open: applying a pending invitation on email verification, and the
+// OAuth org map on sign-in. Without it the newcomer's board renders (the list
+// refetches over HTTP) and then sits frozen until a reload they have no reason
+// to perform.
+//
+// Deliberately not revokeSockets: nothing was taken away, so ending the
+// person's call and evicting them from the document they have open would be a
+// worse answer than the bug.
+func (h *AuthHandler) rescope(userID uuid.UUID) {
+	if h.rescopeSockets != nil {
+		h.rescopeSockets(userID)
+	}
 }
 
 // NewAuthHandler returns an AuthHandler with the given queries, signing secret,
@@ -35,7 +86,7 @@ func NewAuthHandler(q *db.Queries, secret, encryptionKey string, mailer mail.Mai
 	if err != nil {
 		log.Fatalf("failed to init auth secret sealer: %v", err)
 	}
-	return &AuthHandler{q: q, secret: secret, sealer: sealer, mailer: mailer, publicURL: publicURL}
+	return &AuthHandler{q: q, secret: secret, sealer: sealer, mailer: mailer, publicURL: publicURL, handoff: newOAuthHandoffStore()}
 }
 
 type authResponse struct {
@@ -45,6 +96,34 @@ type authResponse struct {
 	RefreshToken string   `json:"refresh_token,omitempty"`
 	User         userDTO  `json:"user"`
 	Preferences  prefsDTO `json:"preferences"`
+	// What became of an invitation token presented at sign-up (see
+	// acceptInvitationToken). Absent everywhere else — only Register takes one.
+	Invite string `json:"invite,omitempty"`
+}
+
+// rejectBadPassword answers 400 when a new password cannot be stored, and
+// reports whether it did.
+//
+// The upper bound is bcrypt's and it is counted in bytes, which no binding tag
+// can express — `max=72` counts runes, so a 37-letter Russian passphrase (74
+// bytes) would sail past it and fail inside GenerateFromPassword. That failure
+// used to reach the 500 branch of all three doors: the user read "internal
+// error" about a password that was merely long, and the operator got a logged
+// server error that was nothing of the kind (#2932).
+//
+// The strings are fixed English sentinels because that is how this API hands
+// reasons to a client — see SENTINELS in frontend/src/utils/errors.js, which
+// turns them into the reader's language.
+func rejectBadPassword(c *gin.Context, plain string) bool {
+	switch err := auth.CheckPasswordPolicy(plain); {
+	case errors.Is(err, auth.ErrPasswordTooLong):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password is too long"})
+		return true
+	case errors.Is(err, auth.ErrPasswordTooShort):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "password is too short"})
+		return true
+	}
+	return false
 }
 
 // Register creates a user. The very first registered user becomes an admin.
@@ -53,9 +132,15 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		Email    string `json:"email" binding:"required,email"`
 		Name     string `json:"name" binding:"required"`
 		Password string `json:"password" binding:"required,min=8"`
+		// Optional: the token from an invitation email, carried here by the
+		// invite page when the invitee has no account yet.
+		InviteToken string `json:"invite_token"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if rejectBadPassword(c, req.Password) {
 		return
 	}
 
@@ -97,12 +182,16 @@ func (h *AuthHandler) Register(c *gin.Context) {
 		})
 	}
 
-	// Apply any pending workspace invitations addressed to this email, then send
-	// a verification email (no-op mailer just logs the link when SMTP is off).
-	h.acceptPendingInvitations(c, user)
+	// Only the invitation whose token was presented is applied: the address by
+	// itself proves nothing, and invitations sit pending for a week, so joining
+	// on a bare email match would hand the workspace to whoever registers the
+	// invitee's address first. The rest wait for email verification.
+	invite := h.acceptInvitationToken(c, user, req.InviteToken)
 	h.sendVerification(c, user)
 
-	h.issue(c, user)
+	// The outcome rides back with the session: the account exists either way, and
+	// a client that presented a token has no other way to learn whether it took.
+	h.issueMode(c, user, wantsCookieAuth(c), invite)
 }
 
 // Login authenticates by email + password.
@@ -208,10 +297,20 @@ func (h *AuthHandler) Refresh(c *gin.Context) {
 		reject(http.StatusUnauthorized, "user not found")
 		return
 	}
+	// Deactivation has to reach the session, not just the login form. A refresh
+	// token renews itself for as long as it is used, so an account switched off
+	// while someone was signed in would otherwise never actually leave — rotation
+	// alone would carry it indefinitely. 403 matches Login's answer for the same
+	// state, and every client already reads a non-5xx refusal here as "the
+	// session is over" (frontend/src/api/index.js refreshFailure).
+	if !user.Active {
+		reject(http.StatusForbidden, "account is deactivated")
+		return
+	}
 
 	// Rotation stays in the channel it arrived on: a cookie-mode client gets the
 	// new token back as a cookie even if it forgot the header.
-	h.issueMode(c, user, fromCookie || wantsCookieAuth(c))
+	h.issueMode(c, user, fromCookie || wantsCookieAuth(c), "")
 }
 
 // refreshGrace is how long a just-rotated refresh token keeps working. Rotation
@@ -288,39 +387,48 @@ func (h *AuthHandler) Me(c *gin.Context) {
 // mintTokens creates an access + refresh pair and stores the refresh hash. On
 // failure it writes a 500 and returns ok=false. Shared by issue() (JSON response)
 // and the OAuth callback (redirect handoff).
-func (h *AuthHandler) mintTokens(c *gin.Context, user db.User) (access, refresh string, ok bool) {
+// The refresh-token row's id travels back with the pair: it is the session's
+// identity, and the media cookie is signed against it so that revoking the row
+// takes the image credential with it (see auth.NewMediaToken).
+func (h *AuthHandler) mintTokens(c *gin.Context, user db.User) (access, refresh string, sessionID uuid.UUID, ok bool) {
 	access, err := auth.NewAccessToken(h.secret, user.ID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		return "", "", false
+		return "", "", uuid.Nil, false
 	}
 	refresh, hash, err := auth.NewRefreshToken()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		return "", "", false
+		return "", "", uuid.Nil, false
 	}
-	if _, err := h.q.CreateRefreshToken(c, db.CreateRefreshTokenParams{
+	row, err := h.q.CreateRefreshToken(c, db.CreateRefreshTokenParams{
 		UserID:    user.ID,
 		TokenHash: hash,
 		ExpiresAt: time.Now().Add(auth.RefreshTokenTTL),
-	}); err != nil {
+	})
+	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "internal error"})
-		return "", "", false
+		return "", "", uuid.Nil, false
 	}
-	return access, refresh, true
+	// "Was in the app" (#3073): every sign-in and every refresh comes through
+	// here — roughly once per access-token lifetime of real use, and throttled in
+	// the UPDATE besides. Best-effort.
+	soft(c, "touch last_seen_at", h.q.TouchUserSeen(c, user.ID))
+	return access, refresh, row.ID, true
 }
 
 // issue mints an access + refresh pair and returns them with the user profile,
 // honouring the delivery mode the client asked for.
 func (h *AuthHandler) issue(c *gin.Context, user db.User) {
-	h.issueMode(c, user, wantsCookieAuth(c))
+	h.issueMode(c, user, wantsCookieAuth(c), "")
 }
 
 // issueMode is issue() with the delivery mode decided by the caller — Refresh
 // needs it, because a token that arrived in a cookie goes back in a cookie
-// regardless of headers.
-func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool) {
-	access, refresh, ok := h.mintTokens(c, user)
+// regardless of headers — and with the fate of a presented invitation token,
+// which only Register has one of.
+func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool, invite string) {
+	access, refresh, sessionID, ok := h.mintTokens(c, user)
 	if !ok {
 		return
 	}
@@ -329,14 +437,17 @@ func (h *AuthHandler) issueMode(c *gin.Context, user db.User, cookieMode bool) {
 		RefreshToken: refresh,
 		User:         buildUserDTO(c, h.q, user),
 		Preferences:  loadPrefsDTO(c, h.q, user.ID),
+		Invite:       invite,
 	}
 	if cookieMode {
 		h.setRefreshCookie(c, refresh)
 		res.RefreshToken = "" // omitempty drops it from the body entirely
 		// Same client, same trip: the browser also needs the credential that
 		// <img> requests to /api/uploads can carry (#2685). Reissued on every
-		// refresh, so a long-lived session never outlives its media cookie.
-		h.setMediaCookie(c, user.ID)
+		// refresh, so a long-lived session never outlives its media cookie — and
+		// signed against the refresh row just created, so the reverse holds too
+		// and the cookie never outlives the session (#2932).
+		h.setMediaCookie(c, user.ID, sessionID)
 	}
 	c.JSON(http.StatusOK, res)
 }

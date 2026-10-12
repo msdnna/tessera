@@ -5,6 +5,10 @@
     "task_updated": "{actor} updated task #{ref}: {fields}",
     "task_moved": "{actor} moved task #{ref} → “{column}”",
     "task_archived": "{actor} archived task #{ref}{ctx}",
+    "task_deleted": "{actor} deleted task #{ref}{ctx}",
+    "task_unassigned": "{actor} unassigned you from task #{ref}{ctx}",
+    "task_completed": "{actor} completed task #{ref}{ctx}",
+    "task_reopened": "{actor} reopened task #{ref}{ctx}",
     "task_comment": "{actor} commented on #{ref}{ctx}",
     "task_thread_reply": "{actor} replied in the thread on #{ref}{ctx}",
     "task_mention": "{actor} mentioned you in #{ref}{ctx}",
@@ -13,7 +17,17 @@
     "integration_sync_ok": "{label}: +{created} new, ~{updated} updated, in {took}",
     "integration_sync_partial": "{label}: +{created} new, ~{updated} updated, in {took} (some actions failed)",
     "integration_sync_failed": "{label}: sync failed — {reason} (after {took})",
-    "conference_invited": "{actor} invited you to a conference{ctx}"
+    "conference_invited": "{actor} invited you to a conference{ctx}",
+    "note_mention": "{actor} mentioned you in a note{ctx}",
+    "milestone_closed": "{actor} closed stage “{title}” — {done} of {total} done",
+    "conference_starting": "Meeting “{title}” starts in {minutes} min",
+    "integration_conflict": "{label} · sync conflict on #{ref} ({fields}): changed on both sides",
+    "document_mention": "{actor} mentioned you in document “{name}”{ctx}",
+    "conference_mention": "{actor} mentioned you in the chat of “{name}”{ctx}",
+    "workspace_owner_transferred": "{actor} handed you the workspace “{workspace}”",
+    "access_requested": "{actor} asks for access to the workspace",
+    "access_approved": "{actor} let you into the workspace “{workspace}”",
+    "access_declined": "Your access request was declined"
   },
   "field": {
     "title": "title",
@@ -23,7 +37,8 @@
     "start": "start date",
     "estimate": "estimate",
     "completed": "completed",
-    "reopened": "reopened"
+    "reopened": "reopened",
+    "state": "status"
   },
   "kind": {
     "assigned": "Task assigned",
@@ -32,15 +47,63 @@
     "updated": "Task updated",
     "moved": "Task moved",
     "archived": "Task archived",
+    "deleted": "Task deleted",
+    "unassigned": "Unassigned from a task",
+    "completed": "Task completed",
+    "reopened": "Task reopened",
     "due_soon": "Deadline approaching",
     "reminder": "Reminder",
     "integration_sync": "Sync finished",
-    "conference_invite": "Conference invitation"
+    "conference_invite": "Conference invitation",
+    "milestone_closed": "Stage closed",
+    "conference_soon": "Meeting starting soon",
+    "integration_conflict": "Sync conflict",
+    "workspace_owner": "Workspace handed over",
+    "access_request": "Access request"
   },
   "duration": {
     "instant": "less than a second",
     "hm": "{h}h {m}m",
     "ms": "{m}m {s}s",
     "s": "{s}s"
+  },
+  "reason": {
+    "unknown": "unknown error"
+  },
+  "pop": {
+    "settings": "Notification settings",
+    "filter": {
+      "all": "All",
+      "unread": "Unread",
+      "mentions": "Mentions",
+      "assigned": "Assigned",
+      "gitlab": "GitLab"
+    },
+    "fresh": "New",
+    "earlier": "Earlier",
+    "emptyFilter": "Nothing here yet",
+    "accept": "Accept",
+    "decline": "Decline",
+    "select": "select",
+    "open": "open",
+    "read": "read",
+    "all": "All notifications",
+    "now": "just now",
+    "minutes": "{n} min",
+    "quote": "“{text}”",
+    "hours": "{n} h",
+    "accepted": "You're going",
+    "declined": "You declined",
+    "resolve": "Resolve conflict",
+    "join": "Join",
+    "at": "at {time}",
+    "stageOf": "Stage · {project}",
+    "today": "Today",
+    "yesterday": "Yesterday",
+    "more": "Show more",
+    "loading": "Loading…",
+    "end": "That's all your notifications",
+    "page": "All notifications",
+    "pageSub": "Every workspace in one feed — newest first"
   }
 }

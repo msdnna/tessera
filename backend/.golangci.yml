@@ -21,3 +21,24 @@ linters:
         linters:
           - errcheck
           - gocritic
+
+# Formatting is a gate, not a suggestion — every other component already has one
+# (`cargo fmt --check` on the desktop crate, ktlintCheck on Android, prettier's
+# format:check on the web), and Go was the only one without. golangci-lint v2
+# moved formatters out of `linters` into their own section, so a config carried
+# over from v1 silently stops checking gofmt: `make lint-backend` runs
+# `golangci-lint run`, which reports nothing about layout, and `go fmt ./...` is
+# in no recipe at all. Two struct blocks had already drifted off gofmt's
+# alignment by the time this was added (#2932).
+formatters:
+  enable:
+    - gofmt
+
+# Both default to a cap (50 per linter, 3 for the same issue), which is a
+# reasonable default for a reviewer skimming a diff and a bad one for a gate: the
+# gofmt run that found this drift reported exactly three files and hid nineteen,
+# so "fix what it printed" would have left the build red with nothing new to
+# read. A gate has to report everything it is failing on.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0

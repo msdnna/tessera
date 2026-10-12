@@ -83,9 +83,15 @@ func notifyAllowPrivateURLs() bool {
 type ShoutrrrSender struct{}
 
 // Send renders the message text and hands it to shoutrrr for the channel's URL.
-func (ShoutrrrSender) Send(_ context.Context, ch Channel, msg Message) error {
+func (ShoutrrrSender) Send(ctx context.Context, ch Channel, msg Message) error {
 	target, err := shoutrrrURL(ch)
 	if err != nil {
+		return Permanent(err)
+	}
+	// shoutrrr dials through its own http.DefaultClient, so the guarded dialer
+	// behind WebhookSender never sees this request — the target has to be
+	// checked here or the channel type becomes an SSRF bypass.
+	if err := guardShoutrrrTarget(ctx, target); err != nil {
 		return Permanent(err)
 	}
 	// msg.Body is already the fully rendered message (the link is part of the

@@ -14,36 +14,60 @@
 import { ref, computed, watch, onMounted, onBeforeUnmount } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useI18n } from 'vue-i18n'
-import {
-  NButton,
-  NIcon,
-  NInput,
-  NModal,
-  NDatePicker,
-  NInputNumber,
-  NRadioGroup,
-  NRadioButton,
-  NPopconfirm,
-  NSpin,
-  useMessage,
-} from 'naive-ui'
+import { NIcon, NPopconfirm, NSelect, NSpin, NTooltip } from 'naive-ui'
+import DateField from '@/components/kit/DateField.vue'
+import { useMessage } from '@/composables/useMessage'
 import {
   VideocamOutline,
-  TrashOutline,
   ArrowBackOutline,
   PeopleOutline,
   TimeOutline,
   LogOutOutline,
   PowerOutline,
+  FlashOutline,
+  CalendarOutline,
+  LinkOutline,
+  EllipsisHorizontal,
+  TrashOutline,
+  RepeatOutline,
+  TrailSignOutline,
+  DocumentTextOutline,
+  CheckmarkOutline,
+  CloseOutline,
+  CreateOutline,
 } from '@vicons/ionicons5'
-import { conferences as confApi, workspaces as wsApi } from '@/api'
+import { conferences as confApi, documents as docsApi, workspaces as wsApi } from '@/api'
+import { builtinCards, builtinContent } from '@/utils/docTemplates'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { useNotificationsStore } from '@/stores/notifications'
 import { useAuthStore } from '@/stores/auth'
 import { useConferenceSession } from '@/stores/conference'
 import { useFormat } from '@/composables/useFormat'
 import { useRealtime } from '@/composables/useRealtime'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { mediaSupported, UNAVAILABLE } from '@/composables/useConfTransport'
 import { hueGrad, tagPillBg } from '@/utils/gradient'
+import { canModerateConference } from '@/utils/confLobby'
+import { groupConferences, nearestScheduled } from '@/utils/confList'
+import { leaveCallView } from '@/utils/confNav'
+import {
+  DURATIONS,
+  DEFAULT_DURATION,
+  durationLabel,
+  planAt,
+  planBody,
+  recurrenceLabel,
+  recurrenceMenuItems,
+  stageHref,
+  stageMenuItems,
+} from '@/utils/confPlan'
+import { copyText } from '@/utils/clipboard'
 import EmptyState from '@/components/EmptyState.vue'
+import ShortcutKeys from '@/components/ShortcutKeys.vue'
+import PopoverForm from '@/components/kit/PopoverForm.vue'
+import FormField from '@/components/kit/FormField.vue'
+import ActionMenu from '@/components/kit/ActionMenu.vue'
+import '@/components/kit/kit.css'
 import ConferenceRoom from '@/components/conference/ConferenceRoom.vue'
 import ConferenceRecordings from '@/components/conference/ConferenceRecordings.vue'
 
@@ -54,7 +78,7 @@ const ws = useWorkspacesStore()
 const auth = useAuthStore()
 const session = useConferenceSession()
 const message = useMessage()
-const { firstDayOfWeek, dateTimePattern, formatDateTime } = useFormat()
+const { formatDateTime, formatTime, formatDate, formatters } = useFormat()
 
 const list = ref([])
 const loading = ref(false)
@@ -74,40 +98,134 @@ const recNudge = ref(0)
 const openId = computed(() => route.params.id || '')
 
 // ── list ───────────────────────────────────────────────────────────────
+
+// Four things ask for the list — the mount, the status radio, the workspace
+// switcher and the socket — and nothing held their answers apart, so whichever
+// arrived LAST won, not whichever was asked last. Clicking «Живые» and then
+// «Завершённые» while the first request is still out leaves the live calls on
+// screen under the «Завершённые» radio, and nothing refetches until the reader
+// touches the filter again; the same race across a workspace switch shows the
+// previous workspace's calls. A busy call (participants joining) fires several
+// `load()`s a second, so the reordering is not hypothetical.
+//
+// The counter is the same device SearchBar.vue uses for its debounced query, and
+// the same comparison-after-await Android has always done (#2932).
+let loadSeq = 0
+let detailSeq = 0
+
 async function load() {
+  // Bumped before the early return, not after: a request already in flight has to
+  // be invalidated even by a call that goes on to do nothing, or its answer lands
+  // later and refills the list we are clearing.
+  const mine = ++loadSeq
   if (!ws.currentId) {
     list.value = []
+    loading.value = false
     return
   }
   loading.value = true
   try {
     const { data } = await confApi.list(ws.currentId, filter.value === 'all' ? '' : filter.value)
+    if (mine !== loadSeq) return
     list.value = data || []
   } catch (e) {
+    // A superseded request's failure is about a list nobody is looking at; its
+    // toast would blame the filter the reader just switched to.
+    if (mine !== loadSeq) return
     message.error(e.message)
   } finally {
-    loading.value = false
+    // Only the request that lit the spinner puts it out.
+    if (mine === loadSeq) loading.value = false
+  }
+}
+
+// ── agendas (#3046) ─────────────────────────────────────────────────────
+// Documents pinned to a meeting — its agenda, its protocol — as a chip on the
+// row. One read for the whole list (conference_id → documents), refreshed when
+// the list's workspace changes and when a document moves on the socket.
+const agendas = ref({})
+let agendaSeq = 0
+async function loadAgendas() {
+  const mine = ++agendaSeq
+  const wsId = ws.currentId
+  if (!wsId) {
+    agendas.value = {}
+    return
+  }
+  try {
+    const { data } = await docsApi.byConferences(wsId)
+    if (mine !== agendaSeq) return
+    const out = {}
+    for (const d of data || []) (out[d.conference_id] ||= []).push(d)
+    agendas.value = out
+  } catch {
+    // The chips are a convenience; the list stands without them.
+  }
+}
+const agendaOf = (c) => agendas.value[c.id]?.[0] || null
+function openAgenda(doc) {
+  router.push(`/documents/${doc.slug || doc.id}`)
+}
+// «Создать повестку» from a row's «⋯»: the built-in agenda, pinned to the
+// meeting and named after it — the same document the gallery would make.
+async function createAgenda(c) {
+  const card = builtinCards().find((x) => x.key === 'meeting')
+  try {
+    const { data: doc } = await docsApi.create(ws.currentId, {
+      title: `${card.title}: ${c.title}`,
+      icon: card.icon,
+      conference_id: c.id,
+    })
+    const content = builtinContent('meeting')
+    if (content) await docsApi.updateContent(doc.id, content, doc.updated_at)
+    openAgenda(doc)
+  } catch (e) {
+    message.error(e.message)
   }
 }
 
 // ── one conference ─────────────────────────────────────────────────────
+// The lobby needs the guard even more than the list does: on the way in it calls
+// `ensureWorkspace` with the ANSWER's workspace, so a late reply about the call
+// the reader has left does not merely redraw the lobby — it drags the whole app
+// into that call's workspace, retargeting the tree, the board and the socket.
 async function loadDetail(id) {
+  const mine = ++detailSeq
   detailLoading.value = true
   detailMissing.value = false
   try {
     const { data } = await confApi.get(id)
+    if (mine !== detailSeq) return
     detail.value = data
+    // An invitation notification deep-links straight here, and the backend
+    // authorises a call against ITS workspace — so the lobby can open while the
+    // app is still pointed at the remembered one. Every scope decision on this
+    // page reads currentId (the realtime filter below, the invite roster), so it
+    // has to follow the call, exactly as BoardView follows a linked board (#2721).
+    // Idempotent when we are already there.
+    const confWs = data?.conference?.workspace_id
+    if (confWs) await ws.ensureWorkspace(confWs)
+    if (mine !== detailSeq) return
     // Prefetch the workspace roster so the room's invite popover is ready before
     // it is opened; skipped for an ended call, which cannot be invited to.
-    if (canInvite.value) loadMembers()
+    if (canInvite.value) loadMembers(confWs)
+    // Opened by «Войти» / ⇧J / «Мгновенная»: join now that the lobby is here.
+    if (autoJoin === id) {
+      autoJoin = ''
+      if (!inRoom.value) join()
+    }
   } catch (e) {
+    if (mine !== detailSeq) return
     // A deleted (or foreign-workspace) conference answers 404 — say so on the
     // page instead of leaving the previous conference on screen under a new id.
     detail.value = null
     detailMissing.value = true
-    if (e.response?.status !== 404 && e.response?.status !== 403) message.error(e.message)
+    // `e.status`, not `e.response.status` — see the note in ConferenceChat: the
+    // api client rejects with an error of its own, and this check silently
+    // matched nothing, so the page said "conference not found" *and* toasted it.
+    if (e.status !== 404 && e.status !== 403) message.error(e.message)
   } finally {
-    detailLoading.value = false
+    if (mine === detailSeq) detailLoading.value = false
   }
 }
 
@@ -132,7 +250,7 @@ async function act(fn, toast) {
     detail.value.participants = parts || []
     if (toast) message.success(t(toast))
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     busy.value = false
   }
@@ -149,7 +267,7 @@ async function remove(conf) {
     if (openId.value === conf.id) backToList()
     else await load()
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   }
 }
 
@@ -177,12 +295,16 @@ const invitable = computed(() => {
 const canInvite = computed(() => detail.value && detail.value.conference.status !== 'ended')
 
 // Loaded once the lobby opens, so the popover's list is ready on the first click.
+// Asked for the CALL's workspace, not the remembered one: the server lets only
+// members of the call's workspace be invited, so a roster read off currentId
+// would offer people it then refuses and hide the colleagues actually in reach.
 // Silent on failure: the popover just shows an empty list until it succeeds —
 // nothing the person opening a call needs a red toast about.
-async function loadMembers() {
-  if (!wsApi?.members || !ws.currentId) return
+async function loadMembers(wsID) {
+  const scope = wsID || ws.currentId
+  if (!wsApi?.members || !scope) return
   try {
-    const { data } = await wsApi.members(ws.currentId)
+    const { data } = await wsApi.members(scope)
     members.value = data || []
   } catch {
     // non-fatal; invitable stays empty
@@ -199,7 +321,7 @@ async function inviteOne(userId) {
     detail.value.participants = parts || []
     message.success(t('conferences.invite.sent', { count: 1 }))
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   }
 }
 
@@ -209,25 +331,86 @@ async function inviteOne(userId) {
 // number in the box is the number that will apply — a blank field that silently
 // becomes 30 is how people find out about a retention policy by losing a file.
 const RECORDING_TTL_DEFAULT = 30
-const dlg = ref({
-  show: false,
-  saving: false,
-  title: '',
-  description: '',
-  at: null,
-  ttl: RECORDING_TTL_DEFAULT,
-})
-
-function openDialog() {
-  dlg.value = {
-    show: true,
+const scheduleBtn = ref(null)
+// One form for both: «Запланировать» (editId '') and «Изменить» from a row's
+// menu (#3034) — the plan is the same fields either way. `anchor` is where the
+// form floats: the header button, or the row's «⋯».
+function blankDialog() {
+  return {
+    show: false,
     saving: false,
+    editId: '',
+    taskId: null,
+    anchor: null,
     title: '',
     description: '',
     at: null,
     ttl: RECORDING_TTL_DEFAULT,
+    // The meeting's length (#3052): the mockup's 30 minutes unless said otherwise.
+    duration: DEFAULT_DURATION,
+    recurrence: '',
+    milestoneId: null,
   }
 }
+const dlg = ref(blankDialog())
+
+function openDialog() {
+  dlg.value = { ...blankDialog(), show: true }
+  loadStages()
+}
+
+function openEdit(c, anchor) {
+  dlg.value = {
+    ...blankDialog(),
+    show: true,
+    editId: c.id,
+    // The PATCH is a full replace of task_id: carried over, or the edit would
+    // unpin the task the meeting is about.
+    taskId: c.task_id || null,
+    anchor,
+    title: c.title || '',
+    description: c.description || '',
+    at: c.scheduled_at ? Date.parse(c.scheduled_at) : null,
+    ttl: c.recording_ttl_days ?? RECORDING_TTL_DEFAULT,
+    duration: c.duration_minutes || null,
+    recurrence: c.recurrence || '',
+    milestoneId: c.milestone_id || null,
+  }
+  loadStages()
+}
+
+// The workspace's stages for «К этапу» (#3053), fetched when the form opens.
+const stages = ref([])
+async function loadStages() {
+  if (!ws.currentId) return
+  try {
+    const { data } = await wsApi.milestones(ws.currentId)
+    stages.value = data || []
+  } catch {
+    // Non-fatal: the menu then says there are no stages.
+    stages.value = []
+  }
+}
+const stageBtn = ref(null)
+const repeatBtn = ref(null)
+const stageMenu = ref(false)
+const repeatMenu = ref(false)
+const stageItems = computed(() => stageMenuItems(stages.value, dlg.value.milestoneId, t))
+const repeatItems = computed(() => recurrenceMenuItems(dlg.value.recurrence, t))
+const dlgStageTitle = computed(
+  () => stages.value.find((m) => m.id === dlg.value.milestoneId)?.title || '',
+)
+function pickStage(key) {
+  dlg.value.milestoneId = key || null
+  stageMenu.value = false
+}
+function pickRepeat(key) {
+  dlg.value.recurrence = key === 'none' ? '' : key
+  repeatMenu.value = false
+}
+const durationOptions = computed(() =>
+  DURATIONS.map((n) => ({ value: n, label: durationLabel(n, t) })),
+)
 
 async function submit() {
   const title = dlg.value.title.trim()
@@ -236,22 +419,33 @@ async function submit() {
     return
   }
   dlg.value.saving = true
+  const d = dlg.value
+  const body = {
+    title,
+    description: d.description.trim(),
+    scheduled_at: d.at ? new Date(d.at).toISOString() : null,
+    // A cleared field (v-model.number answers '') falls back to the server's
+    // own default rather than being sent as 0 — «хранить вечно» is a decision,
+    // not something an empty box should make on the user's behalf.
+    recording_ttl_days: Number.isFinite(d.ttl) ? d.ttl : RECORDING_TTL_DEFAULT,
+    ...planBody(d),
+  }
   try {
-    const { data } = await confApi.create(ws.currentId, {
-      title,
-      description: dlg.value.description.trim(),
-      scheduled_at: dlg.value.at ? new Date(dlg.value.at).toISOString() : null,
-      // Cleared field (n-input-number answers null) falls back to the server's
-      // own default rather than being sent as 0 — «хранить вечно» is a decision,
-      // not something an empty box should make on the user's behalf.
-      recording_ttl_days: Number.isFinite(dlg.value.ttl) ? dlg.value.ttl : RECORDING_TTL_DEFAULT,
-    })
+    if (d.editId) {
+      await confApi.update(d.editId, { ...body, task_id: d.taskId })
+      dlg.value.show = false
+      message.success(t('conferences.edit.saved'))
+      await load()
+      if (openId.value === d.editId) loadDetail(d.editId)
+      return
+    }
+    const { data } = await confApi.create(ws.currentId, body)
     dlg.value.show = false
     message.success(t('conferences.create.created'))
     await load()
     if (data?.id) open(data)
   } catch (e) {
-    message.error(e.response?.data?.error || e.message)
+    message.error(e.message)
   } finally {
     dlg.value.saving = false
   }
@@ -267,11 +461,18 @@ const myPart = computed(() =>
   (detail.value?.participants || []).find((p) => p.user_id === me.value),
 )
 const inRoom = computed(() => !!myPart.value?.joined_at && !myPart.value?.left_at)
-const canModerate = computed(() => {
-  const conf = detail.value?.conference
-  if (!conf) return false
-  return conf.created_by === me.value || myPart.value?.role === 'host' || auth.isAdmin
-})
+// The server's rule, not a wider one: the creator, a host in the call, or an
+// owner/admin of THIS workspace (ws.canManage reads the role the workspace list
+// reports for the current one, which the detail loader has already pulled across
+// to the call's workspace). See utils/confLobby.js.
+const canModerate = computed(() =>
+  canModerateConference(
+    detail.value?.conference,
+    detail.value?.participants,
+    me.value,
+    ws.canManage,
+  ),
+)
 // Invited but not in the room yet — never joined, or an open invitation (#2875).
 // The room's rail lists these so an invitation is visible somewhere again after
 // the standalone participants column was dropped (#2881).
@@ -310,7 +511,7 @@ function statusHue(status) {
 }
 function pillStyle(status) {
   const hue = statusHue(status)
-  return hue ? { background: tagPillBg(hue) } : { borderColor: 'var(--t-border)' }
+  return hue ? { background: tagPillBg(hue) } : { background: 'var(--t-pill)' }
 }
 // The pill's caption rides the same hue as its border, through the global
 // .accent-grad-text helper (background-clip: text) with --grad overridden.
@@ -334,12 +535,217 @@ function timeLine(c) {
   return t('conferences.row.noTime')
 }
 
+// ── v2 list (#3107 — PackageE «Встречи») ───────────────────────────────
+// A clock for «идёт · 24 мин» and for picking the nearest planned call.
+const now = ref(Date.now())
+let clock = null
+onMounted(() => (clock = setInterval(() => (now.value = Date.now()), 30000)))
+onBeforeUnmount(() => clearInterval(clock))
+
+const FILTERS = ['all', 'live', 'scheduled', 'ended']
+const grouped = computed(() =>
+  groupConferences(list.value, formatters.value, { now: new Date(now.value), t }),
+)
+const nearest = computed(() => nearestScheduled(list.value, new Date(now.value)))
+
+function runningFor(c) {
+  const at = Date.parse(c.started_at || '')
+  if (!at) return ''
+  const mins = Math.max(0, Math.floor((now.value - at) / 60000))
+  // A reusable room (#2879) can stay «live» for days; past a day the count says
+  // nothing a reader could use.
+  if (mins >= 24 * 60) return ''
+  return mins < 60
+    ? t('conferences.list.runningMin', { n: mins })
+    : t('conferences.list.runningH', { h: Math.floor(mins / 60), m: mins % 60 })
+}
+// The time column of a row: the planned time (the next occurrence of a repeat,
+// #3052), the day a finished one ended, a dash for a plan without a time.
+function rowTime(c) {
+  if (c.status === 'ended')
+    return c.ended_at ? formatDate(c.ended_at, { day: 'numeric', month: 'short' }) : '—'
+  if (planAt(c)) return formatTime(planAt(c))
+  return '—'
+}
+const dur = (c) => (c.status === 'ended' ? '' : durationLabel(c.duration_minutes, t))
+const repeatOf = (c) => (c.recurrence ? recurrenceLabel(c.recurrence, t) : '')
+// Who may change a meeting's plan from the list: its author or a workspace
+// manager (a host is only known inside the call; the server has the last word).
+const canEditRow = (c) => !!c && (c.created_by === me.value || ws.canManage)
+
+// The row's «⋯»: copy the link, delete (irreversible → a two-step item).
+const menu = ref({ show: false, conf: null, anchor: null })
+function openMenu(c, e) {
+  menu.value = { show: true, conf: c, anchor: e.currentTarget }
+}
+// «Принять / Отклонить» (#3051) in the row's menu too — the way to change an
+// answer once the row only shows it.
+const rsvpItems = (c) =>
+  c && c.my_rsvp && c.status !== 'ended'
+    ? [
+        c.my_rsvp !== 'accepted' && {
+          key: 'accept',
+          label: t('conferences.rsvp.acceptItem'),
+          icon: CheckmarkOutline,
+        },
+        c.my_rsvp !== 'declined' && {
+          key: 'decline',
+          label: t('conferences.rsvp.declineItem'),
+          icon: CloseOutline,
+        },
+      ].filter(Boolean)
+    : []
+const menuItems = computed(() => [
+  ...(canEditRow(menu.value.conf)
+    ? [
+        {
+          key: 'edit',
+          label: t('conferences.edit.action'),
+          icon: CreateOutline,
+          testid: 'conference-edit',
+        },
+      ]
+    : []),
+  { key: 'link', label: t('conferences.list.copyLink'), icon: LinkOutline },
+  menu.value.conf && agendaOf(menu.value.conf)
+    ? { key: 'agenda', label: t('conferences.agenda.open'), icon: DocumentTextOutline }
+    : { key: 'agenda-new', label: t('conferences.agenda.create'), icon: DocumentTextOutline },
+  ...rsvpItems(menu.value.conf),
+  { gap: true },
+  {
+    key: 'delete',
+    label: t('conferences.actions.delete'),
+    icon: TrashOutline,
+    danger: true,
+    confirm: { title: t('conferences.list.confirmDelete'), sub: t('conferences.confirm.delete') },
+  },
+])
+function onMenu(key) {
+  const c = menu.value.conf
+  menu.value.show = false
+  if (!c) return
+  if (key === 'link') copyLink(c)
+  else if (key === 'agenda') openAgenda(agendaOf(c))
+  else if (key === 'agenda-new') createAgenda(c)
+  else if (key === 'accept') respond(c, 'accepted')
+  else if (key === 'decline') respond(c, 'declined')
+  else if (key === 'edit') openEdit(c, menu.value.anchor)
+  else if (key === 'delete') remove(c)
+}
+
+// The reader's answer to an invitation (#3051), from a row, its menu or the
+// lobby. Optimistic: the row shows it at once and a refusal puts it back. The
+// server closes the invitation in the feed; the bell's copy follows here.
+const notes = useNotificationsStore()
+async function respond(c, response) {
+  if (!c || c.my_rsvp === response) return
+  const prev = c.my_rsvp
+  c.my_rsvp = response
+  const mine = detail.value?.participants?.find((p) => p.user_id === me.value)
+  const prevMine = mine?.rsvp
+  if (mine && detail.value?.conference?.id === c.id) mine.rsvp = response
+  try {
+    await confApi.rsvp(c.id, response)
+    const now = new Date().toISOString()
+    for (const n of notes.items)
+      if (n.kind === 'conference_invite' && n.payload?.conference_id === c.id) {
+        n.rsvp = response
+        if (!n.read_at) n.read_at = now
+      }
+  } catch (e) {
+    c.my_rsvp = prev
+    if (mine) mine.rsvp = prevMine
+    message.error(e.message)
+  }
+}
+// The lobby's answer: the reader's own seat in the call, when there is one.
+const myRsvp = computed(
+  () => detail.value?.participants?.find((p) => p.user_id === me.value)?.rsvp || null,
+)
+function respondHere(response) {
+  const c = detail.value?.conference
+  if (!c) return
+  const row = list.value.find((x) => x.id === c.id) || { ...c, my_rsvp: myRsvp.value }
+  respond(row, response)
+  const mine = detail.value.participants.find((p) => p.user_id === me.value)
+  if (mine) mine.rsvp = response
+}
+async function copyLink(c) {
+  const ok = await copyText(`${location.origin}/conferences/${c.id}`)
+  if (ok) message.success(t('conferences.list.linkCopied'))
+}
+
+// Opening a call and joining it in one go — «Войти», ⇧J, «Мгновенная»: the
+// lobby joins once its detail has loaded (see loadDetail).
+let autoJoin = ''
+function openAndJoin(c) {
+  if (!c) return
+  if (openId.value === c.id) {
+    if (!inRoom.value) join()
+    return
+  }
+  autoJoin = c.id
+  open(c)
+}
+// ⇧J: the call that is on now, else the nearest planned one.
+function joinNearest() {
+  if (openId.value) return inRoom.value ? null : join()
+  openAndJoin(grouped.value.live[0] || nearest.value)
+}
+
+// «Мгновенная» (N J): a call that starts now — created untimed and joined.
+const instantBusy = ref(false)
+async function instant() {
+  if (!ws.currentId || instantBusy.value) return
+  instantBusy.value = true
+  try {
+    const { data } = await confApi.create(ws.currentId, {
+      title: t('conferences.instant.title', { time: formatTime(new Date()) }),
+      description: '',
+      scheduled_at: null,
+      recording_ttl_days: RECORDING_TTL_DEFAULT,
+    })
+    await load()
+    if (data?.id) openAndJoin(data)
+  } catch (e) {
+    message.error(e.message)
+  } finally {
+    instantBusy.value = false
+  }
+}
+
+// The room's own controls are on screen — its dock carries «Выйти». Without
+// media (no secure context) the dock is not drawn, and leaving stays up top.
+const roomControls = computed(
+  () => mediaSupported() && session.transport.status.value !== UNAVAILABLE,
+)
+const inCall = computed(() => !!detail.value && inRoom.value && roomControls.value)
+function minimize() {
+  if (detail.value) leaveCallView(router, detail.value.conference.id)
+}
+
+// The stage pill of the call (#3053): its title and the stage page.
+const callStage = computed(() => {
+  const c = detail.value?.conference
+  return c?.milestone_title ? { title: c.milestone_title, href: stageHref(c) } : null
+})
+
+useShortcuts({
+  'meet.schedule': () => ws.currentId && !openId.value && openDialog(),
+  'meet.instant': () => instant(),
+  'meet.join': () => joinNearest(),
+})
+
 // ── wiring ─────────────────────────────────────────────────────────────
 watch(openId, (id) => {
   if (id) loadDetail(id)
   else {
+    // Leaving the lobby invalidates the fetch it started, or that answer lands on
+    // the list and draws the lobby back over it.
+    detailSeq++
     detail.value = null
     detailMissing.value = false
+    detailLoading.value = false
   }
 })
 
@@ -359,11 +765,17 @@ watch(
 watch(filter, load)
 watch(
   () => ws.currentId,
-  () => {
+  (id) => {
     // Switching workspaces while a conference is open leaves that conference
-    // outside the visible scope — go back to the list rather than 403.
-    if (openId.value) router.push('/conferences')
+    // outside the visible scope — go back to the list rather than 403. Unless we
+    // switched INTO the open call's own workspace, which is loadDetail pulling
+    // the scope after a deep link: that is the call arriving in scope, not
+    // leaving it, and bouncing there would close the lobby we just opened.
+    if (openId.value && detail.value?.conference?.workspace_id !== id) {
+      router.push('/conferences')
+    }
     load()
+    loadAgendas()
   },
 )
 
@@ -371,6 +783,8 @@ watch(
 // reload, since «идёт сейчас» is the whole reason to open this section.
 useRealtime(
   (ev) => {
+    // A document pinned to (or unpinned from) a meeting moves a row's chip.
+    if (ev.scope === ws.currentId && ev.type?.startsWith('document')) loadAgendas()
     if (ev.scope !== ws.currentId || !ev.type?.startsWith('conference')) return
     // A recording starting or finishing changes one panel, not the page: the
     // conference itself is untouched, so refetching it (and the list behind it)
@@ -413,100 +827,260 @@ onMounted(() => {
     mq.addEventListener?.('change', onMq)
   }
   load()
+  loadAgendas()
   if (openId.value) loadDetail(openId.value)
 })
 onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
 </script>
 
 <template>
-  <div class="conf">
+  <div class="conf" :class="{ 'in-call': inCall }">
     <!-- LIST -->
     <template v-if="!openId">
-      <div class="head">
-        <div class="head-text">
-          <h2 class="h">{{ $t('conferences.title') }}</h2>
-          <div class="sub">{{ $t('conferences.hint') }}</div>
-        </div>
-        <div class="head-actions">
-          <n-radio-group v-model:value="filter" size="small">
-            <n-radio-button value="all">{{ $t('conferences.filter.all') }}</n-radio-button>
-            <n-radio-button value="live">{{ $t('conferences.filter.live') }}</n-radio-button>
-            <n-radio-button value="scheduled">
-              {{ $t('conferences.filter.scheduled') }}
-            </n-radio-button>
-            <n-radio-button value="ended">{{ $t('conferences.filter.ended') }}</n-radio-button>
-          </n-radio-group>
-          <n-button
-            type="primary"
-            size="small"
-            :disabled="!ws.currentId"
-            data-testid="conference-schedule"
-            @click="openDialog"
+      <header class="head">
+        <h1 class="h">{{ $t('conferences.title') }}</h1>
+        <div class="seg" role="tablist" :aria-label="$t('conferences.hint')">
+          <button
+            v-for="f in FILTERS"
+            :key="f"
+            type="button"
+            role="tab"
+            class="seg-btn"
+            :class="{ on: filter === f }"
+            :aria-selected="filter === f"
+            :data-testid="`conference-filter-${f}`"
+            @click="filter = f"
           >
-            {{ $t('conferences.schedule') }}
-          </n-button>
+            {{ $t(`conferences.filter.${f}`) }}
+          </button>
         </div>
-      </div>
+        <span class="grow" />
+        <n-tooltip :delay="400">
+          <template #trigger>
+            <button
+              type="button"
+              class="kit-btn"
+              :disabled="!ws.currentId || instantBusy"
+              data-testid="conference-instant"
+              @click="instant"
+            >
+              <n-icon :component="FlashOutline" :size="15" />
+              {{ $t('conferences.instant.button') }}
+            </button>
+          </template>
+          <span class="tip">
+            {{ $t('conferences.instant.hint') }} <ShortcutKeys id="meet.instant" bare />
+          </span>
+        </n-tooltip>
+        <button
+          ref="scheduleBtn"
+          type="button"
+          class="kit-btn soft"
+          :disabled="!ws.currentId"
+          data-testid="conference-schedule"
+          @click="openDialog"
+        >
+          <n-icon :component="CalendarOutline" :size="15" />
+          {{ $t('conferences.schedule') }}
+          <ShortcutKeys id="meet.schedule" bare />
+        </button>
+      </header>
 
       <n-spin :show="loading">
         <div class="rows">
+          <!-- What is on right now: a card each, on the soft accent. -->
           <div
-            v-for="c in list"
+            v-for="c in grouped.live"
             :key="c.id"
-            class="row"
+            class="live"
             data-testid="conference-row"
             @click="open(c)"
           >
-            <span class="pill" :style="pillStyle(c.status)">
-              <span
-                :class="{ 'accent-grad-text': !!statusHue(c.status) }"
-                :style="pillTextStyle(c.status)"
-              >
-                {{ $t(`conferences.status.${c.status}`) }}
-              </span>
-            </span>
-            <div class="row-body">
-              <div class="row-title">{{ c.title }}</div>
-              <div class="row-meta">
-                <span class="meta-item">
-                  <n-icon :component="TimeOutline" :size="13" />{{ timeLine(c) }}
+            <span class="live-ic"><n-icon :component="VideocamOutline" :size="22" /></span>
+            <div class="live-body">
+              <div class="live-top">
+                <span class="live-tag">
+                  <span class="live-dot" />{{ $t('conferences.list.live') }}
+                  <template v-if="runningFor(c)">· {{ runningFor(c) }}</template>
                 </span>
-                <span class="meta-item">
-                  <n-icon :component="PeopleOutline" :size="13" />{{
-                    $t('conferences.row.participantCount', { count: c.participant_count })
-                  }}
-                </span>
-                <span v-if="c.active_count" class="meta-item">
-                  {{ $t('conferences.row.activeCount', { count: c.active_count }) }}
-                </span>
-                <span class="meta-item">
-                  {{
+              </div>
+              <div class="live-title">{{ c.title }}</div>
+              <div class="meta">
+                <router-link
+                  v-if="c.milestone_title && stageHref(c)"
+                  class="stage-pill"
+                  :to="stageHref(c)"
+                  @click.stop
+                >
+                  <n-icon :component="TrailSignOutline" :size="12" />{{ c.milestone_title }}
+                </router-link>
+                <span>{{ timeLine(c) }}</span>
+                <span>{{
+                  $t('conferences.row.participantCount', { count: c.participant_count })
+                }}</span>
+                <span v-if="c.active_count">{{
+                  $t('conferences.row.activeCount', { count: c.active_count })
+                }}</span>
+                <button
+                  v-if="agendaOf(c)"
+                  type="button"
+                  class="agenda-chip"
+                  :title="$t('conferences.agenda.open')"
+                  data-testid="conference-agenda"
+                  @click.stop="openAgenda(agendaOf(c))"
+                >
+                  <n-icon :component="DocumentTextOutline" :size="12" />
+                  <span class="agenda-chip-t">{{ agendaOf(c).title }}</span>
+                </button>
+              </div>
+            </div>
+            <button
+              type="button"
+              class="kit-btn primary"
+              data-testid="conference-row-join"
+              @click.stop="openAndJoin(c)"
+            >
+              {{ $t('conferences.list.join') }}
+              <ShortcutKeys v-if="c === grouped.live[0]" id="meet.join" joined />
+            </button>
+          </div>
+
+          <template v-for="g in grouped.groups" :key="g.key">
+            <div class="group">{{ g.label }}</div>
+            <div
+              v-for="c in g.rows"
+              :key="c.id"
+              class="row"
+              :class="{ ended: c.status === 'ended' }"
+              data-testid="conference-row"
+              @click="open(c)"
+            >
+              <div class="when" :class="{ next: nearest && nearest.id === c.id }">
+                <span class="when-t">{{ rowTime(c) }}</span>
+                <span v-if="dur(c)" class="when-d" data-testid="conference-row-duration">{{
+                  dur(c)
+                }}</span>
+              </div>
+              <div class="row-body">
+                <div class="row-title">
+                  <span class="row-title-t">{{ c.title }}</span>
+                  <span v-if="c.status !== 'scheduled'" class="pill" :style="pillStyle(c.status)">
+                    <span
+                      :class="{ 'accent-grad-text': !!statusHue(c.status) }"
+                      :style="pillTextStyle(c.status)"
+                      >{{ $t(`conferences.status.${c.status}`) }}</span
+                    >
+                  </span>
+                </div>
+                <div class="meta">
+                  <span v-if="c.status === 'ended'">{{ timeLine(c) }}</span>
+                  <span v-if="repeatOf(c)" data-testid="conference-row-repeat">
+                    <n-icon :component="RepeatOutline" :size="12" />{{ repeatOf(c) }}
+                  </span>
+                  <router-link
+                    v-if="c.milestone_title && stageHref(c)"
+                    class="stage-pill"
+                    :to="stageHref(c)"
+                    data-testid="conference-row-stage"
+                    @click.stop
+                  >
+                    <n-icon :component="TrailSignOutline" :size="12" />{{ c.milestone_title }}
+                  </router-link>
+                  <span>
+                    <n-icon :component="PeopleOutline" :size="12" />
+                    {{ $t('conferences.row.participantCount', { count: c.participant_count }) }}
+                  </span>
+                  <span v-if="c.active_count">{{
+                    $t('conferences.row.activeCount', { count: c.active_count })
+                  }}</span>
+                  <span>{{
                     c.created_by_name
                       ? $t('conferences.row.author', { name: c.created_by_name })
                       : $t('conferences.row.authorUnknown')
-                  }}
-                </span>
+                  }}</span>
+                  <button
+                    v-if="agendaOf(c)"
+                    type="button"
+                    class="agenda-chip"
+                    :title="$t('conferences.agenda.open')"
+                    data-testid="conference-agenda"
+                    @click.stop="openAgenda(agendaOf(c))"
+                  >
+                    <n-icon :component="DocumentTextOutline" :size="12" />
+                    <span class="agenda-chip-t">{{ agendaOf(c).title }}</span>
+                  </button>
+                </div>
               </div>
+              <!-- «Принять / Отклонить» an invitation still unanswered (#3051);
+                   once answered the row says how, and its menu changes it. -->
+              <span
+                v-if="c.my_rsvp === 'pending' && c.status !== 'ended'"
+                class="row-rsvp"
+                data-testid="conference-row-rsvp"
+              >
+                <button
+                  type="button"
+                  class="kit-btn small primary"
+                  data-testid="conference-row-accept"
+                  @click.stop="respond(c, 'accepted')"
+                >
+                  {{ $t('conferences.rsvp.accept') }}
+                </button>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  data-testid="conference-row-decline"
+                  @click.stop="respond(c, 'declined')"
+                >
+                  {{ $t('conferences.rsvp.decline') }}
+                </button>
+              </span>
+              <span
+                v-else-if="
+                  (c.my_rsvp === 'accepted' || c.my_rsvp === 'declined') &&
+                  c.status !== 'ended' &&
+                  !(c.created_by && c.created_by === me)
+                "
+                class="row-answer"
+                :class="c.my_rsvp"
+                data-testid="conference-row-answer"
+                >{{ $t(`conferences.rsvp.${c.my_rsvp}`) }}</span
+              >
+              <button
+                v-if="nearest && nearest.id === c.id"
+                type="button"
+                class="kit-btn primary small"
+                data-testid="conference-row-join"
+                @click.stop="openAndJoin(c)"
+              >
+                {{ $t('conferences.list.enter') }}
+                <ShortcutKeys v-if="!grouped.live.length" id="meet.join" joined />
+              </button>
+              <button
+                type="button"
+                class="row-icon"
+                :aria-label="$t('conferences.list.copyLink')"
+                :title="$t('conferences.list.copyLink')"
+                @click.stop="copyLink(c)"
+              >
+                <n-icon :component="LinkOutline" :size="15" />
+              </button>
+              <button
+                type="button"
+                class="row-icon"
+                :aria-label="$t('conferences.list.more')"
+                data-testid="conference-row-menu"
+                @click.stop="openMenu(c, $event)"
+              >
+                <n-icon :component="EllipsisHorizontal" :size="15" />
+              </button>
             </div>
-            <!-- .stop: the row itself navigates, and the confirm popup must not
-                 open the conference behind it. -->
-            <n-popconfirm
-              :positive-button-props="{ type: 'error' }"
-              :positive-text="$t('conferences.actions.delete')"
-              @positive-click="remove(c)"
-            >
-              <template #trigger>
-                <n-button text size="tiny" type="error" @click.stop>
-                  <n-icon :component="TrashOutline" />
-                </n-button>
-              </template>
-              {{ $t('conferences.confirm.delete') }}
-            </n-popconfirm>
-          </div>
+          </template>
 
           <empty-state
             v-if="!loading && !list.length"
             :icon="VideocamOutline"
+            :title="!ws.currentId ? '' : filter === 'all' ? $t('conferences.list.emptyTitle') : ''"
             :text="
               !ws.currentId
                 ? $t('conferences.noWorkspace')
@@ -514,53 +1088,63 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
                   ? $t('conferences.empty')
                   : $t('conferences.emptyFiltered')
             "
-          />
+          >
+            <button
+              v-if="ws.currentId && filter === 'all'"
+              type="button"
+              class="kit-btn primary"
+              @click="openDialog"
+            >
+              {{ $t('conferences.schedule') }}<ShortcutKeys id="meet.schedule" bare />
+            </button>
+          </empty-state>
         </div>
       </n-spin>
+
+      <ActionMenu
+        v-model:show="menu.show"
+        :anchor="() => menu.anchor"
+        placement="bottom-end"
+        :width="260"
+        :items="menuItems"
+        testid="conference-menu"
+        @select="onMenu"
+      />
     </template>
 
     <!-- ONE CONFERENCE -->
     <template v-else>
-      <!-- Back sits in the app topbar, left of the search, like Documents (#2864
-           round 2). It falls back to rendering inline when the topbar slots are
-           absent — a narrow screen, or a unit test with no shell.
-           On a phone both teleports fall back, and they used to land in two
-           different parents two rows apart: the back button above the title, the
-           status pill and the call's buttons below it (#2893, round 2). The
-           wrapper puts the whole fallback on ONE row; when the controls really do
-           go to the topbar it is `display: contents` and changes nothing. -->
+      <!-- The header names the call (v2): back, the title and its state ride
+           the app topbar, left of the search; the status and «Завершить» on the
+           right. Both fall back inline when the topbar slots are absent — a
+           narrow screen, or a unit test with no shell (#2876, #2893). -->
       <div v-if="ready" class="call-bar" :class="{ inline: !inTopbar }">
         <teleport to="#tb-slot-left" :disabled="!inTopbar">
-          <n-button
-            quaternary
-            size="small"
-            class="back"
-            :circle="narrow"
-            :aria-label="$t('conferences.actions.back')"
-            :title="narrow ? $t('conferences.actions.back') : undefined"
-            @click="backToList"
-          >
-            <template #icon><n-icon :component="ArrowBackOutline" /></template>
-            <template v-if="!narrow">{{ $t('conferences.actions.back') }}</template>
-          </n-button>
+          <span class="crumb">
+            <button
+              type="button"
+              class="crumb-back"
+              :aria-label="$t('conferences.actions.back')"
+              :title="$t('conferences.actions.back')"
+              data-testid="conference-back"
+              @click="backToList"
+            >
+              <n-icon :component="ArrowBackOutline" :size="15" />
+            </button>
+            <span v-if="detail" class="crumb-t">{{ detail.conference.title }}</span>
+            <span v-if="detail && detail.conference.status === 'live'" class="crumb-s">
+              · {{ $t('conferences.list.live') }}
+              <template v-if="runningFor(detail.conference)">
+                {{ runningFor(detail.conference) }}
+              </template>
+            </span>
+          </span>
         </teleport>
 
-        <!-- Status and the call's controls go to the topbar, right of the search
-             and left of the help icon (same fallback as the back button).
-             On a narrow screen the two actions become icons, as asked in the
-             report: «Выйти» and «Завершить» are the crowded pair, and neither
-             needs its word once the row is a strip of controls. «Войти» keeps its
-             label — it is alone in the row (there is nothing to leave yet) and it
-             is the one thing a person opened the conference to do. The status
-             pill stays text on purpose: it is a state, not a button, and an icon
-             would make it look like a third thing to press. «Завершить» is a
-             power glyph rather than the obvious stop-circle: the call's own
-             toolbar is right below, and its record/stop pair is already a circle
-             and a square — a third round stop up here would read as "stop the
-             recording", which is the one thing this button does not do. -->
         <teleport v-if="detail" to="#tb-slot-right" :disabled="!inTopbar">
           <span class="call-actions">
-            <span class="pill" :style="pillStyle(detail.conference.status)">
+            <!-- In the call the crumb already says it is on. -->
+            <span v-if="!inCall" class="pill" :style="pillStyle(detail.conference.status)">
               <span
                 :class="{ 'accent-grad-text': !!statusHue(detail.conference.status) }"
                 :style="pillTextStyle(detail.conference.status)"
@@ -568,50 +1152,38 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
                 {{ $t(`conferences.status.${detail.conference.status}`) }}
               </span>
             </span>
-            <!-- Always enabled: a conference is a reusable room (#2879), so even
-                 a legacy "ended" one is joined rather than being a dead end. -->
-            <n-button
-              v-if="!inRoom"
-              type="primary"
-              size="small"
-              :loading="busy"
-              data-testid="conference-join"
-              @click="join"
-            >
-              {{ $t('conferences.actions.join') }}
-            </n-button>
-            <n-button
-              v-else
-              size="small"
-              :circle="narrow"
-              :loading="busy"
+            <!-- Leaving lives on the call's dock. Without media (no secure
+                 context) there is no dock, and the way out stays up here. -->
+            <button
+              v-if="inRoom && !roomControls"
+              type="button"
+              class="kit-btn small"
+              :disabled="busy"
               :aria-label="$t('conferences.actions.leave')"
-              :title="narrow ? $t('conferences.actions.leave') : undefined"
               data-testid="conference-leave"
               @click="leave"
             >
-              <template v-if="narrow" #icon><n-icon :component="LogOutOutline" /></template>
+              <n-icon :component="LogOutOutline" :size="14" />
               <template v-if="!narrow">{{ $t('conferences.actions.leave') }}</template>
-            </n-button>
-            <!-- "Завершить" ends the ongoing session for everyone; it only makes
-                 sense while the call is live (an idle room is already ended). -->
+            </button>
+            <!-- «Завершить» ends the session for everyone; only while it is
+                 live. A power glyph on a narrow screen: the dock below already
+                 has a round stop for the recording. -->
             <n-popconfirm
               v-if="canModerate && detail.conference.status === 'live'"
               :positive-text="$t('conferences.actions.end')"
               @positive-click="end"
             >
               <template #trigger>
-                <n-button
-                  quaternary
-                  size="small"
-                  :circle="narrow"
+                <button
+                  type="button"
+                  class="kit-btn small"
                   :aria-label="$t('conferences.actions.end')"
-                  :title="narrow ? $t('conferences.actions.end') : undefined"
                   data-testid="conference-end"
                 >
-                  <template v-if="narrow" #icon><n-icon :component="PowerOutline" /></template>
+                  <n-icon :component="PowerOutline" :size="14" />
                   <template v-if="!narrow">{{ $t('conferences.actions.end') }}</template>
-                </n-button>
+                </button>
               </template>
               {{ $t('conferences.confirm.end') }}
             </n-popconfirm>
@@ -619,27 +1191,95 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
         </teleport>
       </div>
 
-      <n-spin :show="detailLoading">
+      <n-spin :show="detailLoading" class="detail-spin">
         <empty-state
           v-if="detailMissing"
           :icon="VideocamOutline"
           :text="$t('conferences.detail.notFound')"
         />
-        <div v-else-if="detail" class="detail">
-          <div class="head">
-            <h2 class="h">{{ detail.conference.title }}</h2>
-            <!-- The one time line moved out from under the title to its right, now
-                 that the action buttons vacated that corner for the topbar. -->
-            <div class="head-time">{{ timeLine(detail.conference) }}</div>
-          </div>
+        <div v-else-if="detail" class="detail" :class="{ 'in-call': inCall }">
+          <!-- The lobby: the call before you are in it. -->
+          <section v-if="!inRoom" class="lobby" data-testid="conference-lobby">
+            <span class="lobby-ic"><n-icon :component="VideocamOutline" :size="24" /></span>
+            <div class="lobby-body">
+              <h2 class="lobby-title">{{ detail.conference.title }}</h2>
+              <div class="meta">
+                <span>
+                  <n-icon :component="TimeOutline" :size="12" />{{ timeLine(detail.conference) }}
+                  <template v-if="dur(detail.conference)">· {{ dur(detail.conference) }}</template>
+                </span>
+                <span v-if="repeatOf(detail.conference)">
+                  <n-icon :component="RepeatOutline" :size="12" />{{ repeatOf(detail.conference) }}
+                </span>
+                <router-link
+                  v-if="callStage && callStage.href"
+                  class="stage-pill"
+                  :to="callStage.href"
+                  data-testid="conference-lobby-stage"
+                >
+                  <n-icon :component="TrailSignOutline" :size="12" />{{ callStage.title }}
+                </router-link>
+                <span>{{
+                  $t('conferences.row.participantCount', {
+                    count: detail.participants.length,
+                  })
+                }}</span>
+                <span v-if="detail.conference.created_by_name">{{
+                  $t('conferences.row.author', { name: detail.conference.created_by_name })
+                }}</span>
+              </div>
+              <p v-if="detail.conference.description" class="desc">
+                {{ detail.conference.description }}
+              </p>
+              <!-- The reader's answer to the invitation (#3051). -->
+              <div
+                v-if="myRsvp && detail.conference.status !== 'ended'"
+                class="lobby-rsvp"
+                data-testid="conference-rsvp"
+                :data-rsvp="myRsvp"
+              >
+                <span class="lobby-rsvp-l">{{ $t('conferences.rsvp.title') }}</span>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  :class="{ chosen: myRsvp === 'accepted' }"
+                  :aria-pressed="myRsvp === 'accepted'"
+                  data-testid="conference-rsvp-accept"
+                  @click="respondHere('accepted')"
+                >
+                  <n-icon v-if="myRsvp === 'accepted'" :component="CheckmarkOutline" :size="13" />
+                  {{ $t('conferences.rsvp.accepted') }}
+                </button>
+                <button
+                  type="button"
+                  class="kit-btn small"
+                  :class="{ chosen: myRsvp === 'declined' }"
+                  :aria-pressed="myRsvp === 'declined'"
+                  data-testid="conference-rsvp-decline"
+                  @click="respondHere('declined')"
+                >
+                  {{ $t('conferences.rsvp.declined') }}
+                </button>
+              </div>
+            </div>
+            <!-- Always enabled: a conference is a reusable room (#2879), so even
+                 a legacy "ended" one is joined rather than being a dead end. -->
+            <button
+              type="button"
+              class="kit-btn primary big"
+              :disabled="busy"
+              data-testid="conference-join"
+              @click="join"
+            >
+              <n-icon :component="VideocamOutline" :size="16" />
+              {{ $t('conferences.actions.join') }}
+              <ShortcutKeys id="meet.join" joined />
+            </button>
+          </section>
 
-          <p v-if="detail.conference.description" class="desc">
-            {{ detail.conference.description }}
-          </p>
-
-          <!-- No «Комната» card any more (#2864 round 2): after the right column
-               was removed the frame and its title only boxed in the one pane. -->
-          <div class="room">
+          <!-- The room once you are in it — or, without media, the reason why
+               there will be none (the lobby says the rest). -->
+          <div v-if="inRoom || !roomControls" class="room">
             <conference-room
               :conference-id="detail.conference.id"
               :active="inRoom"
@@ -647,15 +1287,19 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
               :can-invite="canInvite"
               :invitable="invitable"
               :invited="invited"
+              :stage="callStage"
+              :members="members"
+              :default-board-id="detail.conference.default_board_id || ''"
               @hangup="leave"
               @invite="inviteOne"
+              @minimize="minimize"
             />
           </div>
 
-          <!-- Recordings of this call (#2877). Below the room, not inside it: they
-               are what is left of past meetings, and the room is about the one
-               happening now. Renders nothing until there is something to list. -->
+          <!-- Recordings of this call (#2877): what is left of past meetings,
+               below the lobby. Renders nothing until there is something to list. -->
           <conference-recordings
+            v-if="!inCall"
             :conference-id="detail.conference.id"
             :can-moderate="canModerate"
             :nudge="recNudge"
@@ -664,220 +1308,694 @@ onBeforeUnmount(() => mq?.removeEventListener?.('change', onMq))
       </n-spin>
     </template>
 
-    <!-- SCHEDULE -->
-    <!-- style, not a scoped rule: naive teleports the modal out of this
-         component, where scoped CSS no longer reaches it. -->
-    <n-modal
+    <!-- SCHEDULE: a popover form at «Запланировать» (v2 interaction model,
+         #2969 / #2983) — it replaced the modal. -->
+    <PopoverForm
       v-model:show="dlg.show"
-      preset="card"
-      style="max-width: 460px"
-      :bordered="false"
-      :title="$t('conferences.create.title')"
+      :anchor="() => dlg.anchor || scheduleBtn || null"
+      placement="bottom-end"
+      :offset="{ x: 0, y: 6 }"
+      :width="400"
+      :title="dlg.editId ? $t('conferences.edit.title') : $t('conferences.create.title')"
+      :subtitle="dlg.editId ? $t('conferences.edit.subtitle') : $t('conferences.create.subtitle')"
+      :primary="dlg.editId ? $t('conferences.edit.submit') : $t('conferences.create.submit')"
+      :busy-label="$t('common.form.saving')"
+      :busy="dlg.saving"
+      :disabled="!dlg.title.trim()"
+      hint="tab"
+      testid="conference"
+      @submit="submit"
     >
-      <div class="form">
-        <n-input
-          v-model:value="dlg.title"
+      <FormField :label="$t('conferences.create.name')">
+        <input
+          v-model="dlg.title"
+          class="kf-input"
           :placeholder="$t('conferences.create.namePlaceholder')"
           data-testid="conference-title"
-          @keyup.enter="submit"
         />
-        <n-input
-          v-model:value="dlg.description"
-          type="textarea"
-          :rows="3"
+      </FormField>
+      <FormField :label="$t('conferences.create.at')" :message="$t('conferences.create.atHint')">
+        <!-- «Когда»: the start and, beside it, how long it runs (#3052). -->
+        <div class="when-row">
+          <DateField
+            v-model:value="dlg.at"
+            class="when-at"
+            type="datetime"
+            :placeholder="$t('conferences.create.at')"
+            testid="conference-at"
+          />
+          <n-select
+            v-model:value="dlg.duration"
+            class="when-len"
+            :options="durationOptions"
+            :placeholder="$t('conferences.plan.duration')"
+            :aria-label="$t('conferences.plan.duration')"
+            clearable
+            data-testid="conference-duration"
+          />
+        </div>
+      </FormField>
+      <FormField>
+        <textarea
+          v-model="dlg.description"
+          class="kf-input kf-area"
+          rows="3"
           :placeholder="$t('conferences.create.descriptionPlaceholder')"
         />
-        <n-date-picker
-          v-model:value="dlg.at"
-          type="datetime"
-          clearable
-          :first-day-of-week="firstDayOfWeek"
-          :format="dateTimePattern"
-          :placeholder="$t('conferences.create.at')"
+      </FormField>
+      <!-- Retention for this call's recordings (#2877): a property of the
+           meeting, decided before a recording exists. -->
+      <FormField :label="$t('conferences.create.ttl')" :message="$t('conferences.create.ttlHint')">
+        <input
+          v-model.number="dlg.ttl"
+          class="kf-input"
+          type="number"
+          min="0"
+          max="3650"
+          data-testid="conference-ttl"
         />
-        <div class="hint">{{ $t('conferences.create.atHint') }}</div>
-        <!-- Retention for this call's recordings (#2877). It lives in the
-             scheduling dialog because it is a property of the meeting, and
-             because the moment to decide how long a recording is kept is before
-             one exists — not while looking at the file you are about to lose. -->
-        <n-input-number v-model:value="dlg.ttl" :min="0" :max="3650" data-testid="conference-ttl">
-          <template #prefix>{{ $t('conferences.create.ttl') }}</template>
-        </n-input-number>
-        <div class="hint">{{ $t('conferences.create.ttlHint') }}</div>
+      </FormField>
+      <!-- The mockup's last line (#3053 / #3052): «К этапу [Спринт 43]» and
+           «не повторять», each a menu — in place, inside the form: a menu
+           teleported to <body> would read as a click outside and close it. -->
+      <div class="form-plan">
+        <button
+          ref="stageBtn"
+          type="button"
+          class="plan-btn"
+          data-testid="conference-stage"
+          @click="stageMenu = !stageMenu"
+        >
+          <n-icon :component="LinkOutline" :size="13" />
+          {{ $t('conferences.plan.stage') }}
+          <span v-if="dlgStageTitle" class="stage-pill">
+            <n-icon :component="TrailSignOutline" :size="12" />{{ dlgStageTitle }}
+          </span>
+          <span v-else class="plan-none">{{ $t('conferences.plan.noStage') }}</span>
+        </button>
+        <span class="grow" />
+        <button
+          ref="repeatBtn"
+          type="button"
+          class="plan-btn"
+          :disabled="!dlg.at"
+          :title="!dlg.at ? $t('conferences.create.atHint') : ''"
+          data-testid="conference-repeat"
+          @click="repeatMenu = !repeatMenu"
+        >
+          <n-icon :component="RepeatOutline" :size="13" />
+          {{ recurrenceLabel(dlg.at ? dlg.recurrence : '', $t) }}
+        </button>
+        <ActionMenu
+          v-model:show="stageMenu"
+          in-place
+          :anchor="() => stageBtn"
+          placement="bottom-start"
+          :width="260"
+          :header="$t('conferences.plan.stageTitle')"
+          :items="stageItems"
+          testid="conference-stage-menu"
+          @select="pickStage"
+        />
+        <ActionMenu
+          v-model:show="repeatMenu"
+          in-place
+          :anchor="() => repeatBtn"
+          placement="bottom-end"
+          :width="220"
+          :header="$t('conferences.plan.repeatTitle')"
+          :items="repeatItems"
+          testid="conference-repeat-menu"
+          @select="pickRepeat"
+        />
       </div>
-      <template #footer>
-        <div class="foot">
-          <n-button quaternary @click="dlg.show = false">
-            {{ $t('conferences.create.cancel') }}
-          </n-button>
-          <n-button
-            type="primary"
-            :loading="dlg.saving"
-            data-testid="conference-submit"
-            @click="submit"
-          >
-            {{ $t('conferences.create.submit') }}
-          </n-button>
-        </div>
-      </template>
-    </n-modal>
+    </PopoverForm>
   </div>
 </template>
 
 <style scoped>
+/* v2 (#3107 — PackageE «Встречи»): no frames — the live call is a soft-accent
+   card, rows are --t-col surfaces with a time column, days are group labels. */
 .conf {
   width: 100%;
+  max-width: 1080px;
+  margin: 0 auto;
+}
+.conf.in-call {
+  max-width: none;
+  /* The call fills the work area: the viewport less the 52px topbar and the
+     page's padding. */
+  height: calc(100vh - 52px - 2 * var(--page-pad, 16px));
+}
+@media (max-width: 900px) {
+  .conf.in-call {
+    height: auto;
+  }
 }
 .head {
   display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-  margin-bottom: 16px;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.head > * {
+  flex: none;
+}
+/* The filter gives way first when the row is tight — it scrolls, the buttons
+   keep their labels. */
+.head > .seg {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+.tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 .h {
   margin: 0;
-  font-size: 20px;
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
   color: var(--t-text1);
 }
-.sub {
-  font-size: 12px;
-  color: var(--t-text3);
+.grow {
+  flex: 1;
 }
-.head-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-  max-width: 100%;
-}
-/* The row already wrapped; what didn't is the filter group inside it. Four joined
-   radio buttons («Все» / «Идут» / «Запланированные» / «Завершённые») are one
-   inline-flex box ~470px wide with no break opportunity, so on a 393px phone it
-   pushed the whole pane 90px sideways (#2893). It can't wrap without breaking
-   the joined border radii, so it scrolls on its own instead — the standard
-   filter-strip behaviour — and stops dragging the page with it. */
-.head-actions :deep(.n-radio-group) {
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--t-sub);
   max-width: 100%;
   overflow-x: auto;
   scrollbar-width: none;
 }
-.head-actions :deep(.n-radio-group::-webkit-scrollbar) {
+.seg::-webkit-scrollbar {
   display: none;
+}
+.seg-btn {
+  flex: none;
+  height: 28px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.seg-btn:hover {
+  color: var(--t-text1);
+}
+.seg-btn.on {
+  background: var(--t-pop);
+  color: var(--t-text1);
+  font-weight: 600;
+  box-shadow: var(--t-sh-card);
+}
+.seg-btn:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+/* «Запланировать»: the soft accent of the mockup's header button. */
+.kit-btn.soft {
+  background: color-mix(in srgb, var(--t-primary) 18%, var(--t-ctl));
+  color: var(--t-text1);
+  font-weight: 600;
+}
+.kit-btn.soft:hover {
+  background: color-mix(in srgb, var(--t-primary) 26%, var(--t-ctl));
+}
+.kit-btn.big {
+  height: 40px;
+  padding: 0 8px 0 14px;
+  font-size: 14px;
 }
 .rows {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 4px;
+  min-height: 120px;
+}
+/* The call on now: a soft-accent card. */
+.live {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  padding: 16px 18px;
+  border-radius: 16px;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--t-primary) 14%, var(--t-col)),
+    color-mix(in srgb, var(--t-primary) 22%, var(--t-col))
+  );
+  cursor: pointer;
+}
+.live-ic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: var(--t-accent-grad);
+  color: #fff;
+}
+.live-body {
+  flex: 1;
+  min-width: 0;
+}
+.live-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #e0533d;
+}
+.live-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e0533d;
+  box-shadow: 0 0 0 3px color-mix(in srgb, #e0533d 25%, transparent);
+}
+.live-title {
+  margin: 3px 0 2px;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--t-text1);
+}
+.group {
+  margin: 14px 4px 6px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .row {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px;
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
+  min-height: 58px;
+  padding: 8px 10px 8px 14px;
+  box-sizing: border-box;
+  border-radius: 12px;
+  background: var(--t-col);
   cursor: pointer;
 }
 .row:hover {
-  background: var(--t-hover);
+  background: color-mix(in srgb, var(--t-col) 70%, var(--t-hover));
+}
+.row.ended .row-title-t {
+  color: var(--t-text2);
+}
+.when {
+  flex: none;
+  width: 64px;
+}
+.when-t {
+  font-size: 15px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--t-text1);
+}
+.row.ended .when-t {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text3);
+}
+.when.next .when-t {
+  color: var(--t-primary);
 }
 .row-body {
   flex: 1;
   min-width: 0;
 }
 .row-title {
-  color: var(--t-text1);
-  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
 }
-.row-meta {
+.row-title-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--t-text1);
+}
+.meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 10px;
+  align-items: center;
+  gap: 4px 12px;
+  margin-top: 2px;
   font-size: 12px;
   color: var(--t-text3);
 }
-.meta-item {
+.meta > span {
   display: inline-flex;
   align-items: center;
   gap: 4px;
 }
-/* The status pill: flat interior, same-hue gradient on the border-box so it
-   follows the corner radius, and the same hue again on the glyphs. Shaped like a
-   button, not a capsule (#2891): the theme's 8px button radius, and a 28px box
-   (inline-flex + fixed height) so it lines up with the small buttons beside it
-   in the call topbar. */
+/* The meeting's agenda (задача 3046): a pill in the meta line, a door to it. */
+.agenda-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 260px;
+  height: 20px;
+  padding: 0 8px 0 6px;
+  border: 0;
+  border-radius: var(--t-r-pill);
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.agenda-chip:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.agenda-chip:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--t-primary);
+}
+.agenda-chip-t {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* «Принять / Отклонить» (#3051): the unanswered invitation's two buttons, and
+   once answered a quiet word — accented for «иду», muted for «не иду». */
+.row-rsvp {
+  flex: none;
+  display: inline-flex;
+  gap: 6px;
+}
+.row-answer {
+  flex: none;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--t-text3);
+}
+.row-answer.accepted {
+  color: var(--t-primary);
+}
+.lobby-rsvp {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 12px;
+}
+.lobby-rsvp-l {
+  font-size: 12.5px;
+  color: var(--t-text3);
+  margin-right: 4px;
+}
+.lobby-rsvp .kit-btn.chosen {
+  background: color-mix(in srgb, var(--t-primary) 14%, var(--t-card));
+  color: var(--t-primary);
+  font-weight: 600;
+}
+.row-icon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.row-icon:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.row-icon:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+/* The status pill: flat interior, same-hue gradient on the border-box. */
 .pill {
   flex: none;
   display: inline-flex;
   align-items: center;
-  height: 28px;
-  padding: 0 10px;
+  height: 20px;
+  padding: 0 7px;
   border: 1px solid transparent;
-  border-radius: 8px;
+  border-radius: 7px;
   font-size: 11px;
   white-space: nowrap;
   color: var(--t-text3);
 }
-/* No bottom margin: the button now lives in the flex topbar (and, inline on a
-   narrow screen, sits directly above the title where a gap is unwanted). */
-.back {
-  margin-bottom: 0;
+.call-actions .pill {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 8px;
 }
-/* The call's status pill + join/leave/end, as one flex group so they read the
-   same whether teleported into the topbar or rendered inline as a fallback. */
+
+/* ── one conference ── */
+.crumb {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  font-size: 13.5px;
+}
+.crumb-back {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+}
+.crumb-back:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.crumb-t {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  color: var(--t-text1);
+}
+.crumb-s {
+  flex: none;
+  color: var(--t-text3);
+}
 .call-actions {
   display: flex;
   align-items: center;
   gap: 8px;
 }
-/* The wrapper around both teleports. With the controls in the topbar it must not
-   exist as a box at all — hence `contents`, which leaves the two teleport
-   anchors' comment nodes and nothing else. Only the inline fallback is a row. */
+/* The wrapper around both teleports: no box while the controls are in the
+   topbar, one row when they fall back inline. */
 .call-bar {
   display: contents;
 }
 .call-bar.inline {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
+  justify-content: space-between;
   gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 12px;
 }
-/* Start time, right of the title now that the buttons moved to the topbar. */
-.head-time {
+/* Inline, the name gives way — the controls on the right keep their place. */
+.call-bar.inline .crumb {
+  flex: 1;
+}
+.call-bar.inline .call-actions {
   flex: none;
-  font-size: 12px;
-  color: var(--t-text3);
 }
-/* Bottom clearance for the room's fixed control bar (#2891), so the recordings
-   panel and description can scroll clear of it instead of hiding underneath. */
-.detail {
-  padding-bottom: 84px;
+.detail-spin,
+.detail-spin :deep(.n-spin-content) {
+  height: 100%;
 }
-/* Plain pane, no card frame — the room owns its own borders. */
-.room {
-  width: 100%;
+.detail.in-call {
+  height: 100%;
+}
+.detail.in-call .room {
+  height: 100%;
+}
+/* The lobby card. */
+.lobby {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 14px;
+  padding: 20px;
+  border-radius: 18px;
+  background: var(--t-col);
+}
+.lobby-ic {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--t-accent-grad);
+  color: #fff;
+}
+.lobby-body {
+  flex: 1;
+  min-width: 0;
+}
+.lobby-title {
+  margin: 2px 0 4px;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--t-text1);
 }
 .desc {
-  margin: 0 0 16px;
+  margin: 10px 0 0;
+  font-size: 13.5px;
+  line-height: 1.55;
   color: var(--t-text2);
   white-space: pre-wrap;
 }
-.form {
+.when-row {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
-.hint {
-  font-size: 12px;
+.when-at {
+  flex: 1;
+  min-width: 0;
+}
+.when-len {
+  flex: none;
+  width: 116px;
+}
+/* «К этапу [пилл]» · «не повторять» — the mockup's quiet last line. */
+.form-plan {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-top: 2px;
+}
+.plan-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.plan-btn:hover:not(:disabled) {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.plan-btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+.plan-btn:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 1px;
+}
+.plan-btn :deep(.n-icon) {
   color: var(--t-text3);
 }
-.foot {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+.plan-none {
+  color: var(--t-text3);
+}
+/* The stage pill (#3053): the mockup's pill chip with the trail sign. */
+.stage-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font-size: 12px;
+  text-decoration: none;
+  white-space: nowrap;
+}
+a.stage-pill:hover {
+  color: var(--t-text1);
+  background: color-mix(in srgb, var(--t-pill) 70%, var(--t-hover));
+}
+.meta .stage-pill {
+  height: 20px;
+}
+.when-d {
+  display: block;
+  font-size: 11.5px;
+  color: var(--t-text3);
+}
+/* No keyboard on a touch screen — no key caps either. */
+@media (hover: none) and (pointer: coarse) {
+  .conf :deep(.sk) {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .head {
+    flex-wrap: wrap;
+  }
+  .h {
+    font-size: 20px;
+    flex: 1 0 100%;
+  }
+  .head .grow {
+    display: none;
+  }
+  .head > .kit-btn,
+  .head > :deep(.kit-btn) {
+    flex: 1;
+  }
+  .live {
+    flex-wrap: wrap;
+  }
+  .live > .kit-btn {
+    flex: 1 0 100%;
+  }
+  .row-icon:not([data-testid]) {
+    display: none;
+  }
+  .when {
+    width: 52px;
+  }
+  .lobby {
+    flex-direction: column;
+  }
+  .lobby .kit-btn.big {
+    align-self: stretch;
+  }
 }
 </style>

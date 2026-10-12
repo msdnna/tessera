@@ -1,27 +1,36 @@
 <script setup>
 import { ref, computed, toRef, onBeforeUnmount, onMounted, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
+import { NPopconfirm } from 'naive-ui'
 import { useTaskMenu } from '@/composables/useTaskMenu'
 import { useThemeStore } from '@/stores/theme'
 import { tasks as tasksApi, boards as boardsApi } from '@/api'
 import { topoByDeps } from '@/utils/dependencyOrder'
 import { sCurvePath } from '@/utils/curvePath'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { startOfDay, parseDate as parse } from '@/utils/timeAxis'
+import { isTaskOverdue } from '@/utils/taskFilter'
+import { useFormat } from '@/composables/useFormat'
 import { useChartTimeline } from '@/composables/useChartTimeline'
+import { parseDate as parse } from '@/utils/timeAxis'
 import { useChartLanes } from '@/composables/useChartLanes'
 import { useChartRows, SUB_STEP, SUB_TOP0 } from '@/composables/useChartRows'
 import { useChartBars } from '@/composables/useChartBars'
-import ChartToolbar from './chart/ChartToolbar.vue'
+import { useChartView } from '@/composables/useChartView'
+import { useResponsive } from '@/composables/useResponsive'
+import ChartMilestoneRow from './chart/ChartMilestoneRow.vue'
 import ChartAxisHeader from './chart/ChartAxisHeader.vue'
 import ChartLaneHeader from './chart/ChartLaneHeader.vue'
 import ChartMilestoneMarkers from './chart/ChartMilestoneMarkers.vue'
 import ChartTaskRow from './chart/ChartTaskRow.vue'
+import { CHART_DEFAULTS } from '@/utils/boardViews'
 import ChartUnscheduled from './chart/ChartUnscheduled.vue'
-import ChartTaskMenu from './chart/ChartTaskMenu.vue'
+import TaskActionMenu from './task/TaskActionMenu.vue'
 import ChartCursorPill from './chart/ChartCursorPill.vue'
 
 const { t } = useI18n()
+// Only for the overdue counter: the tally has to agree with the red pills on the
+// cards, so it buckets due dates in the user's calendar, not the browser's.
+const { formatters } = useFormat()
 
 const wsStore = useWorkspacesStore()
 
@@ -36,11 +45,17 @@ const props = defineProps({
   tasks: { type: Array, default: () => [] },
   statusColumns: { type: Array, default: () => [] },
   membersMap: { type: Object, default: () => ({}) },
+  // Workspace GitLab roster [{ gl_username, gl_name, … }] — names the assignee lane
+  // of a person who has no Tessera account (their cards carry only a login).
+  gitlabMembers: { type: Array, default: () => [] },
   tagsMap: { type: Object, default: () => ({}) },
   // Swimlane grouping from the shared composer-bar: 'status' | 'tag' (+ prefix) |
   // 'assignee' | 'none'.
   groupMode: { type: String, default: 'assignee' },
   tagPrefix: { type: String, default: '' },
+  // canonical tag prefix → friendly label, so a tag lane reads the way the board's
+  // tag column does (utils/tagGroups `tagLaneLabel`).
+  tagPrefixNames: { type: Object, default: () => ({}) },
   projectId: { type: String, default: null },
   // { parentId: [subtask, …] } — scheduled subtasks render as thin sub-bars
   // stacked inside their parent's row (no dependency arrows on subtasks).
@@ -49,10 +64,26 @@ const props = defineProps({
   // pre-order) instead of the incoming list order. Only meaningful with no
   // grouping/sort, which the composer-bar enforces before setting this.
   autoSort: { type: Boolean, default: false },
-  // Project milestones — dashed vertical due-markers across the chart.
+  // Project milestones — the 'milestone' lanes and their diamond rows.
   milestones: { type: Array, default: () => [] },
+  // boards.done_column_id — picks the «done» status glyph on the rows.
+  doneColumnId: { type: String, default: null },
+  // Bumped by the board on every `task.relation` socket event that touches this
+  // board. The edge list is a fetch of its own, and a link added or dropped
+  // elsewhere (the task modal, a second browser, a quick action) changes neither
+  // the task set nor any task field — so without this the arrows only caught up
+  // on a full reload (#2932).
+  depsToken: { type: Number, default: 0 },
+  // Archive view (?archived=1): look, don't touch — no context menu, no
+  // drag-to-reschedule, and no drawing or cutting dependency edges. Every one of
+  // those writes to the live task the archived row stands for; the arrows
+  // themselves still render, because reading the graph is the point of the view.
+  readonly: { type: Boolean, default: false },
+  // The board's «Шкала» (#3021): the scale preset and what the chart draws —
+  // weekends, the today line, progress, links (Gantt), the undated strip.
+  chart: { type: Object, default: () => ({ ...CHART_DEFAULTS }) },
 })
-const emit = defineEmits(['open', 'changed'])
+const emit = defineEmits(['open', 'changed', 'restore', 'update:scale'])
 
 // Estimation unit/config of the project — drives every estimate the chart renders
 // (lane totals, the ghost bar, the bar tooltip).
@@ -61,17 +92,23 @@ const estCfg = computed(() => wsStore.estimationFor(props.projectId))
 const menu = useTaskMenu({
   onOpen: (id) => emit('open', id),
   onChanged: () => emit('changed'),
+  // The archive's own action: this layout has no card, so the menu is the only
+  // place «Вернуть из архива» can live (see useTaskMenu).
+  onRestore: (id) => emit('restore', id),
   columns: () => props.statusColumns,
+  readonly: () => props.readonly,
 })
 
-const LEFT_W = 224 // px of the fixed task column (expanded)
+// px of the fixed task column (expanded; v2, #2959) — a phone keeps a slim one
+const { isMobile } = useResponsive()
+const LEFT_W = computed(() => (isMobile.value ? 168 : 340))
 // Collapsible left column: collapses to a true 0 (padding + border are zeroed in
 // the .collapsed state) so the chart and the arrow overlay stay pixel-aligned.
 // Toggle is instant — animating width across every sticky row thrashed layout;
 // `collapsing` suppresses the today-line's left-transition for one frame so it
 // snaps together with the rest instead of sliding.
 const leftCollapsed = ref(false)
-const leftW = computed(() => (leftCollapsed.value ? 0 : LEFT_W))
+const leftW = computed(() => (leftCollapsed.value ? 0 : LEFT_W.value))
 const collapsing = ref(false)
 let collapseSettle = 0
 function toggleLeft() {
@@ -80,7 +117,7 @@ function toggleLeft() {
   collapseSettle = setTimeout(() => (collapsing.value = false), 60)
   leftCollapsed.value = !leftCollapsed.value
 }
-const LANE_H = 32 // initial lane-header row height, before the real one is measured
+const LANE_H = 42 // initial lane-header row height (6px gap + 36), before it is measured
 const BAR_CY = 18 // bar vertical centre within its row (top 6 + height 24 / 2)
 // Sub-bars stack below the parent bar within the same row (SUB_STEP / SUB_TOP0 come
 // from useChartRows). Arrows stay anchored to the parent bar (BAR_CY), so taller
@@ -97,40 +134,7 @@ const orderedScheduled = computed(() =>
 // ── the chart engine, shared with the Timeline view ──
 // Axis range + header bands, zoom, the scroll viewport, pan/ctrl-wheel and the hover
 // cursor guide all live in useChartTimeline; the dependency layer below is ours.
-const {
-  scrollEl,
-  bodyEl,
-  ZOOM,
-  zoomIdx,
-  dayW,
-  zooming,
-  zoomIn,
-  zoomOut,
-  todayMs,
-  tier,
-  range,
-  axisW,
-  days,
-  monthBands,
-  weekBands,
-  hourTicks,
-  subW,
-  todayLeft,
-  milestoneMarkers,
-  scrollY,
-  viewH,
-  bodyTop,
-  onScroll,
-  centerToday,
-  pan,
-  onPanDown,
-  onWheel,
-  cursor,
-  cursorPill,
-  cursorLabel,
-  onHoverMove,
-  onHoverLeave,
-} = useChartTimeline({
+const timeline = useChartTimeline({
   scheduled,
   milestones: toRef(props, 'milestones'),
   estCfg,
@@ -140,23 +144,59 @@ const {
   panBlockers: ['.bar', '.link-knob'],
   cursorBlocked: () => !!drag.value || !!link.value,
 })
+const {
+  scrollEl,
+  bodyEl,
+  dayW,
+  zooming,
+  tier,
+  range,
+  axisW,
+  dayIndex,
+  days,
+  monthBands,
+  weekBands,
+  weekRangeBands,
+  yearBands,
+  quarterBands,
+  weekendOffset,
+  todayIndex,
+  hourTicks,
+  subW,
+  todayLeft,
+  milestoneMarkers,
+  scrollY,
+  viewH,
+  bodyTop,
+  onScroll,
+  pan,
+  onPanDown,
+  onWheel,
+  cursor,
+  cursorPill,
+  cursorLabel,
+  onHoverMove,
+  onHoverLeave,
+} = timeline
 
 // ── lanes (swimlanes) — driven by the composer-bar's groupMode ──
 const { lanes, laneEffort, laneEffortFull } = useChartLanes({
   source: orderedScheduled,
   statusColumns: toRef(props, 'statusColumns'),
   membersMap: toRef(props, 'membersMap'),
+  glMembers: toRef(props, 'gitlabMembers'),
   tagsMap: toRef(props, 'tagsMap'),
   groupMode: toRef(props, 'groupMode'),
   tagPrefix: toRef(props, 'tagPrefix'),
+  prefixNames: toRef(props, 'tagPrefixNames'),
   estCfg,
+  milestones: toRef(props, 'milestones'),
+  // See the Timeline: a decomposed card's effort lives in its children.
+  subtasksByParent: toRef(props, 'subtasksByParent'),
 })
 
 const overdueCount = computed(
-  () =>
-    scheduled.value.filter(
-      (t) => t.due_date && !t.completed_at && startOfDay(parse(t.due_date)) < todayMs,
-    ).length,
+  () => scheduled.value.filter((x) => isTaskOverdue(x, new Date(), formatters.value)).length,
 )
 const counters = computed(() => {
   const out = []
@@ -182,7 +222,8 @@ const counters = computed(() => {
 })
 
 // ── row geometry + virtualization (shared with the Timeline view) ──
-const { subBars, rowHeight, findTask, flatRows, rowLayout, vwindow } = useChartRows({
+const collapsedLanes = ref(new Set())
+const rowsApi = useChartRows({
   lanes,
   tasks: toRef(props, 'tasks'),
   subtasksByParent: toRef(props, 'subtasksByParent'),
@@ -191,7 +232,9 @@ const { subBars, rowHeight, findTask, flatRows, rowLayout, vwindow } = useChartR
   bodyTop,
   bodyEl,
   laneH0: LANE_H,
+  collapsedLanes,
 })
+const { subBars, rowHeight, findTask, flatRows, rowLayout, vwindow } = rowsApi
 
 // Vertical top of every task row (the arrow overlay + link-drag reuse this); derived
 // from the same layout so DOM windowing never shifts an arrow endpoint.
@@ -221,10 +264,21 @@ const anchorY = computed(() => {
 })
 // ── dependencies (blocking edges) ──
 const deps = ref([]) // normalised [{ id, blocker, blocked }]
+// Номер поколения запроса рёбер. Несколько запросов в полёте — здесь норма, а не
+// редкость: список переспрашивается на КАЖДОЕ изменение состава задач (а состав
+// двигает любой фильтр доски — набор в поиске, чип исполнителя, «только мои») и
+// на каждое событие о связи. Без сверки снимок покинутого фильтра перерисовывал
+// стрелки поверх свежих, а ответ, снятый ДО удаления связи, возвращал удалённую
+// стрелку — и она залипала до следующего события (#2932).
+let depsSeq = 0
 async function loadDeps() {
+  // Номер берём до early return: запрос, уже летящий к прежней доске, надо
+  // обесценить даже вызовом, который сам ничего не спросит.
+  const mine = ++depsSeq
   if (!props.boardId) return
   try {
     const rows = (await boardsApi.dependencies(props.boardId)).data || []
+    if (mine !== depsSeq) return
     // Normalise raw relation rows to blocker→blocked. Dedupe so a pair linked from
     // both sides ('blocks' + 'blocked_by') draws a single arrow.
     const seen = new Set()
@@ -239,18 +293,29 @@ async function loadDeps() {
     }
     deps.value = out
   } catch {
+    // Гасить стрелки имеет право только тот запрос, ответа которого ждут. Иначе
+    // флап сети на устаревшем запросе убирал с экрана рёбра, только что
+    // приехавшие по свежему.
+    if (mine !== depsSeq) return
     deps.value = []
   }
 }
 onMounted(loadDeps)
-// Refetch when the task set changes (a link added elsewhere, a task removed).
+// Refetch when the task set changes — a task arriving or leaving can add or
+// orphan an edge (ListBoardDependencies returns only pairs with both ends here).
 watch(
   () => props.tasks.map((t) => t.id).join(','),
   () => loadDeps(),
 )
+// …and when a relation itself changed somewhere else. That leaves the task set
+// untouched, so the watcher above never sees it — see the depsToken prop.
+watch(
+  () => props.depsToken,
+  () => loadDeps(),
+)
 
 // ── bar geometry + drag-to-reschedule (shared with the Timeline view) ──
-const { drag, geom, onBarDown, renderRows } = useChartBars({
+const barsApi = useChartBars({
   tier,
   range,
   dayW,
@@ -260,7 +325,44 @@ const { drag, geom, onBarDown, renderRows } = useChartBars({
   rowHeight,
   findTask,
   onChanged: () => emit('changed'),
+  readonly: () => props.readonly,
 })
+const { drag, geom, onBarDown } = barsApi
+
+// ── v2 (#2959): row meta, lane summaries, selection + keys, the controller the
+// board's sub-toolbar drives ──
+const { viewRows, toggleLane, laneSummary, selectedId, select, selectedLabel, ctl } = useChartView({
+  props,
+  timeline,
+  bars: barsApi,
+  rows: rowsApi,
+  leftW,
+  leftCollapsed,
+  toggleLeft,
+  collapsedLanes,
+  counters,
+  hint: computed(() => t('board.chart.linkHint')),
+  onOpen: (id) => emit('open', id),
+})
+
+// The scale is the board's state (#3021): a saved one is applied, and a zoom
+// that crosses into another scale is reported back so the view remembers it.
+watch(
+  () => props.chart?.scale,
+  (sc) => {
+    if (sc && sc !== timeline.scale.value) timeline.setScale(sc)
+  },
+  { immediate: true },
+)
+watch(timeline.scale, (sc) => {
+  if (sc !== props.chart?.scale) emit('update:scale', sc)
+})
+defineExpose({ ctl })
+const msX = (lane) =>
+  lane.milestone?.due_date
+    ? dayIndex(parse(lane.milestone.due_date)) * dayW.value + dayW.value / 2
+    : null
+const scheduledCount = computed(() => scheduled.value.length)
 
 // Bars glide on zoom, but never mid-drag/link or mid-collapse (a transition lags).
 const animate = computed(() => !drag.value && !link.value && !zooming.value && !collapsing.value)
@@ -297,6 +399,7 @@ function bodyCoords(e) {
 }
 function onLinkDown(e, t) {
   if (e.button != null && e.button !== 0) return
+  if (props.readonly) return
   e.preventDefault()
   e.stopPropagation()
   const g = geom(t)
@@ -353,9 +456,30 @@ const linkPath = computed(() => {
 })
 
 // ── delete an edge ──
-async function removeEdge(id) {
+// Behind a confirmation, like every other door onto the same relation: the ✕ in
+// the task modal's «Связи» tab is a popconfirm on web and on Android, and the
+// unlink is not undoable anywhere. Here the target is worse than a list row — an
+// 8px circle that appears on hover at the *midpoint* of an S-curve, in the one
+// place where several arrows cross and each one's ✕ lands on a neighbour's path.
+//
+// The confirm is anchored to the pointer, not to an element: `.g-del` is an SVG
+// <g>, which Naive's trigger slot cannot host. That's the same manual `:show` +
+// `:x`/`:y` popconfirm with an empty trigger.
+const edgeConfirm = ref(null) // { id, x, y } — the edge awaiting confirmation
+function askRemoveEdge(e, a) {
+  if (props.readonly) return
+  edgeConfirm.value = { id: a.id, x: e.clientX, y: e.clientY }
+}
+function onEdgeConfirmShow(v) {
+  if (!v) edgeConfirm.value = null
+}
+async function removeEdge() {
+  const c = edgeConfirm.value
+  edgeConfirm.value = null
+  if (props.readonly) return
+  if (!c) return
   try {
-    await tasksApi.removeRelation(id)
+    await tasksApi.removeRelation(c.id)
     await loadDeps()
     emit('changed')
   } catch {
@@ -372,18 +496,6 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="tl">
-    <ChartToolbar
-      :zoom-idx="zoomIdx"
-      :zoom-count="ZOOM.length"
-      :left-collapsed="leftCollapsed"
-      :hint="t('board.chart.linkHint')"
-      :counters="counters"
-      @today="centerToday"
-      @zoom-in="zoomIn()"
-      @zoom-out="zoomOut()"
-      @toggle-left="toggleLeft"
-    />
-
     <div
       ref="scrollEl"
       class="tl-scroll"
@@ -396,7 +508,7 @@ onBeforeUnmount(() => {
     >
       <div
         class="tl-inner"
-        :class="[tier, { animate, collapsed: leftCollapsed }]"
+        :class="[tier, { animate, collapsed: leftCollapsed, 'no-progress': !chart.progress }]"
         :style="{
           width: `${leftW + axisW}px`,
           '--tl-day-w': `${dayW}px`,
@@ -404,13 +516,25 @@ onBeforeUnmount(() => {
           '--tl-sub-w': `${subW}px`,
         }"
       >
+        <div
+          class="tl-backdrop"
+          :class="{ weekends: chart.weekends && (tier === 'days' || tier === 'hours') }"
+          :style="{
+            left: `${leftW}px`,
+            backgroundPositionX: `${(weekendOffset - 5) * dayW}px`,
+          }"
+        />
         <ChartAxisHeader
           :left-w="leftW"
           :day-w="dayW"
           :tier="tier"
           :collapsed="leftCollapsed"
+          :count="scheduledCount"
           :month-bands="monthBands"
           :week-bands="weekBands"
+          :week-range-bands="weekRangeBands"
+          :year-bands="yearBands"
+          :quarter-bands="quarterBands"
           :days="days"
           :hour-ticks="hourTicks"
         />
@@ -418,11 +542,22 @@ onBeforeUnmount(() => {
         <!-- body: windowed lanes + rows (spacers keep the scroll height), with the
              full-height dependency-arrow SVG overlay on top -->
         <div ref="bodyEl" class="tl-body">
-          <div class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
-          <ChartMilestoneMarkers :markers="milestoneMarkers" :left-w="leftW" />
+          <div
+            v-if="chart.today && (tier === 'days' || tier === 'hours')"
+            class="tl-todaycol"
+            :style="{ left: `${leftW + todayIndex * dayW}px`, width: `${dayW}px` }"
+          />
+          <div v-if="chart.today" class="tl-today" :style="{ left: `${leftW + todayLeft}px` }" />
+          <!-- milestone dates as markers, unless the milestones are the groups
+               (then each closes its group with its own diamond row) -->
+          <ChartMilestoneMarkers
+            v-if="groupMode !== 'milestone'"
+            :markers="milestoneMarkers"
+            :left-w="leftW"
+          />
           <div v-if="cursor" class="tl-cursor" :style="{ left: `${leftW + cursor.axisX}px` }" />
           <div class="tl-vspacer" :style="{ height: `${vwindow.top}px` }" />
-          <template v-for="r in renderRows" :key="r.key">
+          <template v-for="r in viewRows" :key="r.key">
             <ChartLaneHeader
               v-if="r.t === 'lane'"
               :lane="r.lane"
@@ -430,8 +565,20 @@ onBeforeUnmount(() => {
               :axis-w="axisW"
               :tier="tier"
               :collapsed="leftCollapsed"
+              :folded="collapsedLanes.has(r.lane.key)"
+              :summary="laneSummary(r.lane)"
               :effort="laneEffort(r.lane)"
               :effort-full="laneEffortFull(r.lane)"
+              @toggle="toggleLane"
+            />
+            <ChartMilestoneRow
+              v-else-if="r.t === 'ms'"
+              :lane="r.lane"
+              :left-w="leftW"
+              :axis-w="axisW"
+              :tier="tier"
+              :collapsed="leftCollapsed"
+              :x="msX(r.lane)"
             />
             <ChartTaskRow
               v-else
@@ -441,9 +588,12 @@ onBeforeUnmount(() => {
               :tier="tier"
               :collapsed="leftCollapsed"
               :animate="animate"
-              linkable
+              :selected="selectedId === r.task.id"
+              :sel-label="selectedId === r.task.id ? selectedLabel : null"
+              :linkable="!readonly && chart.links"
               :link-from-id="link ? link.fromId : null"
               @open="$emit('open', $event)"
+              @select="select"
               @bar-down="onBarDown"
               @link-down="onLinkDown"
               @menu="menu.open"
@@ -453,6 +603,7 @@ onBeforeUnmount(() => {
 
           <!-- dependency arrows + live link preview -->
           <svg
+            v-if="chart.links"
             class="g-arrows"
             :width="leftW + axisW"
             :height="positions.height"
@@ -474,7 +625,12 @@ onBeforeUnmount(() => {
             <g v-for="a in arrows" :key="a.id" class="g-arrow">
               <path class="g-hit" :d="a.d" />
               <path class="g-line" :d="a.d" marker-end="url(#g-arrowhead)" />
-              <g class="g-del" :transform="`translate(${a.mx},${a.my})`" @click="removeEdge(a.id)">
+              <g
+                v-if="!readonly"
+                class="g-del"
+                :transform="`translate(${a.mx},${a.my})`"
+                @click="askRemoveEdge($event, a)"
+              >
                 <circle r="8" />
                 <path d="M-3 -3 L3 3 M3 -3 L-3 3" />
               </g>
@@ -486,28 +642,35 @@ onBeforeUnmount(() => {
               marker-end="url(#g-arrowhead)"
             />
           </svg>
+
+          <!-- unlink confirmation for the arrow ✕ (anchored to the click, see above) -->
+          <n-popconfirm
+            :show="!!edgeConfirm"
+            :x="edgeConfirm ? edgeConfirm.x : 0"
+            :y="edgeConfirm ? edgeConfirm.y : 0"
+            :positive-button-props="{ type: 'error' }"
+            :positive-text="t('common.action.delete')"
+            @update:show="onEdgeConfirmShow"
+            @positive-click="removeEdge"
+            @clickoutside="edgeConfirm = null"
+          >
+            <template #trigger><span /></template>
+            {{ t('task.relations.deleteConfirm') }}
+          </n-popconfirm>
         </div>
 
         <div v-if="!lanes.length" class="tl-empty">{{ t('board.chart.empty') }}</div>
       </div>
     </div>
 
-    <ChartUnscheduled :tasks="unscheduled" @open="$emit('open', $event)" @menu="menu.open" />
-
-    <ChartTaskMenu
-      :show="menu.show.value"
-      :x="menu.x.value"
-      :y="menu.y.value"
-      :options="menu.options.value"
-      :delete-show="menu.deleteConfirmShow.value"
-      :archive-show="menu.archiveConfirmShow.value"
-      @select="menu.select"
-      @close="menu.show.value = false"
-      @update:delete-show="menu.deleteConfirmShow.value = $event"
-      @delete-confirm="menu.confirmDelete()"
-      @update:archive-show="menu.archiveConfirmShow.value = $event"
-      @archive-confirm="menu.confirmArchive()"
+    <ChartUnscheduled
+      v-if="chart.undated"
+      :tasks="unscheduled"
+      @open="$emit('open', $event)"
+      @menu="menu.open"
     />
+
+    <TaskActionMenu :menu="menu" />
 
     <ChartCursorPill v-if="cursor" :x="cursorPill.x" :y="cursorPill.top + 4" :label="cursorLabel" />
   </div>
@@ -532,9 +695,9 @@ onBeforeUnmount(() => {
 }
 .g-line {
   fill: none;
-  stroke: var(--t-primary);
-  stroke-width: 1.6;
-  opacity: 0.7;
+  stroke: color-mix(in srgb, var(--t-text2) 70%, var(--t-primary));
+  stroke-width: 1.4;
+  opacity: 0.55;
 }
 .g-hit {
   fill: none;

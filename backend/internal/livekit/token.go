@@ -53,6 +53,15 @@ type Grants struct {
 	Room string
 	// CanPublish lets the participant send audio/video. False makes a listener.
 	CanPublish bool
+	// CanPublishSources narrows CanPublish to named track sources (the constants
+	// in client.go). Empty means "whatever CanPublish allows" — LiveKit reads an
+	// absent list as no restriction, which is the ordinary participant.
+	//
+	// It exists because a permission narrowed through RoomService lives on the
+	// participant *session*: a reconnect builds a new one from the token alone,
+	// so a restriction that is not in the token is gone the moment the socket
+	// blinks. See handlers.ConferenceToken for the one caller that needs it.
+	CanPublishSources []string
 	// CanSubscribe lets the participant receive other people's tracks.
 	CanSubscribe bool
 	// CanPublishData allows the data channel (used later for in-room signalling
@@ -76,6 +85,11 @@ type videoGrant struct {
 	CanSubscribe   bool   `json:"canSubscribe"`
 	CanPublishData bool   `json:"canPublishData"`
 	Hidden         bool   `json:"hidden,omitempty"`
+	// omitempty is load-bearing: an empty list is not "no sources" to LiveKit's
+	// reader here, it is "the field was not set" — but sending `[]` would be a
+	// meaningful value to a future one. Absent is how the protocol spells
+	// "unrestricted", so unrestricted must send nothing at all.
+	CanPublishSources []string `json:"canPublishSources,omitempty"`
 }
 
 // claims is a LiveKit token: registered JWT claims (iss = API key, sub =
@@ -123,12 +137,13 @@ func (c *Client) JoinToken(identity, name string, g Grants, ttl time.Duration) (
 		},
 		Name: name,
 		Video: videoGrant{
-			Room:           g.Room,
-			RoomJoin:       true,
-			CanPublish:     g.CanPublish,
-			CanSubscribe:   g.CanSubscribe,
-			CanPublishData: g.CanPublishData,
-			Hidden:         g.Hidden,
+			Room:              g.Room,
+			RoomJoin:          true,
+			CanPublish:        g.CanPublish,
+			CanSubscribe:      g.CanSubscribe,
+			CanPublishData:    g.CanPublishData,
+			Hidden:            g.Hidden,
+			CanPublishSources: g.CanPublishSources,
 		},
 	})
 	return tok.SignedString([]byte(c.apiSecret))

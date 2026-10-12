@@ -20,6 +20,7 @@ import (
 	"tessera/internal/database"
 	"tessera/internal/db"
 	"tessera/internal/mail"
+	"tessera/internal/notify"
 	"tessera/internal/observability"
 	"tessera/internal/realtime"
 )
@@ -63,6 +64,12 @@ func main() {
 	// Runs after InitSentry so the report lands there too.
 	preflightUploadDir(cfg.UploadDir)
 
+	// Notification delivery hands a member-supplied service URL to shoutrrr,
+	// which dials through http.DefaultClient — the one client we cannot pass in.
+	// Guard it before anything can deliver, so a redirect or a rebind off that
+	// URL can't reach the internal network (#2932).
+	notify.HardenDefaultClient()
+
 	// Cancelled on SIGINT/SIGTERM; every background worker hangs off it, so a
 	// deploy stops them at a tick boundary instead of mid-write.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -101,6 +108,8 @@ func main() {
 	// Close sync runs left "running" by a process that died mid-sync — nothing of
 	// ours is in flight yet, so they can only be stale.
 	rh.FailStaleSyncRuns(ctx)
+	// …and the jobs window's history rows of runs that process never finished.
+	rh.FailStaleJobRuns(ctx)
 
 	// Workers all block until ctx is done; the WaitGroup lets shutdown wait for
 	// them to finish the tick they're on before the pool closes under them. Each is
@@ -115,10 +124,18 @@ func main() {
 		}()
 	}
 
+	// The same ctx and WaitGroup for work the handlers start and the request does
+	// not wait for — the jobs panel's "run now". It runs the very sweeps the loops
+	// below run, so drain has to wait for it before the pool closes, exactly as it
+	// waits for them (#2932).
+	rh.WireBackgroundScope(ctx, &workers)
+
 	// Record the tick-loop workers in the jobs registry (heartbeat entries) and start
 	// the supervisor that logs a periodic summary of in-flight background jobs.
 	rh.RegisterBackgroundWorkers()
 	spawn("job_supervisor", rh.RunJobSupervisor)
+	// Job progress, steps and log lines go out over the socket (#3067).
+	spawn("job_publisher", rh.RunJobPublisher)
 
 	// Background GitLab auto-sync worker (idle until an integration sets a
 	// positive sync interval).
@@ -148,6 +165,10 @@ func main() {
 	// nobody watching, and deletes recordings past their TTL (#2877). Idle until
 	// somebody records a call.
 	spawn("conference_recordings", rh.RunConferenceRecordingWorker)
+
+	// Background worker — finishes soft deletes of boards and columns once their
+	// undo window is over (#2969, migration 0078).
+	spawn("trash_purge", rh.RunTrashWorker)
 
 	// Explicit server so we can bound the header read and idle keep-alive without
 	// capping ReadTimeout/WriteTimeout — those would forcibly cut long-lived

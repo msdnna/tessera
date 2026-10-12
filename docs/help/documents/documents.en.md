@@ -3,18 +3,39 @@ title: Documents
 category: Documents
 order: 40
 keywords: documents, editor, docx, word, odt, import, export, pdf, versions, history, approval, sign, comments, discussion, templates, table of contents, nested
-updated: 2026-08-28
+updated: 2026-10-10
 ---
 
 **Documents** is a collaborative editor for everything that outgrows a task description: requirements, meeting minutes, policies, how-tos. Unlike a task description, a document stands on its own — it has versions, a table of contents, per-paragraph discussion and an approval route. The section is young and still developing — details do change over time.
 
-![The Documents section: document cards with previews](../assets/documents-light.png)
+![The Documents section: the document tree on the left, cards with previews on the right](../assets/documents-light.png)
+
+The section opens from **Documents** in the sidebar or with `G` then `D`.
 
 ## The document tree
 
-The list of the workspace's documents is on the left, the open document on the right. A document can have **nested documents**: **Nested document** in the actions menu creates a child, and **Show nested (N)** expands the branch. That makes the section behave like a small wiki rather than a flat folder of files.
+On the left is the workspace's **document tree**, on the right — the document cards or the open document. A document can have **nested documents**: such a document has an arrow in the tree that folds and unfolds its branch, and a folded branch shows the number of nested documents on the right. That makes the section behave like a small wiki rather than a flat folder of files. The tree remembers which branches are open; the path to the open document is always unfolded.
 
-Deleting is honest about the consequences: if the document has children, the confirmation says it **will be deleted together with its nested documents**, and how many there are.
+The tree's head has a **search** by title (it shows the matches together with their parents) and **+** — a new document. At the bottom are **Templates** (opens the template gallery) and **Trash** — the deleted documents (more below).
+
+From the keyboard in the tree: `↑` `↓` move between rows, `→` unfolds a branch or steps into its first child, `←` folds it or steps back to the parent, `↵` opens the document.
+
+On a narrow screen the tree gives way to the text: the button on the left of the document's head hides it and slides it out over the text. A phone has no tree — the cards are the way in there.
+
+![An open document: the tree, the head with the path and tools, the title, the sheet and the discussion](../assets/documents-doc-light.png)
+
+## The document's head
+
+Above an open document is its **path** (“Documents › section › document”; the first item takes you back to the cards), and on the right — who else is in the document, the save state and the tools: **discussion**, **table of contents**, **version history**, **links and approval** and the **“⋯”** menu.
+
+The “⋯” menu holds **Nested document** (creates a child), **Show nested (N)** (opens the branch as cards), **Tie to a meeting**, **Save as template** (a submenu — which gallery category to file it under), **export** in the available formats and **Delete document**. The document goes to the trash at once — with its nested documents — and a message with an **Undo** button (<kbd>Ctrl</kbd> <kbd>Z</kbd>) appears at the bottom.
+
+### The documents trash
+
+**Trash** at the bottom of the tree (on a phone — the trash button in the section's head) lists the documents deleted in the last **30 days**: who deleted each, when, how many days it has left and how many nested documents went with it. **Restore** puts a document back where it was in the tree (at the root, if its parent is in the trash too), **Delete forever** — in two presses — erases it with its images. After 30 days the trash deletes documents by itself.
+
+While a document is in the trash it is out of the tree, search and the tasks' Documents section, but **its links to tasks are kept** — they come back with the document.
+Under the title — when the document was changed and two chips. **Stage**: a click lists the open stages of the workspace (by project) and ties the document to a sprint; a tied chip offers **Open the stage page**, **Change the stage** and **Untie from the stage**, and the stage page gathers such documents in a **Documents** card. **Meeting** — the chip shows when the document is a meeting's agenda: from it the meeting is opened, changed or untied.
 
 ## The editor
 
@@ -34,9 +55,9 @@ A link does not have to point outwards: besides `https://…`, the address field
 
 ## Saving and working together
 
-The document saves itself. The status line above the text says what is going on: **Saving…**, **Unsaved changes** or **All changes saved**.
+The document saves itself. The state is in the document's head, a dot and a caption: **Saving…**, **Unsaved changes** or **All changes saved** (in a tight head only the dot stays, the caption moves to its tooltip).
 
-While several people have the document open, the names next to the title show who is **editing** and who is **viewing**. A block a colleague is editing right now is locked for everyone else — typing into it answers with «*name* is editing this block». Work in the neighbouring paragraph is unaffected.
+While several people have the document open, the document's head shows who is **editing** and who is **viewing**. A block a colleague is editing right now is locked for everyone else — typing into it answers with «_name_ is editing this block». Work in the neighbouring paragraph is unaffected.
 
 If the document was changed elsewhere anyway (in another tab, say), you get the warning **«The document was changed elsewhere — your latest edits were not saved»** and a **Load the current version** button. Nobody's text is overwritten silently.
 
@@ -64,7 +85,7 @@ The selected version is shown as a **comparison against the current state**: how
 
 **Approval.** **Send for approval** opens a route: a title (what is being approved), the list of approvers and the mode — **Sequentially** (the next person sees the request once the previous one has signed) or **In parallel** (everyone is asked at once). While a route is open, a second one cannot be started.
 
-An approver **signs** or **rejects**, optionally with a comment. The route line shows the progress — «*signed* of *total*» — and each participant is marked as waiting, signed or rejected. A route can be **withdrawn**; signatures already given stay in the record.
+An approver **signs** or **rejects**, optionally with a comment. The route line shows the progress — «_signed_ of _total_» — and each participant is marked as waiting, signed or rejected. A route can be **withdrawn**; signatures already given stay in the record.
 
 Finished routes are collected under **Approval records** with their status (pending, approved, rejected, withdrawn) and a caption of «revision N · author · date»: **a record is bound to a specific revision**, so later edits cannot pass themselves off as approved text.
 
@@ -78,12 +99,16 @@ Office formats are converted by a separate service. If it is not deployed, the b
 
 ## Export
 
-**Export document** offers PDF, **Word (.docx)**, **OpenDocument (.odt)** and **HTML**. HTML is rendered by the server itself and is always available; the other three need the same conversion service as import — without it, only HTML remains in the list.
+Export is in the “⋯” menu of the document's head, under **Export document**: PDF, **Word (.docx)**, **OpenDocument (.odt)** and **HTML**. HTML is rendered by the server itself and is always available; the other three need the same conversion service as import — without it, only HTML remains in the list.
 
 Unsaved edits are written out before the export runs, so the file always matches what is on screen rather than the state of a second ago.
 
 ## Templates
 
-**From a template** creates a document from a blueprint. Three are built in: **meeting minutes** (attendees, agenda, decisions, follow-up tasks), **a specification** (statement, scope, acceptance criteria, risks) and **a retrospective** (what worked, what got in the way, what we change).
+**From a template** (or Templates at the bottom of the tree) opens the **New document** window: categories with counts on the left — **All**, **Sprint**, **Product**, **Engineering**, **Meetings** and **My templates** (the ones you saved) — and cards with previews on the right. The first card is **Blank document**. A click selects a card, a double click or **Create ↵** creates the document, the arrows move the selection, `/` searches. Six are built in: **a meeting agenda** (attendees, questions, decisions, follow-up tasks), **a specification** (statement, scope, acceptance criteria, risks), **a retrospective** and **sprint planning**, **a postmortem** (timeline, cause, impact, follow-ups) and **an ADR** (architecture decision: context, options, choice).
 
-Your own templates come from two places: **Save as template** turns the current document into a blueprint, and the **Upload** button in the templates dialog takes a file. Built-in templates are marked as such and cannot be deleted; deleting one of your own warns that **documents already created from it stay** where they are.
+The **meeting agenda** (and any template of your own under Meetings) shows a **Meeting** picker at the bottom of the window, with the nearest running or planned meeting already chosen. The document is created tied to it and named after it, and the meeting's row in the conferences list gets an agenda chip. An agenda can be started from the meeting's side too — **Create an agenda** in the row's “⋯” menu.
+
+Your own templates come from two places: **Save as template** in the document's “⋯” menu turns the current document into a blueprint, and the **Upload** button at the bottom of the templates window takes a file — it lands in the category open at the moment. The folder button on your template's card changes its category. Built-in templates are marked as such and cannot be deleted; deleting one of your own — the trash button on its card, two presses — leaves the **documents already created from it** where they are.
+
+![The New document window: sources on the left, template cards with previews](../assets/documents-templates-light.png)

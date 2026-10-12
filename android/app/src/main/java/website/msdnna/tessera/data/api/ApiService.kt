@@ -1,6 +1,7 @@
 package website.msdnna.tessera.data.api
 
 import okhttp3.MultipartBody
+import okhttp3.RequestBody
 import retrofit2.http.Body
 import retrofit2.http.DELETE
 import retrofit2.http.GET
@@ -69,7 +70,6 @@ import website.msdnna.tessera.data.model.TokenRequest
 import website.msdnna.tessera.data.model.UpdateCommentRequest
 import website.msdnna.tessera.data.model.UpdateGroupRequest
 import website.msdnna.tessera.data.model.UpdateProjectRequest
-import website.msdnna.tessera.data.model.UpdateTaskRequest
 import website.msdnna.tessera.data.model.UploadResponse
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.model.Workspace
@@ -89,6 +89,11 @@ interface ApiService {
     @POST("auth/refresh")
     suspend fun refresh(@Body body: RefreshRequest): AuthResponse
 
+    /** Revokes the presented refresh token. Public and idempotent: an unknown or
+     *  already-dead token is still a successful logout (backend Logout). */
+    @POST("auth/logout")
+    suspend fun logout(@Body body: RefreshRequest)
+
     @GET("auth/me")
     suspend fun me(): MeResponse
 
@@ -99,8 +104,10 @@ interface ApiService {
     @PATCH("users/me")
     suspend fun updateProfile(@Body body: ProfileUpdate): User
 
+    // Returns a session: the change revokes every refresh token the account has,
+    // this device's included, and hands back a replacement pair.
     @PUT("users/me/password")
-    suspend fun changePassword(@Body body: PasswordChange)
+    suspend fun changePassword(@Body body: PasswordChange): AuthResponse
 
     @PUT("users/me/preferences")
     suspend fun updatePreferences(@Body body: Preferences): Preferences
@@ -169,6 +176,10 @@ interface ApiService {
     @DELETE("workspaces/{id}")
     suspend fun deleteWorkspace(@Path("id") id: String)
 
+    /** What deleting the workspace takes with it — for the confirmation (#3014). */
+    @GET("workspaces/{id}/counts")
+    suspend fun workspaceCounts(@Path("id") id: String): website.msdnna.tessera.data.model.DeleteCounts
+
     // ── Project groups ──────────────────────────────────────────────────────
     @GET("workspaces/{id}/groups")
     suspend fun groups(@Path("id") workspaceId: String): List<ProjectGroup>?
@@ -207,6 +218,10 @@ interface ApiService {
     @DELETE("projects/{id}")
     suspend fun deleteProject(@Path("id") projectId: String)
 
+    /** What deleting the project takes with it — for the confirmation (#3014). */
+    @GET("projects/{id}/counts")
+    suspend fun projectCounts(@Path("id") projectId: String): website.msdnna.tessera.data.model.DeleteCounts
+
     @POST("projects/{id}/transfer")
     suspend fun transferProject(
         @Path("id") projectId: String,
@@ -228,6 +243,22 @@ interface ApiService {
 
     @DELETE("boards/{id}")
     suspend fun deleteBoard(@Path("id") boardId: String)
+
+    // Favourite boards (#3115): the caller's own, per workspace.
+    @GET("workspaces/{id}/favorites")
+    suspend fun favorites(@Path("id") workspaceId: String): List<website.msdnna.tessera.data.model.BoardFavorite>?
+
+    @PUT("boards/{id}/favorite")
+    suspend fun addFavorite(@Path("id") boardId: String): website.msdnna.tessera.data.model.BoardFavorite
+
+    @DELETE("boards/{id}/favorite")
+    suspend fun removeFavorite(@Path("id") boardId: String)
+
+    @PATCH("boards/{id}/favorite/move")
+    suspend fun moveFavorite(
+        @Path("id") boardId: String,
+        @Body body: website.msdnna.tessera.data.model.FavoriteMoveRequest,
+    ): website.msdnna.tessera.data.model.BoardFavorite
 
     @GET("boards/{id}/columns")
     suspend fun columns(@Path("id") boardId: String): List<BoardColumn>?
@@ -257,6 +288,14 @@ interface ApiService {
     @GET("tasks/{id}")
     suspend fun task(@Path("id") taskId: String): TaskDetail
 
+    // Follow / unfollow a task (#2963). The answer carries the new list too, but
+    // the modal re-reads the detail anyway, so it is not parsed here.
+    @PUT("tasks/{id}/subscription")
+    suspend fun setTaskSubscription(
+        @Path("id") taskId: String,
+        @Body body: website.msdnna.tessera.data.model.SetSubscriptionRequest,
+    )
+
     // milestone: <uuid> shows one sprint, "backlog" shows milestone-less tasks,
     // null shows all (server-side sprint scope — for large GitLab imports).
     // archived=1 returns the board's archived tasks (read-only archive scope).
@@ -280,8 +319,11 @@ interface ApiService {
     @PATCH("tasks/{id}/move")
     suspend fun moveTask(@Path("id") taskId: String, @Body body: MoveTaskRequest): Task
 
+    // Тело — уже сериализованный JSON (см. `taskPatch`/`toWireJson`), а не дата-класс:
+    // ручка tri-state, и «очистить поле» — это ключ со значением null, который
+    // общий Gson конвертера выбросил бы вместе с ключом.
     @PATCH("tasks/{id}")
-    suspend fun updateTask(@Path("id") taskId: String, @Body body: UpdateTaskRequest): Task
+    suspend fun updateTask(@Path("id") taskId: String, @Body body: RequestBody): Task
 
     @PATCH("tasks/{id}/parent")
     suspend fun setTaskParent(@Path("id") taskId: String, @Body body: SetParentRequest): Task
@@ -295,8 +337,17 @@ interface ApiService {
     @PATCH("tasks/{id}/archive")
     suspend fun archiveTask(@Path("id") taskId: String)
 
+    /** Puts the task (and its subtasks) in the board's trash (#3004) — kept 30 days. */
     @DELETE("tasks/{id}")
     suspend fun deleteTask(@Path("id") taskId: String)
+
+    /** The undo of [deleteTask]: back from the trash. POST — the archive's restore is PATCH. */
+    @POST("tasks/{id}/restore")
+    suspend fun untrashTask(@Path("id") taskId: String)
+
+    /** Deletes a task that is already in the trash for good. */
+    @DELETE("tasks/{id}/purge")
+    suspend fun purgeTask(@Path("id") taskId: String)
 
     @POST("tasks/{id}/tags")
     suspend fun addTaskTag(@Path("id") taskId: String, @Body body: AddTagRequest)
@@ -319,11 +370,18 @@ interface ApiService {
     @GET("workspaces/{id}/gitlab/members")
     suspend fun gitlabMembers(@Path("id") workspaceId: String): List<GitlabMember>?
 
-    /** Creates a GitLab issue from this task (write-back `push_create`). */
+    /** Creates a GitLab issue from this task (write-back `push_create`).
+     *
+     *  `tz` — календарь автора: срок задачи уезжает в issue голым `YYYY-MM-DD`
+     *  (backend `taskDateStr`), то есть ДНЁМ, а хранится он мгновением полуночи.
+     *  Без зоны сервер читает его своей, и восточнее неё полночь принадлежит
+     *  предыдущему серверному дню — issue рождается со сроком на день раньше,
+     *  чем показывает сама задача (#2932). */
     @POST("tasks/{id}/gitlab-issue")
     suspend fun createGitlabIssue(
         @Path("id") taskId: String,
         @Body body: website.msdnna.tessera.data.model.CreateGitlabIssueRequest,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.GitlabIssueCreated
 
     /** Issue templates of the bound GL project (soft-fails to `[]` on the backend). */
@@ -357,6 +415,12 @@ interface ApiService {
     @DELETE("milestones/{id}")
     suspend fun deleteMilestone(@Path("id") milestoneId: String)
 
+    /** Re-send a stage write GitLab refused («повторить», #3010). */
+    @POST("milestones/{id}/gitlab/sync")
+    suspend fun retryMilestoneGitlab(
+        @Path("id") milestoneId: String,
+    ): website.msdnna.tessera.data.model.Milestone
+
     @POST("tasks/{id}/milestone")
     suspend fun setTaskMilestone(
         @Path("id") taskId: String,
@@ -387,13 +451,15 @@ interface ApiService {
     @PUT("projects/{id}/tag-prefixes")
     suspend fun setTagPrefixes(@Path("id") projectId: String, @Body body: SetTagPrefixesRequest): List<TagPrefix>?
 
-    // Two-level estimation config; body is the config object directly, or null to
-    // clear (workspace → built-in default, project → inherit workspace).
+    // Two-level estimation config; the body is the config object directly. To clear
+    // it (workspace → built-in default, project → inherit workspace) send the
+    // unit-less EstimationConfig.INHERIT: Retrofit rejects a null @Body before the
+    // request leaves the device, so "no body" — the web's way — is not available here.
     @PUT("workspaces/{id}/estimation")
-    suspend fun setWorkspaceEstimation(@Path("id") workspaceId: String, @Body body: EstimationConfig?): Workspace
+    suspend fun setWorkspaceEstimation(@Path("id") workspaceId: String, @Body body: EstimationConfig): Workspace
 
     @PUT("projects/{id}/estimation")
-    suspend fun setProjectEstimation(@Path("id") projectId: String, @Body body: EstimationConfig?): Project
+    suspend fun setProjectEstimation(@Path("id") projectId: String, @Body body: EstimationConfig): Project
 
     // ── Quick actions: command registry (workspace) + comment dry-run ────────
     // The built-in list comes from the backend's own registry, so a command added
@@ -409,10 +475,13 @@ interface ApiService {
         @Body body: website.msdnna.tessera.data.model.SetWorkspaceCommandsRequest,
     ): List<website.msdnna.tessera.data.model.WorkspaceCommand>?
 
+    // Та же зона, что у настоящего POST: иначе подсказка «Будет применено» назовёт
+    // не тот день, в который команда потом попадёт (#2932).
     @POST("tasks/{id}/commands/preview")
     suspend fun previewCommands(
         @Path("id") taskId: String,
         @Body body: website.msdnna.tessera.data.model.PreviewCommandsRequest,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.CommandPreview
 
     @GET("workspaces/{id}/members")
@@ -433,6 +502,29 @@ interface ApiService {
 
     @DELETE("workspaces/{id}/members/{userId}")
     suspend fun removeMember(@Path("id") workspaceId: String, @Path("userId") userId: String)
+
+    // ── members v2 (#3063): ownership, leaving, access requests ──
+    @POST("workspaces/{id}/owner")
+    suspend fun transferOwner(
+        @Path("id") workspaceId: String,
+        @Body body: website.msdnna.tessera.data.model.TransferOwnerRequest,
+    )
+
+    @POST("workspaces/{id}/leave")
+    suspend fun leaveWorkspace(@Path("id") workspaceId: String)
+
+    @GET("workspaces/{id}/access-requests")
+    suspend fun accessRequests(@Path("id") workspaceId: String): List<website.msdnna.tessera.data.model.AccessRequest>?
+
+    @POST("workspaces/{id}/access-requests/{reqId}/approve")
+    suspend fun approveAccess(
+        @Path("id") workspaceId: String,
+        @Path("reqId") reqId: String,
+        @Body body: RoleUpdate,
+    )
+
+    @POST("workspaces/{id}/access-requests/{reqId}/decline")
+    suspend fun declineAccess(@Path("id") workspaceId: String, @Path("reqId") reqId: String)
 
     // ── invitations (U2) ──
     @GET("workspaces/{id}/invitations")
@@ -488,10 +580,15 @@ interface ApiService {
 
     // The reply carries the comment inline plus a `command_summary` when the body
     // held quick actions; a command-only comment stores no row (id null).
+    //
+    // `tz` — календарь автора: «/due сегодня» в теле резолвит СЕРВЕР, и без зоны
+    // он берёт свою, так что команда, набранная поздним вечером, ставит чужой день
+    // (#2932).
     @POST("tasks/{id}/comments")
     suspend fun createComment(
         @Path("id") taskId: String,
         @Body body: CreateCommentRequest,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.CommentResult
 
     @PATCH("comments/{id}")
@@ -640,9 +737,14 @@ interface ApiService {
         @Path("number") number: Int,
     ): website.msdnna.tessera.data.model.Task
 
+    /** Плитки «Просрочено / Сегодня / На неделе». `tz` — календарь читателя: сервер
+     *  раскладывает счётчики по ДНЯМ (`due_date < @day_start`), и без зоны он взял бы
+     *  свою собственную, а список под плиткой фильтруется в днях устройства — число
+     *  в плитке и её же список тогда расходятся (#2932). */
     @GET("workspaces/{id}/summary")
     suspend fun workspaceSummary(
         @Path("id") workspaceId: String,
+        @Query("tz") tz: String? = null,
     ): website.msdnna.tessera.data.model.WorkspaceSummary
 
     // ── Notes (#5) ────────────────────────────────────────────────────────────
@@ -1073,7 +1175,16 @@ interface ApiService {
         @Path("id") conferenceId: String,
         @Part("body") body: okhttp3.RequestBody,
         @Part files: List<MultipartBody.Part>,
+        // One `mentions` part per mentioned member (#3055); empty sends none.
+        @Part("mentions") mentions: List<@JvmSuppressWildcards okhttp3.RequestBody> = emptyList(),
     ): website.msdnna.tessera.data.model.ConferenceMessage
+
+    /** «/задача» in the chat (#3055): the task and the chat line, in one request. */
+    @POST("conferences/{id}/tasks")
+    suspend fun createConferenceTask(
+        @Path("id") conferenceId: String,
+        @Body body: website.msdnna.tessera.data.model.CreateConferenceTaskRequest,
+    ): website.msdnna.tessera.data.model.ConferenceTaskCreated
 
     @DELETE("conference-messages/{id}")
     suspend fun deleteConferenceMessage(@Path("id") messageId: String)

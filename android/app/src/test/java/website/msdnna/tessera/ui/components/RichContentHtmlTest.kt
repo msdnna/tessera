@@ -48,16 +48,144 @@ class RichContentHtmlTest {
     /**
      * Скрипты грузятся асинхронно и первый кадр не блокируют, но без сети код
      * остаётся неподсвеченным — поэтому парсер тоже переехал в ассеты. Mermaid
-     * остаётся удалённым осознанно (полмегабайта ради единиц диаграмм).
+     * остаётся удалённым осознанно (3,5 МБ ради единиц диаграмм).
      */
     @Test
     fun `only mermaid is still fetched from the network`() {
-        val remote = Regex("""https?://[^'"\s)]+""").findAll(html(false)).map { it.value }
+        val remote = Regex("""https?://[^'"\s;)]+""").findAll(html(false)).map { it.value }
             // Свой сервер — не «сеть» в этом смысле: это тот же хост, с которого
             // приехал текст, и картинки в нём и так подставляются по нему.
             .filterNot { it.startsWith("http://127.0.0.1:8090") }
             .toSet()
-        assertThat(remote).containsExactly("https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js")
+        assertThat(remote).containsExactly(MERMAID_URL)
+    }
+
+    /**
+     * #2932: этот единственный удалённый скрипт заказывает НЕДОВЕРЕННЫЙ текст —
+     * достаточно ```mermaid в описании задачи. Версия была плавающей (`@11`) и
+     * без `integrity`, то есть «выполнить в привилегированном WebView то, что
+     * CDN отдаст сегодня». Свойство, потерю которого ловим: байты удалённого
+     * кода зафиксированы, и подменённый файл выполнен не будет.
+     */
+    @Test
+    fun `the one remote script is pinned by version and by hash`() {
+        val doc = html(false)
+        assertWithMessage("версия mermaid снова плавающая — CDN решает, какой код выполнится")
+            .that(MERMAID_URL).contains("mermaid@$MERMAID_VERSION/")
+        assertWithMessage("версия должна быть точной, а не диапазоном")
+            .that(MERMAID_VERSION).matches("""\d+\.\d+\.\d+""")
+        assertWithMessage("у удалённого скрипта нет integrity — подмена на CDN выполнится как своя")
+            .that(doc).contains("m.integrity = '$MERMAID_SRI'")
+        assertWithMessage("SRI без crossOrigin=anonymous не проверяется вовсе")
+            .that(doc).contains("m.crossOrigin = 'anonymous'")
+        assertThat(MERMAID_SRI).matches("""sha(256|384|512)-[A-Za-z0-9+/]+=*""")
+    }
+
+    /**
+     * #2932: DOMPurify — единственный рубеж перед `innerHTML`, а SVG от mermaid
+     * кладётся в `innerHTML` уже мимо него. CSP — второй рубеж: свойство,
+     * которое проверяем, — что выполнить в этом WebView можно только код из
+     * APK, инлайн по nonce и ровно тот адрес mermaid, что прибит выше.
+     */
+    @Test
+    fun `the document carries a policy that pins where code may come from`() {
+        val doc = html(false)
+        val csp = Regex("""<meta http-equiv="Content-Security-Policy" content="([^"]+)"""")
+            .find(doc)?.groupValues?.get(1)
+        assertWithMessage("в документе нет CSP — обход санитайзера ничем не ограничен").that(csp).isNotNull()
+        val scriptSrc = csp!!.split(";").map { it.trim() }.first { it.startsWith("script-src ") }
+        assertWithMessage("script-src: $scriptSrc").that(scriptSrc).contains("file:")
+        assertWithMessage("script-src: $scriptSrc").that(scriptSrc).contains(MERMAID_URL)
+        listOf("'unsafe-inline'", "'unsafe-eval'", "'strict-dynamic'", "http:", "https:", "*")
+            .forEach { banned ->
+                assertWithMessage("script-src снова пускает $banned: $scriptSrc")
+                    .that(scriptSrc.split(" ").drop(1)).doesNotContain(banned)
+            }
+        listOf("object-src 'none'", "base-uri 'none'", "form-action 'none'", "frame-src 'none'")
+            .forEach { assertWithMessage("в политике нет «$it»").that(csp).contains(it) }
+    }
+
+    /** Nonce обязан быть непредсказуемым и разным у каждого документа — иначе
+     *  внедрённый скрипт просто перепишет чужой. */
+    @Test
+    fun `the inline script nonce is fresh per document`() {
+        val nonces = (1..8).map {
+            Regex("""<script nonce="([0-9a-f]{32})">""").find(html(false))?.groupValues?.get(1)
+        }
+        assertWithMessage("инлайновый скрипт не помечен nonce'ом — CSP его не пустит")
+            .that(nonces.filterNotNull()).hasSize(8)
+        assertWithMessage("nonce переиспользуется между документами").that(nonces.toSet()).hasSize(8)
+    }
+
+    /**
+     * #2932: markdown задачи допускает сырой HTML, а marked отдаёт его как есть.
+     * Здесь это опаснее, чем во вкладке браузера: в WebView включён JS, висит мост
+     * `AndroidRich`, а `shouldInterceptRequest` подставляет Bearer к запросам на
+     * свой сервер — то есть внедрённый скрипт читает API от лица жертвы. Web гонит
+     * тот же текст через DOMPurify; свойство, потерю которого мы ловим, — что и
+     * здесь между marked и `innerHTML` стоит санитайзер, причём локальный.
+     */
+    @Test
+    fun `untrusted markup is sanitised before it reaches innerHTML`() {
+        val doc = html(false)
+        assertWithMessage("санитайзера нет в ассетах — DOMPurify.sanitize упадёт уже в рантайме")
+            .that(doc).contains("file:///android_asset/richcontent/purify.min.js")
+        assertWithMessage("разметка попадает в innerHTML в обход DOMPurify")
+            .that(doc).contains("el.innerHTML = DOMPurify.sanitize(")
+    }
+
+    /**
+     * #2932: декорации (#123 → ссылка, @имя → чип) переписывают уже отрисованный
+     * HTML, а прятали от них только `<code>`/`<pre>`. Теги оставались открытыми,
+     * поэтому «![скрин #123](/a.png)» вставлял `<a …>` внутрь `alt="…"`: атрибут
+     * обрывался на первой кавычке чипа, подпись у картинки пропадала, появлялись
+     * мусорные атрибуты, а хвост чипа («#123"&gt;») рисовался как текст. У ссылки
+     * с `title` так же терялся её собственный текст. Ровно это починено на web
+     * (`utils/markdown.js` replaceOutsideMarkup), здесь — порт.
+     *
+     * JS-движка в JVM-тесте нет, поэтому свойство снимается с самого документа:
+     * берём **то самое** регулярное выражение, которым он режет разметку, и
+     * прогоняем по нему отрисованный HTML. Декорации получают ровно те куски,
+     * которые останутся между совпадениями, — они и проверяются: внутренность
+     * тега в них попасть не должна, а обычный текст обязан.
+     */
+    @Test
+    fun `decorations are handed the displayed text only, never the inside of a tag`() {
+        val doc = html(false)
+        val js = Regex("""var re = /(.+?)/gi, out""").find(doc)?.groupValues?.get(1)
+        assertWithMessage("в документе не нашлось правила, по которому режется HTML").that(js).isNotNull()
+        // JS-литерал экранирует '/' внутри регулярки — java.util.regex этого не ждёт.
+        val skip = Regex(js!!.replace("""\/""", "/"), RegexOption.IGNORE_CASE)
+
+        // Куски, которые достанутся декорациям: всё между совпадениями skip.
+        fun parts(html: String): List<String> {
+            val out = mutableListOf<String>()
+            var last = 0
+            skip.findAll(html).forEach { m ->
+                out += html.substring(last, m.range.first)
+                last = m.range.last + 1
+            }
+            return out + html.substring(last)
+        }
+
+        val img = """<p><img src="/a.png" alt="скрин #123 от @anna"></p>"""
+        assertWithMessage("подпись картинки видна декорациям — чип уедет внутрь alt=\"…\"")
+            .that(parts(img).filter { it.isNotBlank() }).isEmpty()
+        val link = """<p><a href="/x" title="спроси @anna">тык</a></p>"""
+        assertWithMessage("title ссылки виден декорациям — чип уедет внутрь атрибута")
+            .that(parts(link).joinToString("")).doesNotContain("@anna")
+        assertWithMessage("текст самой ссылки декорациям виден быть обязан")
+            .that(parts(link).joinToString("")).contains("тык")
+        assertWithMessage("обычный текст перестал доходить до декораций")
+            .that(parts("<p>см. #123 и @anna</p>").joinToString("")).contains("#123 и @anna")
+        assertWithMessage("пример кода снова виден декорациям")
+            .that(parts("<p><code>#123 @anna</code></p>").joinToString("")).doesNotContain("#123")
+        // Правило выше — ровно то, по которому режет документ; эти две строки лишь
+        // держат его на месте, чтобы разбиение не осталось от другой функции.
+        assertWithMessage("документ снова декорирует в обход разметки")
+            .that(doc).contains("replaceOutsideMarkup(marked.parse(")
+        assertWithMessage("старый разделитель (только код) остался в документе")
+            .that(doc).doesNotContain("replaceOutsideCode")
     }
 
     /** Тема светлая/тёмная различает файл, а не только цвета вокруг. */

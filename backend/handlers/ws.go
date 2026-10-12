@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -45,6 +47,17 @@ type WSHandler struct {
 // credential alone.
 func NewWSHandler(hub *realtime.Hub, rooms *docroom.Rooms, confRooms *confroom.Rooms, q *db.Queries, secret string, allowedOrigins ...string) *WSHandler {
 	allowed, wildcard := originAllowlist(allowedOrigins)
+	// Presence on a board (#3116): a socket may stand only on a live board of a
+	// workspace it can see; the hub checks the scope, this finds the workspace.
+	hub.SetBoardResolver(func(boardID uuid.UUID) (string, bool) {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		ws, err := q.GetLiveBoardWorkspace(ctx, boardID)
+		if err != nil {
+			return "", false
+		}
+		return ws.String(), true
+	})
 	return &WSHandler{
 		hub:       hub,
 		rooms:     rooms,
@@ -98,11 +111,21 @@ func (h *WSHandler) Connect(c *gin.Context) {
 		return
 	}
 
+	// "Was in the app" (#3073): opening the app connects the socket, a token
+	// refresh is not guaranteed in the first minutes. Throttled in the UPDATE.
+	soft(c, "touch last_seen_at", h.q.TouchUserSeen(c, uid))
+
+	// Global admins also get the instance-level events (the jobs window, #3067).
+	isAdmin := false
+	if u, uerr := h.q.GetUserByID(c, uid); uerr == nil {
+		isAdmin = u.IsAdmin
+	}
+
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		return // Upgrade already wrote an error response.
 	}
-	realtime.NewClient(h.hub, conn, uid, scopes).Start()
+	realtime.NewClient(h.hub, conn, uid, scopes).WithAdmin(isAdmin).Start()
 }
 
 // authenticate resolves the bearer credential from either the Authorization

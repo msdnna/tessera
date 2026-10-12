@@ -1,9 +1,10 @@
 <script setup>
 import { ref, computed, watch, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { NIcon, NButton, NTooltip, useMessage } from 'naive-ui'
+import { NIcon, NButton, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
-  RibbonOutline,
+  TrailSignOutline,
   LogoGitlab,
   SettingsOutline,
   CheckmarkCircleOutline,
@@ -11,12 +12,12 @@ import {
 } from '@vicons/ionicons5'
 import { workspaces as wsApi } from '@/api'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { milestoneKey, milestoneRange } from '@/utils/milestones'
+import { milestoneRange, stagePath } from '@/utils/milestones'
+import { useProjectWindowStore } from '@/stores/projectWindow'
 import { useFormat } from '@/composables/useFormat'
 import { formatEstimate } from '@/utils/estimation'
 import EmptyState from '@/components/EmptyState.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
-import MilestoneManager from '@/components/MilestoneManager.vue'
 
 const router = useRouter()
 const store = useWorkspacesStore()
@@ -27,23 +28,48 @@ const list = ref([])
 const loading = ref(false)
 const stateFilter = ref('active') // 'active' | 'all'
 
-// Per-project milestone-management modal (reuses the existing manager).
-const mgr = ref({ show: false, projectId: null, projectName: '' })
+// A project's stages are managed in its «Проект» window (#2971).
+const projectWindow = useProjectWindowStore()
+
+// Only the newest request may write to the list. A workspace switch abandons the
+// one before it, and an abandoned request that answers last would leave another
+// space's milestones on screen with nothing left to refetch them. The counter is
+// bumped even by the empty-workspace path: it also clears the list, so a request
+// still in flight must not refill what it just emptied.
+let loadSeq = 0
+// The workspace the list on screen was read for, so a failure can tell «these are
+// another space's milestones» from «these are ours, only their refresh went missing».
+let loadedWs = ''
 
 async function load() {
   const ws = store.currentId
+  const mine = ++loadSeq
   if (!ws) {
     list.value = []
+    loadedWs = ''
     return
   }
   loading.value = true
   try {
     const { data } = await wsApi.milestones(ws)
+    if (mine !== loadSeq) return
     list.value = data || []
+    loadedWs = ws
   } catch (e) {
+    // A superseded request's failure is about a workspace nobody is looking at;
+    // its toast would blame the space the reader just switched to.
+    if (mine !== loadSeq) return
     message.error(e.message)
+    // Отказ не отменяет переключения: пространство уже другое, а на экране остаются
+    // вехи покинутого — со своими проектами и кнопками, и перечитать их нечем.
+    // Свои оставляем: там пропала только перезагрузка, сами вехи никуда не делись.
+    if (loadedWs !== ws) {
+      list.value = []
+      loadedWs = ''
+    }
   } finally {
-    loading.value = false
+    // Only the request that lit the spinner puts it out.
+    if (mine === loadSeq) loading.value = false
   }
 }
 
@@ -85,16 +111,14 @@ function estimateLabel(m) {
   return formatEstimate(m.estimate_sum, store.estimationFor(m.project_id))
 }
 
-function openBoard(g, m) {
-  if (!g.boardSlug || !g.projectSlug) return
-  router.push({
-    path: `/project/${g.projectSlug}/board/${g.boardSlug}`,
-    query: { milestone: milestoneKey(m) },
-  })
+// A stage row opens the stage page (#2993).
+function openStage(g, m) {
+  if (!g.projectSlug) return
+  router.push(stagePath(g.projectSlug, m))
 }
 
 function manage(g) {
-  mgr.value = { show: true, projectId: g.projectId, projectName: g.projectName }
+  projectWindow.open(g.projectId, 'stages')
 }
 
 watch(() => store.currentId, load)
@@ -105,7 +129,7 @@ onMounted(load)
   <div class="ms-screen">
     <header class="ms-head">
       <h1 class="ms-title">
-        <n-icon :component="RibbonOutline" class="grad-icon" :size="22" />
+        <n-icon :component="TrailSignOutline" class="grad-icon" :size="22" />
         {{ $t('milestones.title') }}
       </h1>
       <div class="ms-seg">
@@ -132,7 +156,7 @@ onMounted(load)
 
     <empty-state
       v-if="!loading && !total"
-      :icon="RibbonOutline"
+      :icon="TrailSignOutline"
       :text="stateFilter === 'active' ? $t('milestones.emptyActive') : $t('milestones.empty')"
     />
 
@@ -156,8 +180,8 @@ onMounted(load)
           v-for="m in g.milestones"
           :key="m.id"
           class="ms-row"
-          :class="{ closed: m.state === 'closed', clickable: !!g.boardSlug }"
-          @click="openBoard(g, m)"
+          :class="{ closed: m.state === 'closed', clickable: !!g.projectSlug }"
+          @click="openStage(g, m)"
         >
           <div class="ms-main">
             <div class="ms-line1">
@@ -194,18 +218,10 @@ onMounted(load)
               <span v-if="estimateLabel(m)" class="ms-est">Σ {{ estimateLabel(m) }}</span>
             </div>
           </div>
-          <n-icon v-if="g.boardSlug" :component="ArrowForwardOutline" class="ms-go" :size="16" />
+          <n-icon v-if="g.projectSlug" :component="ArrowForwardOutline" class="ms-go" :size="16" />
         </div>
       </section>
     </div>
-
-    <milestone-manager
-      v-model:show="mgr.show"
-      :project-id="mgr.projectId"
-      :project-name="mgr.projectName"
-      :ws-id="store.currentId"
-      @changed="load"
-    />
   </div>
 </template>
 

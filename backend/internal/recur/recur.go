@@ -7,6 +7,7 @@ package recur
 import (
 	"encoding/json"
 	"sort"
+	"strings"
 	"time"
 )
 
@@ -46,6 +47,16 @@ type Rule struct {
 	Trigger       string `json:"trigger,omitempty"`        // complete (default) | column | schedule
 	TriggerColumn string `json:"trigger_column,omitempty"` // uuid, when trigger=column
 	TargetColumn  string `json:"target_column,omitempty"`  // uuid, where the task lands (empty = first column)
+	// TZ is the IANA zone the rule's calendar arithmetic runs in — the zone the
+	// person who wrote the rule sees. Every field above is a *calendar* statement
+	// ("every Monday", "the 31st", "not on weekends", "these dates"), and a due
+	// date picked in the editor defaults to local midnight, so for anyone east of
+	// UTC the stored instant belongs to the previous day. Stepping that instant in
+	// the server's zone shifted the whole series by a day — Mondays came out as
+	// Tuesdays — while the editor's calendar kept highlighting the right days.
+	// Empty (or unknown) means UTC, which is what rules stored before this field
+	// already did.
+	TZ string `json:"tz,omitempty"`
 	// Behaviour toggles.
 	CreateNew    bool `json:"create_new,omitempty"`    // duplicate the task instead of rescheduling it
 	Once         bool `json:"once,omitempty"`          // stop after one recurrence (default = forever)
@@ -110,7 +121,41 @@ func (r Rule) normalized() (Rule, bool) {
 	if r.Freq != FreqDaily && r.Freq != FreqWeekly {
 		r.SkipWeekends = false
 	}
+	// A weekly rule with an explicit weekday set has already answered the only
+	// question the skip asks — which days — so the skip has nothing left to do
+	// but contradict it, and contradicting it costs the rule its interval. The
+	// push writes its result back as the anchor of the next step: a Saturday
+	// pushed to Monday lands in the *following* Mon-started week, where
+	// nextWeekly finds the same Saturday five days out rather than a fortnight.
+	// "Every 2 weeks on Saturdays" therefore settled into plain weekly Mondays
+	// from the second occurrence on — neither the chosen day nor the chosen
+	// interval survived, while the editor's chips kept showing Saturday (#2932).
+	// Dropping the flag here changes only the self-contradictory case: on any
+	// weekday a person would actually pick alongside it, applySkip was a no-op.
+	if r.Freq == FreqWeekly && len(r.Weekdays) > 0 {
+		r.SkipWeekends = false
+	}
+	// An unknown zone is dropped rather than rejected: a rule that repeats is more
+	// useful than no rule at all, and UTC is the behaviour it had before.
+	r.TZ = strings.TrimSpace(r.TZ)
+	if r.TZ != "" {
+		if _, err := time.LoadLocation(r.TZ); err != nil {
+			r.TZ = ""
+		}
+	}
 	return r, true
+}
+
+// loc resolves the rule's zone, falling back to UTC for a blank or unknown one.
+func (r Rule) loc() *time.Location {
+	if r.TZ == "" {
+		return time.UTC
+	}
+	l, err := time.LoadLocation(r.TZ)
+	if err != nil {
+		return time.UTC
+	}
+	return l
 }
 
 // cleanWeekdays sorts, de-dupes and range-checks a weekday list.
@@ -143,8 +188,10 @@ func cleanDates(in []string) []string {
 	return out
 }
 
-// WithAnchor returns a copy with its monthly/yearly anchor set from the due date.
+// WithAnchor returns a copy with its monthly/yearly anchor set from the due date —
+// read in the rule's zone, since the anchor is the day-of-month the user pointed at.
 func (r Rule) WithAnchor(due time.Time) Rule {
+	due = due.In(r.loc())
 	switch r.Freq {
 	case FreqMonthly:
 		r.Day = due.Day()
@@ -153,6 +200,64 @@ func (r Rule) WithAnchor(due time.Time) Rule {
 		r.Month = int(due.Month())
 	}
 	return r
+}
+
+// SameCalendarDay reports whether two instants are the same day on the calendar
+// the rule is written against — the rule's zone, the same one every branch of
+// Next reads.
+//
+// It exists because "the user moved this series" and "the user moved the clock"
+// are different edits, and only the first one may re-derive the monthly/yearly
+// anchor (see recurrenceToStore). Comparing instants conflated them: the due
+// editor keeps the month grid and the time picker in separate controls, so
+// nudging a reminder from 09:00 to 10:00 changed the instant without touching
+// the day — and on an occurrence February had clamped to the 28th, that silently
+// re-anchored a "every 31st" series to the 28th for good.
+func (r Rule) SameCalendarDay(a, b time.Time) bool {
+	loc := r.loc()
+	ya, ma, da := a.In(loc).Date()
+	yb, mb, db := b.In(loc).Date()
+	return ya == yb && ma == mb && da == db
+}
+
+// ZoneName is the IANA name of the zone the rule's calendar arithmetic runs in
+// ("UTC" for a blank or unknown one) — for handing the same calendar to SQL that
+// Next does its stepping on.
+func (r Rule) ZoneName() string {
+	return r.loc().String()
+}
+
+// WallStep measures the step an advance just took on the rule's calendar: the
+// difference between the two *clock readings* in the rule's zone, not between
+// the two instants.
+//
+// The two differ on the day a zone changes its offset, and that is the whole
+// point. Next steps calendar days (AddDate/time.Date), so an occurrence due at
+// 09:00 stays due at 09:00 — but across a spring-forward that is 23 elapsed
+// hours, and across the autumn one 25. Handed on as a plain interval to the rest
+// of the occurrence — the start date, every checklist item — those 23 hours are
+// right only for a row whose own window happens to straddle the transition as
+// well. Everything else is moved an hour off the parent it belongs to, and an
+// item scheduled just after midnight is moved onto the previous date (#2932).
+func (r Rule) WallStep(prev, next time.Time) time.Duration {
+	loc := r.loc()
+	return wallClock(next, loc).Sub(wallClock(prev, loc))
+}
+
+// ShiftWall moves ts by a wall-clock step measured by WallStep: the clock reading
+// advances by step on the rule's calendar, and the instant follows from whatever
+// offset that zone has on the resulting day.
+func (r Rule) ShiftWall(ts time.Time, step time.Duration) time.Time {
+	loc := r.loc()
+	w := wallClock(ts, loc).Add(step)
+	return time.Date(w.Year(), w.Month(), w.Day(), w.Hour(), w.Minute(), w.Second(), w.Nanosecond(), loc)
+}
+
+// wallClock reads t's clock in loc and returns it as a zone-free instant, so
+// that plain subtraction measures calendar distance rather than elapsed time.
+func wallClock(t time.Time, loc *time.Location) time.Time {
+	t = t.In(loc)
+	return time.Date(t.Year(), t.Month(), t.Day(), t.Hour(), t.Minute(), t.Second(), t.Nanosecond(), time.UTC)
 }
 
 // Marshal returns the canonical JSON form, suitable for storage.
@@ -172,7 +277,13 @@ func (r Rule) Marshal() (*json.RawMessage, bool) {
 // Next returns the due date of the occurrence after `from`. ok is false when the
 // recurrence has no further occurrence (a custom date list past its end). The
 // time-of-day is preserved (custom dates inherit from's clock).
+//
+// Everything below is calendar arithmetic — Weekday, Day, AddDate and time.Date all
+// read the receiver's location — so the one thing that decides which day the series
+// lands on is which zone `from` is expressed in. It is moved into the rule's zone
+// once, here, and every branch inherits that.
 func (r Rule) Next(from time.Time) (time.Time, bool) {
+	from = from.In(r.loc())
 	switch r.Freq {
 	case FreqDaily:
 		return r.applySkip(from.AddDate(0, 0, r.Interval)), true

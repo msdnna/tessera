@@ -1,0 +1,85 @@
+# gitleaks configuration for the secrets scan (#2936).
+#
+# Why this file exists: gitleaks 8.30.1 does NOT honour .gitignore when it walks
+# a directory (`gitleaks dir .`). The first run here read 2.69 GB and returned 16
+# findings, 12 of which came out of build output that is not in the repository at
+# all — Rust .rmeta blobs under desktop/src-tauri/target/, a generated
+# lint-resources.xml under android/app/build/, e2e JWT fixtures, and the
+# developer's own .env. Noise like that does not just waste I/O; it buries the
+# four findings in tracked files and pollutes the SARIF that CI publishes to the
+# Security tab.
+#
+# The invariant for every entry below: it must be gitignored, i.e. it cannot be
+# committed, so gitleaks — whose whole job is to stop secrets entering the
+# repository — has nothing to protect there. Before adding a path, check it:
+#
+#     git check-ignore -v <path>
+#
+# If that prints nothing, the path is tracked and does NOT belong in this file;
+# a finding in a tracked file is triage work (#2939), not something to allowlist.
+# Nothing here excludes source.
+
+[extend]
+# Keep the ~170 upstream rules and only add to them.
+useDefault = true
+
+[[allowlists]]
+description = "Build output and local artefacts — gitignored, so uncommittable"
+# `paths` matches against the file path relative to the scan root.
+paths = [
+  # Dependencies and VCS internals.
+  '''(^|/)node_modules/''',
+  '''^\.git/''',
+  '''^\.yarn/''',
+
+  # Android build output (android/.gitignore: build/, .gradle/) and the Firebase
+  # config, which .gitignore:62 keeps out of the repo on purpose.
+  '''^android/(app/)?build/''',
+  '''^android/\.gradle/''',
+  '''^android/app/google-services\.json$''',
+
+  # Desktop: Cargo target dir (desktop/src-tauri/.gitignore) and the bundle
+  # output dir (.gitignore:81). Deliberately no desktop/dist/ — release
+  # artefacts live in desktop-dist/, and .gitignore:44-51 keeps stray binaries
+  # out of the tracked desktop/ tree file by file, so a desktop/dist/ that did
+  # appear would be committable and must stay scanned.
+  '''^desktop/src-tauri/target/''',
+  '''^desktop-dist/''',
+
+  # Frontend build output, Playwright artefacts, and the e2e auth fixtures
+  # (.gitignore:88) — those JWTs are minted against tessera_test per run.
+  '''^frontend/dist/''',
+  '''^frontend/playwright-report/''',
+  '''^frontend/test-results/''',
+  '''^frontend/e2e/\.auth/''',
+  # Design-sync scratch (.gitignore:95): local screenshot drivers and the seed of
+  # the screenshot stand — JWTs minted against a throwaway database.
+  '''^frontend/\.design-sync/\.cache/''',
+
+  # Published APKs and their self-update manifest. apks/.gitignore lists the two
+  # patterns rather than the directory — README.md and .gitignore itself are
+  # tracked there, so this matches the artefacts and not the whole folder.
+  '''^apks/.*\.apk$''',
+  '''^apks/latest\.json$''',
+
+  # Scan reports (.gitignore:28) and the scanner binaries this repo downloads
+  # into tools/bin/ (.gitignore:33).
+  '''^reports/''',
+  '''^tools/bin/''',
+
+  # The developer's local environment file (.gitignore:2). .env.example is
+  # tracked and deliberately still scanned.
+  '''^\.env$''',
+]
+
+[[allowlists]]
+# Not a path exclusion: the shortcut catalog's chords (`keys: 'shift+arrowup'`,
+# 'mod+shift+arrowleft') read to the generic-api-key rule as `key = <value>`.
+# The match is on the captured value and only a chord shape passes — modifiers
+# joined by '+' and a key name, optionally a sequence of them — so a real token
+# in the same file would still be reported.
+description = "Keyboard chords of the shortcut catalog (src/shortcuts/catalog.js and its bundled copies)"
+regexTarget = "secret"
+regexes = [
+  '''^(?:(?:mod|shift|alt)\+)+[a-z0-9]+(?:\s+(?:(?:mod|shift|alt)\+)*[a-z0-9]+)*$''',
+]

@@ -152,7 +152,9 @@ describe('help i18n: сборка падает на расхождениях п�
     write('boards/boards.android.en.md', article(en, 'Finger.\n'))
     const { articles: built } = buildIndex(dir)
     expect(built[0].locales.en.android.path).toBe('boards/boards.android.en.md')
-    expect(built[0].locales.en.android.text).toContain('finger')
+    // Заглавная — часть ожидания: плоский текст сохраняет регистр оригинала,
+    // потому что из него режется фрагмент в выдаче поиска (#2932).
+    expect(built[0].locales.en.android.text).toContain('Finger')
   })
 
   it('перевод без базовой статьи', () => {

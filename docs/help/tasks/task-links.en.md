@@ -3,7 +3,7 @@ title: Task relations
 category: Tasks
 order: 33
 keywords: relations, blocks, blocked by, duplicates, relates, dependencies, gantt, arrows, unlink
-updated: 2026-08-28
+updated: 2026-10-09
 ---
 
 A relation is a statement about **how two tasks stand to each other**: one holds the other up, one repeats the other, or they are simply about the same thing. Relations live in the **Relations** tab of the task window, and blocking ones are additionally drawn as arrows on the [Gantt chart](/help/board-layouts).
@@ -23,7 +23,7 @@ A relation is a statement about **how two tasks stand to each other**: one holds
 
 ## Creating one
 
-At the bottom of the tab: the kind on the left, a search field on the right. You can **type a number** or **start typing a title** — the suggestion searches the whole workspace and groups what it finds by “project · board”, so tasks with the same name in different projects don't get confused.
+The **Link** button in the section's header (or <kbd>⇧</kbd> <kbd>L</kbd>) opens the form: the links already in place on top, then the kind as a segment (<kbd>⌥</kbd> <kbd>1</kbd>–<kbd>4</kbd> — digits in the field are the task's number) and a search field. You can **type a number** or **start typing a title** — the list searches the whole workspace and groups what it finds by “project · board”, so tasks with the same name in different projects don't get confused. <kbd>↵</kbd> links the task under the cursor and keeps the form open for the next link; <kbd>Esc</kbd> closes it.
 
 You can link to a task on any board of the workspace, subtasks included: blocking dependencies between subtasks are an everyday thing.
 

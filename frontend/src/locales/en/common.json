@@ -11,7 +11,8 @@
     "delete": "Delete",
     "retry": "Retry",
     "search": "Search",
-    "more": "More"
+    "more": "More",
+    "done": "Done"
   },
   "priority": {
     "none": "No priority",
@@ -21,9 +22,9 @@
     "urgent": "Urgent"
   },
   "duration": {
-    "hm": "{h} h {m} m",
-    "ms": "{m} m {s} s",
-    "s": "{s} s"
+    "hm": "{h}h {m}m",
+    "ms": "{m}m {s}s",
+    "s": "{s}s"
   },
   "state": {
     "loading": "Loading…",
@@ -55,48 +56,119 @@
       "gitlabWaiting": "Waiting for confirmation in the browser…",
       "forgot": "Forgot your password?",
       "noAccount": "No account?",
-      "register": "Sign up"
+      "register": "Sign up",
+      "subtitle": "Your team’s tasks, documents and meetings"
     },
     "register": {
-      "title": "Sign up",
+      "title": "Create an account",
       "name": "Name",
       "namePlaceholder": "Your name",
       "passwordPlaceholder": "at least 8 characters",
       "submit": "Create account",
       "gitlab": "Continue with GitLab",
       "haveAccount": "Already have an account?",
-      "login": "Sign in"
+      "login": "Sign in",
+      "subtitle": "A personal workspace comes with the account"
     },
     "forgot": {
-      "title": "Password recovery",
+      "title": "Recover access",
       "submit": "Send the link",
       "sent": "If an account with this address exists, we have sent it a password reset link.",
-      "back": "Back to sign-in"
+      "back": "Back to sign in",
+      "subtitle": "We will email you a link to reset the password",
+      "sentTitle": "Check your inbox"
     },
     "reset": {
       "title": "New password",
       "noToken": "This link is invalid — the token is missing.",
       "done": "Password changed. Redirecting to sign-in…",
-      "password": "New password (≥ 8)",
-      "confirm": "Repeat the password",
+      "password": "Password",
+      "confirm": "Once more",
       "submit": "Save password",
-      "toLogin": "To sign-in"
+      "toLogin": "To sign-in",
+      "subtitle": "Choose a new password, then sign in with it",
+      "mismatch": "The passwords do not match",
+      "badTitle": "The link does not work",
+      "doneTitle": "Password changed",
+      "validFor": "The link is valid for {n} more minute | The link is valid for {n} more minutes",
+      "checking": "Checking the link…",
+      "expiredTitle": "The link has expired",
+      "expired": "The link has expired or was already used. Request a new one — it will arrive by email.",
+      "requestNew": "Request a new link"
     },
     "verify": {
-      "title": "Confirmation",
+      "title": "Email confirmation",
       "pending": "Confirming…",
       "ok": "Email confirmed. Thank you!",
-      "fail": "This link is invalid or has expired."
+      "fail": "This link is invalid or has expired.",
+      "pendingTitle": "Confirming your email",
+      "okTitle": "Email confirmed",
+      "failTitle": "The link did not work",
+      "codeTitle": "Check your email",
+      "codeSent": "Code sent to {email}",
+      "codeLabel": "Confirmation code",
+      "cellLabel": "Digit {n} of {total}",
+      "resendIn": "Send again in {time}",
+      "resend": "Send again",
+      "resent": "A new code is on its way",
+      "changeEmail": "Change email",
+      "later": "Later",
+      "wrongCode": "Wrong code · attempts left: {n}",
+      "tooManyAttempts": "No attempts left — send a new code",
+      "expired": "The code has expired — send a new one",
+      "noMail": "This server doesn't send email: the code is in the server log — ask your administrator.",
+      "changedTitle": "Email changed",
+      "changed": "Your account now uses {email}.",
+      "okCode": "{email} is confirmed.",
+      "continue": "Continue",
+      "changeTitle": "New email",
+      "changeSub": "We'll send a code to the new address. Until you enter it, you sign in with the current one.",
+      "newEmail": "New email",
+      "currentPassword": "Current password",
+      "sendCode": "Send code",
+      "cancelChange": "Keep the current address",
+      "back": "Back",
+      "already": "{email} is already confirmed.",
+      "signedOut": "Sign in to enter the code — or open the link from the email.",
+      "signIn": "Sign in"
     },
     "invite": {
       "title": "Invitation",
       "pending": "Accepting the invitation…",
       "ok": "Done! You have joined the workspace.",
-      "fail": "The invitation is invalid, has expired or was meant for another address."
+      "fail": "This invitation is no longer valid — it has expired or was already used.",
+      "wrongAccount": "This invitation was sent to a different address. Sign in with the account it was mailed to.",
+      "error": "The invitation could not be applied. Open the link again or ask for a new invitation.",
+      "switchAccount": "Sign in with another account",
+      "okTitle": "You are in",
+      "failTitle": "The invitation is no longer valid",
+      "wrongAccountTitle": "The invitation is for another address",
+      "errorTitle": "Something went wrong",
+      "loading": "Opening the invitation…",
+      "invites": "{name} invites you to",
+      "invitesAnon": "You're invited to",
+      "projects": "{n} project | {n} projects",
+      "members": "{n} member | {n} members",
+      "role": "role: {role}",
+      "roleMember": "member",
+      "roleAdmin": "admin",
+      "email": "Email",
+      "accept": "Accept invitation",
+      "decline": "Decline",
+      "declinedTitle": "Invitation declined",
+      "declined": "The invitation no longer works. If you change your mind, ask for it to be sent again.",
+      "haveAccount": "Already have an account?",
+      "login": "Sign in",
+      "noAccount": "No account?",
+      "register": "Sign up",
+      "emailMismatch": "You're signed in as {me}",
+      "linkKind": "Invitation link",
+      "until": "valid until {date}"
     },
     "oauth": {
       "title": "Sign in with GitLab",
-      "finishing": "Finishing the sign-in…"
+      "finishing": "Finishing the sign-in…",
+      "subtitle": "One more second — checking with GitLab"
     },
     "toHome": "Go to Home",
     "validation": {
@@ -104,22 +176,110 @@
       "emailInvalid": "Enter a valid email",
       "passwordRequired": "Enter your password",
       "nameRequired": "Enter your name",
-      "passwordTooShort": "At least 8 characters"
+      "passwordTooShort": "At least 8 characters",
+      "passwordTooLong": "Password is too long: at most {bytes} bytes (a Cyrillic letter takes 2)"
     },
     "oauthError": {
       "generic": "Could not sign in with GitLab.",
       "state_mismatch": "The sign-in session has expired. Please try again.",
       "not_configured": "Sign-in with GitLab is not configured.",
       "account_disabled": "This account is deactivated.",
+      "email_taken": "A password account already holds this address and has not verified it. Sign in with the password and verify the address — GitLab sign-in will work after that.",
       "exchange_failed": "Could not authorize with GitLab.",
       "userinfo_failed": "Could not fetch the GitLab profile.",
+      "handoff_failed": "Could not complete the sign-in: the link has expired or was already used. Please try again.",
       "browserOpen": "Could not open the browser to sign in with GitLab.",
       "noReturn": "Could not return to the app. Check that tessera:// links open in Tessera."
+    },
+    "strength": {
+      "caption": "{level} · {n} character | {level} · {n} characters",
+      "level1": "Weak",
+      "level2": "Fair",
+      "level3": "Good",
+      "level4": "Strong"
     }
   },
   "secret": {
     "clearedPlaceholder": "will be cleared on save",
     "undoClear": "Undo the clearing",
     "clear": "Clear the stored value"
+  },
+  "undo": {
+    "undo": "Undo",
+    "retry": "Retry",
+    "close": "Close",
+    "undoing": "Undoing…",
+    "done": "Restored",
+    "failed": "Couldn't undo",
+    "seconds": "{n} s",
+    "region": "Undo actions"
+  },
+  "inline": {
+    "save": "save",
+    "cancel": "cancel",
+    "create": "create",
+    "kind": "view",
+    "next": "next"
+  },
+  "form": {
+    "cancel": "Cancel",
+    "field": "field",
+    "pick": "pick",
+    "suggest": "use the free one",
+    "free": "Free:",
+    "or": "or",
+    "saving": "Saving…"
+  },
+  "picker": {
+    "label": "Icon and colour",
+    "all": "All icons",
+    "initialsEmpty": "Aa",
+    "icons": {
+      "initials": "initials",
+      "briefcase": "briefcase",
+      "code": "code",
+      "rocket": "rocket",
+      "flask": "flask",
+      "star": "star",
+      "book": "book",
+      "bulb": "bulb",
+      "home": "home",
+      "school": "school",
+      "heart": "heart",
+      "game": "game"
+    }
+  },
+  "colors": {
+    "purple": "Purple",
+    "blue": "Blue",
+    "teal": "Teal",
+    "green": "Green",
+    "orange": "Orange",
+    "red": "Red",
+    "pink": "Pink"
+  },
+  "stub": {
+    "soon": "Coming soon · #{n}",
+    "badge": "soon"
+  },
+  "menu": {
+    "deleting": "Deleting…",
+    "retry": "retry",
+    "failed": "Couldn't delete",
+    "back": "Back"
+  },
+  "window": {
+    "sections": "sections"
+  },
+  "counts": {
+    "projects": "{n} project | {n} projects",
+    "boards": "{n} board | {n} boards",
+    "tasks": "{n} task | {n} tasks",
+    "join": "{list} and {last}"
+  },
+  "date": {
+    "clear": "Clear",
+    "pickStart": "Pick the first day",
+    "pickEnd": "Now the last day"
   }
 }

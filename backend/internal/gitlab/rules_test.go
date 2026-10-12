@@ -13,6 +13,16 @@ func labels(titles ...string) []Label {
 	return out
 }
 
+// priorityRules builds a one-rule "P: " priority ruleset mapping Huge/Ok to the
+// given raw value-map strings.
+func priorityRules(huge, ok string) Rules {
+	return Rules{Rules: []Rule{{
+		Action:   "priority",
+		Match:    "P: ",
+		ValueMap: map[string]string{"Huge": huge, "Ok": ok},
+	}}}
+}
+
 func tagNames(r Resolution) []string {
 	out := make([]string, len(r.Tags))
 	for i, t := range r.Tags {
@@ -117,6 +127,35 @@ func TestResolve_FirstStatusWinsAndTagsDeduped(t *testing.T) {
 	}
 	if len(got.Tags) != 1 || got.Tags[0].Name != "C: QA" {
 		t.Errorf("tags = %v, want one deduped 'C: QA'", tagNames(got))
+	}
+}
+
+// Rules are admin-authored JSONB, so a priority value-map entry is untrusted.
+// Anything outside the int32 the DB column holds must be rejected rather than
+// wrapped: "4294967298" used to land as priority 2.
+func TestResolve_PriorityOutOfInt32RangeIsIgnored(t *testing.T) {
+	rs := priorityRules("4294967298", "3")
+	if got := rs.Resolve(labels("P: Huge")); got.Priority != 0 {
+		t.Errorf("out-of-range priority = %d, want it ignored (0)", got.Priority)
+	}
+	if got := rs.Resolve(labels("P: Ok")); got.Priority != 3 {
+		t.Errorf("in-range priority = %d, want 3", got.Priority)
+	}
+}
+
+// Same guard on the inverse (priority → label) direction used by write-back: an
+// out-of-range entry must drop out of the map instead of truncating into a real
+// priority and stealing its label.
+func TestInversePriority_SkipsOutOfInt32Range(t *testing.T) {
+	inv, ok := priorityRules("4294967298", "3").InversePriority()
+	if !ok {
+		t.Fatal("InversePriority() = !ok, want the in-range entry to survive")
+	}
+	if got := inv[3]; got != "P: Ok" {
+		t.Errorf("inv[3] = %q, want %q", got, "P: Ok")
+	}
+	if got, dup := inv[2]; dup {
+		t.Errorf("truncated out-of-range entry leaked as priority 2: %q", got)
 	}
 }
 

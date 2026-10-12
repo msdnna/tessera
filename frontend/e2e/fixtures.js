@@ -47,6 +47,7 @@ export const test = base.extend({
       raw: api,
       get: (p) => api.get(p, t),
       post: (p, b) => api.post(p, b, t),
+      put: (p, b) => api.put(p, b, t),
       patch: (p, b) => api.patch(p, b, t),
       del: (p) => api.del(p, t),
       createTask: (columnId, title, extra) => createTask(t, seed.boardId, columnId, title, extra),
@@ -122,7 +123,8 @@ export function cardsIn(page, columnName) {
 
 // dragCard moves a card onto another column with raw mouse events.
 //
-// vuedraggable/SortableJS listens to pointer events, not HTML5 drag-and-drop, so
+// vuedraggable/SortableJS runs cards in fallback mode (pointer events, not HTML5
+// drag-and-drop — v2, #2954, so the dragged copy can be styled), so
 // `locator.dragTo()` is unreliable here. It also arms on a 160ms delay
 // (`:delay="160"` in KanbanBoard.vue), which is why the press is held before the
 // first move, and it needs several intermediate moves — a single jump can land
@@ -153,6 +155,11 @@ export async function dragRow(page, row, targetRow) {
 }
 
 async function dragOnto(page, source, target) {
+  // Let the board finish its follow-up requests first. Cards drag in Sortable's
+  // fallback mode (v2, #2954), which arms on the first pointer move after the
+  // press; a re-render landing in that window swaps the pressed element out and
+  // the drag never starts (~1 run in 5 when the drag began right after load).
+  await page.waitForLoadState('networkidle')
   const from = await source.boundingBox()
   const to = await target.boundingBox()
   if (!from || !to) throw new Error('drag source or target is not visible')

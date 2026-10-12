@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -46,13 +47,24 @@ func isUserErr(err error) bool {
 	return ok
 }
 
+// forbiddenErr is a cross-tenant reference: the caller may touch the task the
+// route names, but the request *body* names a second task in a workspace they
+// are not a member of. Kept apart from opError because it is not a bad argument
+// the caller can fix — it renders as a 403, matching TransferTask's refusal of
+// a target board in another workspace.
+type forbiddenErr struct{ msg string }
+
+func (e forbiddenErr) Error() string { return e.msg }
+
 // staleErr is a lost-update failure: the caller sent the updated_at it had read
 // and the stored row has moved on since, so writing would silently drop whoever
 // wrote first. It carries the current row — the client needs it to show what it
 // is up against and offer a reload or an overwrite.
 type staleErr struct{ current db.Task }
 
-func (e staleErr) Error() string { return "задача изменена другим клиентом" }
+func (e staleErr) Error() string {
+	return "задача изменена другим клиентом"
+}
 
 // errTaskGone is the other way an optimistic-lock write can miss: the row is
 // not stale, it is gone — deleted between the caller's read and its write.
@@ -71,6 +83,11 @@ func respondOpError(c *gin.Context, err error) {
 	}
 	if errors.Is(err, errTaskGone) {
 		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		return
+	}
+	var forbidden forbiddenErr
+	if errors.As(err, &forbidden) {
+		c.JSON(http.StatusForbidden, gin.H{"error": forbidden.Error()})
 		return
 	}
 	if isUserErr(err) {
@@ -227,11 +244,39 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 	}
 	recurrence := recurrenceToStore(reqRecurrence, dueDate, t.Recurrence, t.DueDate)
 
+	// Closing a repeating task is a state transition, not a field write: the
+	// advance below rewrites the very row this statement writes — due date,
+	// completion, start, the whole checklist's window, and under create_new a
+	// duplicate on the board. Whether to take it is decided by comparing the row
+	// read at the start of the request against the one just written, and nothing
+	// between the two is atomic, so two requests that both read the task open
+	// both advance it: one tick of the box, two next occurrences.
+	//
+	// That is not a theoretical interleaving. The board offers the same gesture
+	// from several places at once — the card's checkbox and the modal's, two
+	// people on one board, a second tap on a phone whose first request is still
+	// in flight — and the advance is slow (it rebuilds the checklist, copies
+	// every attachment's bytes and rewrites the description), so "still in
+	// flight" is hundreds of milliseconds, not the few a person waits before
+	// tapping again. Under create_new the extra card then repeats on a series of
+	// its own, forever; under reschedule the parent lands on the right date
+	// while every item's window is stepped twice (#2932).
+	//
+	// The lock is the one already here, taken from the inside: no client sends a
+	// version (ExpectedUpdatedAt is nil on every real request — the web app
+	// doesn't send it and neither does Android), so the check-and-write is armed
+	// against the row we read. It is armed for this transition only; an ordinary
+	// edit keeps last-write-wins, which is what every caller here expects.
+	lock := p.ExpectedUpdatedAt
+	mine := false
+	if lock == nil && p.Completed != nil && *p.Completed && t.CompletedAt == nil && t.Recurrence != nil {
+		lock, mine = &t.UpdatedAt, true
+	}
 	updated, err := h.q.UpdateTask(c, db.UpdateTaskParams{
 		ID: t.ID, Title: title, Description: description,
 		Priority: priority, DueDate: dueDate, CompletedAt: completedAt,
 		Recurrence: recurrence, StartDate: startDate, Estimate: normalizeEstimate(estimate),
-		ExpectedUpdatedAt: p.ExpectedUpdatedAt,
+		ExpectedUpdatedAt: lock,
 	})
 	if err != nil {
 		// Under an optimistic lock, "no rows" is not a storage failure: the
@@ -239,7 +284,7 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 		// — the row moved on (409, hand back the current one) or it is gone
 		// (404). Everything below this point is a side effect (journal,
 		// notifications, writeback, WS), so a refused write leaves none of it.
-		if p.ExpectedUpdatedAt != nil && errors.Is(err, pgx.ErrNoRows) {
+		if lock != nil && errors.Is(err, pgx.ErrNoRows) {
 			current, gerr := h.q.GetTask(c, t.ID)
 			if errors.Is(gerr, pgx.ErrNoRows) {
 				return t, errTaskGone
@@ -247,11 +292,51 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 			if gerr != nil {
 				return t, gerr
 			}
+			// A lock the caller did not ask for must not answer 409, and must
+			// not swallow a close either. The row moved — by whose hand decides
+			// which:
+			//
+			// Closed already: the request said "close this", the row is closed,
+			// and the occurrence that opened is the one the winner opened.
+			// Handing back the current task is the honest answer to a gesture
+			// made twice, with every side effect skipped — the point of the
+			// whole guard.
+			//
+			// Still open: this was not lost to another close but to something
+			// else writing the row in the same breath (the schedule worker, a
+			// GitLab sync), and dropping the tick there would be a checkbox that
+			// answers 200 and stays empty. Make the close once more against what
+			// is on the row now, under the caller's own lock so the retry cannot
+			// become the race it is guarding.
+			if mine {
+				if current.CompletedAt != nil {
+					return current, nil
+				}
+				p.ExpectedUpdatedAt = &current.UpdatedAt
+				return h.applyTaskPatch(c, current, wsID, p)
+			}
 			return t, staleErr{current: current}
 		}
 		return t, err
 	}
 
+	// The row the request itself wrote — what the person asked for, before any
+	// automatic step taken on top of it. Everything that records *authorship* (the
+	// journal, the notification it feeds, the GitLab "the user overrode this"
+	// flags) diffs against this and not against `updated`.
+	//
+	// A recurring task whose trigger is "complete" advances right below, and the
+	// advance rewrites the same row: completion is cleared again and the due date
+	// (with the start, and the whole checklist's window) steps forward. Diffed
+	// against that, closing the occurrence left no `completed` entry at all — both
+	// ends of the diff are open — and handed the reader the recurrence's own step
+	// as «изменил срок», signed by whoever ticked the box, with the matching
+	// notification to every participant. Dragging the same card into «Готово»
+	// journals it correctly (applyMove logs `completed` before advancing), so one
+	// card had two histories depending on how it was closed. The step itself is
+	// not lost: applyRecur writes its own `recurred` entry carrying the new date,
+	// which is what the drag path shows too (#2932).
+	edited := updated
 	// A recurring task whose trigger is "complete" advances when it enters the
 	// completed state (rescheduled, or duplicated, per its rule).
 	if t.CompletedAt == nil && updated.CompletedAt != nil {
@@ -259,24 +344,27 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 			updated = advanced
 		}
 	}
-	// A manual due-date change on a GitLab-linked task wins over the sync.
-	if !sameTime(t.DueDate, updated.DueDate) {
+	// A manual due-date change on a GitLab-linked task wins over the sync. The
+	// recurrence's step is not one: taken for `updated`, it froze the linked
+	// issue's date sync for good on the first close of a repeating task.
+	if !sameTime(t.DueDate, edited.DueDate) {
 		soft(c, "MarkGitlabDueOverridden", h.q.MarkGitlabDueOverridden(c, t.ID))
 	}
 	// Likewise a manual start-date change wins over the sync.
-	if !sameTime(t.StartDate, updated.StartDate) {
+	if !sameTime(t.StartDate, edited.StartDate) {
 		soft(c, "MarkGitlabStartOverridden", h.q.MarkGitlabStartOverridden(c, t.ID))
 	}
 	// A manual estimate change wins over the GitLab timeEstimate pull.
-	if !sameEstimate(t.Estimate, updated.Estimate) {
+	if !sameEstimate(t.Estimate, edited.Estimate) {
 		soft(c, "MarkGitlabEstimateOverridden", h.q.MarkGitlabEstimateOverridden(c, t.ID))
 	}
-	changes := h.journalUpdate(c, t, updated)
-	if len(changes) > 0 {
-		h.notifyTaskParticipants(c, updated, wsID, "updated",
-			msgUpdated(h.actorName(c), updated.Number, changes))
-	}
+	changes := h.journalUpdate(c, t, edited)
+	h.notifyTaskEdit(c, updated, wsID, changes)
 	// Mirror user-side changes back to a linked GitLab issue (opt-in per integration).
+	// These read `updated` deliberately: a writeback mirrors the state the task is
+	// actually left in, so a recurrence that moved the deadline is a deadline the
+	// linked issue has to learn about, and a close that the recurrence immediately
+	// undid is not a close to push — the issue would stay shut under an open task.
 	actor := middleware.CurrentUser(c)
 	// The explicit "Completed" flag is the legitimate source of a state push
 	// (drives set_state → close/reopen). Column moves use a separate trigger.
@@ -304,7 +392,86 @@ func (h *API) applyTaskPatch(c *gin.Context, t db.Task, wsID uuid.UUID, p taskPa
 	return updated, nil
 }
 
+// notifyTaskEdit tells a task's participants about an edit. changes are
+// journalUpdate's field names. A close or a reopen is its own notification
+// (completed / reopened — what the reader wants to hear about, and a kind a
+// routing rule can pick on its own); whatever else the same request changed still
+// goes out as «изменил(а)» without the completion word in it.
+func (h *API) notifyTaskEdit(c *gin.Context, t db.Task, wsID uuid.UUID, changes []string) {
+	if len(changes) == 0 {
+		return
+	}
+	actor := h.actorName(c)
+	rest := make([]string, 0, len(changes))
+	for _, f := range changes {
+		switch f {
+		case "completed":
+			h.notifyTaskParticipants(c, t, wsID, kindCompleted, msgCompleted(actor, t.Number, t.Title))
+		case "reopened":
+			h.notifyTaskParticipants(c, t, wsID, kindReopened, msgReopened(actor, t.Number, t.Title))
+		default:
+			rest = append(rest, f)
+		}
+	}
+	if len(rest) > 0 {
+		h.notifyTaskParticipants(c, t, wsID, "updated", msgUpdated(actor, t.Number, rest))
+	}
+}
+
 // ── column move ────────────────────────────────────────────────
+
+// claimColumnTrigger answers whether THIS request is the one that gets to read
+// the move as a column-triggered recurrence, and takes that right atomically.
+//
+// Entering the trigger column is a state transition, not a field write, and the
+// advance it takes rewrites the very row the move is about: the due date, the
+// start, the whole checklist's window, and under create_new a duplicate on the
+// board. Whether to take it used to be decided by comparing the column read at
+// the start of the request against the one being moved into — and nothing
+// between those two is atomic, so two drags that both read the card outside the
+// column both answered yes.
+//
+// A drag is the easiest of the three closing gestures to make twice: the board
+// is a shared screen, the card snaps back to where it was until the request
+// returns, and the advance is slow (it rebuilds the checklist, copies every
+// attachment's bytes and rewrites the description), so "still in flight" is
+// hundreds of milliseconds rather than the few a person waits before dragging
+// again. The other two doors are bolted from the inside already — the checkbox
+// in applyTaskPatch, the done column's auto-complete in applyMove — and this was
+// the third, opening on the same two failures: under create_new an extra card
+// with the same title, the same checklist and the same rule, repeating on a
+// series of its own forever; under reschedule a card stepped one period while
+// every item of its checklist is stepped two, because each item's window is
+// carried by a RELATIVE shift (#2932).
+//
+// The claim is the optimistic lock already on UpdateTask, armed from the inside
+// against the row this request read. No client sends a version (ExpectedUpdatedAt
+// is nil on every real request), so the write is a no-op rewrite of the fields as
+// read, whose only job is that exactly one of the racing requests survives the
+// WHERE clause. It is taken BEFORE the move on purpose: after it, both requests
+// would be comparing against a row the other one had already written.
+//
+// A losing request still moves the card — two drags into one column carry one
+// drag's worth of intent — it just does not advance the series a second time.
+// A write by something else in the same breath (the schedule worker, a GitLab
+// sync) costs this arrival its advance too: the card is then simply sitting in
+// the trigger column with its rule intact, which the next drag out and back in
+// advances. That is a state a person can see and undo, unlike a duplicate series.
+func (h *API) claimColumnTrigger(c *gin.Context, t db.Task, columnID uuid.UUID) bool {
+	if t.ColumnID == columnID {
+		return false
+	}
+	rule, ok := recur.Parse(t.Recurrence)
+	if !ok || rule.Trigger != recur.TriggerColumn || rule.TriggerColumn != columnID.String() {
+		return false
+	}
+	_, err := h.q.UpdateTask(c, db.UpdateTaskParams{
+		ID: t.ID, Title: t.Title, Description: t.Description, Priority: t.Priority,
+		DueDate: t.DueDate, CompletedAt: t.CompletedAt, Recurrence: t.Recurrence,
+		StartDate: t.StartDate, Estimate: t.Estimate, ExpectedUpdatedAt: &t.UpdatedAt,
+	})
+	return err == nil
+}
 
 // applyMove moves a task to a column at an explicit position, with the board's
 // done-column auto-complete, column-triggered recurrence, journal, notification
@@ -316,19 +483,39 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 	if err != nil || col.BoardID != t.BoardID {
 		return t, userErr("column does not belong to this board")
 	}
+	// Whether this move is the rule's trigger is settled before the move itself,
+	// and settled once — see claimColumnTrigger.
+	triggered := h.claimColumnTrigger(c, t, columnID)
 	updated, err := h.q.MoveTask(c, db.MoveTaskParams{ID: t.ID, ColumnID: columnID, Position: position})
 	if err != nil {
 		return t, err
 	}
 
 	if t.ColumnID != columnID {
-		h.logEvent(c, t.ID, "moved", map[string]any{"to": col.Name})
-		h.notifyTaskParticipants(c, updated, wsID, "moved",
-			msgMoved(h.actorName(c), updated.Number, col.Name))
+		// The journal and the notification both name the target column, and both
+		// carry its name_key beside the stored name: a seeded column is captioned
+		// by the reader's client (#2800), a column the user renamed has no key and
+		// stays as written. Entries from before this carry no key and fall back to
+		// the stored string, which is what they used to show anyway. The source
+		// column rides along the same way so the activity feed can draw
+		// «from → to» (v2, #2958); older entries carry only `to`.
+		moved := map[string]any{"to": col.Name}
+		if col.NameKey != nil && *col.NameKey != "" {
+			moved["to_key"] = *col.NameKey
+		}
+		if from, ferr := h.q.GetColumn(c, t.ColumnID); ferr == nil {
+			moved["from"] = from.Name
+			if from.NameKey != nil && *from.NameKey != "" {
+				moved["from_key"] = *from.NameKey
+			}
+		}
+		h.logEvent(c, t.ID, "moved", moved)
 	}
 
 	// Auto-toggle completion based on the board's configured "done" column:
-	// moving in completes the task, moving out reopens it.
+	// moving in completes the task, moving out reopens it. Which of the two (if
+	// either) happened decides the notification below.
+	completedNow, reopenedNow := false, false
 	if board, berr := h.q.GetBoard(c, t.BoardID); berr == nil {
 		doneID := doneColumnID(board)
 		targetIsDone := doneID != nil && *doneID == columnID
@@ -336,17 +523,32 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 		switch {
 		case targetIsDone && updated.CompletedAt == nil:
 			now := time.Now()
+			// The auto-complete is the other way into the advance, and it races
+			// the same way — two drags of one card into «Готово» closed it twice
+			// and advanced it twice. Here the row we lock against is the one this
+			// request's own move just wrote, so the guard costs a losing drag
+			// nothing but the completion it did not win (applyTaskPatch above
+			// says the rest).
 			if done, derr := h.q.UpdateTask(c, db.UpdateTaskParams{
 				ID: updated.ID, Title: updated.Title, Description: updated.Description,
 				Priority: updated.Priority, DueDate: updated.DueDate, CompletedAt: &now,
 				Recurrence: updated.Recurrence, StartDate: updated.StartDate, Estimate: updated.Estimate,
+				ExpectedUpdatedAt: &updated.UpdatedAt,
 			}); derr == nil {
 				updated = done
+				completedNow = true
 				h.logEvent(c, t.ID, "completed", nil)
 				// A "complete"-triggered recurring task bounces straight back out of
 				// done with its due date advanced — overriding the move just made.
 				if advanced, ok := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerComplete); ok {
 					updated = advanced
+				}
+			} else if errors.Is(derr, pgx.ErrNoRows) {
+				// The refusal means the row moved on between the move and the
+				// completion — the other drag got there first. Answer with what
+				// it left, not with the half-state this request happens to hold.
+				if current, gerr := h.q.GetTask(c, updated.ID); gerr == nil {
+					updated = current
 				}
 			}
 		case sourceIsDone && !targetIsDone && updated.CompletedAt != nil:
@@ -356,19 +558,34 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 				Recurrence: updated.Recurrence, StartDate: updated.StartDate, Estimate: updated.Estimate,
 			}); derr == nil {
 				updated = reopened
+				reopenedNow = true
 				h.logEvent(c, t.ID, "reopened", nil)
 			}
 		}
 	}
 
+	// One notification per move, saying what the move meant to the reader: into
+	// the done column it is «выполнил(а)», out of it «вернул(а) в работу», any
+	// other column change a plain move. A completion without a column change (a
+	// reorder inside a done column that held an open task) is still a completion.
+	switch {
+	case completedNow:
+		h.notifyTaskParticipants(c, updated, wsID, kindCompleted,
+			msgCompleted(h.actorName(c), updated.Number, updated.Title))
+	case reopenedNow:
+		h.notifyTaskParticipants(c, updated, wsID, kindReopened,
+			msgReopened(h.actorName(c), updated.Number, updated.Title))
+	case t.ColumnID != columnID:
+		h.notifyTaskParticipants(c, updated, wsID, "moved",
+			msgMoved(h.actorName(c), updated.Number, col.Name, col.NameKey))
+	}
+
 	// Column-triggered recurrence: moving the task into its configured column
-	// advances it (independent of completion).
-	if t.ColumnID != columnID {
-		if rule, ok := recur.Parse(updated.Recurrence); ok &&
-			rule.Trigger == recur.TriggerColumn && rule.TriggerColumn == columnID.String() {
-			if advanced, acted := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerColumn); acted {
-				updated = advanced
-			}
+	// advances it (independent of completion). The claim taken before the move is
+	// what makes this happen once per arrival.
+	if triggered {
+		if advanced, acted := h.recurAdvance(c, updated, wsID, middleware.CurrentUser(c), recur.TriggerColumn); acted {
+			updated = advanced
 		}
 	}
 
@@ -398,19 +615,45 @@ func (h *API) applyMove(c *gin.Context, t db.Task, wsID, columnID uuid.UUID, pos
 // "assigned to you" notification, the WS event and the GitLab assignee trigger.
 func (h *API) applyAssignee(c *gin.Context, t db.Task, wsID, userID uuid.UUID, add bool) error {
 	if add {
+		// Same rule as applyTag: the user_id arrives in the body, so loadTask
+		// does not vouch for it. Assigning a stranger reads their address back
+		// through ListTaskAssignees (it selects u.email) and pushes them an
+		// "assigned to you" notification carrying a title the caller writes,
+		// from a workspace they cannot open. The sibling notification paths
+		// (notifyMentions, notifyThread) already skip non-members.
+		//
+		// The remove arm stays unguarded on purpose — see
+		// TestRevokedMemberCanStillBeUnassigned: RemoveMember leaves existing
+		// assignments standing, and a check here would make them unremovable.
+		if _, err := h.q.GetMembership(c, db.GetMembershipParams{WorkspaceID: wsID, UserID: userID}); err != nil {
+			if errIsNoRows(err) {
+				return forbiddenErr{msg: "assignee is not a member of this workspace"}
+			}
+			return err
+		}
 		if err := h.q.AddTaskAssignee(c, db.AddTaskAssigneeParams{TaskID: t.ID, UserID: userID}); err != nil {
 			return err
 		}
 		h.logEvent(c, t.ID, "assigned", map[string]any{"user_id": userID})
 		h.notify(c, userID, wsID, &t.ID, "assigned",
 			msgAssigned(h.actorName(c), t.Number, t.Title))
-		h.broadcast(wsID, "task.assigned", gin.H{"task_id": t.ID, "user_id": userID})
+		h.broadcastAs(c, wsID, "task.assigned", gin.H{"task_id": t.ID, "user_id": userID})
 	} else {
-		if err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: t.ID, UserID: userID}); err != nil {
+		removed, err := h.q.RemoveTaskAssignee(c, db.RemoveTaskAssigneeParams{TaskID: t.ID, UserID: userID})
+		if err != nil {
 			return err
 		}
 		h.logEvent(c, t.ID, "unassigned", map[string]any{"user_id": userID})
-		h.broadcast(wsID, "task.unassigned", gin.H{"task_id": t.ID, "user_id": userID})
+		// The mirror of "assigned to you" — only when someone was actually taken
+		// off: a repeated remove (two clients, a retried request) must not tell a
+		// person twice. notify skips taking yourself off, and the membership gate
+		// in deliverNotification skips an ex-member being cleaned off a task they
+		// can no longer open (the remove arm stays unguarded above for that case).
+		if removed > 0 {
+			h.notify(c, userID, wsID, &t.ID, kindUnassigned,
+				msgUnassigned(h.actorName(c), t.Number, t.Title))
+		}
+		h.broadcastAs(c, wsID, "task.unassigned", gin.H{"task_id": t.ID, "user_id": userID})
 	}
 	h.enqueueWriteback(c, t.ID, middleware.CurrentUser(c), gitlab.TrigAssignees, map[string]any{})
 	return nil
@@ -421,16 +664,43 @@ func (h *API) applyAssignee(c *gin.Context, t db.Task, wsID, userID uuid.UUID, a
 // applyTag attaches or detaches a project tag, with the WS event and the GitLab
 // label reconciliation trigger.
 func (h *API) applyTag(c *gin.Context, taskID, wsID, tagID uuid.UUID, add bool) error {
+	// The tag must live in the caller's own workspace. loadTask vouches for the
+	// task in the route; tag_id arrives separately in the body (or the URL of
+	// the delete) and needs its own check — otherwise a stranger's tag attaches
+	// to the caller's task and the task detail reads its name and colour back,
+	// a cross-workspace read of data the caller was never shown. Tags stay
+	// free to cross *projects* inside one workspace, which the board views rely on.
+	tag, err := h.q.GetTag(c, tagID)
+	if err != nil {
+		return userErr("invalid tag")
+	}
+	if tag.WorkspaceID != wsID {
+		return forbiddenErr{msg: "tag is in another workspace"}
+	}
+	// The journal records the tag by NAME, not by id: an entry has to stay
+	// readable after the tag is renamed away or deleted outright (the M:N row
+	// cascades, the history line must not turn into a dangling uuid). Same shape
+	// as `moved`, which stores the column's name beside its key. A tag has no
+	// name_key — tag names are user content everywhere — so there is nothing to
+	// caption from the client side.
 	if add {
-		if err := h.q.AddTaskTag(c, db.AddTaskTagParams{TaskID: taskID, TagID: tagID}); err != nil {
+		rows, err := h.q.AddTaskTag(c, db.AddTaskTagParams{TaskID: taskID, TagID: tagID})
+		if err != nil {
 			return err
 		}
-		h.broadcast(wsID, "task.tagged", gin.H{"task_id": taskID, "tag_id": tagID})
+		if rows > 0 {
+			h.logEvent(c, taskID, "tagged", map[string]any{"tag": tag.Name})
+		}
+		h.broadcastAs(c, wsID, "task.tagged", gin.H{"task_id": taskID, "tag_id": tagID})
 	} else {
-		if err := h.q.RemoveTaskTag(c, db.RemoveTaskTagParams{TaskID: taskID, TagID: tagID}); err != nil {
+		rows, err := h.q.RemoveTaskTag(c, db.RemoveTaskTagParams{TaskID: taskID, TagID: tagID})
+		if err != nil {
 			return err
 		}
-		h.broadcast(wsID, "task.untagged", gin.H{"task_id": taskID, "tag_id": tagID})
+		if rows > 0 {
+			h.logEvent(c, taskID, "untagged", map[string]any{"tag": tag.Name})
+		}
+		h.broadcastAs(c, wsID, "task.untagged", gin.H{"task_id": taskID, "tag_id": tagID})
 	}
 	// Reconcile labels back to the linked issue (the worker reads the task's
 	// current tags, so the empty payload coalesces a burst into one row).
@@ -443,25 +713,183 @@ func (h *API) applyTag(c *gin.Context, taskID, wsID, tagID uuid.UUID, add bool) 
 // applyMilestone pins or clears a task's milestone (nil clears), marking the
 // change as a local override of the GitLab sync.
 func (h *API) applyMilestone(c *gin.Context, taskID, wsID uuid.UUID, milestoneID *uuid.UUID) error {
+	// Same rule as applyTag: a milestone named in the body must belong to the
+	// caller's workspace. The «Этапы» rollup (ListWorkspaceMilestones) counts
+	// every task carrying the id without a workspace filter of its own, so an
+	// unchecked milestone_id lets an outsider inflate a stranger's milestone
+	// progress with a task the victim can neither see nor unpin.
+	var title string
+	if milestoneID != nil {
+		m, err := h.sameWorkspaceMilestone(c, *milestoneID, wsID)
+		if err != nil {
+			return err
+		}
+		title = m.Title
+	}
+	// Read before writing: the journal entry below is the difference between the
+	// two states, and after the UPDATE the previous milestone is unrecoverable.
+	before, err := h.q.GetTask(c, taskID)
+	if err != nil {
+		return err
+	}
 	if err := h.q.SetTaskMilestone(c, db.SetTaskMilestoneParams{ID: taskID, MilestoneID: milestoneID}); err != nil {
 		return err
 	}
+	h.journalMilestone(c, taskID, before.MilestoneID, milestoneID, title)
 	// A manual milestone change on a GitLab-linked task wins over the sync.
 	soft(c, "MarkGitlabMilestoneOverridden", h.q.MarkGitlabMilestoneOverridden(c, taskID))
 	h.enqueueWriteback(c, taskID, middleware.CurrentUser(c), gitlab.TrigMilestone, map[string]any{})
 	if t, err := h.q.GetTask(c, taskID); err == nil {
-		h.broadcast(wsID, "task.updated", t)
+		h.broadcastAs(c, wsID, "task.updated", t)
 	}
 	return nil
+}
+
+// journalMilestone records a milestone change as the pair milestone /
+// milestone_removed — the shape every other field of a task has had all along
+// (tagged/untagged, assigned/unassigned, attachment/attachment_removed), and the
+// one the milestone was missing: pinning a task to a stage, dragging it to
+// another one or unpinning it left no trace at all, while the «Этапы» screen
+// recomputed task_count / done_count / Σestimate of both stages from it. A
+// roadmap that moved and a history that says nothing is exactly the pair a
+// reader cannot reconcile, and the /milestone quick action made it worse: the
+// history then showed "ran the commands" and not what the command did.
+//
+// The entry carries the milestone's TITLE for the reader, for the reason the
+// tag does: a milestone may be renamed or deleted (SetTaskMilestone's column is
+// ON DELETE SET NULL), and history must not decay into a dangling uuid. Since
+// #2992 it also carries the ids — `milestone_id` (where the task landed, or the
+// stage it left on milestone_removed) and, on a move between stages, `from_id` /
+// `from_title` — because the stage page counts its scope change and burn-up
+// from these entries, and a title is not a key. A re-pin of the milestone the
+// task already carries writes nothing — the same no-op guard AddTaskTag gets
+// from its rows count.
+func (h *API) journalMilestone(c *gin.Context, taskID uuid.UUID, before, after *uuid.UUID, title string) {
+	h.journalMilestoneActor(c, taskID, middleware.CurrentUser(c), before, after, title)
+}
+
+// journalMilestoneActor is journalMilestone with an explicit actor, for the
+// paths outside a request (the GitLab sync, the recurrence worker); uuid.Nil
+// journals a system entry.
+func (h *API) journalMilestoneActor(ctx context.Context, taskID, actor uuid.UUID, before, after *uuid.UUID, title string) {
+	if data := milestoneEventData(ctx, h.q, before, after, title); data != nil {
+		kind := "milestone"
+		if after == nil {
+			kind = "milestone_removed"
+		}
+		h.logEventActor(ctx, taskID, actor, kind, data)
+	}
+}
+
+// milestoneTitler is the one read milestoneEventData needs (a *db.Queries).
+type milestoneTitler interface {
+	GetMilestone(ctx context.Context, id uuid.UUID) (db.Milestone, error)
+}
+
+// milestoneEventData builds the journal payload of a milestone change, or nil
+// when nothing changed. `title` is the new stage's (when there is one).
+func milestoneEventData(ctx context.Context, q milestoneTitler, before, after *uuid.UUID, title string) map[string]any {
+	switch {
+	case before == nil && after == nil:
+		return nil
+	case before != nil && after != nil && *before == *after:
+		return nil
+	}
+	// The title of what was there is only reachable from the row the task
+	// pointed at a moment ago. A stage deleted in between leaves the bare phrase
+	// rather than a hole.
+	var was string
+	if before != nil {
+		if m, err := q.GetMilestone(ctx, *before); err == nil {
+			was = m.Title
+		}
+	}
+	if after == nil {
+		return map[string]any{"title": was, "milestone_id": before.String()}
+	}
+	data := map[string]any{"title": title, "milestone_id": after.String()}
+	if before != nil {
+		data["from_id"] = before.String()
+		data["from_title"] = was
+	}
+	return data
+}
+
+// milestonesLostToBoard names the tasks of a subtree whose milestone the move
+// onto targetBoard is about to drop, and the title each one loses. Call it from
+// inside the move's transaction, with its tx-bound Queries, BEFORE the update:
+// afterwards the task no longer holds the id the title is reachable through.
+//
+// It reads, it does not unpin. A milestone hangs off a PROJECT while a task moves
+// between boards by WORKSPACE, so the three statements a cross-board move runs —
+// TransferTask, SetTaskParent, MoveSubtreeToBoard — each clear milestone_id
+// themselves when the target board stands in another project (#2932, the split
+// that let «Этапы» keep counting a task its own board no longer holds).
+//
+// What they do not do is say so. The journal pair milestone / milestone_removed
+// came later, and a move is the one way a stage comes off a task without anybody
+// asking: the reader drags a card to another project's board and its «Этап»
+// silently empties, with the History — the thing that pair exists for — showing
+// only that it moved. Everything else that clears a field on the way past leaves
+// the same entry a deliberate change would (reopened on a transfer out of a done
+// column, untagged, attachment_removed), and this is the gap in that row.
+//
+// The GitLab sync is deliberately left alone: no override mark, no write-back. A
+// board move inside Tessera is not a statement about the issue, and pushing
+// "milestone removed" to a live GitLab issue because a card changed boards would
+// be the larger surprise — nor does this change what the move already did.
+func (h *API) milestonesLostToBoard(c *gin.Context, q *db.Queries, rootID, targetBoard uuid.UUID) ([]db.SubtreeMilestonesOffProjectRow, error) {
+	project, err := q.ProjectIDForBoard(c, targetBoard)
+	if err != nil {
+		return nil, err
+	}
+	return q.SubtreeMilestonesOffProject(c, db.SubtreeMilestonesOffProjectParams{
+		RootID: rootID, ProjectID: project,
+	})
+}
+
+// journalLostMilestones records a milestone_removed entry per row
+// milestonesLostToBoard returned. Outside the transaction, like every other
+// journal write a move makes (TransferTask's reopened list does the same).
+func (h *API) journalLostMilestones(c *gin.Context, rows []db.SubtreeMilestonesOffProjectRow) {
+	for _, r := range rows {
+		h.logEvent(c, r.ID, "milestone_removed", map[string]any{"title": r.Title, "milestone_id": r.MilestoneID.String()})
+	}
 }
 
 // ── relations ──────────────────────────────────────────────────
 
 // applyRelation links two tasks, journalling both sides so the link shows in the
 // referenced task's history too (relations are stored one-way).
+//
+// Linking a pair that is already linked this way is a no-op, and says so: it
+// writes no journal entry and puts nothing on the socket. Pressing «Связать»
+// twice, or repeating "/blocks #N", cannot add a second row (AddTaskRelation is
+// ON CONFLICT DO NOTHING) — announcing it anyway left both histories collecting
+// arrivals for a link that had been there all along, and woke every open Gantt
+// to re-read an unchanged graph. applyUnlink already draws exactly this line at
+// the other end: it journals only when rows actually went away.
+//
+// "Already linked this way" is asked of both directions, not just this row's:
+// both tasks show the same link whichever end made it (ListTaskRelations reads
+// either direction and collapses the pair), and the ✕ takes both halves — so
+// #20 "blocked_by" #10 adds nothing to #10 "blocks" #20 but a redundant row.
 func (h *API) applyRelation(c *gin.Context, t db.Task, wsID uuid.UUID, target db.Task, kind string) error {
 	if target.ID == t.ID {
 		return userErr("нельзя связать задачу с собой")
+	}
+	if !relationKinds[kind] {
+		return userErr("неизвестный вид связи: %s", kind)
+	}
+	existed, err := h.q.RelationExistsBothWays(c, db.RelationExistsBothWaysParams{
+		TaskID: t.ID, RelatedTaskID: target.ID,
+		Kind: kind, InverseKind: inverseRelationKind(kind),
+	})
+	if err != nil {
+		return err
+	}
+	if existed {
+		return nil
 	}
 	if _, err := h.q.AddTaskRelation(c, db.AddTaskRelationParams{
 		TaskID: t.ID, RelatedTaskID: target.ID, Kind: kind,
@@ -476,35 +904,77 @@ func (h *API) applyRelation(c *gin.Context, t db.Task, wsID uuid.UUID, target db
 		h.broadcast(wsID, "task.updated", gin.H{"id": target.ID})
 	}
 	h.broadcast(wsID, "task.updated", gin.H{"id": t.ID})
+	h.broadcastRelation(wsID, t, target, kind)
 	return nil
+}
+
+// broadcastRelation announces that the link between two tasks changed.
+//
+// The two `task.updated` events above say the tasks changed, not that the edges
+// between them did — and the Gantt view keeps its blocking-edge list in a fetch
+// of its own (/boards/:id/dependencies), separate from the board's task lists.
+// Without a relation-specific event an open chart would either miss every link
+// made elsewhere (the task modal, a second browser, a quick action) or have to
+// re-read the whole graph after each unrelated task patch.
+//
+// Both endpoint boards travel with it: an arrow is drawn only when both ends sit
+// on the same board (ListBoardDependencies), so a board can tell from the event
+// alone whether the change is any of its business.
+func (h *API) broadcastRelation(wsID uuid.UUID, t, target db.Task, kind string) {
+	h.broadcast(wsID, "task.relation", gin.H{
+		"task_id":          t.ID,
+		"related_task_id":  target.ID,
+		"kind":             kind,
+		"board_id":         t.BoardID,
+		"related_board_id": target.BoardID,
+	})
+}
+
+// logRelationRemoved journals an unlink on both tasks, mirroring what
+// applyRelation writes when the link is made.
+//
+// Both sides, for the same reason the link is recorded on both: a relation is one
+// directed row, but both tasks show it and both journals announced its arrival
+// ("добавил(а) связь с #N"). Recording only the acting side left the other task's
+// history stating a link that is no longer there, with nothing after it — and the
+// ✕ in the «Связи» tab (DeleteRelation, the ordinary way either end drops a link)
+// wrote nothing at all, on either task. `relation_removed` is not a new event
+// kind: both clients have translated it since "/unlink" shipped — it was simply
+// unreachable from the button.
+//
+// Best-effort like every other journal write, and the payload matches the link
+// entry's (`related` = the *other* task's number), so the two lines read as a
+// pair. The guards are the same too: a task without a number cannot be named in
+// the other's history, which is why that side is skipped rather than logged with
+// a blank.
+func (h *API) logRelationRemoved(c *gin.Context, t, target db.Task) {
+	h.logEvent(c, t.ID, "relation_removed", map[string]any{"related": target.Number})
+	if t.Number != nil {
+		h.logEvent(c, target.ID, "relation_removed", map[string]any{"related": *t.Number})
+	}
 }
 
 // applyUnlink drops every relation between two tasks, in either direction, and
 // reports how many rows went away (0 means there was nothing to unlink).
 //
-// Relations are stored one-way, so "/unlink #N" has to look from both ends: the
-// row may live on either task depending on who linked whom.
+// Relations are stored one-way, so "/unlink #N" has to clear both ends: the row
+// may live on either task depending on who linked whom, and a pair can be on
+// record twice (the GitLab projection mirrors the reverse edge).
 func (h *API) applyUnlink(c *gin.Context, t db.Task, wsID uuid.UUID, target db.Task) (int, error) {
-	var n int
-	for _, side := range [2][2]uuid.UUID{{t.ID, target.ID}, {target.ID, t.ID}} {
-		rels, err := h.q.ListTaskRelations(c, side[0])
-		if err != nil {
-			return n, err
-		}
-		for _, r := range rels {
-			if r.RelatedTaskID != side[1] {
-				continue
-			}
-			if err := h.q.DeleteTaskRelation(c, r.ID); err != nil {
-				return n, err
-			}
-			n++
-		}
+	rows, err := h.q.DeleteRelationsBetween(c, db.DeleteRelationsBetweenParams{
+		TaskID: t.ID, RelatedTaskID: target.ID,
+	})
+	if err != nil {
+		return 0, err
 	}
+	n := int(rows)
 	if n > 0 {
-		h.logEvent(c, t.ID, "relation_removed", map[string]any{"related": target.Number})
+		h.logRelationRemoved(c, t, target)
 		h.broadcast(wsID, "task.updated", gin.H{"id": t.ID})
 		h.broadcast(wsID, "task.updated", gin.H{"id": target.ID})
+		// Kind is empty: "/unlink" drops every relation between the pair at once,
+		// so no single one names the change. Consumers re-read the edge list.
+		h.broadcastRelation(wsID, t, target, "")
 	}
 	return n, nil
 }
@@ -523,23 +993,143 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 		if err != nil {
 			return t, userErr("invalid parent")
 		}
-		// The parent must not itself be a child of this task (1-level cycle).
-		if parent.ParentID != nil && *parent.ParentID == t.ID {
-			return t, userErr("cyclic parent")
+		// The parent must live in the caller's own workspace. Without this the
+		// lines below would adopt a stranger's board and column, physically
+		// moving the caller's task onto a board they cannot read — a card the
+		// victim never created appearing on their board, and the caller losing
+		// their own task. loadTask only vouches for the task in the :id param;
+		// parent_id is a second reference and needs its own check.
+		if err := h.sameWorkspaceTask(c, parent, wsID); err != nil {
+			return t, err
+		}
+		// …and it must not sit anywhere below this task. Subtask nesting has no
+		// depth limit (CreateTask hangs a subtask off a subtask without complaint),
+		// so checking only the direct child — as this did — left the two-step
+		// version open: A → B → C, then A under C rings all three with no root.
+		// A subtask is drawn under its parent and ListBoardTasks takes only
+		// parent_id IS NULL, so a ring nobody can reach from a root is drawn
+		// nowhere and the cards drop off the board for every member.
+		//
+		// Same guard as groups and documents, and the walk starts at the parent
+		// itself, so "be your own parent" is covered by the same code.
+		ancestors, err := h.q.TaskAncestorIDs(c, parent.ID)
+		if err != nil {
+			return t, err
+		}
+		for _, id := range ancestors {
+			if id == t.ID {
+				return t, userErr("cannot attach a task to itself or to one of its own subtasks")
+			}
 		}
 		boardID, columnID = parent.BoardID, parent.ColumnID
 	}
 	prevParent := t.ParentID
-	updated, err := h.q.SetTaskParent(c, db.SetTaskParentParams{
-		ID: t.ID, ParentID: parentID, BoardID: boardID, ColumnID: columnID,
-	})
-	if err != nil {
+	// A task that changes parent changes the LIST it is ordered in — a subtask's
+	// float8 ladder runs per parent, a card's per column — so it needs a position
+	// on the destination ladder, not the one it carried over. Both ladders start
+	// at the same positionGap, so keeping the old number put the first subtask of
+	// a parent on the exact position of the column's first card (the dead slot
+	// positionExhausted describes) and a later sibling into the middle of the
+	// column, wherever its index among its old siblings happened to point.
+	//
+	// The end of the list is the answer the rest of the code already gives for
+	// "a task joins this list" (applyCreateSubtask, CreateTask). It is read
+	// before the update, so the task itself is still in its OLD list and cannot
+	// inflate the maximum of the one it is joining. A no-op re-parent keeps the
+	// position it has: standing still must not send the card to the bottom.
+	position := t.Position
+	if !sameParent(prevParent, parentID) {
+		var err error
+		if position, err = h.nextTaskPosition(c, columnID, parentID); err != nil {
+			return t, err
+		}
+	}
+	// Adopting the parent's board moves the task itself — and a task brings its
+	// own subtree with it, exactly as TransferTask does. Without this, attaching
+	// a task that has children under a parent on another board left the children
+	// on the board their parent just left: drawn on neither (a subtask renders
+	// only under a parent card present on the same board), and destroyed outright
+	// once that board or column is deleted (both foreign keys are ON DELETE
+	// CASCADE). One transaction, so a crash cannot split the tree across boards.
+	//
+	// Attaching also takes the card OUT of the column it was standing in, and the
+	// board's rule for that gesture is applyMove's: what leaves a done column for a
+	// column that does not complete is reopened. /transfer — the other door onto
+	// board_id and column_id — already follows it; this one did not, so a finished
+	// card pulled under a parent in «К работе» landed struck through in a column
+	// that completes nothing, still counted as done, and out of reach of the reopen
+	// rule, which fires only for a task standing in a done column. Dragging it into
+	// «Готово» and back out was the only way to undo that.
+	//
+	// Resolved before the transaction: it reads the two boards' done-column
+	// pointers, which nothing below writes. A detach moves no card (columnID is the
+	// task's own), hence the guard.
+	var leavingDone *uuid.UUID
+	if columnID != t.ColumnID {
+		leavingDone = h.doneColumnLeftBy(c, t, boardID, columnID)
+	}
+	var updated db.Task
+	var reopened []uuid.UUID
+	var lostMilestones []db.SubtreeMilestonesOffProjectRow
+	if err := h.inTx(c, func(q *db.Queries) error {
+		// The adopted board may belong to another project, in which case the two
+		// statements below drop the subtree's milestones — read what they take
+		// while it is still readable (see milestonesLostToBoard). Same board, same
+		// project: nothing to lose.
+		if boardID != t.BoardID {
+			var err error
+			if lostMilestones, err = h.milestonesLostToBoard(c, q, t.ID, boardID); err != nil {
+				return err
+			}
+		}
+		// Before the writes below: the reopen condition is the column being left,
+		// which they are about to overwrite. Which cards are leaving depends on how
+		// far the attach reaches — a cross-board attach carries the whole subtree
+		// into the parent's column (MoveSubtreeToBoard), a same-board one moves only
+		// this task, and reopening a subtree there would clear the flag of a
+		// finished child that never left «Готово».
+		if leavingDone != nil {
+			var err error
+			if boardID != t.BoardID {
+				reopened, err = q.ReopenSubtreeLeavingDone(c, db.ReopenSubtreeLeavingDoneParams{
+					RootID: t.ID, DoneColumnID: *leavingDone,
+				})
+			} else {
+				reopened, err = q.ReopenTaskLeavingDone(c, db.ReopenTaskLeavingDoneParams{
+					RootID: t.ID, DoneColumnID: *leavingDone,
+				})
+			}
+			if err != nil {
+				return err
+			}
+		}
+		var err error
+		updated, err = q.SetTaskParent(c, db.SetTaskParentParams{
+			ID: t.ID, ParentID: parentID, BoardID: boardID, ColumnID: columnID, Position: position,
+		})
+		if err != nil || boardID == t.BoardID {
+			// Same board: the descendants stay where they are, keeping whatever
+			// column each of them sits in.
+			return err
+		}
+		return q.MoveSubtreeToBoard(c, db.MoveSubtreeToBoardParams{
+			ParentID: &t.ID, BoardID: boardID, ColumnID: columnID,
+		})
+	}); err != nil {
 		return t, err
+	}
+	h.journalLostMilestones(c, lostMilestones)
+	actor := middleware.CurrentUser(c)
+	// Same trail an in-board reopen leaves, and the one /transfer leaves for the
+	// same statement: a journal entry per task, and the completion mirrored to
+	// GitLab (the outbox drops the ones with no issue).
+	for _, rid := range reopened {
+		h.logEvent(c, rid, "reopened", nil)
+		h.enqueueWriteback(c, rid, actor, gitlab.TrigCompletion, map[string]any{"completed": false})
 	}
 	// Mirror the move in GitLab's hierarchy (#2592). Re-parenting to a different parent
 	// is one attach: workItemUpdate replaces the parent, so an explicit detach first
 	// would only produce a window where the child hangs at top-level.
-	actor := middleware.CurrentUser(c)
 	switch {
 	case parentID != nil:
 		h.enqueueChildAttach(c, t.ID, *parentID, actor)
@@ -550,14 +1140,50 @@ func (h *API) applyParent(c *gin.Context, t db.Task, wsID uuid.UUID, parentID *u
 	return updated, nil
 }
 
+// sameWorkspaceTask reports whether a task named in a request body belongs to
+// wsID, the workspace the caller was already authorized against. Use it for
+// every task id that arrives *besides* the one in the route — those the route
+// resolves go through loadTask, these do not.
+func (h *API) sameWorkspaceTask(c *gin.Context, t db.Task, wsID uuid.UUID) error {
+	other, err := h.q.WorkspaceIDForBoard(c, t.BoardID)
+	if err != nil {
+		return userErr("invalid parent")
+	}
+	if other != wsID {
+		return forbiddenErr{msg: "task is in another workspace"}
+	}
+	return nil
+}
+
+// sameWorkspaceMilestone is sameWorkspaceTask for a milestone id from a request
+// body: milestones hang off a project, so the workspace comes one hop away. The
+// milestone itself comes back because the caller journals it by title and would
+// otherwise read the same row a second time.
+func (h *API) sameWorkspaceMilestone(c *gin.Context, milestoneID, wsID uuid.UUID) (db.Milestone, error) {
+	m, err := h.q.GetMilestone(c, milestoneID)
+	if err != nil {
+		return db.Milestone{}, userErr("invalid milestone")
+	}
+	other, err := h.q.WorkspaceIDForProject(c, m.ProjectID)
+	if err != nil {
+		return db.Milestone{}, userErr("invalid milestone")
+	}
+	if other != wsID {
+		return db.Milestone{}, forbiddenErr{msg: "milestone is in another workspace"}
+	}
+	return m, nil
+}
+
 // applyArchive soft-deletes a task. detach keeps its subtasks on the board
 // (re-parented to null); otherwise they are archived with the parent.
 func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach bool) error {
+	var detached []uuid.UUID
 	// Transactional: detach-then-archive must be atomic, else a crash leaves the
 	// parent archived with its subtasks still active on the board (or vice versa).
 	if err := h.inTx(c, func(q *db.Queries) error {
 		if detach {
-			if err := q.DetachChildren(c, &t.ID); err != nil {
+			var err error
+			if detached, err = q.DetachChildren(c, &t.ID); err != nil {
 				return err
 			}
 			return q.ArchiveTask(c, t.ID)
@@ -566,10 +1192,11 @@ func (h *API) applyArchive(c *gin.Context, t db.Task, wsID uuid.UUID, detach boo
 	}); err != nil {
 		return err
 	}
+	h.pushDetachedChildren(c, detached, t.ID)
 	h.logEvent(c, t.ID, "archived", nil)
 	h.notifyTaskParticipants(c, t, wsID, "archived",
 		msgArchived(h.actorName(c), t.Number, t.Title))
-	h.broadcast(wsID, "task.archived", gin.H{"id": t.ID})
+	h.broadcastAs(c, wsID, "task.archived", gin.H{"id": t.ID})
 	return nil
 }
 

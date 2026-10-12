@@ -26,6 +26,64 @@
 //              elements.
 export const WHATS_NEW = [
   {
+    version: '0.190.0',
+    product: '2.0.0',
+    date: '2026-10-12',
+    titleKey: 'whatsNew.featuresV2.title',
+    itemKeys: [
+      'whatsNew.featuresV2.item1',
+      'whatsNew.featuresV2.item2',
+      'whatsNew.featuresV2.item3',
+      'whatsNew.featuresV2.item4',
+      'whatsNew.featuresV2.item5',
+      'whatsNew.featuresV2.item6',
+      'whatsNew.featuresV2.item7',
+    ],
+  },
+  {
+    version: '0.189.0',
+    product: '2.0.0',
+    date: '2026-10-10',
+    titleKey: 'whatsNew.appV2.title',
+    itemKeys: [
+      'whatsNew.appV2.item1',
+      'whatsNew.appV2.item2',
+      'whatsNew.appV2.item3',
+      'whatsNew.appV2.item4',
+      'whatsNew.appV2.item5',
+      'whatsNew.appV2.item6',
+    ],
+  },
+  {
+    version: '0.188.0',
+    product: '2.0.0',
+    date: '2026-10-07',
+    titleKey: 'whatsNew.interactionV2.title',
+    itemKeys: [
+      'whatsNew.interactionV2.item1',
+      'whatsNew.interactionV2.item2',
+      'whatsNew.interactionV2.item3',
+    ],
+  },
+  {
+    version: '0.187.0',
+    product: '2.0.0',
+    date: '2026-10-07',
+    titleKey: 'whatsNew.redesignV2.title',
+    itemKeys: [
+      'whatsNew.redesignV2.item1',
+      'whatsNew.redesignV2.item2',
+      'whatsNew.redesignV2.item3',
+      'whatsNew.redesignV2.item4',
+      'whatsNew.redesignV2.item5',
+    ],
+    spotlight: {
+      navKey: 'home',
+      titleKey: 'whatsNew.redesignV2.spotlightTitle',
+      bodyKey: 'whatsNew.redesignV2.spotlightBody',
+    },
+  },
+  {
     version: '0.185.0',
     date: '2026-09-09',
     titleKey: 'whatsNew.gitlabWebhook.title',

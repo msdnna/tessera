@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="width:680px;border-radius:16px;background:var(--v-pop);box-shadow:var(--v-sh-drag);overflow:hidden;font-family:var(--v-font);color:var(--t-text1);--t-surface:var(--v-pop)">
+<div style="display:flex;align-items:center;gap:10px;height:58px;padding:0 16px 0 18px">
+<x-import component-from-global-scope="Tessera.Icon" name="{{ qIcon }}" size="19" color="var(--t-text3)" hint-size="19px,19px"></x-import>
+<sc-if value="{{ step }}" hint-placeholder-val="{{ true }}"><span style="flex:0 0 auto;height:28px;display:flex;align-items:center;gap:6px;padding:0 6px 0 9px;border-radius:8px;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 16%, var(--v-pop)), color-mix(in srgb, var(--t-primary) 26%, var(--v-pop)));font-size:13px;white-space:nowrap"><span style="color:var(--t-text3);font-weight:700">&gt;</span><span style="font-weight:600">Создать проект</span><x-import component-from-global-scope="Tessera.Icon" name="CloseOutline" size="13" color="var(--t-text3)" hint-size="13px,13px"></x-import></span><span style="flex:0 0 auto;height:28px;display:flex;align-items:center;padding:0 9px;border-radius:8px;background:var(--v-pill);font-size:13px;color:var(--t-text2);white-space:nowrap">Название</span></sc-if>
+<div style="flex:1;min-width:0;display:flex;align-items:center;font-size:16px"><span style="white-space:nowrap">{{ query }}</span><span style="width:2px;height:20px;margin-left:1px;border-radius:1px;background:var(--t-primary)"></span></div>
+<sc-if value="{{ step }}" hint-placeholder-val="{{ true }}"><span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t-text3)"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">⇧Tab</span>назад</span></sc-if>
+<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">Esc</span>
+</div>
+<div style="display:flex;flex-direction:column;padding:2px 8px 8px">
+<div style="display:flex;align-items:center;gap:6px;padding:10px 10px 4px;font-size:11.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--t-text3)"><span>{{ groupTitle }}</span><span style="font-weight:500;letter-spacing:0;text-transform:none">{{ groupCount }}</span></div>
+<sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+<div style="position:relative;isolation:isolate;display:flex;align-items:center;gap:12px;height:50px;padding:0 10px;border-radius:10px" style-hover="background:var(--v-hover)">
+<sc-if value="{{ r.active }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 18%, var(--v-pop)), color-mix(in srgb, var(--t-primary) 27%, var(--v-pop)))"></div></sc-if>
+<sc-if value="{{ r.tile }}" hint-placeholder-val="{{ false }}"><div style="flex:0 0 32px;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;color:#fff;background:linear-gradient(to top right, color-mix(in srgb, #7c5cff 86%, #000), #7c5cff 50%, color-mix(in srgb, #7c5cff 86%, #fff))"><x-import component-from-global-scope="Tessera.ProjectIcon" icon="code" size="16" hint-size="16px,16px"></x-import></div></sc-if>
+<sc-if value="{{ r.icon }}" hint-placeholder-val="{{ true }}"><div style="flex:0 0 32px;width:32px;height:32px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--v-pill);color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="{{ r.icon }}" size="16" hint-size="16px,16px"></x-import></div></sc-if>
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:1px"><div style="font-size:14px;line-height:19px;white-space:nowrap"><span>{{ r.pre }}</span><sc-if value="{{ r.m }}" hint-placeholder-val="{{ false }}"><span style="background:color-mix(in srgb, var(--t-primary) 32%, transparent);border-radius:3px;padding:0 1px;font-weight:600">{{ r.m }}</span></sc-if><span>{{ r.post }}</span></div><sc-if value="{{ r.sub }}" hint-placeholder-val="{{ true }}"><div style="font-size:12px;line-height:16px;color:var(--t-text3);white-space:nowrap">{{ r.sub }}</div></sc-if></div>
+<sc-if value="{{ r.value }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;color:var(--t-text1);font-weight:500;white-space:nowrap">{{ r.value }}</span></sc-if>
+<sc-if value="{{ r.hint }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t-text2);white-space:nowrap"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ r.hintKey }}</span>{{ r.hint }}</span></sc-if>
+<sc-if value="{{ r.keys }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:3px"><sc-for list="{{ r.keys }}" as="k" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ k }}</span></sc-for></div></sc-if>
+</div>
+</sc-for>
+</div>
+<div style="display:flex;align-items:center;gap:16px;height:40px;padding:0 16px;background:color-mix(in srgb, var(--v-pop) 55%, var(--v-backdrop));font-size:12px;color:var(--t-text3);white-space:nowrap">
+<sc-for list="{{ foot }}" as="f" hint-placeholder-count="4"><span style="display:flex;align-items:center;gap:6px"><sc-for list="{{ f.keys }}" as="k" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ k }}</span></sc-for>{{ f.label }}</span></sc-for>
+<span style="flex:1"></span>
+<span>{{ footRight }}</span>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:680,&quot;height&quot;:420},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;step&quot;,&quot;cmd&quot;],&quot;default&quot;:&quot;step&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+class Component extends DCLogic {
+  renderVals() {
+    if (this.props.mode === 'cmd') {
+      return {
+        step: false, qIcon: 'SearchOutline', query: '>созд', groupTitle: 'Команды', groupCount: '5',
+        rows: [
+          { active: true, icon: 'FolderOpenOutline', pre: '', m: 'Созд', post: 'ать проект', sub: 'В группе «Продукт» · пошагово, без мыши', hint: 'заполнить', hintKey: '↵' },
+          { icon: 'GridOutline', pre: '', m: 'Созд', post: 'ать доску', sub: 'В проекте «Tessera Web»', keys: ['⇧', 'N'] },
+          { icon: 'FolderOutline', pre: '', m: 'Созд', post: 'ать группу', sub: 'В пространстве «Tessera Dev»' },
+          { icon: 'AppsOutline', pre: '', m: 'Созд', post: 'ать пространство', sub: 'Отдельные проекты, люди и доступы' },
+          { icon: 'AddOutline', pre: '', m: 'Созд', post: 'ать задачу', sub: 'В «К работе» · Спринт 0.150', keys: ['N', 'T'] },
+        ],
+        foot: [{ keys: ['↑', '↓'], label: 'выбрать' }, { keys: ['↵'], label: 'выполнить' }, { keys: ['Tab'], label: 'параметры' }],
+        footRight: '# задачи · @ люди · > команды',
+      };
+    }
+    return {
+      step: true, qIcon: 'ChevronForwardOutline', query: 'Tessera Web', groupTitle: 'Поля проекта', groupCount: 'шаг 1 из 4',
+      rows: [
+        { active: true, icon: 'TextOutline', pre: 'Название', m: '', post: '', sub: 'Вводится в строке выше', hint: 'следующее поле', hintKey: 'Tab' },
+        { icon: 'LinkOutline', pre: 'Адрес', m: '', post: '', sub: '…/project/tessera-web · из названия', value: 'tessera-web' },
+        { icon: 'FolderOutline', pre: 'Группа', m: '', post: '', sub: 'Где выбран курсор в сайдбаре', value: 'Продукт' },
+        { tile: true, c: '#7c5cff', pre: 'Иконка и цвет', m: '', post: '', sub: '← → цвет · ↑ ↓ иконка', value: 'код · фиолетовый' },
+      ],
+      foot: [{ keys: ['↵'], label: 'создать' }, { keys: ['Tab'], label: 'следующее поле' }, { keys: ['⇧Tab'], label: 'назад' }, { keys: ['⌘', '↵'], label: 'создать и открыть' }],
+      footRight: '> Создать проект',
+    };
+  }
+}
+</script>
+</body>
+</html>

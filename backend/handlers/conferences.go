@@ -86,6 +86,7 @@ func (h *API) CreateConference(c *gin.Context) {
 		ScheduledAt      *time.Time `json:"scheduled_at"`
 		TaskID           *uuid.UUID `json:"task_id"`
 		RecordingTTLDays *int32     `json:"recording_ttl_days"`
+		conferencePlanReq
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -106,6 +107,10 @@ func (h *API) CreateConference(c *gin.Context) {
 		}
 		ttl = *req.RecordingTTLDays
 	}
+	plan, ok := h.resolvePlan(c, wsID, conferencePlan{}, req.conferencePlanReq, req.ScheduledAt)
+	if !ok {
+		return
+	}
 	uid := middleware.CurrentUser(c)
 	var conf db.Conference
 	err := h.inTx(c, func(q *db.Queries) error {
@@ -118,6 +123,10 @@ func (h *API) CreateConference(c *gin.Context) {
 			Description:      req.Description,
 			ScheduledAt:      req.ScheduledAt,
 			RecordingTtlDays: ttl,
+			DurationMinutes:  plan.duration,
+			Recurrence:       plan.recurrence,
+			Timezone:         plan.timezone,
+			MilestoneID:      plan.milestone,
 		})
 		if err != nil {
 			return err
@@ -132,7 +141,7 @@ func (h *API) CreateConference(c *gin.Context) {
 		return
 	}
 	h.broadcastAs(c, wsID, "conference.created", conf)
-	c.JSON(http.StatusCreated, conf)
+	c.JSON(http.StatusCreated, h.viewConference(c, conf))
 }
 
 // taskInWorkspace checks that a task belongs to the given workspace, writing
@@ -170,12 +179,14 @@ func (h *API) ListConferences(c *gin.Context) {
 			return
 		}
 	}
-	rows, err := h.q.ListConferences(c, db.ListConferencesParams{WorkspaceID: wsID, Status: status})
+	rows, err := h.q.ListConferences(c, db.ListConferencesParams{
+		Viewer: middleware.CurrentUser(c), WorkspaceID: wsID, Status: status,
+	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, orEmpty(rows))
+	c.JSON(http.StatusOK, listItems(rows, time.Now()))
 }
 
 // GetConference returns one conference together with its participants — the
@@ -191,7 +202,7 @@ func (h *API) GetConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"conference": conf, "participants": orEmpty(parts)})
+	c.JSON(http.StatusOK, gin.H{"conference": h.viewConference(c, conf), "participants": orEmpty(parts)})
 }
 
 // ListTaskConferences returns the conferences held about a task, so the task
@@ -236,6 +247,7 @@ func (h *API) UpdateConference(c *gin.Context) {
 		ScheduledAt      *time.Time `json:"scheduled_at"`
 		TaskID           *uuid.UUID `json:"task_id"`
 		RecordingTTLDays *int32     `json:"recording_ttl_days"`
+		conferencePlanReq
 	}{}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -252,20 +264,46 @@ func (h *API) UpdateConference(c *gin.Context) {
 		}
 		ttl = *req.RecordingTTLDays
 	}
-	updated, err := h.q.UpdateConference(c, db.UpdateConferenceParams{
-		ID:               conf.ID,
-		Title:            req.Title,
-		Description:      req.Description,
-		ScheduledAt:      req.ScheduledAt,
-		TaskID:           req.TaskID,
-		RecordingTtlDays: ttl,
+	plan, ok := h.resolvePlan(c, conf.WorkspaceID, planFrom(conf), req.conferencePlanReq, req.ScheduledAt)
+	if !ok {
+		return
+	}
+	// Одной транзакцией, потому что срок хранения — это политика конференции, а
+	// не пометка на будущих записях: вместе с полем переезжают даты удаления уже
+	// снятых (#2932). Порознь правка могла бы оставить конференцию с новым
+	// сроком и записями, живущими по старому, — ровно то расхождение, которое
+	// здесь и чинится.
+	var updated db.Conference
+	err := h.inTx(c, func(q *db.Queries) error {
+		var uerr error
+		updated, uerr = q.UpdateConference(c, db.UpdateConferenceParams{
+			ID:               conf.ID,
+			Title:            req.Title,
+			Description:      req.Description,
+			ScheduledAt:      req.ScheduledAt,
+			TaskID:           req.TaskID,
+			RecordingTtlDays: ttl,
+			DurationMinutes:  plan.duration,
+			Recurrence:       plan.recurrence,
+			Timezone:         plan.timezone,
+			MilestoneID:      plan.milestone,
+		})
+		if uerr != nil {
+			return uerr
+		}
+		if ttl == conf.RecordingTtlDays {
+			return nil
+		}
+		return q.RestampConferenceRecordings(c, db.RestampConferenceRecordingsParams{
+			ConferenceID: conf.ID, TtlDays: ttl,
+		})
 	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
 	h.broadcastAs(c, conf.WorkspaceID, "conference.updated", updated)
-	c.JSON(http.StatusOK, updated)
+	c.JSON(http.StatusOK, h.viewConference(c, updated))
 }
 
 // requireConferenceManager writes a 403 unless the caller may moderate the
@@ -278,8 +316,59 @@ func (h *API) requireConferenceManager(c *gin.Context, conf db.Conference) bool 
 	return false
 }
 
+// doomedConference is everything a conference's files need after its rows are
+// gone: the id (the rec/ and conf/ directories are named by it), the recording
+// paths, and the job id of a recording still in flight.
+type doomedConference struct {
+	id           uuid.UUID
+	recordings   []string
+	activeEgress string
+}
+
+// doomedConferences describes every conference of a workspace that is about to
+// be deleted, read through the caller's transaction so the snapshot matches the
+// delete. DeleteConference does this reading for one conference; a workspace
+// delete takes all of them at once, by a cascade that never touches the disk.
+func (h *API) doomedConferences(c *gin.Context, q *db.Queries, wsID uuid.UUID) ([]doomedConference, error) {
+	ids, err := q.ConferenceIDsInWorkspace(c, wsID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]doomedConference, 0, len(ids))
+	for _, id := range ids {
+		d := doomedConference{id: id}
+		if d.recordings, err = q.ListConferenceRecordingPaths(c, id); err != nil {
+			return nil, err
+		}
+		active, aerr := q.ActiveConferenceRecording(c, id)
+		switch {
+		case aerr == nil:
+			d.activeEgress = active.EgressID
+		case errIsNoRows(aerr):
+		default:
+			return nil, aerr
+		}
+		out = append(out, d)
+	}
+	return out, nil
+}
+
+// purgeConferences unlinks the files of conferences whose rows have just left by
+// cascade — the same three steps DeleteConference takes, for each of them.
+func (h *API) purgeConferences(calls []doomedConference) {
+	for _, d := range calls {
+		for _, p := range d.recordings {
+			_ = os.Remove(p) // best-effort; the rows are already gone
+		}
+		h.purgeRecordingDir(d.id, d.activeEgress)
+		h.purgeChatDir(d.id)
+		h.dropConfRoom(d.id, "workspace deleted")
+	}
+}
+
 // DeleteConference removes a conference along with its participants, chat and
-// recording rows (ON DELETE CASCADE).
+// recording rows (ON DELETE CASCADE) — and the files those rows named, which the
+// cascade knows nothing about.
 func (h *API) DeleteConference(c *gin.Context) {
 	conf, ok := h.conferenceScope(c)
 	if !ok {
@@ -297,6 +386,25 @@ func (h *API) DeleteConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// A recording still in flight is the one file that list cannot reach. Its row
+	// says where the mp4 *will* be — the egress writes it as it winds down, which
+	// is why an explicit stop has to poll for it — so the unlink below runs against
+	// a path that is still empty and the bytes land a second or two later, into a
+	// directory whose rows have all just left by cascade. Both sweeps walk rows, so
+	// from then on nothing can find that file: the disk grows with every deleted
+	// meeting, and the moderator who deleted a recorded call is left believing the
+	// video went with it. Its egress id is read here and dealt with after the
+	// delete.
+	var activeEgress string
+	active, err := h.q.ActiveConferenceRecording(c, conf.ID)
+	switch {
+	case err == nil:
+		activeEgress = active.EgressID
+	case errIsNoRows(err):
+	default:
+		fail(c, err)
+		return
+	}
 	if err := h.q.DeleteConference(c, conf.ID); err != nil {
 		fail(c, err)
 		return
@@ -304,6 +412,13 @@ func (h *API) DeleteConference(c *gin.Context) {
 	for _, p := range recordings {
 		_ = os.Remove(p) // best-effort; the rows are already gone
 	}
+	h.purgeRecordingDir(conf.ID, activeEgress)
+	// The chat's files are in the same position the recordings were: the cascade
+	// has just taken the attachment rows that were the only record of where they
+	// live, and no sweep walks that directory. DeleteConferenceMessage unlinks
+	// them one message at a time; this is the same obligation for the whole
+	// conversation at once.
+	h.purgeChatDir(conf.ID)
 	h.dropConfRoom(conf.ID, "deleted")
 	h.broadcastAs(c, conf.WorkspaceID, "conference.deleted", gin.H{"id": conf.ID})
 	c.Status(http.StatusNoContent)
@@ -489,7 +604,8 @@ func (h *API) InviteConference(c *gin.Context) {
 			prev, perr := q.GetConferenceParticipant(c, db.GetConferenceParticipantParams{
 				ConferenceID: conf.ID, UserID: uid,
 			})
-			if errIsNoRows(perr) || (perr == nil && prev.LeftAt != nil) {
+			// So does one who declined (#3051): the invitation is asked again.
+			if errIsNoRows(perr) || (perr == nil && (prev.LeftAt != nil || prev.Rsvp == rsvpDeclined)) {
 				fresh[uid] = true
 			}
 			p, err := q.InviteConferenceParticipant(c, db.InviteConferenceParticipantParams{
@@ -510,7 +626,7 @@ func (h *API) InviteConference(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	msg := msgConferenceInvited(h.actorName(c), conf.Title, conf.ID.String())
+	msg := msgConferenceInvited(h.actorName(c), conf.Title, conf.ID.String(), conf.ScheduledAt)
 	for _, p := range invited {
 		h.broadcastAs(c, conf.WorkspaceID, "conference.participant.invited", p)
 		if fresh[p.UserID] {
@@ -520,6 +636,55 @@ func (h *API) InviteConference(c *gin.Context) {
 		}
 	}
 	c.JSON(http.StatusOK, invited)
+}
+
+// The answers to an invitation (#3051).
+const (
+	rsvpAccepted = "accepted"
+	rsvpDeclined = "declined"
+)
+
+// RespondConference records the caller's answer to an invitation —
+// «Принять / Отклонить» in the feed and on the meeting's page (#3051):
+// `PUT /conferences/:id/rsvp {"response": "accepted"|"declined"}`.
+//
+// Only an invited seat answers: a member who was never invited has nothing to
+// accept (they may still walk in, which JoinConference records as acceptance).
+// The answer closes the invitation in the reader's feed wherever it was given,
+// and the workspace hears it, so the host sees who is coming.
+func (h *API) RespondConference(c *gin.Context) {
+	conf, ok := h.conferenceScope(c)
+	if !ok {
+		return
+	}
+	var req struct {
+		Response string `json:"response" binding:"required"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if req.Response != rsvpAccepted && req.Response != rsvpDeclined {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "ответ — accepted или declined"})
+		return
+	}
+	uid := middleware.CurrentUser(c)
+	part, err := h.q.SetConferenceRsvp(c, db.SetConferenceRsvpParams{
+		Rsvp: req.Response, ConferenceID: conf.ID, UserID: uid,
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "вас не приглашали в эту встречу"})
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	soft(c, "MarkConferenceInviteRead", h.q.MarkConferenceInviteRead(c, db.MarkConferenceInviteReadParams{
+		UserID: uid, ConferenceID: conf.ID.String(),
+	}))
+	h.broadcastAs(c, conf.WorkspaceID, "conference.participant.rsvp", part)
+	c.JSON(http.StatusOK, part)
 }
 
 // ListConferenceParticipants returns everyone invited to a conference, with the

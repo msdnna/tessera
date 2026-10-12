@@ -6,8 +6,6 @@
 const RULES = [
   [/^\/(?:project\/[^/]+\/board|board)(?:\/|$)/, 'boards-and-tasks'],
   [/^\/documents(?:\/|$)/, 'documents'],
-  [/^\/notes(?:\/|$)/, 'notes'],
-  [/^\/reminders(?:\/|$)/, 'reminders'],
   [/^\/milestones(?:\/|$)/, 'milestones'],
   [/^\/settings(?:\/|$)/, 'faq'],
   [/^\/admin(?:\/|$)/, 'faq'],

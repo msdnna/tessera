@@ -39,13 +39,13 @@ import (
 // fakeEgress is a stub livekit-server: the two Egress RPCs the worker uses,
 // answering from a table the test fills in.
 type fakeEgress struct {
-	mu      sync.Mutex
+	mu sync.Mutex
 	// items are rendered the way livekit-server renders them: PROTO field
 	// names (egress_id, file_results), not the camelCase JSON names. A stub
 	// that answers in camelCase is worse than no stub — it agrees with a client
 	// that reads nothing, which is exactly the bug the recording stand caught.
 	items   []map[string]any
-	stopped []string         // egress ids StopEgress was called with
+	stopped []string // egress ids StopEgress was called with
 }
 
 // add records one egress job. status "" reproduces the real omission of

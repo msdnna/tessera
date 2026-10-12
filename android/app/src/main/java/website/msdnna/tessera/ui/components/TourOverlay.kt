@@ -47,6 +47,7 @@ import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.layout.positionOnScreen
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -68,6 +69,7 @@ import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TourCardGravity
 import website.msdnna.tessera.util.TourMode
 import website.msdnna.tessera.util.TourSnapshot
+import website.msdnna.tessera.util.TourStep
 
 private val CardInset = 12.dp
 private val CardGap = 10.dp
@@ -437,7 +439,7 @@ private fun TourCard(snapshot: TourSnapshot, onNext: () -> Unit, onSkip: () -> U
             Text("${snapshot.index + 1}/${snapshot.total}", color = c.text3, fontSize = 11.sp)
         }
         Spacer(Modifier.height(6.dp))
-        Text(stringResource(step.bodyRes), color = c.text3, fontSize = 12.sp, lineHeight = 17.sp)
+        Text(tourBody(step), color = c.text3, fontSize = 12.sp, lineHeight = 17.sp)
         Spacer(Modifier.height(11.dp))
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
             if (step.mode == TourMode.INFO) {
@@ -455,4 +457,20 @@ private fun TourCard(snapshot: TourSnapshot, onNext: () -> Unit, onSkip: () -> U
             )
         }
     }
+}
+
+/**
+ * Текст шага с подставленными [TourStep.bodyArgs].
+ *
+ * Аргументы — тоже идентификаторы строк, и разрешаются здесь, в композиции: язык
+ * читателя подменён через `LocalResources` (см. AppLocale), поэтому подпись колонки
+ * в подсказке совпадает с той, что нарисована на доске, и следует смене языка вместе
+ * с остальным текстом шага.
+ */
+@Composable
+private fun tourBody(step: TourStep): String {
+    if (step.bodyArgs.isEmpty()) return stringResource(step.bodyRes)
+    val res = LocalResources.current
+    val args = Array<Any>(step.bodyArgs.size) { res.getString(step.bodyArgs[it]) }
+    return res.getString(step.bodyRes, *args)
 }

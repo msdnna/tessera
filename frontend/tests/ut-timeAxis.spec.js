@@ -15,6 +15,14 @@ import {
   buildWeekBands,
   hourStepFor,
   hourTicksInWindow,
+  MONTHS_MAX_DAYW,
+  workingDays,
+  buildWeekRangeBands,
+  buildYearBands,
+  scaleOfTier,
+  SCALE_DAYW,
+  QUARTERS_MAX_DAYW,
+  buildQuarterBands,
 } from '@/utils/timeAxis'
 import { createFormatters } from '@/utils/format'
 
@@ -161,6 +169,17 @@ describe('buildWeekBands', () => {
     const bands = buildWeekBands(days)
     expect(bands[0].label).toBe('8')
   })
+
+  it('breaks on Sunday when the week starts on Sunday', () => {
+    const rangeStart = startOfDay(new Date(2026, 5, 3).getTime()) // Jun 3 2026 = Wed
+    const sun = createFormatters({ weekStart: 0 })
+    const days = buildDays(rangeStart, 8, 0, sun) // Wed..next Wed
+    const bands = buildWeekBands(days, sun)
+    // Wed-Sat, then Sun 7th onwards — not Wed-Sun + Mon 8th.
+    expect(bands).toHaveLength(2)
+    expect(bands[0].label).toBe('3–6')
+    expect(bands[1].startDay).toBe(7)
+  })
 })
 
 describe('hourStepFor', () => {
@@ -182,5 +201,64 @@ describe('hourTicksInWindow', () => {
     // hours 4,8,12,16,20 within one day
     expect(ticks.map((t) => t.label)).toEqual(['04', '08', '12', '16', '20'])
     expect(ticks[0].left).toBe((4 / 24) * dayW)
+  })
+})
+
+// ── v2 (#2959) ──
+describe('months tier and scales', () => {
+  it('groups by months below MONTHS_MAX_DAYW and maps tiers to the presets', () => {
+    expect(tierFor(MONTHS_MAX_DAYW - 1)).toBe('months')
+    expect(tierFor(MONTHS_MAX_DAYW)).toBe('weeks')
+    expect(scaleOfTier('hours')).toBe('days')
+    expect(scaleOfTier('weeks')).toBe('weeks')
+    expect(scaleOfTier('months')).toBe('months')
+  })
+
+  // #3021: below QUARTERS_MAX_DAYW the axis groups by quarters over months.
+  it('groups by quarters at the far end of the zoom', () => {
+    expect(tierFor(QUARTERS_MAX_DAYW - 1)).toBe('quarters')
+    expect(tierFor(QUARTERS_MAX_DAYW)).toBe('months')
+    expect(scaleOfTier('quarters')).toBe('quarters')
+    expect(SCALE_DAYW.quarters).toBeLessThan(QUARTERS_MAX_DAYW)
+  })
+
+  it('bands the days by quarter', () => {
+    const start = new Date(2026, 8, 29).getTime()
+    const days = buildDays(start, 10, start)
+    expect(buildQuarterBands(days)).toEqual([
+      { key: '2026-3', q: 3, year: 2026, span: 2 },
+      { key: '2026-4', q: 4, year: 2026, span: 8 },
+    ])
+  })
+})
+
+describe('workingDays', () => {
+  it('counts Monday to Friday in an inclusive span', () => {
+    const mon = new Date(2026, 8, 28).getTime() // Mon 28 Sep 2026
+    const fri = new Date(2026, 9, 9).getTime() // Fri 9 Oct 2026
+    expect(workingDays(mon, fri)).toBe(10)
+    const sat = new Date(2026, 9, 3).getTime()
+    expect(workingDays(sat, sat + DAY_MS)).toBe(0)
+    expect(workingDays(fri, mon)).toBe(10) // order does not matter
+  })
+})
+
+describe('week-range and year bands', () => {
+  const fmt = createFormatters({ language: 'ru' })
+  it('labels a week by its date range, the month once when it does not change', () => {
+    const start = new Date(2026, 9, 5).getTime() // Mon 5 Oct
+    const days = buildDays(start, 14, 0, fmt)
+    const bands = buildWeekRangeBands(days, fmt)
+    expect(bands.map((b) => b.span)).toEqual([7, 7])
+    expect(bands[0].label).toMatch(/^5 – 11 окт/)
+  })
+
+  it('splits years', () => {
+    const start = new Date(2026, 11, 30).getTime()
+    const bands = buildYearBands(buildDays(start, 4, 0, fmt))
+    expect(bands.map((b) => [b.label, b.span])).toEqual([
+      ['2026', 2],
+      ['2027', 2],
+    ])
   })
 })

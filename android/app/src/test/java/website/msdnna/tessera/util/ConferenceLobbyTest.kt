@@ -117,6 +117,37 @@ class ConferenceLobbyTest {
         assertThat(roster.map { it.userId }).containsExactly("u1", "u3", "u2").inOrder()
     }
 
+    /**
+     * «Ёлкина» belongs at the top of a Russian roster, not the bottom: «ё» is
+     * U+0451 and sits past «я» (U+044F), so the `lowercase()` sort these lists used
+     * to do dropped her below everybody. Same alphabet as every other list of
+     * people in the app — see [UserTextOrder].
+     */
+    @Test
+    fun `the room sorts a yo-name by its letter`() {
+        val roster = confRoster(
+            listOf(
+                seat("u2", joined = "1", name = "Яна"),
+                seat("u1", joined = "1", name = "Ёлкина"),
+                seat("u3", joined = "1", name = "Пётр"),
+            ),
+        )
+        assertThat(roster.map { it.userId }).containsExactly("u1", "u3", "u2").inOrder()
+    }
+
+    @Test
+    fun `the picker sorts a yo-name by its letter`() {
+        val members = listOf(member("u2", "Яна"), member("u1", "Ёлкина"))
+        assertThat(confInvitable(members, emptyList()).map { it.userId })
+            .containsExactly("u1", "u2").inOrder()
+    }
+
+    @Test
+    fun `invited sorts a yo-name by its letter`() {
+        val invited = confInvited(listOf(seat("u2", name = "Яна"), seat("u1", name = "Ёлкина")))
+        assertThat(invited.map { it.userId }).containsExactly("u1", "u2").inOrder()
+    }
+
     @Test
     fun `invited lists an outstanding invitation`() {
         assertThat(confInvited(listOf(seat("u2", name = "Ада"))).map { it.userId }).containsExactly("u2")

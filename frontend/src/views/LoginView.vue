@@ -2,12 +2,16 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { NForm, NFormItem, NInput, NButton, NIcon } from 'naive-ui'
-import { LogoGitlab } from '@vicons/ionicons5'
+import { LogoGitlab, AlertCircleOutline } from '@vicons/ionicons5'
 import { useRouter, useRoute, RouterLink } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
 import { auth } from '@/api'
 import AuthLayout from '@/components/AuthLayout.vue'
+import Kbd from '@/components/Kbd.vue'
+import { CAPS } from '@/utils/keyCaps'
 import { isTauri } from '@/utils/serverBase'
+import { inviteTokenFromNext, registerRouteForInvite } from '@/utils/inviteRoute'
+import { stashPendingInvite } from '@/utils/pendingInvite'
 import {
   startDesktopGitlabLogin,
   OAUTH_DONE_EVENT,
@@ -73,6 +77,9 @@ onUnmounted(() => {
 
 async function loginWithGitlab() {
   formError.value = ''
+  // `?next=` is replayed by the password form below, but it cannot survive the
+  // provider's redirect — park the invitation so the callback replays it instead.
+  stashPendingInvite(inviteTokenFromNext(route.query.next))
   // Web: a top-level navigation, which is what the SameSite=Lax state cookie needs.
   if (!isTauri()) {
     window.location.href = auth.gitlabAuthorizeUrl()
@@ -119,8 +126,11 @@ async function submit() {
 </script>
 
 <template>
-  <auth-layout :title="t('common.auth.login.title')">
-    <div v-if="formError" class="auth-error">{{ formError }}</div>
+  <auth-layout :title="t('common.auth.login.title')" :subtitle="t('common.auth.login.subtitle')">
+    <div v-if="formError" class="auth-error" role="alert">
+      <n-icon :component="AlertCircleOutline" :size="16" />
+      <span>{{ formError }}</span>
+    </div>
     <n-form @submit.prevent="submit">
       <n-form-item
         :label="t('common.auth.login.email')"
@@ -130,34 +140,58 @@ async function submit() {
         <n-input
           v-model:value="email"
           :placeholder="t('common.auth.login.emailPlaceholder')"
+          :input-props="{ autocomplete: 'email' }"
           data-testid="login-email"
           @input="errors.email = ''"
           @keyup.enter="submit"
         />
       </n-form-item>
       <n-form-item
-        :label="t('common.auth.login.password')"
         :validation-status="errors.password ? 'error' : undefined"
         :feedback="errors.password"
       >
+        <!-- «Забыли пароль?» sits at the field's label, where the reader who
+             cannot fill it is already looking (PackageE). -->
+        <template #label>
+          <span class="auth-label-row">
+            <span>{{ t('common.auth.login.password') }}</span>
+            <router-link to="/forgot-password" tabindex="-1">{{
+              t('common.auth.login.forgot')
+            }}</router-link>
+          </span>
+        </template>
         <n-input
           v-model:value="password"
           type="password"
           show-password-on="click"
+          placeholder=""
+          :input-props="{ autocomplete: 'current-password' }"
           data-testid="login-password"
           @input="errors.password = ''"
           @keyup.enter="submit"
         />
       </n-form-item>
-      <n-button type="primary" block data-testid="login-submit" :loading="loading" @click="submit">
-        {{ t('common.auth.login.submit') }}
+      <n-button
+        type="primary"
+        size="large"
+        block
+        class="auth-submit"
+        data-testid="login-submit"
+        :loading="loading"
+        @click="submit"
+      >
+        {{ t('common.auth.login.submit') }}<Kbd>{{ CAPS.enter }}</Kbd>
       </n-button>
     </n-form>
     <template v-if="gitlabEnabled">
-      <div class="auth-or">
-        <span>{{ t('common.auth.login.or') }}</span>
-      </div>
-      <n-button block class="gl-oauth-btn" :loading="glWaiting" @click="loginWithGitlab">
+      <div class="auth-or">{{ t('common.auth.login.or') }}</div>
+      <n-button
+        block
+        size="large"
+        class="auth-alt gl-oauth-btn"
+        :loading="glWaiting"
+        @click="loginWithGitlab"
+      >
         <template #icon><n-icon :component="LogoGitlab" /></template>
         {{ glWaiting ? t('common.auth.login.gitlabWaiting') : t('common.auth.login.gitlab') }}
       </n-button>
@@ -166,35 +200,13 @@ async function submit() {
       </div>
     </template>
     <div class="auth-foot">
-      <router-link to="/forgot-password">{{ t('common.auth.login.forgot') }}</router-link>
-    </div>
-    <div class="auth-foot">
       {{ t('common.auth.login.noAccount') }}
-      <router-link to="/register">{{ t('common.auth.login.register') }}</router-link>
+      <!-- Mirror of the register form's link back here: when this visit is a
+           detour from an invitation (?next=/invite?token=…), the token rides
+           along rather than being dropped at the fork. -->
+      <router-link :to="registerRouteForInvite(inviteTokenFromNext(route.query.next))">{{
+        t('common.auth.login.register')
+      }}</router-link>
     </div>
   </auth-layout>
 </template>
-
-<style scoped>
-.auth-or {
-  display: flex;
-  align-items: center;
-  text-align: center;
-  margin: 14px 0 12px;
-  color: var(--t-text-3, #8a8a99);
-  font-size: 12px;
-}
-.auth-or::before,
-.auth-or::after {
-  content: '';
-  flex: 1;
-  height: 1px;
-  background: var(--t-border, rgba(140, 140, 160, 0.25));
-}
-.auth-or span {
-  padding: 0 10px;
-}
-.gl-oauth-btn {
-  --n-border-hover: var(--t-accent, #7c5cff);
-}
-</style>

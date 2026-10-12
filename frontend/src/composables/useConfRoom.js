@@ -165,6 +165,20 @@ export function useConfRoom() {
       if (media.mic || media.cam) send({ type: 'media', ...media })
       return
     }
+    // The welcome frame is a snapshot of a seat resolved once, at the upgrade —
+    // it reads the workspace role and never looks again. `seat` is the server
+    // correcting it in place after that role changed (#2932), and it is the only
+    // way a promotion or a demotion reaches a call already in progress: nothing
+    // else on the wire carries can_moderate, and the roster does not.
+    //
+    // Leaving it unhandled would not hand out any rights — the room refuses the
+    // kick either way — but it would leave the demoted admin's panel painting
+    // moderation controls whose every click answers «not a moderator».
+    if (msg.type === 'seat') {
+      role.value = msg.role || 'member'
+      canModerate.value = !!msg.can_moderate
+      return
+    }
     if (msg.type === 'state') {
       participants.value = msg.participants || []
       stage.value = msg.stage || null

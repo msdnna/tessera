@@ -105,6 +105,60 @@ func (e confEnforcer) Kicked(confID, userID uuid.UUID) {
 	})
 }
 
+// Evicted disconnects a user from the SFU after their access was revoked.
+//
+// Deliberately thinner than Kicked: the presence socket is being closed under
+// them, and its own deferred cleanup already stamps the exit and tells the
+// board. What that cleanup cannot do is reach the media stream — LiveKit
+// authorises a participant once, at the join, so a session opened while they
+// were still a member outlives the membership for as long as the connection
+// holds. This is what ends it (#2932).
+func (e confEnforcer) Evicted(confID, userID uuid.UUID) {
+	e.dispatch("evict", func(ctx context.Context) {
+		// NotFound is ordinary here for the same reason as in Kicked: a client
+		// whose socket just closed usually tears down its own media first.
+		if err := e.h.livekit.RemoveParticipant(ctx, livekit.RoomName(confID), userID.String()); err != nil {
+			var lkErr *livekit.Error
+			gone := errors.As(err, &lkErr) && lkErr.NotFound()
+			if !errors.Is(err, livekit.ErrDisabled) && !gone {
+				soft(ctx, "conference.evict.sfu", err)
+			}
+		}
+	})
+}
+
+// dropConfMedia ends a conference at the SFU, disconnecting everyone still
+// publishing to it (#2932). Called wherever the conference itself stops being a
+// place one may be — the host ending the meeting, or a manager deleting it.
+//
+// Ending a call is a moderation decision like a kick, and it needs the same
+// second half. Closing the presence sockets is the part clients cooperate with;
+// the room in LiveKit is the part they cannot argue with. Without this the
+// roster empties, the status goes back to scheduled, and two participants keep
+// talking — invisibly, since nothing is left to list them — until they hang up
+// on their own. After a delete it is worse: the conference row is gone, so no
+// check on our side has anything left to refuse, while the room survives for as
+// long as somebody keeps it non-empty.
+//
+// Not routed through the Enforcer like Kicked and Evicted, because confroom is
+// not the one deciding here: the decision is the handler's, and the room
+// registry may not even hold this conference. Deliberately *not* hooked into
+// Rooms.Drop for the same reason — CloseConfRooms drops every room on shutdown,
+// and a redeploy must not hang up on live calls it is about to come back to.
+func (h *API) dropConfMedia(confID uuid.UUID) {
+	confEnforcer{h: h}.dispatch("drop", func(ctx context.Context) {
+		// NotFound is the ordinary case: an install without LIVEKIT_* answers
+		// ErrDisabled, and a conference nobody connected media to has no room.
+		if err := h.livekit.DeleteRoom(ctx, livekit.RoomName(confID)); err != nil {
+			var lkErr *livekit.Error
+			gone := errors.As(err, &lkErr) && lkErr.NotFound()
+			if !errors.Is(err, livekit.ErrDisabled) && !gone {
+				soft(ctx, "conference.drop.sfu", err)
+			}
+		}
+	})
+}
+
 // Muted persists a force-mute and carries it to the SFU.
 //
 // Order matters on the way in: the publish permission is narrowed *before* the

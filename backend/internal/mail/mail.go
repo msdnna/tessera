@@ -10,6 +10,7 @@ import (
 	"crypto/rand"
 	"crypto/tls"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"log"
 	"mime"
@@ -18,6 +19,9 @@ import (
 	"net/smtp"
 	"strings"
 	"time"
+
+	"tessera/internal/logsafe"
+	"tessera/internal/observability"
 )
 
 // smtpTimeout bounds the whole connect+send exchange so a misconfigured or
@@ -62,10 +66,15 @@ func New(cfg Config) Mailer {
 // SendAsync delivers a message in the background, logging any error. Use it for
 // transactional mail (verification / reset / invite) so the HTTP request never
 // blocks on — or fails because of — the SMTP exchange.
+//
+// Detaching from the request also detaches from gin's recovery: a panic in the
+// SMTP exchange has no request around it and would take the process down. Guard
+// it here rather than at each call site — the caller has already answered.
 func SendAsync(m Mailer, to, subject, body string) {
 	go func() {
+		defer observability.Recover("mail-send")
 		if err := m.Send(to, subject, body); err != nil {
-			log.Printf("mail: send to %s (%q) failed: %v", to, subject, err)
+			logsafe.Printf("mail: send to %s (%q) failed: %v", to, subject, err)
 		}
 	}()
 }
@@ -78,7 +87,9 @@ func (noop) Send(to, subject, body string) error {
 	// Log the full body too: on a self-host without SMTP this is the only place
 	// the verification / reset / invite link surfaces (invites also return it in
 	// the API response).
-	log.Printf("mail (noop) to %s — %s\n%s", to, subject, body)
+	// The body keeps its own line breaks — it is a dump meant to be read — but
+	// the header line before it carries the address, which is outside input.
+	log.Printf("mail (noop) to %s — %s\n%s", logsafe.Str(to), logsafe.Str(subject), body)
 	return nil
 }
 
@@ -90,6 +101,15 @@ func (m *smtpMailer) Enabled() bool { return true }
 // STARTTLS (587/25) — stdlib smtp.SendMail only does the latter, which is why a
 // 465 server would hang. Bounded by smtpTimeout end-to-end.
 func (m *smtpMailer) Send(to, subject, body string) error {
+	// The To header is written raw (buildMessage), so a line break in the address
+	// would end it and start a header of the sender's choosing (Bcc:, a second
+	// body). net/smtp's Rcpt refuses such an address too, but only as a side
+	// effect of guarding its own command line — refuse it here, by intent, before
+	// anything is dialled. Subject needs no check: the RFC 2047 encoder takes any
+	// control character as its cue to encode the whole word.
+	if strings.ContainsAny(to, "\r\n") {
+		return errors.New("mail: recipient address contains a line break")
+	}
 	addr := m.cfg.Host + ":" + m.cfg.Port
 	dialer := &net.Dialer{Timeout: smtpTimeout}
 	tlsCfg := &tls.Config{ServerName: m.cfg.Host}

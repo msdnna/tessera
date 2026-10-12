@@ -24,17 +24,19 @@ async function settle(page) {
   await page.waitForTimeout(400)
 }
 
-test('мобильная доска: тап по подзадаче не уводит модалку за экран', async ({
-  page,
-  seed,
-  backend,
-}) => {
+// A board of its own (#2962): see layout.spec.js «модалка задачи» — on the
+// shared board, after the desktop tier, the parent card sat below the column's
+// window as a placeholder and its subtask row was never drawn.
+test('мобильная доска: тап по подзадаче не уводит модалку за экран', async ({ page, backend }) => {
+  const { board, columns } = await backend.freshBoard('mob-subtask')
   const stamp = Date.now().toString(36)
-  const parent = await backend.createTask(seed.columns[0].id, `Родитель ${stamp}`)
-  const child = await backend.createTask(seed.columns[0].id, `Подзадача ${stamp}`)
+  const make = (title) =>
+    backend.post(`/boards/${board.id}/tasks`, { column_id: columns[0].id, title })
+  const parent = await make(`Родитель ${stamp}`)
+  const child = await make(`Подзадача ${stamp}`)
   await backend.patch(`/tasks/${child.id}/parent`, { parent_id: parent.id })
 
-  await openBoard(page, seed.boardId)
+  await openBoard(page, board.id)
   await settle(page)
 
   const row = page.locator('.subrow', { hasText: `Подзадача ${stamp}` }).first()
@@ -94,10 +96,9 @@ test('фоновые задачи на телефоне: список и дет�
 
   await page.goto('/')
   await settle(page)
-  // On a phone the tools row lives in the sidebar drawer, not in the header
-  // (Sidebar.vue renders WorkspaceTools when `mobile`), so the burger comes
-  // first — otherwise the button simply is not in the DOM.
-  await page.locator('.topbar .menu-btn').tap()
+  // The jobs live in the footer's «⋯» menu on a desktop; on a phone that footer
+  // is the «Ещё» tab (#2976), where the jobs are a row of their own.
+  await page.getByTestId('mobile-tab-more').tap()
   await page.getByTestId('jobs-button').tap()
 
   const list = page.getByTestId('jobs-list')

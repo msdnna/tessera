@@ -2,7 +2,6 @@
   "menu": {
     "addBoard": "New board",
     "rename": "Rename",
-    "estimation": "Task estimation…",
     "slug": "Change the address…",
     "milestones": "Milestones…",
     "treeMode": "Show in the tree",
@@ -11,7 +10,15 @@
     "treeBoth": "Boards and milestones",
     "showClosedMilestones": "Show closed milestones",
     "transfer": "Move to another workspace",
-    "delete": "Delete the project"
+    "delete": "Delete the project",
+    "appearance": "Icon and colour…",
+    "managerOnly": "Available to the space owner and admins",
+    "copyLink": "Copy link",
+    "settings": "Project settings",
+    "archive": "Archive",
+    "linkCopied": "Link copied",
+    "linkCopyFailed": "Couldn't copy the link",
+    "move": "Move to another space…"
   },
   "board": {
     "add": "Add a board",
@@ -20,7 +27,10 @@
     "open": "Open",
     "rename": "Rename",
     "delete": "Delete the board",
-    "deleteConfirm": "Delete the board “{name}” with all its tasks?"
+    "deleted": "Board “{name}” deleted",
+    "restored": "Board “{name}” restored",
+    "restoreFailed": "Couldn't restore the board",
+    "kind": "Board view"
   },
   "milestone": {
     "backlog": "Backlog",
@@ -32,11 +42,13 @@
     "current": "Current address:",
     "placeholder": "project-address",
     "next": "New address:",
-    "warning": "Links to this project's boards and tasks shared earlier {strong} Open tabs will switch to the new address.",
-    "warningStrong": "will stop working.",
     "submit": "Change the address",
-    "taken": "That address is taken — pick another one",
-    "changed": "The project address has been changed"
+    "taken": "That address is taken.",
+    "changed": "The project address has been changed",
+    "oldLinks": "Old links to {old} keep leading here for 30 days.",
+    "takenBy": "Address taken: the project “{name}” uses it.",
+    "takenInGroup": "Address taken: a project in the group “{group}” already goes by it.",
+    "aliasesHint": "Old links lead to the new address for 30 days"
   },
   "transfer": {
     "title": "Move to another workspace",
@@ -46,11 +58,24 @@
     "empty": "No other workspaces — create one first.",
     "submit": "Move",
     "done": "The project has been moved to another workspace",
-    "doneStripped": "The project has been moved. Assignees removed (not workspace members): {n}"
+    "doneStripped": "The project has been moved. Assignees removed (not workspace members): {n}",
+    "titleShort": "Move “{name}”",
+    "subtitle": "to another space",
+    "moving": "Moving…",
+    "space": "Space",
+    "travels": "Boards, tasks and history move with the project.",
+    "losing": "Members missing from “{space}” lose access: {n}.",
+    "youAdmin": "you are an admin"
   },
   "remove": {
     "title": "Delete the project",
-    "message": "The project will be deleted with all its boards and tasks. This cannot be undone."
+    "message": "The project will be deleted with all its boards and tasks. This cannot be undone.",
+    "armed": "Delete “{name}” for good?",
+    "armedSub": "no undo",
+    "armedSubBoards": "{boards} with every task · no undo",
+    "boards": "{n} board | {n} boards",
+    "failed": "Couldn't delete",
+    "armedSubCounts": "{what} · no undo"
   },
   "create": {
     "title": "New project",
@@ -61,17 +86,8 @@
     "auto": "will be assigned automatically"
   },
   "tags": {
-    "head": "Project tags",
-    "namePlaceholder": "Tag name",
-    "renameHint": "{name} · double-click to rename",
-    "deleteConfirm": "Delete the tag? It will be removed from every task.",
-    "empty": "No tags yet.",
-    "newPlaceholder": "New tag",
-    "add": "Add",
     "prefixMode": "Short prefixes",
-    "prefixModeHint": "Show the raw prefix (e.g. “T”) instead of the friendly name",
-    "prefixNames": "Prefix names",
-    "prefixPlaceholder": "e.g. Status"
+    "prefixModeHint": "Show the raw prefix (e.g. “T”) instead of the friendly name"
   },
   "icon": {
     "search": "Find an icon",
@@ -90,5 +106,114 @@
     "searchPlaceholder": "Search by name: home, code, rocket…",
     "loading": "Loading the collection…",
     "notFound": "Nothing found"
+  },
+  "window": {
+    "title": "Project settings",
+    "outside": "Separate windows",
+    "members": "Members",
+    "tabsHint": "tabs",
+    "tab": {
+      "general": "General",
+      "tags": "Tags",
+      "stages": "Milestones",
+      "estimation": "Estimation"
+    },
+    "general": {
+      "autosave": "changes save at once",
+      "name": "Name",
+      "address": "Address",
+      "addressHint": "Used in links and the API",
+      "look": "Icon and colour",
+      "lookHint": "Shown in the sidebar, breadcrumbs and on the rail",
+      "group": "Group",
+      "danger": "Danger zone",
+      "dangerHint": "Archiving can be undone, deleting cannot",
+      "deleteArmed": "Delete «{name}» for good? Press again to delete",
+      "deleteHint": "Deleting takes two steps: the project’s boards, tasks and milestones are gone for good",
+      "deleteHintCounts": "Deleting takes two steps. Gone for good with it: {what}"
+    },
+    "estimation": {
+      "source": "Setting",
+      "workday": "Working time",
+      "hoursPerDay": "hours a day",
+      "daysPerWeek": "days a week",
+      "scaleHint": "Values in the estimate picker",
+      "addValue": "Add a value",
+      "resetValues": "Back to the default values",
+      "customEmpty": "With no values the picker keeps just the input field",
+      "kind": {
+        "time": "Hours",
+        "points": "Story points",
+        "tshirt": "T-shirt size",
+        "custom": "Custom unit"
+      }
+    }
+  },
+  "tagTable": {
+    "summary": "{tags} tags · {groups} groups",
+    "newPlaceholder": "New tag — «prefix::name» or just a name",
+    "newInvalid": "A tag name is needed after «::»",
+    "filter": "Filter",
+    "taken": "Tag «{name}» already exists — select both and merge",
+    "colTag": "Tag",
+    "colColor": "Colour",
+    "colTasks": "Tasks",
+    "colSource": "Source",
+    "empty": "No tags yet — create the first one in the field above",
+    "noMatch": "Nothing found",
+    "prefixAdd": "Add a friendly name",
+    "prefixPlaceholder": "Friendly prefix name",
+    "prefixNote": "friendly prefix name · shown in tags on cards",
+    "fromGitlab": "from GitLab",
+    "ruledTitle": "Managed by a GitLab rule",
+    "ruledSub": "{prefix}* from {path} · change it in GitLab",
+    "renameHint": "Rename — click, ↵ or F2",
+    "rename": "Rename",
+    "recolor": "Recolour",
+    "recolorMany": "Colour for {n} tags",
+    "delete": "Delete",
+    "merge": "Merge into…",
+    "clear": "clear",
+    "selected": "{n} selected",
+    "mergeTitle": "Merge {n} tags into one",
+    "mergeSub": "Tasks get the chosen tag, the others go away",
+    "mergeInto": "Merge into «{name}»",
+    "merged": "Tags merged: {n}",
+    "sourceUser": "Tessera",
+    "sourceGitlab": "GitLab label",
+    "sourceRule": "GitLab rule",
+    "deletedOne": "Tag «{name}» deleted",
+    "deletedMany": "Tags deleted: {n}",
+    "restoredOne": "Tag «{name}» restored",
+    "restoredMany": "Tags restored: {n}"
+  },
+  "archive": {
+    "done": "Project «{name}» archived",
+    "undone": "Project «{name}» is back",
+    "restored": "Project «{name}» restored",
+    "restore": "Restore",
+    "open": "Open · view only",
+    "list": "Archived projects",
+    "readonly": "The project is archived — view only",
+    "chip": "Archived project",
+    "chipTitle": "The project is archived: its boards and tasks are view only"
+  },
+  "emptyProject": {
+    "title": "“{name}” has no boards",
+    "text": "Start from a template — the columns and fields are set up already.",
+    "blank": "or a blank board",
+    "blankPlaceholder": "Board name",
+    "notFound": "Project not found — it may have been renamed or moved."
+  },
+  "boardTemplate": {
+    "sprint": {
+      "name": "Sprint kanban"
+    },
+    "bugs": {
+      "name": "Bug tracker"
+    },
+    "roadmap": {
+      "name": "Roadmap"
+    }
   }
 }

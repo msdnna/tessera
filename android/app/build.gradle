@@ -442,7 +442,11 @@ tasks.withType(io.gitlab.arturbosch.detekt.Detekt).configureEach {
         html.required.set(true)
         xml.required.set(true)
         txt.required.set(false)
-        sarif.required.set(false)
+        // SARIF is what the security scan collects (#2938): `make scan-android`
+        // copies detekt.sarif next to the other scanners' reports, and CI feeds
+        // the same format to the code-scanning UI. Writing it always keeps the
+        // report identical whether detekt was run by the lint gate or the scan.
+        sarif.required.set(true)
         md.required.set(false)
     }
 }

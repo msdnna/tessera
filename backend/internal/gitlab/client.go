@@ -8,6 +8,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"mime/multipart"
@@ -18,6 +19,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"tessera/internal/netguard"
@@ -43,7 +45,7 @@ func newTransport() *http.Transport {
 		TLSHandshakeTimeout: 4 * time.Second,
 	}
 	if strings.EqualFold(os.Getenv("GITLAB_INSECURE_TLS"), "true") {
-		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint:gosec // opt-in for self-hosted private CAs
+		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} // #nosec G402 -- opt-in for self-hosted private CAs
 	}
 	return tr
 }
@@ -76,17 +78,60 @@ func envBool(key string, fallback bool) bool {
 type Client struct {
 	baseURL string
 	token   string
+	oauth   bool   // token is an OAuth access token (#3083), not a PAT
 	sudo    string // GitLab username to impersonate on write (REST) calls; "" = none
 	http    *http.Client
+}
+
+// oauthTokenMark tags an OAuth access token (#3083) as it travels from the
+// credential store to New: a PAT goes into REST calls as PRIVATE-TOKEN, which
+// GitLab refuses for an OAuth token — that one has to ride as a Bearer header.
+// Marking the string keeps every caller's (baseURL, token) pair as it is.
+const oauthTokenMark = "oauth2:"
+
+// MarkOAuthToken tags an OAuth access token for New.
+func MarkOAuthToken(token string) string { return oauthTokenMark + token }
+
+// SplitToken undoes MarkOAuthToken: the bare token and whether it is OAuth.
+func SplitToken(token string) (raw string, oauth bool) {
+	if rest, ok := strings.CutPrefix(token, oauthTokenMark); ok {
+		return rest, true
+	}
+	return token, false
+}
+
+// ErrUnauthorized is GitLab refusing the credential (HTTP 401) — an expired,
+// revoked or wrong token (#3084).
+var ErrUnauthorized = errors.New("gitlab: unauthorized (check token)")
+
+// IsUnauthorized reports a refused credential on either surface: the GraphQL
+// client's ErrUnauthorized or a REST 401.
+func IsUnauthorized(err error) bool {
+	if errors.Is(err, ErrUnauthorized) {
+		return true
+	}
+	var ae *APIError
+	return errors.As(err, &ae) && ae.Status == http.StatusUnauthorized
+}
+
+// authorize puts the credential on a REST request.
+func (c *Client) authorize(req *http.Request) {
+	if c.oauth {
+		req.Header.Set("Authorization", "Bearer "+c.token)
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", c.token)
 }
 
 // New builds a client. baseURL is the GitLab root (trailing slash trimmed).
 // Set GITLAB_INSECURE_TLS=true to skip certificate verification for a
 // self-hosted instance with a private/self-signed CA (dev convenience).
 func New(baseURL, token string) *Client {
+	raw, oauth := SplitToken(token)
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
-		token:   token,
+		token:   raw,
+		oauth:   oauth,
 		// A large pull (hundreds of issues, each with up to 100 notes, plus all
 		// linked issues) can take well over 15s; the sync now runs in the
 		// background so it can afford a generous ceiling. A dead host still fails
@@ -141,7 +186,7 @@ func (c *Client) do(ctx context.Context, query string, vars map[string]any, out 
 	}
 	defer func() { _ = resp.Body.Close() }()
 	if resp.StatusCode == http.StatusUnauthorized {
-		return fmt.Errorf("gitlab: unauthorized (check token)")
+		return ErrUnauthorized
 	}
 	if resp.StatusCode != http.StatusOK {
 		return fmt.Errorf("gitlab: http %d", resp.StatusCode)
@@ -249,37 +294,39 @@ func formatNoteGID(id int64) string { return fmt.Sprintf("gid://gitlab/Note/%d",
 
 // Issue is a GitLab issue reduced to the fields the sync needs.
 type Issue struct {
-	GlobalID       string
-	IID            int64
-	Title          string
-	Description    string
-	WebURL         string
-	State          string // opened | closed
-	UpdatedAt      *time.Time
-	CreatedAt      *time.Time // issue/task creation timestamp (always present)
-	DueDate        *time.Time // issue's own due date (date-only), nil when unset
-	TimeEstimate   int64      // issue time estimate in seconds (0 when unset)
-	MilestoneDue   *time.Time // due date (End date) of the issue's milestone, if any
-	MilestoneStart *time.Time // start date of the issue's milestone (date-only), if any
-	MilestoneGID   string     // milestone GraphQL global id (gid://gitlab/Milestone/<n>), "" when none
-	MilestoneIID   int64      // milestone iid (0 when none/unavailable)
-	MilestoneTitle string     // milestone title
-	MilestoneState string     // active | closed
-	MilestoneURL   string     // milestone web path/url
-	Labels         []Label
-	AuthorLogin    string // GitLab username of the issue author (may not be a Tessera user)
-	AuthorName     string
-	AuthorAvatar   string // author avatar URL, "" when none
-	Assignees      []Person
-	Notes          []Note // user comments (system notes filtered out)
+	GlobalID             string
+	IID                  int64
+	Title                string
+	Description          string
+	WebURL               string
+	State                string // opened | closed
+	UpdatedAt            *time.Time
+	CreatedAt            *time.Time // issue/task creation timestamp (always present)
+	DueDate              *time.Time // issue's own due date (date-only), nil when unset
+	TimeEstimate         int64      // issue time estimate in seconds (0 when unset)
+	MilestoneDue         *time.Time // due date (End date) of the issue's milestone, if any
+	MilestoneStart       *time.Time // start date of the issue's milestone (date-only), if any
+	MilestoneGID         string     // milestone GraphQL global id (gid://gitlab/Milestone/<n>), "" when none
+	MilestoneIID         int64      // milestone iid (0 when none/unavailable)
+	MilestoneTitle       string     // milestone title
+	MilestoneDescription string     // milestone description (Markdown), "" when none
+	MilestoneState       string     // active | closed
+	MilestoneURL         string     // milestone web path/url
+	Labels               []Label
+	AuthorLogin          string // GitLab username of the issue author (may not be a Tessera user)
+	AuthorName           string
+	AuthorAvatar         string // author avatar URL, "" when none
+	Assignees            []Person
+	Notes                []Note // user comments (system notes filtered out)
+	// NotesLoaded says Notes was actually asked for. The light phase of a full sweep
+	// (#3105) leaves the discussions out, and an empty Notes then means "not
+	// fetched", not "no comments".
+	NotesLoaded bool
 }
 
-const issuesQuery = `
-query($path: ID!, $username: String, $iids: [String!], $after: String, $updatedAfter: Time) {
-  project(fullPath: $path) {
-    issues(assigneeUsername: $username, iids: $iids, updatedAfter: $updatedAfter, first: 100, after: $after, sort: UPDATED_DESC) {
-      pageInfo { hasNextPage endCursor }
-      nodes {
+// issueFields is every issue field the sync reads except the discussions. Kept in
+// one place so the full and the light query cannot drift apart.
+const issueFields = `
         id
         iid
         title
@@ -290,15 +337,89 @@ query($path: ID!, $username: String, $iids: [String!], $after: String, $updatedA
         createdAt
         dueDate
         timeEstimate
-        milestone { id iid title state startDate dueDate webPath }
+        milestone { id iid title description state startDate dueDate webPath }
         author { username name avatarUrl }
         assignees { nodes { username name avatarUrl } }
-        labels { nodes { title color } }
-        discussions(first: 100) { nodes { id notes(first: 100) { nodes { id body system createdAt author { username name avatarUrl } } } } }
+        labels { nodes { title color } }`
+
+// issueDiscussions is the heavy half of an issue: every thread and its notes. On a
+// busy project this is what runs into GitLab's own GraphQL deadline.
+const issueDiscussions = `
+        discussions(first: 100) { nodes { id notes(first: 100) { nodes { id body system createdAt author { username name avatarUrl } } } } }`
+
+// buildIssuesQuery renders the issues query with or without the discussions. The
+// variables are the same either way, so one filter map serves both. labelName is
+// GitLab's own label filter (#3085): every listed label must be on the issue.
+func buildIssuesQuery(withNotes bool) string {
+	fields := issueFields
+	if withNotes {
+		fields += issueDiscussions
+	}
+	return `
+query($path: ID!, $username: String, $iids: [String!], $labels: [String], $after: String, $updatedAfter: Time, $first: Int!) {
+  project(fullPath: $path) {
+    issues(assigneeUsername: $username, iids: $iids, labelName: $labels, updatedAfter: $updatedAfter, first: $first, after: $after, sort: UPDATED_DESC) {
+      pageInfo { hasNextPage endCursor }
+      nodes {` + fields + `
       }
     }
   }
 }`
+}
+
+var (
+	issuesQuery      = buildIssuesQuery(true)
+	issuesLightQuery = buildIssuesQuery(false)
+)
+
+// IssueFilter narrows an issues query. The zero value asks for every issue of the
+// project, discussions included.
+type IssueFilter struct {
+	// Assignee limits the list to one GitLab user's issues ("" = anybody's).
+	Assignee string
+	// Since asks GitLab (server-side) only for issues updated after it — the
+	// incremental pull. nil = no time filter.
+	Since *time.Time
+	// Labels keeps only issues carrying every one of these labels (#3085). Empty = no
+	// label filter.
+	Labels []string
+	// Light leaves the discussions out (#3105): the first phase of a full sweep only
+	// needs to know which issues exist and which of them changed. Issues it returns
+	// have NotesLoaded == false.
+	Light bool
+}
+
+// vars renders the filter as GraphQL variables.
+func (f IssueFilter) vars() map[string]any {
+	v := withUpdatedAfter(map[string]any{}, f.Since)
+	if f.Assignee != "" {
+		v["username"] = f.Assignee
+	}
+	if labels := CleanLabels(f.Labels); len(labels) > 0 {
+		v["labels"] = labels
+	}
+	return v
+}
+
+// CleanLabels trims a label list and drops blanks and repeats, keeping order.
+func CleanLabels(in []string) []string {
+	out := []string{}
+	seen := map[string]bool{}
+	for _, l := range in {
+		l = strings.TrimSpace(l)
+		if l == "" || seen[l] {
+			continue
+		}
+		seen[l] = true
+		out = append(out, l)
+	}
+	return out
+}
+
+// ListIssues returns the project's issues matching the filter, following pagination.
+func (c *Client) ListIssues(ctx context.Context, projectPath string, f IssueFilter) ([]Issue, error) {
+	return c.queryIssues(ctx, projectPath, f.vars(), !f.Light)
+}
 
 // AssignedIssues returns the issues in projectPath assigned to username.
 func (c *Client) AssignedIssues(ctx context.Context, projectPath, username string) ([]Issue, error) {
@@ -308,7 +429,7 @@ func (c *Client) AssignedIssues(ctx context.Context, projectPath, username strin
 // AssignedIssuesSince is AssignedIssues restricted (server-side) to issues updated
 // after `since` — the incremental pull. A nil `since` fetches every assigned issue.
 func (c *Client) AssignedIssuesSince(ctx context.Context, projectPath, username string, since *time.Time) ([]Issue, error) {
-	return c.queryIssues(ctx, projectPath, withUpdatedAfter(map[string]any{"username": username}, since))
+	return c.ListIssues(ctx, projectPath, IssueFilter{Assignee: username, Since: since})
 }
 
 // AllIssues returns every issue in projectPath regardless of assignee (integration
@@ -320,7 +441,7 @@ func (c *Client) AllIssues(ctx context.Context, projectPath string) ([]Issue, er
 // AllIssuesSince is AllIssues restricted (server-side) to issues updated after
 // `since` — the incremental pull. A nil `since` fetches the whole project.
 func (c *Client) AllIssuesSince(ctx context.Context, projectPath string, since *time.Time) ([]Issue, error) {
-	return c.queryIssues(ctx, projectPath, withUpdatedAfter(map[string]any{}, since))
+	return c.ListIssues(ctx, projectPath, IssueFilter{Since: since})
 }
 
 // withUpdatedAfter adds the GraphQL `updatedAfter` (Time scalar, RFC3339) filter to
@@ -337,17 +458,73 @@ func withUpdatedAfter(filter map[string]any, since *time.Time) map[string]any {
 // (used to keep already-linked tasks fresh after a reassignment). Empty iids
 // returns nothing.
 func (c *Client) IssuesByIIDs(ctx context.Context, projectPath string, iids []string) ([]Issue, error) {
-	if len(iids) == 0 {
-		return nil, nil
-	}
-	return c.queryIssues(ctx, projectPath, map[string]any{"iids": iids})
+	return c.issuesByIIDs(ctx, projectPath, iids, true)
 }
 
+// IssuesByIIDsLight is IssuesByIIDs without the discussions (#3105).
+func (c *Client) IssuesByIIDsLight(ctx context.Context, projectPath string, iids []string) ([]Issue, error) {
+	return c.issuesByIIDs(ctx, projectPath, iids, false)
+}
+
+// iidChunk caps how many iids one request names. The list rides in the query
+// variables, and a full sweep may ask for a few thousand at once.
+const iidChunk = 100
+
+func (c *Client) issuesByIIDs(ctx context.Context, projectPath string, iids []string, withNotes bool) ([]Issue, error) {
+	var out []Issue
+	for start := 0; start < len(iids); start += iidChunk {
+		end := min(start+iidChunk, len(iids))
+		part, err := c.queryIssues(ctx, projectPath, map[string]any{"iids": iids[start:end]}, withNotes)
+		if err != nil {
+			return nil, err
+		}
+		out = append(out, part...)
+	}
+	return out, nil
+}
+
+// issuesPageSize is the first page size of the issues query. Every issue drags
+// its discussions and their notes along, so a page of busy issues can outrun
+// GitLab's own GraphQL deadline ("Timeout on Discussion.id") — queryIssues then
+// halves the page and asks again, down to minIssuesPageSize. The light query
+// (#3105) carries no discussions and starts at GitLab's largest page instead.
+const (
+	issuesPageSize      = 50
+	lightIssuesPageSize = 100
+	minIssuesPageSize   = 1
+)
+
+// isGraphQLTimeout reports GitLab's server-side query deadline. It arrives as an
+// ordinary GraphQL error ("Timeout on Note.id"), not as an HTTP status, so a
+// retry with the same page would only time out again.
+func isGraphQLTimeout(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "gitlab graphql: Timeout on ")
+}
+
+// issuePageSizes remembers, per GitLab project, the page size that last got
+// through without a timeout. A Client lives for one sync run, so without it
+// every run would pay the same string of server-side timeouts (about a minute
+// each) before reaching a size that works. The light and the full query are
+// remembered apart — what fits one says nothing about the other.
+var issuePageSizes sync.Map // baseURL + "\x00" + projectPath [+ "\x00light"] → int
+
 // queryIssues runs the issues query with the given filter vars, following
-// pagination and decoding each node into an Issue.
-func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map[string]any) ([]Issue, error) {
+// pagination and decoding each node into an Issue. withNotes picks the full query
+// (discussions included) over the light one.
+func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map[string]any, withNotes bool) ([]Issue, error) {
 	var out []Issue
 	var after *string
+	sizeKey := c.baseURL + "\x00" + projectPath
+	first := issuesPageSize
+	query := issuesQuery
+	if !withNotes {
+		sizeKey += "\x00light"
+		first = lightIssuesPageSize
+		query = issuesLightQuery
+	}
+	if v, ok := issuePageSizes.Load(sizeKey); ok {
+		first = v.(int)
+	}
 	for {
 		var data struct {
 			Project *struct {
@@ -360,18 +537,25 @@ func (c *Client) queryIssues(ctx context.Context, projectPath string, filter map
 				} `json:"issues"`
 			} `json:"project"`
 		}
-		vars := map[string]any{"path": projectPath, "after": after}
+		vars := map[string]any{"path": projectPath, "after": after, "first": first}
 		for k, v := range filter {
 			vars[k] = v
 		}
-		if err := c.do(ctx, issuesQuery, vars, &data); err != nil {
+		if err := c.do(ctx, query, vars, &data); err != nil {
+			if isGraphQLTimeout(err) && first > minIssuesPageSize {
+				first = max(first/2, minIssuesPageSize)
+				issuePageSizes.Store(sizeKey, first)
+				continue
+			}
 			return nil, err
 		}
 		if data.Project == nil {
 			return nil, fmt.Errorf("gitlab: project %q not found or not accessible", projectPath)
 		}
 		for _, n := range data.Project.Issues.Nodes {
-			out = append(out, n.toIssue(c.baseURL))
+			is := n.toIssue(c.baseURL)
+			is.NotesLoaded = withNotes
+			out = append(out, is)
 		}
 		if !data.Project.Issues.PageInfo.HasNextPage {
 			break
@@ -395,13 +579,14 @@ type issueNode struct {
 	DueDate      string     `json:"dueDate"`
 	TimeEstimate int64      `json:"timeEstimate"` // seconds (0 when unset)
 	Milestone    *struct {
-		ID        string `json:"id"`
-		IID       string `json:"iid"`
-		Title     string `json:"title"`
-		State     string `json:"state"`
-		StartDate string `json:"startDate"`
-		DueDate   string `json:"dueDate"`
-		WebPath   string `json:"webPath"`
+		ID          string `json:"id"`
+		IID         string `json:"iid"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		State       string `json:"state"`
+		StartDate   string `json:"startDate"`
+		DueDate     string `json:"dueDate"`
+		WebPath     string `json:"webPath"`
 	} `json:"milestone"`
 	Author *struct {
 		Username  string `json:"username"`
@@ -467,6 +652,7 @@ func (n issueNode) toIssue(base string) Issue {
 		issue.MilestoneGID = n.Milestone.ID
 		issue.MilestoneIID, _ = strconv.ParseInt(n.Milestone.IID, 10, 64)
 		issue.MilestoneTitle = n.Milestone.Title
+		issue.MilestoneDescription = n.Milestone.Description
 		issue.MilestoneState = strings.ToLower(n.Milestone.State)
 		issue.MilestoneURL = absAvatar(base, n.Milestone.WebPath)
 	}
@@ -625,7 +811,7 @@ func (c *Client) restForm(ctx context.Context, method, path string, form url.Val
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	c.authorize(req)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	if c.sudo != "" {
 		req.Header.Set("Sudo", c.sudo) // impersonate the acting user (admin token only)
@@ -650,7 +836,7 @@ func (c *Client) restGet(ctx context.Context, path string) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	c.authorize(req)
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, err
@@ -661,6 +847,26 @@ func (c *Client) restGet(ctx context.Context, path string) ([]byte, error) {
 		return nil, &APIError{Status: resp.StatusCode, Body: string(body)}
 	}
 	return body, nil
+}
+
+// TokenExpiry reads when the client's personal access token expires (#3084),
+// GET /personal_access_tokens/self. nil with no error = the token never expires.
+// An OAuth token has no such record; it answers (nil, nil) without asking.
+func (c *Client) TokenExpiry(ctx context.Context) (*time.Time, error) {
+	if c.oauth {
+		return nil, nil
+	}
+	body, err := c.restGet(ctx, "personal_access_tokens/self")
+	if err != nil {
+		return nil, err
+	}
+	var tok struct {
+		ExpiresAt string `json:"expires_at"`
+	}
+	if err := json.Unmarshal(body, &tok); err != nil {
+		return nil, err
+	}
+	return parseDate(tok.ExpiresAt), nil
 }
 
 // Member is a GitLab project member (for the assignee picker + assignee write-back).
@@ -931,7 +1137,7 @@ func (c *Client) UploadFile(ctx context.Context, projectPath, filename string, r
 	if err != nil {
 		return Upload{}, err
 	}
-	req.Header.Set("PRIVATE-TOKEN", c.token)
+	c.authorize(req)
 	req.Header.Set("Content-Type", mw.FormDataContentType())
 	if c.sudo != "" {
 		req.Header.Set("Sudo", c.sudo)

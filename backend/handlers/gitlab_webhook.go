@@ -7,7 +7,6 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"io"
-	"log"
 	"net/http"
 	"strings"
 	"sync"
@@ -17,7 +16,9 @@ import (
 	"github.com/google/uuid"
 
 	db "tessera/internal/db"
+	"tessera/internal/gitlab"
 	"tessera/internal/jobs"
+	"tessera/internal/logsafe"
 )
 
 // ── GitLab webhooks: near-realtime sync trigger (#2594) ────
@@ -33,6 +34,12 @@ import (
 // Polling stays on: an issue hook does not report issue *deletion*, so only the
 // periodic full sweep catches deletes, and a hook GitLab has quietly disabled must
 // not turn into a silently broken sync.
+//
+// Merge request and pipeline hooks (#2964) are the exception to "never map in the
+// hook": they are self-contained (the payload is the whole MR / the whole run),
+// small, and land in task_code_links only, so they are applied on the spot — see
+// gitlab_mr.go. An MR hook also marks the binding dirty, so the follow-up pull asks
+// GitLab which issues the MR closes (the payload doesn't say).
 
 const (
 	// webhookMaxBody caps the delivery body; an issue hook with a long description
@@ -54,10 +61,12 @@ const (
 type hookOutcome int
 
 const (
-	hookRelevant  hookOutcome = iota // → 202 + schedule an incremental pull
-	hookIgnored                      // → 204: a real event we don't sync on (push, pipeline…)
-	hookForeign                      // → 400: an event for a different GitLab project
-	hookMalformed                    // → 400: not a GitLab hook payload at all
+	hookRelevant     hookOutcome = iota // → 202 + schedule an incremental pull
+	hookMergeRequest                    // → 202: apply the MR to its tasks, then pull
+	hookPipeline                        // → 202: apply the pipeline status to its MRs
+	hookIgnored                         // → 204: a real event we don't sync on (push, tag…)
+	hookForeign                         // → 400: an event for a different GitLab project
+	hookMalformed                       // → 400: not a GitLab hook payload at all
 )
 
 // webhookPayload is the minimum we read out of a delivery. Everything else is the
@@ -97,7 +106,14 @@ func webhookDecision(body []byte, projectPath string) (hookOutcome, string) {
 	if kind == "" {
 		return hookMalformed, "no object_kind"
 	}
-	if !relevantHookKinds[kind] {
+	outcome, known := hookRelevant, relevantHookKinds[kind]
+	switch kind {
+	case "merge_request":
+		outcome, known = hookMergeRequest, true
+	case "pipeline":
+		outcome, known = hookPipeline, true
+	}
+	if !known {
 		// 204, not an error: GitLab disables a hook that keeps failing, and an
 		// over-broad event selection in the project settings is the user's to fix.
 		return hookIgnored, "kind " + kind + " does not affect mirrored issues"
@@ -109,7 +125,7 @@ func webhookDecision(body []byte, projectPath string) (hookOutcome, string) {
 	if got := p.Project.PathWithNamespace; got != "" && !strings.EqualFold(got, projectPath) {
 		return hookForeign, "event belongs to " + got
 	}
-	return hookRelevant, "kind " + kind
+	return outcome, "kind " + kind
 }
 
 // ── Debounced dirty set ────────────────────────────────────
@@ -167,11 +183,28 @@ func (q *webhookQueue) due(now time.Time, debounce, maxWait time.Duration) []dir
 // clear drops an integration's mark, but only when no newer delivery arrived while
 // its sync was running — otherwise that delivery would be swallowed by the sync it
 // is not covered by.
+//
+// A mark that survives starts a *new* burst rather than staying in the one just
+// synced: firstSeen moves up to the point the run covered. Carried forward, the old
+// firstSeen is already past maxWait, which makes the entry due on every tick from
+// then on — and a stream long enough to keep landing a delivery inside each run (a
+// mass label edit, an import) then drives back-to-back full pulls a second apart,
+// which is the traffic the debounce exists to collapse. syncedThrough is a floor for
+// the leftovers: they all arrived after it.
 func (q *webhookQueue) clear(id uuid.UUID, syncedThrough time.Time) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
-	if m, ok := q.dirty[id]; ok && !m.lastSeen.After(syncedThrough) {
+	m, ok := q.dirty[id]
+	if !ok {
+		return
+	}
+	if !m.lastSeen.After(syncedThrough) {
 		delete(q.dirty, id)
+		return
+	}
+	if m.firstSeen.Before(syncedThrough) {
+		m.firstSeen = syncedThrough
+		q.dirty[id] = m
 	}
 }
 
@@ -215,12 +248,13 @@ func (h *API) GitlabWebhook(c *gin.Context) {
 		c.JSON(http.StatusRequestEntityTooLarge, gin.H{"error": "body too large"})
 		return
 	}
-	switch outcome, reason := webhookDecision(body, integ.ProjectPath); outcome {
+	outcome, reason := webhookDecision(body, integ.ProjectPath)
+	switch outcome {
 	case hookIgnored:
 		c.Status(http.StatusNoContent)
 		return
 	case hookForeign, hookMalformed:
-		log.Printf("gitlab webhook integ=%s rejected: %s", integ.ID, reason)
+		logsafe.Printf("gitlab webhook integ=%s rejected: %s", integ.ID, reason)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "unexpected payload"})
 		return
 	}
@@ -230,11 +264,32 @@ func (h *API) GitlabWebhook(c *gin.Context) {
 		return
 	}
 	// Disabled bindings still stamp last_webhook_at (so the UI can show the hook is
-	// wired up) but must not trigger a pull.
+	// wired up) but must not trigger a pull — nor write MR state.
+	queued := integ.Enabled
 	if integ.Enabled {
-		h.webhooks.mark(integ.ID, time.Now())
+		switch outcome {
+		case hookMergeRequest:
+			// A payload we can't read is not worth a failing delivery (GitLab
+			// disables hooks that keep failing): the pull it schedules reads the MR
+			// the regular way.
+			if mr, perr := gitlab.ParseMergeRequestHook(body); perr == nil {
+				h.announceCodeLinks(c, integ.WorkspaceID, h.applyMergeRequest(c, integ, mrApply{mr: mr}))
+			} else {
+				logsafe.Printf("gitlab webhook integ=%s: merge_request: %v", integ.ID, perr)
+			}
+			h.webhooks.mark(integ.ID, time.Now())
+		case hookPipeline:
+			queued = false
+			if ev, perr := gitlab.ParsePipelineHook(body); perr == nil {
+				h.announceCodeLinks(c, integ.WorkspaceID, h.applyPipelineEvent(c, integ, ev))
+			} else {
+				logsafe.Printf("gitlab webhook integ=%s: pipeline: %v", integ.ID, perr)
+			}
+		default:
+			h.webhooks.mark(integ.ID, time.Now())
+		}
 	}
-	c.JSON(http.StatusAccepted, gin.H{"queued": integ.Enabled})
+	c.JSON(http.StatusAccepted, gin.H{"queued": queued})
 }
 
 // ── Debounce worker ────────────────────────────────────────
@@ -253,7 +308,7 @@ func (h *API) RunWebhookSyncWorker(ctx context.Context) {
 			// Shares the auto-sync worker's advisory lock: the dirty set is
 			// process-local, but the *sync* it triggers must not run beside the cron
 			// one on another process.
-			h.withAdvisoryLock(ctx, "gitlab_sync", func() { h.drainWebhookDirty(ctx) })
+			h.withAdvisoryLock(ctx, gitlabSyncLock, func() { h.drainWebhookDirty(ctx) })
 		}
 	}
 }
@@ -294,11 +349,11 @@ func (h *API) drainWebhookDirty(ctx context.Context) {
 		// arrived meanwhile reopens the burst.
 		h.webhooks.clear(e.id, e.mark.lastSeen)
 		if serr != nil {
-			log.Printf("gitlab webhook sync ws=%s: %v", integ.WorkspaceID, serr)
+			logsafe.Printf("gitlab webhook sync ws=%s: %v", integ.WorkspaceID, serr)
 			continue
 		}
 		if created+updated > 0 {
-			log.Printf("gitlab webhook sync ws=%s: +%d new, ~%d updated", integ.WorkspaceID, created, updated)
+			logsafe.Printf("gitlab webhook sync ws=%s: +%d new, ~%d updated", integ.WorkspaceID, created, updated)
 		}
 	}
 }

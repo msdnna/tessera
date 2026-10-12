@@ -235,8 +235,8 @@ func TestUnwrapAssetProxy(t *testing.T) {
 
 func TestHumanBytes(t *testing.T) {
 	cases := map[int64]string{
-		512:            "512 Б",
-		2048:           "2 КБ",
+		512:             "512 Б",
+		2048:            "2 КБ",
 		3 * 1024 * 1024: "3.0 МБ",
 	}
 	for n, want := range cases {

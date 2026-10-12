@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { setActivePinia, createPinia } from 'pinia'
+import { NPopconfirm } from 'naive-ui'
 
 // The chat rail of a call (#2864, subtask #2873).
 //
@@ -23,6 +24,11 @@ vi.mock('naive-ui', async () => {
   const actual = await vi.importActual('naive-ui')
   return { ...actual, useMessage: () => toast }
 })
+// The message API moved out of naive (composables/useMessage, #3117): route it
+// to the naive mock above, where this spec keeps its spies.
+vi.mock('@/composables/useMessage', async () => ({
+  useMessage: (await import('naive-ui')).useMessage,
+}))
 
 const api = {
   messages: vi.fn(),
@@ -104,6 +110,42 @@ describe('loading the conversation', () => {
     w.unmount()
   })
 
+  // The rail's own note says a 403/404 means the call went away under us and
+  // the screen around it already says so. That test read `e.response.status`,
+  // and the api client rejects with a plain Error carrying `status` — no
+  // `response` at all (#2932) — so the check never matched and the second toast
+  // was shown every time.
+  function refusal(status) {
+    const e = new Error('нет доступа')
+    e.status = status
+    e.offline = false
+    return e
+  }
+
+  it('stays quiet when the call it belongs to is gone', async () => {
+    toast.error.mockClear()
+    api.messages.mockRejectedValue(refusal(404))
+    const w = await rail()
+    expect(toast.error).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('stays quiet when the call is no longer ours to read', async () => {
+    toast.error.mockClear()
+    api.messages.mockRejectedValue(refusal(403))
+    const w = await rail()
+    expect(toast.error).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('still says so when the refusal is not about the call going away', async () => {
+    toast.error.mockClear()
+    api.messages.mockRejectedValue(refusal(500))
+    const w = await rail()
+    expect(toast.error).toHaveBeenCalledTimes(1)
+    w.unmount()
+  })
+
   it('opens on the newest message once the rail actually shows it', async () => {
     // The room keeps this component alive behind v-show so switching tabs does
     // not refetch — which means the first load lands on a display:none element,
@@ -158,6 +200,85 @@ describe('loading the conversation', () => {
     // Older messages go above the ones already on screen, not below them.
     const rows = w.findAll('[data-testid="conference-chat-message"]')
     expect(rows[0].text()).toContain('раньше')
+    w.unmount()
+  })
+
+  it('keeps the history it paged back through when the next nudge lands', async () => {
+    // The nudge fires on every line anybody types. Answering it by *replacing*
+    // the log with the newest page threw away the older pages the reader had
+    // just loaded: in a busy call the message being re-read vanished mid-
+    // sentence and the view landed somewhere arbitrary — the very thing the
+    // "don't scroll unless at the bottom" rule exists to prevent (#2932).
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm5', body: 'последнее', created_at: '2026-09-03T10:05:00Z' })], true),
+    )
+    const w = await rail()
+
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm4', body: 'раньше', created_at: '2026-09-03T10:04:00Z' })], false),
+    )
+    await w.find('[data-testid="conference-chat-older"]').trigger('click')
+    await flushPromises()
+    expect(w.text()).toContain('раньше')
+
+    api.messages.mockResolvedValue(
+      page(
+        [
+          msg({ id: 'm5', body: 'последнее', created_at: '2026-09-03T10:05:00Z' }),
+          msg({ id: 'm6', body: 'новое', created_at: '2026-09-03T10:06:00Z' }),
+        ],
+        true,
+      ),
+    )
+    await w.setProps({ nudge: 1 })
+    await flushPromises()
+
+    const rows = w.findAll('[data-testid="conference-chat-message"]')
+    expect(rows.map((r) => r.text()).join(' | ')).toContain('раньше')
+    expect(rows).toHaveLength(3)
+    expect(w.text()).toContain('новое')
+    // …and the page's own has_more must not resurrect the "load older" button:
+    // everything older is already on screen, the last paging said so.
+    expect(w.find('[data-testid="conference-chat-older"]').exists()).toBe(false)
+    w.unmount()
+  })
+
+  it('takes a message deleted by someone else off the rail', async () => {
+    // The fold must not become "append whatever is new": inside the fetched
+    // window the page is the truth, deletions included.
+    api.messages.mockResolvedValue(
+      page([
+        msg({ id: 'm1', body: 'первое', created_at: '2026-09-03T10:00:00Z' }),
+        msg({ id: 'm2', body: 'ошибка', created_at: '2026-09-03T10:01:00Z' }),
+      ]),
+    )
+    const w = await rail()
+    expect(w.text()).toContain('ошибка')
+
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm1', body: 'первое', created_at: '2026-09-03T10:00:00Z' })]),
+    )
+    await w.setProps({ nudge: 1 })
+    await flushPromises()
+
+    expect(w.text()).not.toContain('ошибка')
+    w.unmount()
+  })
+
+  it('starts the log over when the rail is pointed at another call', async () => {
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm1', body: 'в первом звонке', created_at: '2026-09-03T10:00:00Z' })]),
+    )
+    const w = await rail()
+
+    api.messages.mockResolvedValue(
+      page([msg({ id: 'm9', body: 'во втором', created_at: '2026-09-04T10:00:00Z' })]),
+    )
+    await w.setProps({ conferenceId: 'c2' })
+    await flushPromises()
+
+    expect(w.text()).not.toContain('в первом звонке')
+    expect(w.text()).toContain('во втором')
     w.unmount()
   })
 
@@ -264,6 +385,22 @@ describe('attachments', () => {
     w.unmount()
   })
 
+  it('weighs a file chip in the units the reader reads', async () => {
+    api.messages.mockResolvedValue(
+      page([msg({ attachments: [{ ...file, size: 3 * 1024 * 1024 }] })]),
+    )
+    const w = await rail()
+
+    // The rail kept a private byte formatter with the units spelled out in
+    // English and the decimal point written by hand — on the same screen where
+    // the Android client already says «3 МБ» (util/ConferenceChat.kt confFileSize)
+    // and where every other web surface goes through formatFileSize (#2799).
+    const chip = w.find('[data-testid="conference-chat-file"]')
+    expect(chip.text()).toContain('3 МБ')
+    expect(chip.text()).not.toContain('3 MB')
+    w.unmount()
+  })
+
   it('opens a picture over the call instead of in a new tab', async () => {
     api.messages.mockResolvedValue(page([msg({ attachments: [image] })]))
     const w = await rail()
@@ -314,11 +451,89 @@ describe('deleting', () => {
     api.messages.mockResolvedValue(page([msg({ id: 'gone', body: 'ошибся' })]))
     const w = await rail()
 
-    await w.find('[data-testid="conference-chat-delete"]').trigger('click')
+    // The bin only opens the prompt now — the guard itself is covered by
+    // cx-conf-chat-delete-confirm.spec.js.
+    w.findComponent(NPopconfirm).vm.$emit('positive-click')
     await flushPromises()
 
     expect(api.removeMessage).toHaveBeenCalledWith('gone')
     expect(w.findAll('[data-testid="conference-chat-message"]')).toHaveLength(0)
+    w.unmount()
+  })
+})
+
+// ── the composer's file picker ─────────────────────────────────────────
+//
+// Every rule here is the server's, and the one that was missing is the one that
+// bounds the *request* rather than a file: `maxChatFiles` says how many may
+// travel, never how much. Five 20 MB videos passed the count check and the
+// per-file check on every client, and the server then refused the batch — for
+// most of this route's life not even with its own sentence, because the route
+// carried no body budget of its own and the transport answered first with
+// "request body too large" (#2932).
+describe('picking files for a message', () => {
+  /** Hands the hidden input a set of picked files, as the browser would. */
+  async function pick(w, files) {
+    const input = w.find('input[type="file"]')
+    Object.defineProperty(input.element, 'files', { value: files, configurable: true })
+    await input.trigger('change')
+  }
+
+  /** A stand-in for a picked File — the composer reads `size` and `name`. */
+  function file(mb, name) {
+    return { name, size: Math.round(mb * 1024 * 1024) }
+  }
+
+  it('queues an ordinary screenshot', async () => {
+    const w = await rail()
+    toast.warning.mockClear()
+    await pick(w, [file(2, 'Экран.png')])
+    expect(w.findAll('[data-testid="conference-chat-pending"]')).toHaveLength(1)
+    expect(toast.warning).not.toHaveBeenCalled()
+    w.unmount()
+  })
+
+  it('refuses the file that takes the batch over the ceiling, and keeps the rest', async () => {
+    const w = await rail()
+    toast.warning.mockClear()
+    // Each one is legal on its own; the third is what makes the request illegal.
+    await pick(w, [file(10, 'а.mp4'), file(10, 'б.mp4'), file(10, 'в.mp4')])
+
+    expect(w.findAll('[data-testid="conference-chat-pending"]')).toHaveLength(2)
+    expect(toast.warning).toHaveBeenCalledTimes(1)
+    expect(toast.warning.mock.calls[0][0]).toContain('25 МБ')
+    w.unmount()
+  })
+
+  it('sends only what it queued', async () => {
+    const w = await rail()
+    await pick(w, [file(10, 'а.mp4'), file(10, 'б.mp4'), file(10, 'в.mp4')])
+    await w.find('[data-testid="conference-chat-send"]').trigger('click')
+    await flushPromises()
+
+    const sent = api.postMessageWithFiles.mock.calls[0][2]
+    expect(sent.map((f) => f.name)).toEqual(['а.mp4', 'б.mp4'])
+    w.unmount()
+  })
+
+  // Negative controls: the two rules that already worked keep their own wording,
+  // so the batch line does not quietly take over every refusal.
+  it('still names an over-sized single file', async () => {
+    const w = await rail()
+    toast.warning.mockClear()
+    await pick(w, [file(30, 'Огромное.mov')])
+    expect(w.findAll('[data-testid="conference-chat-pending"]')).toHaveLength(0)
+    expect(toast.warning.mock.calls[0][0]).toContain('Огромное.mov')
+    w.unmount()
+  })
+
+  it('still refuses a sixth file', async () => {
+    const w = await rail()
+    toast.warning.mockClear()
+    const six = Array.from({ length: 6 }, (_, i) => file(0.1, `f${i}.png`))
+    await pick(w, six)
+    expect(w.findAll('[data-testid="conference-chat-pending"]')).toHaveLength(5)
+    expect(toast.warning).toHaveBeenCalledTimes(1)
     w.unmount()
   })
 })

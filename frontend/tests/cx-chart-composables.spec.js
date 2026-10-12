@@ -3,7 +3,8 @@ import { setActivePinia, createPinia } from 'pinia'
 import { ref, computed, defineComponent, h } from 'vue'
 import { mount } from '@vue/test-utils'
 
-import { useChartLanes } from '@/composables/useChartLanes'
+import { useThemeStore } from '@/stores/theme'
+import { useChartLanes, MILESTONE_COLORS } from '@/composables/useChartLanes'
 import { useChartRows, ROW_H, SUB_STEP } from '@/composables/useChartRows'
 import { useChartTimeline, ZOOM, DEFAULT_ZOOM_IDX } from '@/composables/useChartTimeline'
 import { DAY_MS, startOfDay, spanOf, parseDate } from '@/utils/timeAxis'
@@ -44,6 +45,7 @@ function lanesFor(source, opts = {}) {
       groupMode: ref(opts.groupMode || 'none'),
       tagPrefix: ref(opts.tagPrefix || ''),
       estCfg: ref(opts.estCfg || { unit: 'hours' }),
+      milestones: ref(opts.milestones || []),
     }),
   ).api
 }
@@ -94,7 +96,34 @@ describe('useChartLanes', () => {
     })
     // t2 is filtered out by the prefix, so the lane is the area:: tag, not the first id.
     expect(lanes.value.map((l) => l.key)).toEqual(['t1'])
-    expect(lanes.value[0].label).toBe('area::be')
+    // Captioned like the board's tag column: the namespace the grouping is already
+    // narrowed to is not repeated in every lane (see cx-tag-lane-caption).
+    expect(lanes.value[0].label).toBe('be')
+  })
+
+  // v2 (#2959): milestone lanes in the project's milestone order, coloured by
+  // position (milestones have no colour), «Без этапа» last, «X из N» counted.
+  it('groups by milestone in milestone order, the rest in «Без этапа» last', () => {
+    const milestones = [
+      { id: 'm1', title: 'Релиз 1', due_date: day(20) },
+      { id: 'm2', title: 'Релиз 2' },
+    ]
+    const { lanes } = lanesFor(
+      [
+        task('a', { milestone_id: 'm2' }),
+        task('b'),
+        task('c', { milestone_id: 'm1', completed_at: day(11) }),
+        task('d', { milestone_id: 'm1' }),
+      ],
+      { groupMode: 'milestone', milestones },
+    )
+    expect(lanes.value.map((l) => l.key)).toEqual(['m1', 'm2', '∅'])
+    expect(lanes.value[0].milestone.title).toBe('Релиз 1')
+    expect(lanes.value[0].color).toBe(MILESTONE_COLORS[0])
+    expect(lanes.value[1].color).toBe(MILESTONE_COLORS[1])
+    expect(lanes.value[0].done).toBe(1)
+    expect(lanes.value[2].label).toBe('Без этапа')
+    expect(lanes.value[2].tasks.map((x) => x.id)).toEqual(['b'])
   })
 
   it('keeps the incoming order inside a lane — this is what carries the Gantt «Авто» order', () => {
@@ -130,6 +159,7 @@ function rowsFor(lanes, opts = {}) {
       bodyTop: ref(0),
       bodyEl: ref(null),
       ...(opts.laneH0 != null ? { laneH0: opts.laneH0 } : {}),
+      ...(opts.collapsed ? { collapsedLanes: ref(new Set(opts.collapsed)) } : {}),
     }),
   ).api
 }
@@ -142,6 +172,28 @@ describe('useChartRows', () => {
     ]
     const { flatRows } = rowsFor(lanes)
     expect(flatRows.value.map((r) => r.key)).toEqual(['Ll1', 'a', 'b', 'Ll2', 'c'])
+  })
+
+  // v2 (#2959): a milestone lane closes with the milestone's own row; a folded
+  // lane is its header alone.
+  it('closes a milestone lane with its row and folds a collapsed lane', () => {
+    const lanes = [
+      { key: 'm1', milestone: { id: 'm1', due_date: day(20) }, tasks: [task('a')] },
+      { key: 'm2', milestone: { id: 'm2' }, tasks: [task('b')] },
+      { key: 'l3', tasks: [task('c')] },
+    ]
+    expect(rowsFor(lanes).flatRows.value.map((r) => r.key)).toEqual([
+      'Lm1',
+      'a',
+      'Mm1',
+      'Lm2',
+      'b',
+      'Ll3',
+      'c',
+    ])
+    const folded = rowsFor(lanes, { collapsed: ['m1'] })
+    expect(folded.flatRows.value.map((r) => r.key)).toEqual(['Lm1', 'Lm2', 'b', 'Ll3', 'c'])
+    expect(folded.rowH({ t: 'ms' })).toBe(ROW_H)
   })
 
   it('grows a row by SUB_STEP per scheduled subtask, ignoring undated ones', () => {
@@ -225,9 +277,56 @@ describe('useChartTimeline', () => {
     expect(zoomIdx.value).toBe(ZOOM.length - 1)
     applyZoom(-5)
     expect(zoomIdx.value).toBe(0)
-    expect(tier.value).toBe('weeks')
+    expect(tier.value).toBe('quarters')
     zoomOut()
     expect(zoomIdx.value).toBe(0)
+  })
+
+  // v2 (#2959): the toolbar's «День / Неделя / Месяц» presets, «Квартал» since #3021.
+  it('jumps to a scale preset and reports the scale the zoom sits in', async () => {
+    const { scale, setScale, dayW, zoomIn } = timelineFor([task('a')])
+    expect(scale.value).toBe('days')
+    expect(dayW.value).toBe(24)
+    setScale('weeks')
+    expect(dayW.value).toBe(10)
+    expect(scale.value).toBe('weeks')
+    setScale('months')
+    expect(scale.value).toBe('months')
+    zoomIn()
+    expect(scale.value).toBe('months') // 6px/day still groups by months
+    setScale('quarters')
+    expect(dayW.value).toBe(2)
+    expect(scale.value).toBe('quarters')
+    setScale('days')
+    expect(scale.value).toBe('days')
+  })
+
+  it('breaks the week bands on the preferred first day of the week', () => {
+    // The weeks tier is the only zoom level that draws them; band `key` is the
+    // band's first day, so its weekday is what the preference has to move.
+    const firstDays = () => {
+      const { weekBands, setScale } = timelineFor([
+        task('a', { start_date: day(5), due_date: day(40) }),
+      ])
+      setScale('weeks') // the weeks tier (v2 preset; zoom 0 is months now)
+      return weekBands.value.slice(1).map((b) => new Date(b.key).getDay())
+    }
+    expect(new Set(firstDays())).toEqual(new Set([1])) // default: Monday
+    useThemeStore().weekStart = 0
+    expect(new Set(firstDays())).toEqual(new Set([0])) // Sunday
+  })
+
+  it('breaks the days tier’s week ranges on the same preferred day (v2)', () => {
+    const firstDays = () => {
+      const { weekRangeBands, setScale } = timelineFor([
+        task('a', { start_date: day(5), due_date: day(40) }),
+      ])
+      setScale('days')
+      return weekRangeBands.value.slice(1).map((b) => new Date(b.key).getDay())
+    }
+    expect(new Set(firstDays())).toEqual(new Set([1]))
+    useThemeStore().weekStart = 0
+    expect(new Set(firstDays())).toEqual(new Set([0]))
   })
 
   it('keeps only milestones whose due date lands inside the axis range', () => {

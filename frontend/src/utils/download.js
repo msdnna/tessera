@@ -1,5 +1,5 @@
 import { tasks as tasksApi } from '@/api'
-import { isTauri } from '@/utils/serverBase'
+import { handOffBlob } from '@/utils/blobHandoff'
 
 // saveAttachment pulls a task attachment down and hands it to the user.
 //
@@ -11,27 +11,13 @@ import { isTauri } from '@/utils/serverBase'
 // Returns 'saved' (desktop, written to a path the user picked), 'downloaded'
 // (web, handed to the browser — which reports it itself, so callers stay quiet)
 // or 'cancelled'. Throws on a failed request — callers surface the message.
+//
+// The desktop Save-as path used to live here, which is how it came to be the one
+// download of the six that worked in the shell; it now sits in handOffBlob, next
+// to the browser path it replaces.
 export async function saveAttachment(id, filename) {
   const res = await tasksApi.downloadAttachment(id)
-  // Desktop: a real "Save as…" dialog + write to disk (the webview can't drive
-  // an <a download> file save). Web keeps the anchor-download path.
-  if (isTauri()) {
-    const { save } = await import('@tauri-apps/plugin-dialog')
-    const { writeFile } = await import('@tauri-apps/plugin-fs')
-    const path = await save({ defaultPath: filename })
-    if (!path) return 'cancelled'
-    await writeFile(path, new Uint8Array(await res.data.arrayBuffer()))
-    return 'saved'
-  }
-  const url = URL.createObjectURL(res.data)
-  const a = document.createElement('a')
-  a.href = url
-  a.download = filename
-  document.body.appendChild(a)
-  a.click()
-  a.remove()
-  URL.revokeObjectURL(url)
-  return 'downloaded'
+  return handOffBlob(res.data, filename)
 }
 
 // ATTACHMENT_HREF_RE matches the links the editor inserts for task files. The

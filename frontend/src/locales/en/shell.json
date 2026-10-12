@@ -1,12 +1,10 @@
 {
   "nav": {
-    "home": "Home",
-    "notes": "Notes",
+    "inbox": "Inbox",
+    "home": "My tasks",
     "documents": "Documents",
     "conferences": "Conferences",
-    "reminders": "Reminders",
-    "milestones": "Milestones",
-    "newBadge": "new"
+    "milestones": "Milestones"
   },
   "workspace": {
     "create": "New workspace",
@@ -22,6 +20,12 @@
   },
   "tree": {
     "projects": "Projects",
+    "favorites": "Favourites",
+    "favoriteOpen": "Open",
+    "favoriteRemove": "Remove from favourites",
+    "favoriteRemoved": "“{name}” removed from favourites",
+    "favoriteRestored": "“{name}” is back in favourites",
+    "favoriteRestoreFailed": "Couldn't put the board back into favourites",
     "add": "Add",
     "addProject": "Project",
     "addGroup": "Group",
@@ -37,7 +41,12 @@
     "delete": "Delete group",
     "deleteConfirm": "Subgroups will be deleted, projects will lose their group. Delete?",
     "deleteTitle": "Delete the group “{name}”?",
-    "deleteWarning": "Subgroups will be deleted, projects will lose their group. This cannot be undone."
+    "deleteWarning": "Subgroups will be deleted, projects will lose their group. This cannot be undone.",
+    "appearance": "Icon and colour…",
+    "namePlaceholder": "Group name",
+    "deleteArmed": "Delete “{name}” for good?",
+    "deleteArmedSub": "subgroups go, projects lose the group · no undo",
+    "deleteFailed": "Couldn't delete"
   },
   "user": {
     "profile": "Profile",
@@ -46,7 +55,8 @@
     "help": "Help",
     "helpCenter": "Help centre",
     "admin": "Administration",
-    "logout": "Log out"
+    "logout": "Log out",
+    "more": "More"
   },
   "tools": {
     "members": "Members",
@@ -62,49 +72,281 @@
     "darkTheme": "Dark theme"
   },
   "search": {
-    "placeholder": "Search tasks, notes and documents…",
+    "placeholder": "Search tasks, boards and commands",
+    "placeholderBoard": "Search this board and workspace…",
+    "boardNone": "Nothing on this board — results from the whole workspace",
     "tasks": "Tasks",
     "notes": "Notes",
     "documents": "Documents",
     "untitled": "Untitled",
     "help": "Help",
     "nothing": "Nothing found",
-    "hint": "Searches task titles and descriptions, note titles and text, document titles and help articles"
+    "everywhere": "Search everywhere",
+    "failed": "Search failed",
+    "more": "Showing the first {n} — narrow the search",
+    "hint": "Searches task numbers, titles and descriptions, note titles and text, document titles and help articles",
+    "nothingHint": "Searched tasks, notes, documents and help"
   },
   "members": {
     "title": "Workspace members",
     "owner": "Owner",
     "admin": "Admin",
     "member": "Member",
-    "removeConfirm": "Remove this member from the workspace?",
-    "invitations": "Invitations",
-    "inviteLabel": "Invite by email",
+    "cannotSelf": "You cannot demote or remove yourself from the workspace — ask another admin",
+    "cannotOwner": "The workspace owner cannot be demoted or removed",
+    "cannotManage": "Only the workspace owner or an admin can change the member list",
+    "readOnly": "Read-only list: the workspace owner or an admin changes who is here.",
+    "removeConfirm": "Remove from the workspace for sure?",
+    "inviteExpired": "Expired",
+    "inviteUntil": "until {date}",
     "emailPlaceholder": "user{'@'}example.com",
     "invite": "Invite",
     "inviteHint": "A registered user is added right away; a new one gets an invitation link.",
     "added": "Member added",
     "inviteCreated": "Invitation created — copy the link",
     "roleUpdated": "Role updated",
-    "linkCopied": "Link copied"
+    "linkCopied": "Link copied",
+    "windowTitle": "Members",
+    "navMembers": "Members",
+    "navInvites": "Invitations",
+    "navGroups": "Groups",
+    "navRoles": "Roles and permissions",
+    "summary": "{n} person | {n} people",
+    "pendingSummary": "{n} invitation waiting | {n} invitations waiting",
+    "guest": "Guest",
+    "transfer": "transfer ownership",
+    "adminNote": "members, groups, settings",
+    "memberNote": "tasks, boards, documents",
+    "remove": "Remove from the workspace",
+    "badEmail": "«{email}» doesn't look like an email address",
+    "inviteN": "Invite {n}",
+    "or": "or",
+    "nextAddress": "next address",
+    "linkLabel": "Invite link",
+    "copy": "Copy",
+    "waiting": "Waiting for an answer",
+    "resend": "Resend",
+    "extend": "Extend",
+    "revoke": "Revoke",
+    "revoked": "Invitation for {email} revoked",
+    "revokeUndone": "Invitation for {email} is back — with a new link",
+    "noInvites": "No invitations — everyone invited is already here.",
+    "filter": "Find a member",
+    "noMatch": "Nobody matches",
+    "youShort": "you",
+    "ownerIs": "Owner — {name}",
+    "inviteKey": "invite",
+    "inviteDeclined": "Declined",
+    "sentAgo": "sent {when}",
+    "resent": "Invitation for {email} sent again",
+    "extended": "Invitation for {email} extended and sent",
+    "resendWait": "The email has just gone out — you can resend in a minute",
+    "lastLink": "Invitation link",
+    "lastLinkFor": "Link for {email}",
+    "sharedNone": "not created — whoever you give it to can join",
+    "sharedCreate": "Create",
+    "sharedResetBtn": "Reset",
+    "sharedHidden": "The link is shown once, when it is created. Reset it to get a new one — the previous one will stop working.",
+    "sharedHiddenShort": "hidden · reset to copy",
+    "sharedCreated": "Invitation link created",
+    "sharedReset": "A new link is ready — the previous one no longer works",
+    "sharedChanged": "Link settings changed — the previous link no longer works",
+    "sharedOff": "Invitation link turned off",
+    "sharedRole": "Role",
+    "sharedTtl": "Valid for",
+    "sharedUses": "How many people",
+    "sharedRevoke": "Turn the link off",
+    "sharedRevokeConfirm": "Turn it off? Nobody else will join by it",
+    "days": "{n} day | {n} days",
+    "people": "{n} person | {n} people",
+    "usesOf": "{n}/{max}",
+    "sharedUsesTitle": "Joined by the link: {uses}",
+    "guestNote": "chosen projects only",
+    "transferTitle": "Hand over ownership — {name}",
+    "transferSub": "The new owner gets the whole workspace; you stay in it as an admin. Only they can hand it back.",
+    "transferType": "Type the workspace name",
+    "transferHint": "The button turns on when the name matches.",
+    "transferGo": "Hand over ownership",
+    "transferOwnerOnly": "Only the owner can hand the workspace over",
+    "transferDone": "{name} now owns the workspace",
+    "leave": "Leave the workspace",
+    "leaveConfirm": "Leave for sure?",
+    "leaveOwner": "The owner can’t leave — hand the workspace over first",
+    "left": "You left “{name}”",
+    "activity": {
+      "now": "now",
+      "min": "{n} min ago",
+      "h": "{n} h ago",
+      "yesterday": "yesterday",
+      "days": "{n} day ago | {n} days ago",
+      "never": "never"
+    },
+    "seenAt": "In the app: {at}",
+    "activeAt": "Last action here: {at}",
+    "requests": "Asking for access",
+    "requestsSummary": "{n} access request | {n} access requests",
+    "requestFrom": "from the board “{board}”",
+    "requestApprove": "Let in",
+    "requestDecline": "Decline",
+    "requestApproved": "{name} is a member now",
+    "requestDeclined": "{name}’s request declined",
+    "spaceLink": "Workspace link",
+    "spaceLinkHint": "whoever opens it can ask for access",
+    "groupsSummary": "{n} group | {n} groups",
+    "groupsLead": "Groups name several members at once: assign one to a task or mention it with {'@'}. A group grants no rights.",
+    "groupNew": "New group — a name and ↵",
+    "groupDelete": "Delete the group",
+    "groupDeleted": "Group “{name}” deleted",
+    "groupRestored": "Group “{name}” restored",
+    "groupCount": "{n} member | {n} members",
+    "groupEdit": "Members",
+    "groupPeople": "Who is in it",
+    "groupEmpty": "Nobody in the group yet",
+    "groupsNone": "No groups yet — the owner or an admin makes them.",
+    "groupsNoneManager": "No groups yet. Name the first one — say, “Frontend”.",
+    "rolesLead": "What each role may do in this workspace. The rights are built into the app; custom roles come later.",
+    "rolesEditor": "Customise roles",
+    "rolesNote": "Guests with access to chosen projects and custom roles are in the works.",
+    "rights": {
+      "work": "Tasks, boards and comments",
+      "docs": "Documents, notes and meetings",
+      "groupsUse": "Assign and mention groups",
+      "invite": "Invite and remove members",
+      "roles": "Change roles (except the owner’s)",
+      "requests": "Decide access requests",
+      "groupsEdit": "Make and change groups",
+      "settings": "Workspace name, look and settings",
+      "transfer": "Hand over ownership",
+      "delete": "Delete the workspace",
+      "leave": "Leave the workspace"
+    },
+    "requestMessage": "“{text}”"
   },
   "commands": {
     "title": "Editor commands",
-    "hint": "Your own commands are only suggested in the editor and stay in the comment text — the recipient carries them out, not Tessera. The built-in commands below are executed by the server and cut out of the text.",
+    "hint": "Your own commands are only suggested in the editor and stay in the comment text — the recipient carries them out, not Tessera. The built-in ones (the next section) are executed by the server and cut out of the text.",
     "descPlaceholder": "Approve the plan",
     "empty": "No commands of your own yet — the popup will show only the built-in ones.",
-    "add": "Add command",
-    "builtin": "Built-in commands ({count})",
     "error": {
       "empty": "empty key",
       "charset": "latin letters, digits, _ and -",
       "builtin": "built-in command",
       "duplicate": "duplicate",
       "tooLong": "description longer than 200 characters"
-    }
+    },
+    "windowTitle": "Commands",
+    "navCustom": "Your commands",
+    "navBuiltin": "Built-in",
+    "navSoon": "Coming",
+    "navMacros": "Macros",
+    "navTemplates": "Templates",
+    "aside": "suggested in the editor on",
+    "footShared": "Shared by the workspace; the owner and admins edit them",
+    "footSave": "Saved on Enter",
+    "summary": "{n} command | {n} commands",
+    "new": "Command",
+    "colKey": "Trigger",
+    "colDesc": "Description",
+    "keyPlaceholder": "approve",
+    "keyField": "field",
+    "keySave": "save",
+    "keyCancel": "cancel",
+    "blocked": "Fix /{key} first — the server won't take the dictionary with it",
+    "addRow": "New command — the key, then Tab",
+    "readOnly": "Only the workspace owner or an admin can edit the dictionary",
+    "builtinNote": "run by the server and cut out of the text",
+    "edit": "Edit",
+    "up": "Move up",
+    "down": "Move down",
+    "deleted": "Command /{key} deleted",
+    "restored": "Command /{key} restored",
+    "macro": {
+      "soon": "Soon · #3099 — running a pipeline",
+      "needBoard": "Open a board — the task is created on it",
+      "missedTags": "No such tags in the project: {tags}",
+      "action": {
+        "create_task": "Create a task",
+        "open_link": "Link",
+        "create_document": "Document from a template",
+        "run_pipeline": "Pipeline"
+      },
+      "pipelineStarted": "Pipeline #{id} started · {project}",
+      "open": "Open",
+      "summary": "{n} command · shared ones are seen by everybody | {n} commands · shared ones are seen by everybody",
+      "new": "New command",
+      "mine": "mine",
+      "remove": "Delete the command",
+      "removeConfirm": "Delete?",
+      "empty": "No commands yet — «New command» or N",
+      "vis": {
+        "all": "All",
+        "shared": "Shared",
+        "mine": "Only mine"
+      },
+      "col": {
+        "name": "Name",
+        "call": "Call",
+        "action": "Action",
+        "keys": "Keys"
+      },
+      "fromTemplate": "From the template",
+      "noTemplate": "No template",
+      "template": "Task template",
+      "tags": "Tags",
+      "priority": "Priority",
+      "assignMe": "Assignee — me",
+      "currentStage": "Stage — current",
+      "docTemplate": "Document template",
+      "docTitle": "Document title",
+      "newPipeline": "New pipeline",
+      "retryFailed": "Retry the last failed",
+      "ref": "Branch",
+      "variables": "Variables (KEY=VALUE per line)",
+      "category": "Category",
+      "shared": "Shared",
+      "onlyMine": "Only mine",
+      "keysPlaceholder": "press the keys",
+      "keysTaken": "Keys taken: «{what}»",
+      "keysTakenMacro": "Keys taken by another command",
+      "keysNeedMod": "Needs a modifier: ⌥, ⌘ or ⇧ with a letter",
+      "triggerTaken": "The call >{trigger} is taken"
+    },
+    "tpl": {
+      "summary": "{n} task template | {n} task templates",
+      "new": "New template",
+      "remove": "Delete the template",
+      "empty": "No templates yet",
+      "name": "Name",
+      "taskTitle": "Task title",
+      "description": "Description (Markdown, a checklist is «- [ ]»)",
+      "descriptionPlaceholder": "## Steps\n- [ ] ",
+      "subtasks": "Subtasks — one per line",
+      "subtasksN": "{n} subtask | {n} subtasks",
+      "saveHint": "⌘↵ saves, Esc cancels"
+    },
+    "navPalette": "Palette ⌘K"
   },
   "layout": {
-    "resize": "Drag to resize (double-click to collapse)",
+    "collapse": "Collapse the sidebar",
+    "expand": "Expand the sidebar",
     "projectGone": "The project was deleted or moved to another workspace — opened “Home”"
+  },
+  "servers": {
+    "addTitle": "Add server",
+    "editTitle": "Server settings",
+    "name": "Name",
+    "namePlaceholder": "e.g. “Work”",
+    "url": "Address",
+    "urlPlaceholder": "https://tessera.example.com",
+    "remove": "Remove server",
+    "insecure": "Skip certificate check",
+    "insecureNote": "The setting is saved but has no effect yet: certificate checking can only be turned off for the whole application — that is a task of its own.",
+    "errUrl": "That does not look like a server address",
+    "errUrlScheme": "The address must start with http:// or https://",
+    "signedOut": "Sign-in required",
+    "removeArmed": "Really remove? Press again",
+    "removeArmedTitle": "Remove «{name}»?",
+    "removeArmedSub": "The session ends; you will have to enter the address again"
   },
   "spotlight": {
     "aria": "Hint",
@@ -114,7 +356,10 @@
     "server": "Server address",
     "themeLight": "Light theme",
     "themeDark": "Dark theme",
-    "languageSwitchTo": "Switch to {lang}"
+    "languageSwitchTo": "Switch to {lang}",
+    "theme": "Theme",
+    "build": "Tessera {version} · {host}",
+    "serverPlaceholder": "https://tessera.example.com"
   },
   "home": {
     "greeting": "Hi, {name} 👋",
@@ -127,10 +372,557 @@
       "week": "This week",
       "completed": "Completed"
     },
-    "empty": "Nothing here yet"
+    "empty": "Nothing here yet",
+    "title": "My tasks",
+    "greet": {
+      "morning": "Good morning, {name}",
+      "day": "Good afternoon, {name}",
+      "evening": "Good evening, {name}",
+      "night": "Good night, {name}"
+    },
+    "pill": {
+      "today": "{n} for today",
+      "overdue": "{n} overdue",
+      "review": "{n} waits for your review | {n} wait for your review"
+    },
+    "section": {
+      "overdue": "Overdue",
+      "today": "Today",
+      "week": "This week",
+      "later": "Later",
+      "nodate": "No due date"
+    },
+    "allClear": "No open tasks on you",
+    "rowHint": {
+      "open": "open",
+      "complete": "complete",
+      "due": "due"
+    },
+    "quick": {
+      "placeholder": "New task: “Call tomorrow 11:00 !high #tag {'@'}name”",
+      "hintTyping": "create",
+      "hintBoard": "board",
+      "hintIdle": "from anywhere",
+      "untitled": "Untitled",
+      "in": "in",
+      "noBoard": "No board to put the task on",
+      "taskTitle": "Task “{title}”"
+    },
+    "side": {
+      "week": "Week",
+      "weekDone": "{done} of {total} done"
+    },
+    "snooze": {
+      "tomorrow": "Tomorrow",
+      "dayAfter": "In two days",
+      "monday": "On Monday",
+      "week": "In a week",
+      "done": "Due moved to {when}"
+    }
   },
   "notFound": {
-    "title": "Page not found",
-    "text": "There is no such page, or it has been moved."
+    "title": "There is no such page",
+    "text": "It may have been renamed or moved to another workspace.",
+    "back": "Back"
+  },
+  "keys": {
+    "then": "then",
+    "groups": {
+      "nav": "Navigation",
+      "board": "Board",
+      "card": "Selected card",
+      "create": "Quick create",
+      "palette": "Command palette",
+      "view": "View",
+      "task": "Open task",
+      "chart": "Gantt and timeline",
+      "sidebar": "Sidebar and spaces",
+      "views": "Saved views",
+      "project": "«Project» window",
+      "stage": "Milestone page",
+      "inbox": "Inbox",
+      "list": "List",
+      "calendar": "Calendar",
+      "matrix": "Matrix",
+      "settings": "Settings",
+      "admin": "Administration",
+      "notifications": "Notifications",
+      "meet": "Conferences",
+      "window": "Large windows",
+      "editor": "Editor",
+      "toasts": "Pop-ups"
+    },
+    "nav": {
+      "palette": "Search and commands",
+      "goBoard": "Go to board",
+      "goInbox": "Inbox — open / hide",
+      "goMine": "My tasks",
+      "sidebar": "Hide / show sidebar",
+      "shortcuts": "This cheat sheet",
+      "goSidebar": "Focus the sidebar tree",
+      "goRail": "Focus the spaces rail",
+      "goStage": "The board’s milestone page",
+      "goNotifications": "Notifications under the bell",
+      "help": "Help centre",
+      "goJobs": "Background jobs"
+    },
+    "board": {
+      "addTask": "Task in the hovered column",
+      "quick": "Quick actions",
+      "filter": "Filter",
+      "group": "Grouping",
+      "layout": "View: kanban / list / timeline / Gantt / calendar / matrix",
+      "select": "Select a card",
+      "stage": "Pick a milestone in the sub-toolbar",
+      "stageStrip": "Fold / unfold the milestone strip",
+      "favorite": "Board to / from favourites",
+      "exportCsv": "Export the board to CSV",
+      "exportJson": "Export the board to JSON",
+      "import": "Import tasks from CSV/JSON"
+    },
+    "card": {
+      "open": "Open",
+      "complete": "Complete",
+      "status": "Status",
+      "assignees": "Assignees",
+      "priority": "Priority",
+      "due": "Due date",
+      "tags": "Tags",
+      "subtask": "Subtask",
+      "move": "Move to column"
+    },
+    "create": {
+      "task": "Task in “To do”",
+      "reminder": "Reminder",
+      "note": "Note"
+    },
+    "palette": {
+      "select": "Select a result",
+      "actions": "Result actions",
+      "open": "Open",
+      "prefix": "Only tasks / people / commands"
+    },
+    "view": {
+      "theme": "Toggle theme",
+      "cardSize": "Card size",
+      "collapse": "Collapse column",
+      "panel": "«Board view» panel"
+    },
+    "go": {
+      "documents": "Documents",
+      "milestones": "Milestones",
+      "settings": "Settings"
+    },
+    "title": "Keyboard shortcuts",
+    "button": "Shortcuts",
+    "search": "Find an action or a key",
+    "nothing": "Nothing found",
+    "footBefore": "Keys show up in tooltips and menu items. This window opens with",
+    "footAfter": "from anywhere.",
+    "task": {
+      "estimate": "Estimate",
+      "milestone": "Stage",
+      "parent": "Parent (make a subtask)",
+      "relation": "Link to a task",
+      "next": "Next task",
+      "prev": "Previous task",
+      "close": "Close the task",
+      "remind": "Remind about the task (1–3, D — date)",
+      "note": "A note on the task",
+      "editDesc": "Edit the description"
+    },
+    "editor": {
+      "bold": "Bold",
+      "italic": "Italic",
+      "strike": "Strikethrough",
+      "code": "Code",
+      "link": "Link",
+      "orderedList": "Numbered list",
+      "bulletList": "Bulleted list",
+      "send": "Send or save",
+      "quote": "Quote the selection in a reply",
+      "write": "Fullscreen editor: Write",
+      "split": "Fullscreen editor: Side by side",
+      "preview": "Fullscreen editor: Preview"
+    },
+    "chart": {
+      "today": "Jump to today",
+      "scroll": "Scroll in time",
+      "zoom": "Zoom",
+      "select": "Select a task",
+      "shift": "Shift the dates by a day",
+      "open": "Open the task"
+    },
+    "undo": {
+      "last": "Undo the last action"
+    },
+    "toast": {
+      "focus": "Go to the pop-ups · F6 again — the other lane",
+      "move": "Walk the pop-ups",
+      "primary": "The pop-up's main action",
+      "reply": "Reply to a comment or mention",
+      "snooze": "Snooze a reminder · done",
+      "close": "Close the pop-up",
+      "closeAll": "Close all in the lane"
+    },
+    "row": {
+      "rename": "Rename",
+      "renameR": "Rename",
+      "new": "New inside the selected",
+      "menu": "Row menu",
+      "menuF10": "Row menu",
+      "open": "Open",
+      "icon": "Icon and colour",
+      "slug": "Change address",
+      "move": "Move to another space",
+      "copyLink": "Copy link",
+      "settings": "Project settings",
+      "archive": "Archive",
+      "delete": "Delete"
+    },
+    "col": {
+      "rename": "Rename the column",
+      "delete": "Delete the column",
+      "move": "Move the column",
+      "moveLeft": "Move the column left",
+      "moveRight": "Move the column right"
+    },
+    "form": {
+      "project": "Create a project",
+      "board": "Create a board",
+      "group": "Create a group",
+      "workspace": "Create a space"
+    },
+    "views": {
+      "update": "Update the loaded view",
+      "saveAs": "Save the board as a new view",
+      "reset": "Discard changes to the view",
+      "pick": "View by position (0 — none), in the panel and the chip menu",
+      "rename": "Rename the view",
+      "delete": "Delete the view",
+      "move": "Move the view up / down"
+    },
+    "project": {
+      "window": "«Project» window of the current project",
+      "blankBoard": "A blank board on an empty project’s screen"
+    },
+    "tags": {
+      "select": "Select a tag row · a range",
+      "rename": "Rename a tag",
+      "new": "New tag or milestone · filter",
+      "bulk": "Merge · recolour · delete the selected tags"
+    },
+    "stage": {
+      "edit": "Edit the milestone goals",
+      "board": "The milestone board",
+      "close": "Close the milestone",
+      "back": "Back"
+    },
+    "inbox": {
+      "select": "Select a record",
+      "filter": "Filter: all · reminders · notes · this board",
+      "open": "Open the record",
+      "done": "Complete the reminder",
+      "snooze": "Snooze",
+      "toTask": "Turn into a task",
+      "toDoc": "Turn into a document",
+      "link": "Tie to a task",
+      "delete": "Delete (undo ⌘Z)"
+    },
+    "list": {
+      "select": "Select a row",
+      "extend": "Select several rows",
+      "fold": "Fold / unfold the group",
+      "rename": "Rename in place",
+      "reorder": "Move up / down in the column"
+    },
+    "cal": {
+      "today": "Go to today",
+      "days": "Move by days",
+      "period": "Month or week back / forward",
+      "pick": "Tasks of the day: pick, open",
+      "shift": "On a picked task — due by a day",
+      "add": "Task on the picked day"
+    },
+    "matrix": {
+      "pin": "Pin into the next quadrant",
+      "auto": "Back to the automatic place"
+    },
+    "settings": {
+      "sections": "Settings sections"
+    },
+    "admin": {
+      "search": "Search users",
+      "rows": "Move between users",
+      "menu": "User actions"
+    },
+    "notifications": {
+      "select": "Pick a notification",
+      "open": "Open the notification",
+      "read": "Mark it read",
+      "readAll": "Mark all read"
+    },
+    "meet": {
+      "schedule": "Schedule a conference",
+      "instant": "Instant conference",
+      "join": "Join the live or nearest one",
+      "mic": "In a call: microphone",
+      "cam": "In a call: camera",
+      "leave": "Leave the call",
+      "minimize": "Fold the call into the mini window and back"
+    },
+    "win": {
+      "section": "Window sections",
+      "close": "Close a menu, an edit or the window",
+      "filter": "Filter the section",
+      "new": "New row in the section"
+    },
+    "gitlab": {
+      "sync": "GitLab: sync now"
+    },
+    "journal": {
+      "retry": "Journal: retry a failed push",
+      "resolve": "Journal: resolve the conflict"
+    },
+    "conflict": {
+      "pick": "Conflict: base · Tessera · GitLab",
+      "merge": "Conflict: merge by hand",
+      "task": "Conflict: next or previous task",
+      "apply": "Conflict: apply and push"
+    },
+    "jobs": {
+      "stop": "Job: stop",
+      "follow": "Job: follow the log",
+      "copyLog": "Job: copy the log"
+    },
+    "members": {
+      "invite": "Members: invite",
+      "copyLink": "Members: copy the invitation link"
+    },
+    "commands": {
+      "edit": "Commands: edit the row, save",
+      "move": "Commands: reorder"
+    },
+    "tour": {
+      "next": "Tour: next",
+      "back": "Tour: back",
+      "abort": "Tour: stop"
+    },
+    "hint": {
+      "ok": "Hint: got it",
+      "close": "Hint: don’t show again"
+    },
+    "whatsnew": {
+      "go": "«What’s new»: main button",
+      "later": "«What’s new»: later"
+    },
+    "help": {
+      "tour": "The «Get started» tour"
+    },
+    "import": {
+      "next": "Import: next / import"
+    }
+  },
+  "palette": {
+    "placeholder": "Task, board, person or command…",
+    "placeholderTask": "Action or field…",
+    "placeholderField": {
+      "status": "Status…",
+      "assignees": "Assignee…",
+      "priority": "Priority…",
+      "due": "When? “fri 18:00”, “in 3 days”, “14.10”",
+      "tags": "Tag — find or create…",
+      "milestone": "Stage…",
+      "subtask": "Subtask title…"
+    },
+    "back": "back",
+    "nothing": "Nothing found",
+    "typeToSearch": "Start typing — tasks, boards, people and commands",
+    "sections": {
+      "all": "All",
+      "tasks": "Tasks",
+      "boards": "Boards & milestones",
+      "people": "People",
+      "commands": "Commands"
+    },
+    "groups": {
+      "recent": "Recent",
+      "favorites": "Favourites",
+      "tasks": "Tasks",
+      "boards": "Boards & milestones",
+      "commands": "Commands",
+      "people": "People",
+      "notes": "Notes & documents",
+      "help": "Help",
+      "actions": "Task actions",
+      "more": "More"
+    },
+    "board": "Board",
+    "milestone": "Milestone",
+    "until": "until {date}",
+    "personNeedsBoard": "Open a board to filter by this person",
+    "hint": {
+      "actions": "actions",
+      "open": "open",
+      "choose": "choose",
+      "apply": "apply"
+    },
+    "foot": {
+      "select": "select",
+      "open": "open",
+      "actions": "actions",
+      "newTab": "in a new tab",
+      "apply": "apply",
+      "options": "options",
+      "toActions": "to actions",
+      "toResults": "to results",
+      "prefixes": "# tasks · {'@'} people · > commands",
+      "taskActions": "Task actions · {n}"
+    },
+    "task": {
+      "status": "Change status",
+      "now": "Now: {value}",
+      "assignees": "Assignees",
+      "nobody": "Unassigned",
+      "priority": "Priority",
+      "due": "Due date",
+      "noDue": "No due date",
+      "tags": "Tags",
+      "noTags": "No tags",
+      "milestone": "Stage",
+      "noMilestone": "No stage",
+      "subtask": "Create subtask",
+      "subtaskPlaceholder": "Type a title and press ↵",
+      "subtaskCreated": "Subtask created",
+      "createTag": "Create tag “{name}”",
+      "copyLink": "Copy link",
+      "copied": "Link copied",
+      "newTab": "Open in a new tab"
+    },
+    "due": {
+      "today": "Today",
+      "tomorrow": "Tomorrow",
+      "nextWeek": "Next week",
+      "none": "Clear due date",
+      "from": "from “{text}”",
+      "calendar": "Pick on the calendar…",
+      "calHelpTitle": "Calendar in the palette",
+      "calHelpKeys": "Arrows move by day, PgUp / PgDn by month, T is today, ↵ picks. Tab goes back to the field.",
+      "calHelpMore": "Start, repeat and the reminder live in the task window, key D."
+    }
+  },
+  "quick": {
+    "menuTitle": "Quick create",
+    "menuThen": "N, then",
+    "allCommands": "All commands",
+    "title": {
+      "task": "New task in “To do”"
+    },
+    "placeholder": {
+      "task": "Task title"
+    },
+    "board": "Board"
+  },
+  "rail": {
+    "appearance": "Workspace appearance",
+    "add": "Add a workspace or a server"
+  },
+  "projectForm": {
+    "title": "New project",
+    "inGroup": "in group “{group}”",
+    "atRoot": "at the top of the space",
+    "name": "Name",
+    "namePlaceholder": "Project name",
+    "slug": "Address",
+    "fromName": "from the name",
+    "slugPlaceholder": "project-address",
+    "creating": "Creating…"
+  },
+  "workspaceForm": {
+    "createTitle": "New space",
+    "createSub": "Its own projects, people and access",
+    "styleTitle": "Space appearance",
+    "styleSub": "Seen by every member of “{name}”",
+    "look": "Colour and icon",
+    "lookRail": "Colour and icon on the rail",
+    "deleteTitle": "Delete “{name}” for good?",
+    "deleteSub": "Every project, board and task of the space will be deleted. This can’t be undone.",
+    "deleteForever": "Delete for good",
+    "deleteHint": "The button unlocks once the name matches.",
+    "typeName": "Type the name of the space",
+    "deleteSubCounts": "{what} will be deleted. This can’t be undone."
+  },
+  "paletteForm": {
+    "root": "At the top of the space",
+    "typed": "Typed in the line above",
+    "groupSub": "Where the sidebar cursor is",
+    "parentSub": "Inside which group",
+    "projectSub": "The project the board goes into",
+    "lookSub": "← → colour · ↑ ↓ icon",
+    "fields": {
+      "name": "Name",
+      "slug": "Address",
+      "group": "Group",
+      "project": "Project",
+      "look": "Icon and colour"
+    },
+    "fieldsTitle": {
+      "project": "Project fields",
+      "board": "Board fields",
+      "group": "Group fields",
+      "workspace": "Space fields"
+    },
+    "step": "step {n} of {total}",
+    "needName": "A name first",
+    "needProject": "No project for the board",
+    "created": {
+      "project": "Project “{name}” created",
+      "board": "Board “{name}” created",
+      "group": "Group “{name}” created",
+      "workspace": "Space “{name}” created"
+    },
+    "placeholder": {
+      "name": "Name",
+      "slug": "Address",
+      "group": "Find a group",
+      "project": "Find a project",
+      "look": "← → colour · ↑ ↓ icon"
+    },
+    "foot": {
+      "create": "create",
+      "next": "next field",
+      "back": "back",
+      "createOpen": "create and open"
+    },
+    "nextField": "next field",
+    "fill": "fill in",
+    "cmdSub": {
+      "project": "At the top of the space · step by step, no mouse",
+      "projectIn": "In group “{group}” · step by step, no mouse",
+      "board": "In project “{project}”",
+      "group": "In space “{space}”",
+      "workspace": "Its own projects, people and access"
+    }
+  },
+  "mobile": {
+    "back": "Back",
+    "board": "Board",
+    "search": "Search",
+    "nav": "Main navigation",
+    "appearance": "Appearance",
+    "whatsNew": "What's new",
+    "openTree": "Projects and boards",
+    "findBoard": "Find a board",
+    "swipeDone": "Done",
+    "swipeSnooze": "Snooze",
+    "swipeComplete": "Complete"
+  },
+  "noAccess": {
+    "title": "No access",
+    "text": "This workspace or board isn’t open to you. Ask for access — the owner or an admin will be notified.",
+    "messagePlaceholder": "A few words for the owner — optional",
+    "request": "Ask for access",
+    "sentTitle": "Request sent",
+    "sentText": "The workspace’s owner or an admin will be notified. Once you’re let in, the answer arrives in your notifications."
   }
 }

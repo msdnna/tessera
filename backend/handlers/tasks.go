@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"net/http"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/gitlab"
 	"tessera/internal/recur"
 	"tessera/middleware"
 )
@@ -25,6 +27,19 @@ type taskDetail struct {
 	GitlabAssignees []db.ListTaskGitlabAssigneesRow `json:"gitlab_assignees"`
 	Subtasks        []db.ListSubtasksWithMetaRow    `json:"subtasks"`
 	GitLab          *gitlabLinkView                 `json:"gitlab,omitempty"`
+	// Subscribers — who hears about the task (#2963); Subscribed — whether the
+	// viewer is among them.
+	Subscribers []db.ListTaskSubscribersRow `json:"subscribers"`
+	Subscribed  bool                        `json:"subscribed"`
+	// CodeLinks are the merge requests working on the task (#2964), always a list.
+	CodeLinks []codeLinkView `json:"code_links"`
+	// ProjectArchived: the task's project is in the archive (0086) — every
+	// client opens it read-only; the server refuses writes with 409.
+	ProjectArchived bool `json:"project_archived"`
+	// Spent / SpentTotal — minutes logged on the task itself and on its whole
+	// subtree (#2965, «потрачено»).
+	Spent      int64 `json:"spent"`
+	SpentTotal int64 `json:"spent_total"`
 }
 
 // CreateTask adds a task (or subtask) to a column on a board.
@@ -41,7 +56,7 @@ func (h *API) CreateTask(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, boardID) {
 		return
 	}
 	var req struct {
@@ -72,6 +87,37 @@ func (h *API) CreateTask(c *gin.Context) {
 	if err != nil || col.BoardID != boardID {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "column does not belong to this board"})
 		return
+	}
+
+	// …and so must the parent, if one is named: parent_id is a free-form task id
+	// from the body, so without this a member of one workspace could hang a task
+	// off a task in another and have it show up among that task's subtasks.
+	if req.ParentID != nil {
+		parent, err := h.q.GetTask(c, *req.ParentID)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid parent"})
+			return
+		}
+		if err := h.sameWorkspaceTask(c, parent, wsID); err != nil {
+			respondOpError(c, err)
+			return
+		}
+		// The parent must stand on THIS board, the one the URL names — a subtask
+		// living anywhere else is drawn nowhere. The two board queries split the
+		// work by the parent's archived state, not by its board:
+		// ListBoardTasksWithMeta drops the child (it has a parent the same view
+		// would draw, so it is not "top-level for this view") while
+		// ListBoardSubtasksWithMeta serves it (its board_id matches and the parent
+		// is active) — and the board files a subtask under a parent card that is
+		// not in the payload, so nothing ever renders it. On the parent's board it
+		// is not fetched at all. The other doors onto this pair already hold the
+		// invariant: applyParent adopts the parent's board and carries the subtree
+		// with it, /transfer clears parent_id and moves the subtree, and only the
+		// column check above — not this one — used to stand here.
+		if parent.BoardID != boardID {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "parent task belongs to another board"})
+			return
+		}
 	}
 
 	pos, err := h.nextTaskPosition(c, req.ColumnID, req.ParentID)
@@ -254,7 +300,6 @@ func (h *API) GetTask(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	_ = wsID
 	if subtasks == nil {
 		subtasks = []db.ListSubtasksWithMetaRow{}
 	}
@@ -262,9 +307,25 @@ func (h *API) GetTask(c *gin.Context) {
 	if glAssignees == nil {
 		glAssignees = []db.ListTaskGitlabAssigneesRow{}
 	}
+	subs, subscribed, err := h.taskSubscribers(c, id, wsID)
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	archived, _ := h.q.ProjectArchivedForBoard(c, t.BoardID)
+	spent, _ := h.q.TaskSpentMinutes(c, id)
+	glLink := h.gitlabLinkForTask(c, id)
+	if glLink != nil {
+		// MRs of other GitLab projects send us no hooks: look again, in the
+		// background, when the task is opened; the answer comes as task.code_links.
+		h.refreshCodeLinksSoon(id)
+	}
 	c.JSON(http.StatusOK, taskDetail{
 		Task: t, Tags: orEmptyTags(tags), Assignees: assignees, GitlabAssignees: glAssignees,
-		Subtasks: subtasks, GitLab: h.gitlabLinkForTask(c, id),
+		Subtasks: subtasks, GitLab: glLink, ProjectArchived: archived,
+		Subscribers: subs, Subscribed: subscribed,
+		CodeLinks: h.codeLinksForTask(c, id),
+		Spent:     spent.Own, SpentTotal: spent.Total,
 	})
 }
 
@@ -468,11 +529,18 @@ func (h *API) MoveTask(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	prev, next, ok := h.neighborTaskPositions(c, req.BeforeID, req.AfterID)
+	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
+		return
+	}
+	prev, next, ok := h.neighborTaskPositions(c, t, req.ColumnID, req.BeforeID, req.AfterID)
 	if !ok {
 		return
 	}
-	updated, err := h.applyMove(c, t, wsID, req.ColumnID, positionBetween(prev, next))
+	pos, ok := h.positionForDrop(c, t, req.ColumnID, req.BeforeID, req.AfterID, prev, next)
+	if !ok {
+		return
+	}
+	updated, err := h.applyMove(c, t, wsID, req.ColumnID, pos)
 	if err != nil {
 		respondOpError(c, err)
 		return
@@ -487,7 +555,7 @@ func (h *API) TransferTask(c *gin.Context) {
 	if !ok {
 		return
 	}
-	_, wsID, ok := h.loadTask(c, id)
+	t, wsID, ok := h.loadTask(c, id)
 	if !ok {
 		return
 	}
@@ -533,10 +601,41 @@ func (h *API) TransferTask(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	// A transfer changes the column, so the board's done-column rule applies to it
+	// exactly as it applies to a move (applyMove): what leaves a done column for a
+	// column that does not complete is reopened. Without it a finished card carried
+	// to another board stood struck-through in that board's first column, still
+	// counted as done and with no gesture left to undo it — the reopen rule fires
+	// only for a task standing in a done column, and this one no longer is.
+	// Resolved before the transaction: it reads the two boards' done-column
+	// pointers, and neither the transfer nor anything it calls writes those.
+	leavingDone := h.doneColumnLeftBy(c, t, req.BoardID, columnID)
 	// Transactional: the task and its subtasks must land on the new board
 	// together — otherwise a crash strands subtasks on the old board.
 	var updated db.Task
+	var reopened []uuid.UUID
+	var lostMilestones []db.SubtreeMilestonesOffProjectRow
 	if err := h.inTx(c, func(q *db.Queries) error {
+		// The target board may stand in another project, in which case the transfer
+		// drops the subtree's milestones on its way past — read what it takes while
+		// it is still readable (see milestonesLostToBoard). A transfer within the
+		// same board is a column change and crosses nothing.
+		if req.BoardID != t.BoardID {
+			var err error
+			if lostMilestones, err = h.milestonesLostToBoard(c, q, id, req.BoardID); err != nil {
+				return err
+			}
+		}
+		// Before the two moves below: the reopen condition is the column the task
+		// is leaving, which they are about to overwrite.
+		if leavingDone != nil {
+			var err error
+			if reopened, err = q.ReopenSubtreeLeavingDone(c, db.ReopenSubtreeLeavingDoneParams{
+				RootID: id, DoneColumnID: *leavingDone,
+			}); err != nil {
+				return err
+			}
+		}
 		var err error
 		updated, err = q.TransferTask(c, db.TransferTaskParams{
 			ID: id, BoardID: req.BoardID, ColumnID: columnID, Position: positionBetween(&maxPos, nil),
@@ -544,15 +643,64 @@ func (h *API) TransferTask(c *gin.Context) {
 		if err != nil {
 			return err
 		}
-		return q.MoveSubtasksToBoard(c, db.MoveSubtasksToBoardParams{
+		return q.MoveSubtreeToBoard(c, db.MoveSubtreeToBoardParams{
 			ParentID: &id, BoardID: req.BoardID, ColumnID: columnID,
 		})
 	}); err != nil {
 		fail(c, err)
 		return
 	}
+	h.journalLostMilestones(c, lostMilestones)
+	// Same trail an in-board reopen leaves: a journal entry per task, and the
+	// completion mirrored to GitLab (the outbox drops the ones with no issue).
+	actor := middleware.CurrentUser(c)
+	for _, rid := range reopened {
+		h.logEvent(c, rid, "reopened", nil)
+		h.enqueueWriteback(c, rid, actor, gitlab.TrigCompletion, map[string]any{"completed": false})
+	}
+	// The TransferTask statement clears parent_id — a task cannot keep a parent it
+	// no longer stands beside — so a transfer IS a detach, and GitLab's hierarchy
+	// has to hear it exactly as it hears the one made through /parent (#2932).
+	// Left unsent, the work item stays under its parent's and the next pull takes
+	// the re-parent branch, whose SetTaskParent writes parent_id, board_id and
+	// column_id together: the card is dragged back under the old parent on the old
+	// board, undoing the transfer through a sync the user never ran.
+	if t.ParentID != nil {
+		h.enqueueChildDetach(c, id, *t.ParentID, actor)
+	}
 	h.broadcastAs(c, wsID, "task.moved", updated)
 	c.JSON(http.StatusOK, updated)
+}
+
+// doneColumnLeftBy names the done column a transfer takes the task out of, or nil
+// when nothing is being left: the source board completes nothing, or the column
+// the task lands in completes on the target board too (so the card stays done,
+// exactly as dragging it between two done columns would).
+//
+// Only the SOURCE board's done column is the condition. A task completed while
+// standing anywhere else keeps its flag — an in-board move leaves such a task
+// alone as well, and a board with no done column does not tie completion to
+// columns at all. A board that cannot be read is treated as completing nothing:
+// the transfer then behaves as it always did.
+func (h *API) doneColumnLeftBy(c *gin.Context, t db.Task, targetBoard, targetColumn uuid.UUID) *uuid.UUID {
+	src, err := h.q.GetBoard(c, t.BoardID)
+	if err != nil {
+		return nil
+	}
+	done := doneColumnID(src)
+	if done == nil {
+		return nil
+	}
+	dst := src
+	if targetBoard != t.BoardID {
+		if dst, err = h.q.GetBoard(c, targetBoard); err != nil {
+			return nil
+		}
+	}
+	if d := doneColumnID(dst); d != nil && *d == targetColumn {
+		return nil
+	}
+	return done
 }
 
 // ArchiveTask soft-deletes a task. ?subtasks=detach keeps the subtasks on the
@@ -588,7 +736,7 @@ func (h *API) RestoreTask(c *gin.Context) {
 		return
 	}
 	h.logEvent(c, id, "restored", nil)
-	h.broadcast(wsID, "task.restored", gin.H{"id": id})
+	h.broadcastAs(c, wsID, "task.restored", gin.H{"id": id})
 	c.Status(http.StatusNoContent)
 }
 
@@ -617,28 +765,57 @@ func (h *API) ListBoardArchived(c *gin.Context) {
 	c.JSON(http.StatusOK, slimBoardArchivedTasks(rows))
 }
 
-// DeleteTask removes a task and its subtasks.
+// DeleteTask puts a task and its subtasks in the trash (0086). Since the v2
+// interaction model the delete is immediate and reversible: the client offers
+// the undo in a toast (POST /tasks/:id/restore), and the board's trash keeps the
+// task for taskTrashRetention; trash_purge — or «Удалить навсегда»
+// (DELETE /tasks/:id/purge) — removes it for good.
 func (h *API) DeleteTask(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
 		return
 	}
-	_, wsID, ok := h.loadTask(c, id)
+	t, wsID, ok := h.loadTask(c, id)
 	if !ok {
 		return
 	}
-	// ?subtasks=detach keeps subtasks (re-parented to null); default cascades.
+	// ?subtasks=detach keeps subtasks (re-parented to null); default takes the
+	// whole subtree to the trash with the root.
 	if c.Query("subtasks") == "detach" {
-		if err := h.q.DetachChildren(c, &id); err != nil {
+		detached, err := h.q.DetachChildren(c, &id)
+		if err != nil {
 			fail(c, err)
 			return
 		}
+		// Before the delete, while the parent's own link is still readable: a detach
+		// resolves its integration from the CHILD's link, but the journal entry names
+		// the parent, and the push is the same one /parent sends (see
+		// pushDetachedChildren).
+		h.pushDetachedChildren(c, detached, id)
 	}
-	if err := h.q.DeleteTask(c, id); err != nil {
+	// Who has to hear about it is read before the delete — afterwards the
+	// subtree is out of every live read. After a detach this is the root alone;
+	// otherwise every subtask going to the trash with it as well.
+	participants, perr := h.q.TaskSubtreeParticipants(c, id)
+	if perr != nil {
+		soft(c, "TaskSubtreeParticipants", perr)
+	}
+	uid := middleware.CurrentUser(c)
+	if _, err := h.q.SoftDeleteTaskSubtree(c, db.SoftDeleteTaskSubtreeParams{ID: id, DeletedBy: &uid}); err != nil {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "task.deleted", gin.H{"id": id})
+	// Nothing is swept from disk here: the task is in the trash, and its
+	// attachments come back with it. PurgeDeletedTask and trash_purge sweep them
+	// once the rows are really gone.
+	h.logEvent(c, id, "trashed", nil)
+	h.notifyDeleted(c, wsID, participants)
+	// The task is out of every live read, so the event itself says which one it
+	// was: a client that never had the card loaded (a toast, another board) has
+	// nothing to look it up by.
+	h.broadcastAs(c, wsID, "task.deleted", gin.H{
+		"id": id, "number": t.Number, "title": t.Title, "board_id": t.BoardID,
+	})
 	c.Status(http.StatusNoContent)
 }
 
@@ -762,7 +939,7 @@ func (h *API) SetTaskEisenhower(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "task.updated", t)
+	h.broadcastAs(c, wsID, "task.updated", t)
 	c.JSON(http.StatusOK, t)
 }
 
@@ -778,7 +955,12 @@ func (h *API) loadTask(c *gin.Context, id uuid.UUID) (db.Task, uuid.UUID, bool) 
 		fail(c, err)
 		return db.Task{}, uuid.Nil, false
 	}
+	// A task on a soft-deleted board (0078) is gone for every reader: the board
+	// resolver doesn't see the board, and that is a 404, not a failure.
 	wsID, err := h.q.WorkspaceIDForBoard(c, t.BoardID)
+	if notFound(c, err) {
+		return db.Task{}, uuid.Nil, false
+	}
 	if err != nil {
 		fail(c, err)
 		return db.Task{}, uuid.Nil, false
@@ -786,14 +968,20 @@ func (h *API) loadTask(c *gin.Context, id uuid.UUID) (db.Task, uuid.UUID, bool) 
 	if !h.requireMember(c, wsID) {
 		return db.Task{}, uuid.Nil, false
 	}
+	// A task of an archived project (0086) is read-only: every task write goes
+	// through here, so this one gate is what keeps the archive unchanged.
+	if isWrite(c) && !h.requireProjectWritable(c, t.BoardID) {
+		return db.Task{}, uuid.Nil, false
+	}
 	return t, wsID, true
 }
 
 // nextTaskPosition appends to the end of a column (top-level) or a parent's
-// subtask list.
-func (h *API) nextTaskPosition(c *gin.Context, columnID uuid.UUID, parentID *uuid.UUID) (float64, error) {
+// subtask list. Takes a bare context rather than the request's: the recurrence
+// engine spawns tasks off the same rule from a background trigger.
+func (h *API) nextTaskPosition(ctx context.Context, columnID uuid.UUID, parentID *uuid.UUID) (float64, error) {
 	if parentID != nil {
-		subs, err := h.q.ListSubtasks(c, parentID)
+		subs, err := h.q.ListSubtasks(ctx, parentID)
 		if err != nil {
 			return 0, err
 		}
@@ -803,18 +991,44 @@ func (h *API) nextTaskPosition(c *gin.Context, columnID uuid.UUID, parentID *uui
 		last := subs[len(subs)-1].Position
 		return positionBetween(&last, nil), nil
 	}
-	maxPos, err := h.q.MaxTaskPositionInColumn(c, columnID)
+	maxPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
 	if err != nil {
 		return 0, err
 	}
 	return positionBetween(&maxPos, nil), nil
 }
 
-// neighborTaskPositions resolves the positions of the before/after tasks.
-func (h *API) neighborTaskPositions(c *gin.Context, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
+// sameList reports whether [n] is a sibling of the card being dropped — i.e. it
+// belongs to the list the drop lands in, so its position is on the same ladder as
+// the one being computed. A subtask orders itself among its parent's children, a
+// top-level card among the top-level cards of the destination column.
+func sameList(n, moved db.Task, columnID uuid.UUID) bool {
+	if moved.ParentID != nil {
+		return n.ParentID != nil && *n.ParentID == *moved.ParentID
+	}
+	return n.ParentID == nil && n.ColumnID == columnID
+}
+
+// neighborTaskPositions resolves the positions of the before/after tasks. Both
+// must be siblings of [moved] at the destination (see sameList); anything else is
+// rejected with the same 400 an unknown id gets.
+//
+// Positions are per-list float8 ladders — a column's cards are numbered with no
+// regard for any other column — so a neighbour from elsewhere hands the midpoint
+// arithmetic a number that means nothing in the destination, and the card lands
+// at an arbitrary slot with no error anywhere. The ids come from the client and
+// really do go stale: both clients deliberately freeze the board for the duration
+// of a drag (web `suppress()`, Android `dragging`), so a colleague moving the
+// card you are aiming next to reaches you only after the drop. Deleted neighbours
+// were always answered honestly (GetTask fails → 400 → the board reloads); a
+// neighbour that merely moved away was the silent case.
+//
+// It also stops a bare id from reporting whether a task exists in a workspace the
+// caller has no membership in — GetTask is scoped by nothing but the id (#2932).
+func (h *API) neighborTaskPositions(c *gin.Context, moved db.Task, columnID uuid.UUID, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
 	if beforeID != nil {
 		t, err := h.q.GetTask(c, *beforeID)
-		if err != nil {
+		if err != nil || !sameList(t, moved, columnID) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid before_id"})
 			return nil, nil, false
 		}
@@ -822,7 +1036,7 @@ func (h *API) neighborTaskPositions(c *gin.Context, beforeID, afterID *uuid.UUID
 	}
 	if afterID != nil {
 		t, err := h.q.GetTask(c, *afterID)
-		if err != nil {
+		if err != nil || !sameList(t, moved, columnID) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid after_id"})
 			return nil, nil, false
 		}
@@ -831,19 +1045,133 @@ func (h *API) neighborTaskPositions(c *gin.Context, beforeID, afterID *uuid.UUID
 	return prev, next, true
 }
 
+// positionForDrop is positionBetween with a way out of an exhausted slot: when
+// the midpoint collapses onto a neighbour, the sibling list is respaced back
+// onto the positionGap ladder and the midpoint recomputed against the fresh
+// neighbour positions. Only the list the card is being dropped into is touched
+// (the destination column, or the parent's subtasks for a child card) — which is
+// what this needs over the generic positionForReorder that columns, projects and
+// groups use: which list to respace depends on the card, not on the endpoint.
+func (h *API) positionForDrop(c *gin.Context, t db.Task, columnID uuid.UUID, beforeID, afterID *uuid.UUID, prev, next *float64) (float64, bool) {
+	if beforeID == nil && afterID == nil {
+		return h.positionForUnanchoredMove(c, t, columnID)
+	}
+	pos := positionBetween(prev, next)
+	if !positionExhausted(pos, prev, next) {
+		return pos, true
+	}
+	var err error
+	if t.ParentID != nil {
+		err = h.q.RebalanceSubtaskPositions(c, db.RebalanceSubtaskPositionsParams{
+			ParentID: *t.ParentID, Gap: positionGap,
+		})
+	} else {
+		err = h.q.RebalanceColumnTaskPositions(c, db.RebalanceColumnTaskPositionsParams{
+			ColumnID: columnID, Gap: positionGap,
+		})
+	}
+	if err != nil {
+		fail(c, err)
+		return 0, false
+	}
+	prev, next, ok := h.neighborTaskPositions(c, t, columnID, beforeID, afterID)
+	if !ok {
+		return 0, false
+	}
+	return positionBetween(prev, next), true
+}
+
+// positionForUnanchoredMove answers "which slot" for a move that named no
+// neighbours at all — the shape every non-drag caller sends, because outside a
+// drag there is nothing to aim between: the web context menu's «Переместить →
+// колонка» (the only mover the list / calendar / timeline / gantt layouts have)
+// and the MCP client's MoveTask, whose own comment says the position is "left to
+// the server (appended)".
+//
+// It was not appended. positionBetween(nil, nil) is the constant positionGap, and
+// positionGap is precisely where a column's FIRST card sits (CreateTask appends
+// onto a 65536, 131072, 196608 … ladder). So a card moved that way did not land at
+// the end of the destination column — it landed on top of the first card, sharing
+// its position exactly. That tie is the state the rest of this file goes out of its
+// way to prevent (rejectSameNeighbour, positionExhausted, the rebalance above): two
+// cards with one position have no order of their own, and both clients' drop
+// arithmetic against that slot keeps computing the same number. None of those
+// guards fire here, because with both neighbours nil there is no slot to find a
+// collapse in.
+//
+// The two ladders answer differently, for the same reason sameList splits them:
+//
+//   - a top-level card is numbered among the destination COLUMN's top-level cards,
+//     and its old number came from another column's ladder — meaningless there. It
+//     appends, the same way TransferTask and CreateTask do, which is also what the
+//     web task modal and Android already emulate by hand (columnTail / the
+//     rightmost sibling) when they send an explicit before_id.
+//   - a subtask is numbered among its PARENT's children, and changing column does
+//     not move it out of that list. Keeping its position leaves the parent's order
+//     exactly as it was — which is what the same two clients ask for explicitly by
+//     sending the sibling neighbours of the row where it already stands.
+func (h *API) positionForUnanchoredMove(c *gin.Context, t db.Task, columnID uuid.UUID) (float64, bool) {
+	pos, err := h.unanchoredPosition(c, t, columnID)
+	if err != nil {
+		fail(c, err)
+		return 0, false
+	}
+	return pos, true
+}
+
+// unanchoredPosition is the rule above without the HTTP reply, for the callers
+// that report their own errors — quick actions, whose `/move`, `/close` and
+// `/reopen` are a column change with no neighbours either.
+//
+// They used to append through nextTaskPosition, which is CreateTask's rule: a
+// NEW subtask belongs at the end of its parent's list. A subtask that merely
+// changed column does not — it was already standing somewhere among its
+// siblings, and `/close` on the first of three children dropped it to the bottom
+// of the parent's list. Nothing in the gesture said "reorder my children", and
+// the same move from the task modal (which sends the sibling neighbours of the
+// row the subtask already stands on) leaves the order alone (#2932).
+//
+// The recurrence engine relocates a task the same way — to the rule's target
+// column, with nothing to aim between — which is why this takes a bare context
+// and not the request's.
+func (h *API) unanchoredPosition(ctx context.Context, t db.Task, columnID uuid.UUID) (float64, error) {
+	if t.ParentID != nil {
+		return t.Position, nil
+	}
+	maxPos, err := h.q.MaxTaskPositionInColumn(ctx, columnID)
+	if err != nil {
+		return 0, err
+	}
+	return positionBetween(&maxPos, nil), nil
+}
+
 // recurrenceToStore validates a client-supplied recurrence rule and returns its
 // canonical JSON form (or nil for an absent/invalid rule). For monthly/yearly it
 // manages the day-of-month anchor: the anchor is re-derived from the due date
 // when the user changes the due date or the frequency, and otherwise carried over
 // from the previously stored rule — so unrelated edits don't reset an anchor that
 // a short-month clamp has temporarily moved (e.g. the 30th showing as Feb 28).
+//
+// The rule's zone is carried over the same way when the request omits it (#2932).
+// It is the field that decides which calendar day the whole series lands on (see
+// recur.Rule.TZ), and a client that does not know it exists re-sends the rest of
+// the rule as it always did: the Android editor has no tz field at all and its
+// task update re-sends the stored rule by default, so a rename or a tick of the
+// completed box there would reset a web-authored "every Monday" to UTC — which
+// for anyone east of it turns the series into Tuesdays. Taking an explicit zone
+// as an overwrite and silence as "unchanged" leaves the deliberate edit working
+// and the incidental one harmless.
 func recurrenceToStore(reqRaw *json.RawMessage, reqDue *time.Time, prevRaw *json.RawMessage, prevDue *time.Time) *json.RawMessage {
 	rule, ok := recur.Parse(reqRaw)
 	if !ok {
 		return nil
 	}
+	prev, hadPrev := recur.Parse(prevRaw)
+	if rule.TZ == "" && hadPrev {
+		rule.TZ = prev.TZ
+	}
 	if rule.Freq == recur.FreqMonthly || rule.Freq == recur.FreqYearly {
-		if prev, hadPrev := recur.Parse(prevRaw); hadPrev && prev.Freq == rule.Freq && sameTime(reqDue, prevDue) {
+		if hadPrev && prev.Freq == rule.Freq && sameRuleDay(rule, reqDue, prevDue) {
 			rule.Day, rule.Month = prev.Day, prev.Month
 		} else if reqDue != nil {
 			rule = rule.WithAnchor(*reqDue)
@@ -851,6 +1179,22 @@ func recurrenceToStore(reqRaw *json.RawMessage, reqDue *time.Time, prevRaw *json
 	}
 	canon, _ := rule.Marshal()
 	return canon
+}
+
+// sameRuleDay reports whether two optional due dates name the same calendar day
+// in the rule's zone (absent counts as equal only to absent).
+//
+// The anchor is carried over on "the due date was not moved", and what moves a
+// monthly series is the *day*, not the clock: the editor edits the two with
+// separate controls, so an instant comparison read a 09:00 → 10:00 nudge as a
+// reschedule and re-derived the anchor from whatever day the occurrence happened
+// to sit on — the 28th, if February had clamped it, which is precisely the state
+// the anchor exists to survive (#2932).
+func sameRuleDay(rule recur.Rule, a, b *time.Time) bool {
+	if a == nil || b == nil {
+		return a == b
+	}
+	return rule.SameCalendarDay(*a, *b)
 }
 
 func orEmptyTags(tags []db.Tag) []db.Tag {

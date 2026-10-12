@@ -132,3 +132,21 @@ func TestSectionsInDocumentOrder(t *testing.T) {
 		}
 	}
 }
+
+func TestSingleQuotedAttrCannotCloseTheQuote(t *testing.T) {
+	cases := map[string]string{
+		`{"w":210}`:               `{"w":210}`,
+		`{"n":"it's"}`:            `{"n":"it&#39;s"}`,
+		`a&#39;b`:                 `a&amp;#39;b`,
+		`' onmouseover='alert(1)`: `&#39; onmouseover=&#39;alert(1)`,
+	}
+	for in, want := range cases {
+		got := singleQuotedAttr(in)
+		if got != want {
+			t.Errorf("singleQuotedAttr(%q) = %q, want %q", in, got, want)
+		}
+		if strings.Contains(got, "'") {
+			t.Errorf("singleQuotedAttr(%q) still holds a single quote: %q", in, got)
+		}
+	}
+}

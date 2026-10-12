@@ -12,6 +12,8 @@ import (
 	"time"
 
 	"github.com/getsentry/sentry-go"
+
+	"tessera/internal/logsafe"
 )
 
 // InitSentry configures the global Sentry hub from the supplied options and
@@ -27,7 +29,22 @@ func InitSentry(dsn, environment, release string, tracesSampleRate float64) func
 		return func() {}
 	}
 
-	err := sentry.Init(sentry.ClientOptions{
+	err := sentry.Init(clientOptions(dsn, environment, release, tracesSampleRate))
+	if err != nil {
+		// Treat a bad DSN as non-fatal — telemetry must never take the API down.
+		log.Printf("Sentry init failed, continuing without telemetry: %v", err)
+		return func() {}
+	}
+
+	log.Printf("Sentry enabled (env=%s, release=%s, traces=%.2f)", environment, release, tracesSampleRate)
+	return func() { sentry.Flush(2 * time.Second) }
+}
+
+// clientOptions is the single description of how this service talks to Sentry.
+// Separate from InitSentry so a test can build a client with the very same
+// options over a recording transport, and assert on what would go out the wire.
+func clientOptions(dsn, environment, release string, tracesSampleRate float64) sentry.ClientOptions {
+	return sentry.ClientOptions{
 		Dsn:         dsn,
 		Environment: environment,
 		Release:     release,
@@ -38,15 +55,16 @@ func InitSentry(dsn, environment, release string, tracesSampleRate float64) func
 		// Attach a stack trace to messages captured without an error value,
 		// so log-style captures are still actionable.
 		AttachStacktrace: true,
-	})
-	if err != nil {
-		// Treat a bad DSN as non-fatal — telemetry must never take the API down.
-		log.Printf("Sentry init failed, continuing without telemetry: %v", err)
-		return func() {}
+		// Strip secrets from the request query before anything leaves the
+		// process. Both hooks: errors go through BeforeSend, and the
+		// per-request transactions sentrygin opens go through the other one.
+		BeforeSend: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+			return scrubEvent(event)
+		},
+		BeforeSendTransaction: func(event *sentry.Event, _ *sentry.EventHint) *sentry.Event {
+			return scrubEvent(event)
+		},
 	}
-
-	log.Printf("Sentry enabled (env=%s, release=%s, traces=%.2f)", environment, release, tracesSampleRate)
-	return func() { sentry.Flush(2 * time.Second) }
 }
 
 // CapturePanic reports a recovered panic to Sentry and logs it with its stack.
@@ -61,7 +79,7 @@ func InitSentry(dsn, environment, release string, tracesSampleRate float64) func
 // and the event must not be lost in the async transport's buffer.
 func CapturePanic(component string, recovered any) {
 	slog.Error("recovered panic in background goroutine",
-		"component", component, "panic", fmt.Sprint(recovered), "stack", string(debug.Stack()))
+		"component", logsafe.Str(component), "panic", logsafe.Str(fmt.Sprint(recovered)), "stack", string(debug.Stack()))
 	hub := sentry.CurrentHub()
 	if hub.Client() == nil {
 		return

@@ -54,6 +54,7 @@ import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.TesseraWarning
 import website.msdnna.tessera.ui.viewmodels.ConferenceLobbyUiState
 import website.msdnna.tessera.ui.viewmodels.ConferenceLobbyViewModel
+import website.msdnna.tessera.util.ChatMember
 import website.msdnna.tessera.util.ConfTimeKind
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.confRecordingDownloadable
@@ -155,6 +156,10 @@ fun ConferenceLobby(conferenceId: String, onBack: () -> Unit) {
             // from screens that have never heard of it.
             title = state.conference?.title.orEmpty(),
             onHangup = { vm.leave() },
+            // For the chat's «@» and «/задача» (#3055).
+            workspaceId = state.conference?.workspaceId.orEmpty(),
+            members = state.members.map { ChatMember(it.userId, it.name, it.email) },
+            defaultBoardId = state.conference?.defaultBoardId,
         )
     }
 }
@@ -192,6 +197,8 @@ internal fun ConferenceLobbyBody(
                 Spacer(Modifier.width(10.dp))
                 Text(lobbyTimeLine(conference), color = c.text3, fontSize = 12.sp)
             }
+            // Length, repeat and stage (#3034).
+            ConferencePlanLine(conference, Modifier.padding(top = 6.dp))
         }
 
         if (conference.description.isNotBlank()) {

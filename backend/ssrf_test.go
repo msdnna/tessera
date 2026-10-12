@@ -29,3 +29,17 @@ func TestConnectGitlabRejectsBadBaseURL(t *testing.T) {
 		})
 	}
 }
+
+// The instance-wide OAuth provider's base URL gets the same up-front check: the
+// server calls it with the service token and every OAuth code exchange. A 400
+// writes nothing, so the shared provider row is untouched.
+func TestAdminOAuthRejectsBadBaseURL(t *testing.T) {
+	c := signup(t)
+	makeAdmin(t, c)
+	for _, url := range []string{"file:///etc/passwd", "https://user:pass@gitlab.example.com", "https:///path"} {
+		r := c.put("/admin/oauth/gitlab", map[string]any{"gl_base_url": url, "client_id": "x"})
+		if r.Status != http.StatusBadRequest {
+			t.Fatalf("gl_base_url %q: status %d, want 400\n%s", url, r.Status, r.Body)
+		}
+	}
+}

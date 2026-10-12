@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://github.com/msdnna/tessera/releases/latest"><img alt="release" src="https://img.shields.io/github/v/release/msdnna/tessera?label=Tessera" /></a>
   <a href="https://github.com/msdnna/tessera/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/msdnna/tessera/actions/workflows/ci.yml/badge.svg?branch=main" /></a>
   <img alt="backend coverage" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmsdnna%2Ftessera%2Fbadges%2Fbackend.json&label=backend" />
   <img alt="web coverage" src="https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2Fmsdnna%2Ftessera%2Fbadges%2Fweb.json&label=web" />
@@ -87,6 +88,13 @@ Caddy автоматически выпускает TLS-сертификат (Le
 fail-closed-проверкой секретов. Подробности и обновление — в
 [`deploy/README.md`](deploy/README.md). Первый зарегистрированный пользователь
 становится администратором.
+
+## Версии
+
+**Tessera 2.0** — версия продукта: поколение интерфейса и релизный поезд
+(`release.json`, релизы `v2.x` на GitHub). Компоненты — сервер, веб, десктоп, Android,
+MCP — версионируются отдельно по semver (`api/v…`, `web/v…`). Подробно —
+[docs/versioning.md](docs/versioning.md).
 
 ## Разработка и вклад
 

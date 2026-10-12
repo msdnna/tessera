@@ -12,6 +12,136 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearConferenceMilestonesAcrossWorkspaces = `-- name: ClearConferenceMilestonesAcrossWorkspaces :execrows
+UPDATE conferences c
+SET milestone_id = NULL, updated_at = now()
+FROM milestones m, projects p
+WHERE c.milestone_id = m.id
+  AND p.id = m.project_id
+  AND p.id = $1
+  AND c.workspace_id <> p.workspace_id
+`
+
+// ClearConferenceMilestonesAcrossWorkspaces is the stage's half of the cleanup
+// above (#3053): a project transfer takes its stages to the new workspace, and a
+// conference left behind would keep naming — and linking — a stage its team can
+// no longer open. Only the link goes. Returns the number of conferences unpinned.
+func (q *Queries) ClearConferenceMilestonesAcrossWorkspaces(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, clearConferenceMilestonesAcrossWorkspaces, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const clearConferenceTasksAcrossWorkspaces = `-- name: ClearConferenceTasksAcrossWorkspaces :execrows
+UPDATE conferences c
+SET task_id = NULL, updated_at = now()
+FROM tasks t, boards b, projects p
+WHERE c.task_id = t.id
+  AND b.id = t.board_id
+  AND p.id = b.project_id
+  AND p.id = $1
+  AND c.workspace_id <> p.workspace_id
+`
+
+// ClearConferenceTasksAcrossWorkspaces unpins every conference whose task is in
+// the given project but whose own workspace is no longer that task's — the state
+// a project transfer leaves behind. CreateConference refuses a task from another
+// workspace and names the harm: the link "is what later files the protocol back
+// into the task, and a cross-workspace link would put it in front of a team that
+// was never in the call". A conference carries its own workspace_id and belongs
+// to no project, so it never travels with one; ListConferencesByTask then lists
+// by task_id alone behind a membership check on the *task's* workspace, handing
+// the arriving team the title, description and schedule of a call held
+// elsewhere. Only the link goes — the conference, its chat and its recordings
+// stay where they were held. Returns the number of conferences unpinned.
+func (q *Queries) ClearConferenceTasksAcrossWorkspaces(ctx context.Context, id uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, clearConferenceTasksAcrossWorkspaces, id)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const conferenceIDsInWorkspace = `-- name: ConferenceIDsInWorkspace :many
+SELECT id FROM conferences WHERE workspace_id = $1
+`
+
+// ConferenceIDsInWorkspace names the conferences a workspace delete is about to
+// take by cascade (conferences.workspace_id is ON DELETE CASCADE), so their
+// recordings and chat uploads can be purged the way DeleteConference purges its
+// own. Read before the delete and in the same transaction: the recording rows and
+// the chat attachment rows leave with the conference, and they are the only record
+// of where the bytes are.
+func (q *Queries) ConferenceIDsInWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, conferenceIDsInWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const conferenceRefs = `-- name: ConferenceRefs :one
+SELECT m.title AS milestone_title,
+       m.slug AS milestone_slug,
+       mp.slug AS milestone_project_slug,
+       mp.id AS milestone_project_id,
+       tb.id AS task_board_id,
+       sb.id AS stage_board_id
+FROM conferences c
+LEFT JOIN milestones m ON m.id = c.milestone_id
+    AND EXISTS (SELECT 1 FROM projects xp WHERE xp.id = m.project_id AND xp.workspace_id = c.workspace_id)
+LEFT JOIN projects mp ON mp.id = m.project_id
+LEFT JOIN tasks t ON t.id = c.task_id AND t.deleted_at IS NULL
+LEFT JOIN boards tb ON tb.id = t.board_id AND tb.deleted_at IS NULL
+    AND EXISTS (SELECT 1 FROM projects tp WHERE tp.id = tb.project_id AND tp.workspace_id = c.workspace_id)
+LEFT JOIN boards sb ON sb.id = (
+    SELECT b.id FROM boards b
+    WHERE b.project_id = mp.id AND b.deleted_at IS NULL
+    ORDER BY b.position, b.created_at LIMIT 1)
+WHERE c.id = $1
+`
+
+type ConferenceRefsRow struct {
+	MilestoneTitle       *string    `json:"milestone_title"`
+	MilestoneSlug        *string    `json:"milestone_slug"`
+	MilestoneProjectSlug *string    `json:"milestone_project_slug"`
+	MilestoneProjectID   *uuid.UUID `json:"milestone_project_id"`
+	TaskBoardID          *uuid.UUID `json:"task_board_id"`
+	StageBoardID         *uuid.UUID `json:"stage_board_id"`
+}
+
+// ConferenceRefs is what the call screen shows and acts on beyond the row: the
+// stage it is tied to (#3053) and the board a task typed into its chat lands on
+// by default (#3055) — the linked task's board, else the first live board of the
+// stage's project. Same workspace guard as ListConferences.
+func (q *Queries) ConferenceRefs(ctx context.Context, id uuid.UUID) (ConferenceRefsRow, error) {
+	row := q.db.QueryRow(ctx, conferenceRefs, id)
+	var i ConferenceRefsRow
+	err := row.Scan(
+		&i.MilestoneTitle,
+		&i.MilestoneSlug,
+		&i.MilestoneProjectSlug,
+		&i.MilestoneProjectID,
+		&i.TaskBoardID,
+		&i.StageBoardID,
+	)
+	return i, err
+}
+
 const countActiveConferenceParticipants = `-- name: CountActiveConferenceParticipants :one
 SELECT count(*) FROM conference_participants
 WHERE conference_id = $1 AND joined_at IS NOT NULL AND left_at IS NULL
@@ -25,9 +155,10 @@ func (q *Queries) CountActiveConferenceParticipants(ctx context.Context, confere
 }
 
 const createConference = `-- name: CreateConference :one
-INSERT INTO conferences (workspace_id, task_id, created_by, title, description, scheduled_at, recording_ttl_days)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
-RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at
+INSERT INTO conferences (workspace_id, task_id, created_by, title, description, scheduled_at, recording_ttl_days,
+                         duration_minutes, recurrence, timezone, milestone_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for, duration_minutes, recurrence, timezone, milestone_id
 `
 
 type CreateConferenceParams struct {
@@ -38,6 +169,10 @@ type CreateConferenceParams struct {
 	Description      string     `json:"description"`
 	ScheduledAt      *time.Time `json:"scheduled_at"`
 	RecordingTtlDays int32      `json:"recording_ttl_days"`
+	DurationMinutes  *int32     `json:"duration_minutes"`
+	Recurrence       string     `json:"recurrence"`
+	Timezone         string     `json:"timezone"`
+	MilestoneID      *uuid.UUID `json:"milestone_id"`
 }
 
 func (q *Queries) CreateConference(ctx context.Context, arg CreateConferenceParams) (Conference, error) {
@@ -49,6 +184,10 @@ func (q *Queries) CreateConference(ctx context.Context, arg CreateConferencePara
 		arg.Description,
 		arg.ScheduledAt,
 		arg.RecordingTtlDays,
+		arg.DurationMinutes,
+		arg.Recurrence,
+		arg.Timezone,
+		arg.MilestoneID,
 	)
 	var i Conference
 	err := row.Scan(
@@ -65,6 +204,11 @@ func (q *Queries) CreateConference(ctx context.Context, arg CreateConferencePara
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
+		&i.DurationMinutes,
+		&i.Recurrence,
+		&i.Timezone,
+		&i.MilestoneID,
 	)
 	return i, err
 }
@@ -94,7 +238,7 @@ func (q *Queries) EndAllConferenceParticipants(ctx context.Context, conferenceID
 }
 
 const getConference = `-- name: GetConference :one
-SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at FROM conferences WHERE id = $1
+SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for, duration_minutes, recurrence, timezone, milestone_id FROM conferences WHERE id = $1
 `
 
 func (q *Queries) GetConference(ctx context.Context, id uuid.UUID) (Conference, error) {
@@ -114,12 +258,17 @@ func (q *Queries) GetConference(ctx context.Context, id uuid.UUID) (Conference, 
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
+		&i.DurationMinutes,
+		&i.Recurrence,
+		&i.Timezone,
+		&i.MilestoneID,
 	)
 	return i, err
 }
 
 const getConferenceParticipant = `-- name: GetConferenceParticipant :one
-SELECT conference_id, user_id, role, invited_at, joined_at, left_at, force_muted FROM conference_participants WHERE conference_id = $1 AND user_id = $2
+SELECT conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at FROM conference_participants WHERE conference_id = $1 AND user_id = $2
 `
 
 type GetConferenceParticipantParams struct {
@@ -138,19 +287,27 @@ func (q *Queries) GetConferenceParticipant(ctx context.Context, arg GetConferenc
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
 
 const inviteConferenceParticipant = `-- name: InviteConferenceParticipant :one
-INSERT INTO conference_participants (conference_id, user_id, role)
-VALUES ($1, $2, $3)
+INSERT INTO conference_participants (conference_id, user_id, role, rsvp, rsvp_at)
+VALUES ($1, $2, $3,
+        CASE WHEN $3::text = 'host' THEN 'accepted' ELSE 'pending' END,
+        CASE WHEN $3::text = 'host' THEN now() END)
 ON CONFLICT (conference_id, user_id) DO UPDATE
 SET invited_at = now(),
     left_at = NULL,
     joined_at = CASE WHEN conference_participants.left_at IS NOT NULL
-                     THEN NULL ELSE conference_participants.joined_at END
-RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted
+                     THEN NULL ELSE conference_participants.joined_at END,
+    rsvp = CASE WHEN conference_participants.rsvp = 'declined' OR conference_participants.left_at IS NOT NULL
+                THEN 'pending' ELSE conference_participants.rsvp END,
+    rsvp_at = CASE WHEN conference_participants.rsvp = 'declined' OR conference_participants.left_at IS NOT NULL
+                   THEN NULL ELSE conference_participants.rsvp_at END
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
 type InviteConferenceParticipantParams struct {
@@ -171,6 +328,10 @@ type InviteConferenceParticipantParams struct {
 // and left_at NULL, and show up in neither the roster nor the invited list. Only
 // a row that had actually left is reset — someone currently in the room keeps
 // their joined_at.
+//
+// The answer to the invitation (#3051): the host answers «yes» by creating the
+// meeting; anyone else starts at 'pending'. Re-inviting someone who declined or
+// walked out asks them again — the old answer was about the old invitation.
 func (q *Queries) InviteConferenceParticipant(ctx context.Context, arg InviteConferenceParticipantParams) (ConferenceParticipant, error) {
 	row := q.db.QueryRow(ctx, inviteConferenceParticipant, arg.ConferenceID, arg.UserID, arg.Role)
 	var i ConferenceParticipant
@@ -182,16 +343,21 @@ func (q *Queries) InviteConferenceParticipant(ctx context.Context, arg InviteCon
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
 
 const joinConferenceParticipant = `-- name: JoinConferenceParticipant :one
-INSERT INTO conference_participants (conference_id, user_id, role, joined_at)
-VALUES ($1, $2, $3, now())
+INSERT INTO conference_participants (conference_id, user_id, role, joined_at, rsvp, rsvp_at)
+VALUES ($1, $2, $3, now(), 'accepted', now())
 ON CONFLICT (conference_id, user_id) DO UPDATE
-SET joined_at = now(), left_at = NULL
-RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted
+SET joined_at = now(), left_at = NULL,
+    rsvp = 'accepted',
+    rsvp_at = CASE WHEN conference_participants.rsvp = 'accepted'
+                   THEN conference_participants.rsvp_at ELSE now() END
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
 type JoinConferenceParticipantParams struct {
@@ -204,6 +370,8 @@ type JoinConferenceParticipantParams struct {
 // open conference: a member of the workspace may walk into a call they were not
 // explicitly invited to, and the row is created on the spot rather than the
 // join being refused.
+//
+// Walking in is an answer too (#3051): whoever joins has accepted.
 func (q *Queries) JoinConferenceParticipant(ctx context.Context, arg JoinConferenceParticipantParams) (ConferenceParticipant, error) {
 	row := q.db.QueryRow(ctx, joinConferenceParticipant, arg.ConferenceID, arg.UserID, arg.Role)
 	var i ConferenceParticipant
@@ -215,6 +383,8 @@ func (q *Queries) JoinConferenceParticipant(ctx context.Context, arg JoinConfere
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
@@ -223,7 +393,7 @@ const leaveConferenceParticipant = `-- name: LeaveConferenceParticipant :one
 UPDATE conference_participants
 SET left_at = now()
 WHERE conference_id = $1 AND user_id = $2
-RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
 type LeaveConferenceParticipantParams struct {
@@ -242,12 +412,14 @@ func (q *Queries) LeaveConferenceParticipant(ctx context.Context, arg LeaveConfe
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
 
 const listConferenceParticipants = `-- name: ListConferenceParticipants :many
-SELECT p.conference_id, p.user_id, p.role, p.invited_at, p.joined_at, p.left_at, p.force_muted, u.name AS user_name, u.email AS user_email
+SELECT p.conference_id, p.user_id, p.role, p.invited_at, p.joined_at, p.left_at, p.force_muted, p.rsvp, p.rsvp_at, u.name AS user_name, u.email AS user_email
 FROM conference_participants p
 JOIN users u ON u.id = p.user_id
 WHERE p.conference_id = $1
@@ -262,6 +434,8 @@ type ListConferenceParticipantsRow struct {
 	JoinedAt     *time.Time `json:"joined_at"`
 	LeftAt       *time.Time `json:"left_at"`
 	ForceMuted   bool       `json:"force_muted"`
+	Rsvp         string     `json:"rsvp"`
+	RsvpAt       *time.Time `json:"rsvp_at"`
 	UserName     string     `json:"user_name"`
 	UserEmail    string     `json:"user_email"`
 }
@@ -283,6 +457,8 @@ func (q *Queries) ListConferenceParticipants(ctx context.Context, conferenceID u
 			&i.JoinedAt,
 			&i.LeftAt,
 			&i.ForceMuted,
+			&i.Rsvp,
+			&i.RsvpAt,
 			&i.UserName,
 			&i.UserEmail,
 		); err != nil {
@@ -297,42 +473,62 @@ func (q *Queries) ListConferenceParticipants(ctx context.Context, conferenceID u
 }
 
 const listConferences = `-- name: ListConferences :many
-SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at,
+SELECT c.id, c.workspace_id, c.task_id, c.created_by, c.title, c.description, c.scheduled_at, c.started_at, c.ended_at, c.status, c.recording_ttl_days, c.created_at, c.updated_at, c.soon_notified_for, c.duration_minutes, c.recurrence, c.timezone, c.milestone_id,
        u.name AS created_by_name,
        (SELECT count(*) FROM conference_participants p WHERE p.conference_id = c.id) AS participant_count,
        (SELECT count(*) FROM conference_participants p
-         WHERE p.conference_id = c.id AND p.joined_at IS NOT NULL AND p.left_at IS NULL) AS active_count
+         WHERE p.conference_id = c.id AND p.joined_at IS NOT NULL AND p.left_at IS NULL) AS active_count,
+       -- The reader's own answer to the invitation (#3051): NULL when they are
+       -- not invited at all, so the row has nothing to answer.
+       mine.rsvp AS my_rsvp,
+       m.title AS milestone_title,
+       m.slug AS milestone_slug,
+       mp.slug AS milestone_project_slug
 FROM conferences c
 LEFT JOIN users u ON u.id = c.created_by
-WHERE c.workspace_id = $1
-  AND ($2::text IS NULL OR c.status = $2::text)
+LEFT JOIN conference_participants mine ON mine.conference_id = c.id AND mine.user_id = $1::uuid
+LEFT JOIN milestones m ON m.id = c.milestone_id
+    AND EXISTS (SELECT 1 FROM projects xp WHERE xp.id = m.project_id AND xp.workspace_id = c.workspace_id)
+LEFT JOIN projects mp ON mp.id = m.project_id
+WHERE c.workspace_id = $2
+  AND ($3::text IS NULL OR c.status = $3::text)
 ORDER BY (c.status = 'live') DESC,
          c.scheduled_at ASC NULLS LAST,
          c.created_at DESC
 `
 
 type ListConferencesParams struct {
+	Viewer      uuid.UUID `json:"viewer"`
 	WorkspaceID uuid.UUID `json:"workspace_id"`
 	Status      *string   `json:"status"`
 }
 
 type ListConferencesRow struct {
-	ID               uuid.UUID  `json:"id"`
-	WorkspaceID      uuid.UUID  `json:"workspace_id"`
-	TaskID           *uuid.UUID `json:"task_id"`
-	CreatedBy        *uuid.UUID `json:"created_by"`
-	Title            string     `json:"title"`
-	Description      string     `json:"description"`
-	ScheduledAt      *time.Time `json:"scheduled_at"`
-	StartedAt        *time.Time `json:"started_at"`
-	EndedAt          *time.Time `json:"ended_at"`
-	Status           string     `json:"status"`
-	RecordingTtlDays int32      `json:"recording_ttl_days"`
-	CreatedAt        time.Time  `json:"created_at"`
-	UpdatedAt        time.Time  `json:"updated_at"`
-	CreatedByName    *string    `json:"created_by_name"`
-	ParticipantCount int64      `json:"participant_count"`
-	ActiveCount      int64      `json:"active_count"`
+	ID                   uuid.UUID  `json:"id"`
+	WorkspaceID          uuid.UUID  `json:"workspace_id"`
+	TaskID               *uuid.UUID `json:"task_id"`
+	CreatedBy            *uuid.UUID `json:"created_by"`
+	Title                string     `json:"title"`
+	Description          string     `json:"description"`
+	ScheduledAt          *time.Time `json:"scheduled_at"`
+	StartedAt            *time.Time `json:"started_at"`
+	EndedAt              *time.Time `json:"ended_at"`
+	Status               string     `json:"status"`
+	RecordingTtlDays     int32      `json:"recording_ttl_days"`
+	CreatedAt            time.Time  `json:"created_at"`
+	UpdatedAt            time.Time  `json:"updated_at"`
+	SoonNotifiedFor      *time.Time `json:"soon_notified_for"`
+	DurationMinutes      *int32     `json:"duration_minutes"`
+	Recurrence           string     `json:"recurrence"`
+	Timezone             string     `json:"timezone"`
+	MilestoneID          *uuid.UUID `json:"milestone_id"`
+	CreatedByName        *string    `json:"created_by_name"`
+	ParticipantCount     int64      `json:"participant_count"`
+	ActiveCount          int64      `json:"active_count"`
+	MyRsvp               *string    `json:"my_rsvp"`
+	MilestoneTitle       *string    `json:"milestone_title"`
+	MilestoneSlug        *string    `json:"milestone_slug"`
+	MilestoneProjectSlug *string    `json:"milestone_project_slug"`
 }
 
 // ListConferences returns the workspace's conferences with the two numbers the
@@ -342,8 +538,13 @@ type ListConferencesRow struct {
 //
 // Order puts live calls first — you join the meeting that is happening, not the
 // one planned for Thursday — then the nearest scheduled, then the archive.
+//
+// The stage (#3053) is joined in with its project's slug — the row links to the
+// stage page — but only while that project is still in the conference's
+// workspace: a project transfer clears the link (ClearConferenceMilestonesAcross
+// Workspaces), and until it has, a stranger's stage title must not show here.
 func (q *Queries) ListConferences(ctx context.Context, arg ListConferencesParams) ([]ListConferencesRow, error) {
-	rows, err := q.db.Query(ctx, listConferences, arg.WorkspaceID, arg.Status)
+	rows, err := q.db.Query(ctx, listConferences, arg.Viewer, arg.WorkspaceID, arg.Status)
 	if err != nil {
 		return nil, err
 	}
@@ -365,9 +566,18 @@ func (q *Queries) ListConferences(ctx context.Context, arg ListConferencesParams
 			&i.RecordingTtlDays,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SoonNotifiedFor,
+			&i.DurationMinutes,
+			&i.Recurrence,
+			&i.Timezone,
+			&i.MilestoneID,
 			&i.CreatedByName,
 			&i.ParticipantCount,
 			&i.ActiveCount,
+			&i.MyRsvp,
+			&i.MilestoneTitle,
+			&i.MilestoneSlug,
+			&i.MilestoneProjectSlug,
 		); err != nil {
 			return nil, err
 		}
@@ -380,7 +590,7 @@ func (q *Queries) ListConferences(ctx context.Context, arg ListConferencesParams
 }
 
 const listConferencesByTask = `-- name: ListConferencesByTask :many
-SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at FROM conferences WHERE task_id = $1 ORDER BY created_at DESC
+SELECT id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for, duration_minutes, recurrence, timezone, milestone_id FROM conferences WHERE task_id = $1 ORDER BY created_at DESC
 `
 
 func (q *Queries) ListConferencesByTask(ctx context.Context, taskID *uuid.UUID) ([]Conference, error) {
@@ -406,6 +616,11 @@ func (q *Queries) ListConferencesByTask(ctx context.Context, taskID *uuid.UUID) 
 			&i.RecordingTtlDays,
 			&i.CreatedAt,
 			&i.UpdatedAt,
+			&i.SoonNotifiedFor,
+			&i.DurationMinutes,
+			&i.Recurrence,
+			&i.Timezone,
+			&i.MilestoneID,
 		); err != nil {
 			return nil, err
 		}
@@ -421,7 +636,7 @@ const pauseConference = `-- name: PauseConference :one
 UPDATE conferences
 SET status = 'scheduled', started_at = NULL, ended_at = NULL, updated_at = now()
 WHERE id = $1 AND status = 'live'
-RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at
+RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for, duration_minutes, recurrence, timezone, milestone_id
 `
 
 // PauseConference ends the current session without ending the conference
@@ -446,6 +661,11 @@ func (q *Queries) PauseConference(ctx context.Context, id uuid.UUID) (Conference
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
+		&i.DurationMinutes,
+		&i.Recurrence,
+		&i.Timezone,
+		&i.MilestoneID,
 	)
 	return i, err
 }
@@ -468,7 +688,7 @@ const setConferenceParticipantMuted = `-- name: SetConferenceParticipantMuted :o
 UPDATE conference_participants
 SET force_muted = $3
 WHERE conference_id = $1 AND user_id = $2
-RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
 `
 
 type SetConferenceParticipantMutedParams struct {
@@ -488,6 +708,40 @@ func (q *Queries) SetConferenceParticipantMuted(ctx context.Context, arg SetConf
 		&i.JoinedAt,
 		&i.LeftAt,
 		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
+	)
+	return i, err
+}
+
+const setConferenceRsvp = `-- name: SetConferenceRsvp :one
+UPDATE conference_participants
+SET rsvp = $1, rsvp_at = now()
+WHERE conference_id = $2 AND user_id = $3
+RETURNING conference_id, user_id, role, invited_at, joined_at, left_at, force_muted, rsvp, rsvp_at
+`
+
+type SetConferenceRsvpParams struct {
+	Rsvp         string    `json:"rsvp"`
+	ConferenceID uuid.UUID `json:"conference_id"`
+	UserID       uuid.UUID `json:"user_id"`
+}
+
+// SetConferenceRsvp records a participant's answer to the invitation (#3051).
+// Only an existing seat answers: an invitation is what is being answered.
+func (q *Queries) SetConferenceRsvp(ctx context.Context, arg SetConferenceRsvpParams) (ConferenceParticipant, error) {
+	row := q.db.QueryRow(ctx, setConferenceRsvp, arg.Rsvp, arg.ConferenceID, arg.UserID)
+	var i ConferenceParticipant
+	err := row.Scan(
+		&i.ConferenceID,
+		&i.UserID,
+		&i.Role,
+		&i.InvitedAt,
+		&i.JoinedAt,
+		&i.LeftAt,
+		&i.ForceMuted,
+		&i.Rsvp,
+		&i.RsvpAt,
 	)
 	return i, err
 }
@@ -496,7 +750,7 @@ const startConference = `-- name: StartConference :one
 UPDATE conferences
 SET status = 'live', started_at = COALESCE(started_at, now()), ended_at = NULL, updated_at = now()
 WHERE id = $1 AND status <> 'live'
-RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at
+RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for, duration_minutes, recurrence, timezone, milestone_id
 `
 
 // StartConference (re)activates a room. It is idempotent on purpose: everyone's
@@ -524,15 +778,21 @@ func (q *Queries) StartConference(ctx context.Context, id uuid.UUID) (Conference
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
+		&i.DurationMinutes,
+		&i.Recurrence,
+		&i.Timezone,
+		&i.MilestoneID,
 	)
 	return i, err
 }
 
 const updateConference = `-- name: UpdateConference :one
 UPDATE conferences
-SET title = $2, description = $3, scheduled_at = $4, task_id = $5, recording_ttl_days = $6, updated_at = now()
+SET title = $2, description = $3, scheduled_at = $4, task_id = $5, recording_ttl_days = $6,
+    duration_minutes = $7, recurrence = $8, timezone = $9, milestone_id = $10, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at
+RETURNING id, workspace_id, task_id, created_by, title, description, scheduled_at, started_at, ended_at, status, recording_ttl_days, created_at, updated_at, soon_notified_for, duration_minutes, recurrence, timezone, milestone_id
 `
 
 type UpdateConferenceParams struct {
@@ -542,6 +802,10 @@ type UpdateConferenceParams struct {
 	ScheduledAt      *time.Time `json:"scheduled_at"`
 	TaskID           *uuid.UUID `json:"task_id"`
 	RecordingTtlDays int32      `json:"recording_ttl_days"`
+	DurationMinutes  *int32     `json:"duration_minutes"`
+	Recurrence       string     `json:"recurrence"`
+	Timezone         string     `json:"timezone"`
+	MilestoneID      *uuid.UUID `json:"milestone_id"`
 }
 
 // UpdateConference is a full replace of the editable fields (the same shape the
@@ -555,6 +819,10 @@ func (q *Queries) UpdateConference(ctx context.Context, arg UpdateConferencePara
 		arg.ScheduledAt,
 		arg.TaskID,
 		arg.RecordingTtlDays,
+		arg.DurationMinutes,
+		arg.Recurrence,
+		arg.Timezone,
+		arg.MilestoneID,
 	)
 	var i Conference
 	err := row.Scan(
@@ -571,6 +839,11 @@ func (q *Queries) UpdateConference(ctx context.Context, arg UpdateConferencePara
 		&i.RecordingTtlDays,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.SoonNotifiedFor,
+		&i.DurationMinutes,
+		&i.Recurrence,
+		&i.Timezone,
+		&i.MilestoneID,
 	)
 	return i, err
 }

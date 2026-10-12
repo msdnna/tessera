@@ -47,7 +47,8 @@ vi.mock('@/data/whatsNew', () => ({
 
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { WHATS_NEW } from '@/data/whatsNew'
-import WhatsNewModal from '@/components/WhatsNewModal.vue'
+import WhatsNewModal from '@/components/tour/WhatsNewV2.vue'
+import { useTourStore } from '@/stores/tour'
 import VersionBadge from '@/components/VersionBadge.vue'
 
 // Mounted components are unmounted in afterEach: a mount left open in this suite
@@ -150,9 +151,9 @@ describe('WhatsNewModal', () => {
     expect(card.textContent).toContain(ru.app.whatsNew.historyTitle)
     expect(card.textContent).toContain(ru.app.whatsNew.historySub)
     expect(card.textContent).toContain(ru.app.whatsNew.close)
-    expect(card.querySelectorAll('.wn-rel')).toHaveLength(WHATS_NEW.length)
+    expect(card.querySelectorAll('.wv-rel')).toHaveLength(WHATS_NEW.length)
 
-    card.querySelector('button').click()
+    card.querySelector('[data-testid="whats-new-go"]').click()
     await drain()
     expect(store.historyOpen).toBe(false)
     expect(apiMock.acknowledgements.ack).not.toHaveBeenCalled()
@@ -160,19 +161,69 @@ describe('WhatsNewModal', () => {
 
   it('keeps the update wording and still acknowledges on dismiss', async () => {
     const store = useWhatsNewStore()
-    apiMock.acknowledgements.list.mockResolvedValue({ data: [{ key: 'whatsnew:web:0.7.0' }] })
+    // A v1 user who has already answered the v2 card: the plain release list.
+    apiMock.acknowledgements.list.mockResolvedValue({
+      data: [{ key: 'whatsnew:web:0.7.0' }, { key: 'whatschanged:v2' }],
+    })
     await store.load()
 
     mountWith(WhatsNewModal)
     await drain()
     const card = modalCard()
+    expect(card.dataset.face).toBe('release')
     expect(card.textContent).toContain(ru.app.whatsNew.title)
     expect(card.textContent).toContain(ru.app.whatsNew.gotIt)
-    expect(card.querySelectorAll('.wn-rel')).toHaveLength(2)
+    expect(card.querySelectorAll('.wv-rel')).toHaveLength(2)
 
-    card.querySelector('button').click()
+    card.querySelector('[data-testid="whats-new-go"]').click()
     await drain()
     expect(apiMock.acknowledgements.ack).toHaveBeenCalled()
+  })
+
+  // v2 (#3000): a v1 user gets the v2 card once, in place of the list.
+  it('shows the v2 card to a v1 user; «Позже» queues the hints', async () => {
+    const store = useWhatsNewStore()
+    apiMock.acknowledgements.list.mockResolvedValue({ data: [{ key: 'whatsnew:web:0.7.0' }] })
+    await store.load()
+    expect(store.showV2Intro).toBe(true)
+
+    mountWith(WhatsNewModal)
+    await drain()
+    const card = modalCard()
+    expect(card.dataset.face).toBe('v2')
+    expect(card.textContent).toContain(ru.app.whatsNew.v2.title)
+    expect(card.querySelectorAll('.wv-row')).toHaveLength(5)
+
+    card.querySelector('[data-testid="whats-new-later"]').click()
+    await drain()
+    const keys = apiMock.acknowledgements.ack.mock.calls.map((c) => c[0])
+    expect(keys).toEqual(expect.arrayContaining(['whatschanged:v2', 'whatschanged:later']))
+    // The releases it stood in for are read too.
+    expect(keys).toEqual(expect.arrayContaining(['whatsnew:web:0.9.0', 'whatsnew:web:0.8.0']))
+    expect(store.showV2Intro).toBe(false)
+    expect(useTourStore().active).toBe(false)
+  })
+
+  it('«Показать, что изменилось» walks the mini-tour', async () => {
+    const store = useWhatsNewStore()
+    apiMock.acknowledgements.list.mockResolvedValue({ data: [{ key: 'getstarted:done' }] })
+    await store.load()
+    mountWith(WhatsNewModal)
+    await drain()
+    modalCard().querySelector('[data-testid="whats-new-go"]').click()
+    await drain()
+    const keys = apiMock.acknowledgements.ack.mock.calls.map((c) => c[0])
+    expect(keys).toContain('whatschanged:v2')
+    expect(keys).not.toContain('whatschanged:later')
+    expect(useTourStore().chapter).toBe('whatschanged')
+  })
+
+  it('never shows the v2 card to a brand-new account', async () => {
+    accountMock.isBrandNewAccount.mockReturnValue(true)
+    const store = useWhatsNewStore()
+    apiMock.acknowledgements.list.mockResolvedValue({ data: [{ key: 'getstarted:skipped' }] })
+    await store.load()
+    expect(store.showV2Intro).toBe(false)
   })
 })
 

@@ -65,47 +65,88 @@ beforeEach(() => {
   })
 })
 
-// ── history ───────────────────────────────────────────────────────────────────
-describe('TaskHistoryTab.vue', () => {
-  it('renders a row per event with the actor and the journal wording', async () => {
-    const C = (await import('@/components/task/TaskHistoryTab.vue')).default
-    const w = mount(C, {
-      props: {
-        events: [
-          {
-            id: '1',
-            actor_id: 'u1',
-            actor_name: 'Аня',
-            kind: 'created',
-            created_at: '2026-03-07T09:05:00Z',
-          },
-          {
-            id: '2',
-            actor_id: 'u2',
-            actor_name: 'Боря',
-            kind: 'moved',
-            data: { to: 'Готово' },
-            created_at: '2026-03-07T10:00:00Z',
-          },
-        ],
-      },
-      global: { stubs },
+// ── activity: «Всё» (#2958) ───────────────────────────────────────────────────
+// The history tab is gone: its journal rows now run between the comment threads,
+// by time, in the comments pane's «Всё» mode.
+describe('TaskCommentsTab.vue — «Всё»', () => {
+  const load = async () => (await import('@/components/task/TaskCommentsTab.vue')).default
+  const events = [
+    {
+      id: 'e1',
+      actor_id: 'u1',
+      actor_name: 'Аня',
+      kind: 'created',
+      created_at: '2026-03-07T09:00:00Z',
+    },
+    // The comment's own journal entry: the thread already shows it.
+    {
+      id: 'e2',
+      actor_id: 'u1',
+      actor_name: 'Аня',
+      kind: 'comment',
+      created_at: '2026-03-07T09:30:00Z',
+    },
+    {
+      id: 'e3',
+      actor_id: 'u2',
+      actor_name: 'Боря',
+      kind: 'moved',
+      data: { from: 'К работе', to: 'В процессе' },
+      created_at: '2026-03-07T10:00:00Z',
+    },
+    { id: 'e4', kind: 'recurred', created_at: '2026-03-07T11:00:00Z' },
+  ]
+  const comments = [
+    {
+      id: 'c1',
+      author_id: 'u1',
+      author_name: 'Аня',
+      body: 'Привет',
+      created_at: '2026-03-07T09:30:00Z',
+    },
+  ]
+  const mountTab = async (mode) =>
+    mount(await load(), {
+      props: { taskId: 't1', comments, events, mode, readonly: true },
+      global: { stubs: { ...stubs, RichContent: true, MarkdownEditor: true } },
     })
-    expect(w.findAll('.histrow')).toHaveLength(2)
-    expect(w.text()).toContain('Аня')
-    expect(w.text()).toContain('переместил(а) → «Готово»')
+
+  it('interleaves the journal with the threads by time, without the comment entries', async () => {
+    const w = await mountTab('all')
+    const kinds = w.findAll('.c-items > div').map((n) => n.classes()[0])
+    expect(kinds).toEqual(['c-event', 'c-thread', 'c-event', 'c-event'])
   })
 
-  it('falls back to «Кто-то» for a system event and shows the empty state', async () => {
-    const C = (await import('@/components/task/TaskHistoryTab.vue')).default
-    expect(mount(C, { props: { events: [] }, global: { stubs } }).findAll('.histrow')).toHaveLength(
-      0,
-    )
-    const w = mount(C, {
-      props: { events: [{ id: '1', kind: 'created', created_at: '2026-03-07T09:05:00Z' }] },
-      global: { stubs },
+  it('draws a move as «from → to» chips and names a system event «Кто-то»', async () => {
+    const w = await mountTab('all')
+    const rows = w.findAll('.c-event')
+    expect(rows[1].findAll('.e-chip').map((n) => n.text())).toEqual(['К работе', 'В процессе'])
+    expect(rows[2].text()).toContain('Кто-то')
+  })
+
+  it('draws an old move (no source) as one chip and a priority as its pill', async () => {
+    const w = mount(await load(), {
+      props: {
+        taskId: 't1',
+        comments: [],
+        readonly: true,
+        mode: 'all',
+        events: [
+          { id: 'm', kind: 'moved', data: { to: 'Готово' }, created_at: '2026-03-07T09:00:00Z' },
+          { id: 'p', kind: 'priority', data: { to: 3 }, created_at: '2026-03-07T10:00:00Z' },
+        ],
+      },
+      global: { stubs: { ...stubs, RichContent: true, MarkdownEditor: true } },
     })
-    expect(w.text()).toContain('Кто-то')
+    const rows = w.findAll('.c-event')
+    expect(rows[0].findAll('.e-chip').map((n) => n.text())).toEqual(['Готово'])
+    expect(rows[1].find('.e-prio').text()).toBe('Высокий')
+  })
+
+  it('shows the threads alone in the «Комментарии» mode', async () => {
+    const w = await mountTab('comments')
+    expect(w.findAll('.c-event')).toHaveLength(0)
+    expect(w.findAll('.c-thread')).toHaveLength(1)
   })
 })
 
@@ -122,12 +163,18 @@ describe('TaskFilesTab.vue', () => {
           { id: 'a', filename: 'tiny.txt', size: 900 },
           { id: 'b', filename: 'mid.png', size: 2048 },
           { id: 'c', filename: 'big.zip', size: 3 * 1024 * 1024 },
+          { id: 'd', filename: 'odd.zip', size: 1.4 * 1024 * 1024 },
         ],
       },
       global: { stubs },
     })
     const sizes = w.findAll('.f-size').map((n) => n.text())
-    expect(sizes).toEqual(['900 Б', '2 КБ', '3.0 МБ'])
+    // The row went through `attachmentSizeText` when the hand-written
+    // `.toFixed(1)` came out (#2932), and the expectation here kept the shape
+    // that change existed to kill: a trailing ".0" glued on with a decimal
+    // *point*, inside a Russian interface. Intl writes neither — an exact 3 МБ
+    // has no fraction to show, and one that does shows it after a comma.
+    expect(sizes).toEqual(['900 Б', '2 КБ', '3 МБ', '1,4 МБ'])
   })
 
   it('publishes the shortened list back to the modal on delete', async () => {
@@ -143,7 +190,11 @@ describe('TaskFilesTab.vue', () => {
       },
       global: { stubs },
     })
-    await w.findAll('button[title="Удалить"]')[0].trigger('click')
+    // Two steps (v2, #3113): the first press only arms the button.
+    await w.findAll('[data-testid="file-delete"]')[0].trigger('click')
+    await flushPromises()
+    expect(api.tasks.removeAttachment).not.toHaveBeenCalled()
+    await w.find('[data-testid="file-delete-armed"]').trigger('click')
     await flushPromises()
     expect(api.tasks.removeAttachment).toHaveBeenCalledWith('a')
     expect(w.emitted('update:attachments')[0][0]).toEqual([
@@ -197,12 +248,17 @@ describe('TaskRelationsTab.vue', () => {
         { id: 't4', number: null, title: 'без номера', project_name: 'P', board_name: 'B' },
       ],
     })
-    const w = mount(C, { props: { taskId: 't1', relations: [], wsId: 'w1' }, global: { stubs } })
-    await w.find('.n-input-stub').trigger('focus')
+    // The form is a popover (v2, #3113) — kept in the tree to be found here.
+    const w = mount(C, {
+      props: { taskId: 't1', relations: [], wsId: 'w1' },
+      global: { stubs: { ...stubs, teleport: true } },
+    })
+    await w.find('.rel-open').trigger('click')
     await flushPromises()
-    const heads = w.findAll('.rp-head').map((n) => n.text())
+    // The relation form of package J (#3118): sections «project · board».
+    const heads = w.findAll('.pp-sec .pp-grow').map((n) => n.text())
     expect(heads).toEqual(['P · B', 'Q · B'])
-    const titles = w.findAll('.rp-title').map((n) => n.text())
+    const titles = w.findAll('[data-testid="rel-pick"] .pp-label').map((n) => n.text())
     expect(titles).toEqual(['вторая', 'третья']) // no self-link, no numberless task
   })
 })
@@ -238,7 +294,9 @@ describe('TaskSubtasksTab.vue', () => {
     seedBoardStore({ columns })
     const C = await load()
     const w = mount(C, { props: { task, columns, readonly: true }, global: { stubs } })
-    expect(w.findAll('.col-chip')).toHaveLength(0)
+    // The status still shows (v2: glyph + name), but as text, without its menu.
+    expect(w.findAll('.col-chip.static')).toHaveLength(task.subtasks.length)
+    expect(w.findAll('.col-item')).toHaveLength(0)
   })
 
   it('reports «changed» after completing a subtask so the modal reloads', async () => {

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import retrofit2.HttpException
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.model.Conference
 import website.msdnna.tessera.data.model.Document
 import website.msdnna.tessera.data.model.DocumentApproval
 import website.msdnna.tessera.data.model.DocumentComment
@@ -20,9 +21,12 @@ import website.msdnna.tessera.data.model.DocumentTaskLink
 import website.msdnna.tessera.data.model.DocumentTemplate
 import website.msdnna.tessera.data.model.DocumentVersion
 import website.msdnna.tessera.data.model.Member
+import website.msdnna.tessera.data.model.WorkspaceMilestone
 import website.msdnna.tessera.data.model.WorkspaceTask
+import website.msdnna.tessera.data.repository.ConferenceRepository
 import website.msdnna.tessera.data.repository.DocContentSave
 import website.msdnna.tessera.data.repository.DocumentRepository
+import website.msdnna.tessera.data.repository.MilestoneRepository
 import website.msdnna.tessera.data.repository.TaskRepository
 import website.msdnna.tessera.data.repository.WorkspaceRepository
 import website.msdnna.tessera.ui.UiText
@@ -33,6 +37,7 @@ import website.msdnna.tessera.util.DocCrumb
 import website.msdnna.tessera.util.DocFileFormatException
 import website.msdnna.tessera.util.DocImportRoute
 import website.msdnna.tessera.util.DocPage
+import website.msdnna.tessera.util.DocPins
 import website.msdnna.tessera.util.DocThread
 import website.msdnna.tessera.util.DocThreadGroups
 import website.msdnna.tessera.util.buildDocThreads
@@ -40,9 +45,11 @@ import website.msdnna.tessera.util.canRaiseApproval
 import website.msdnna.tessera.util.docBlockIdsInOrder
 import website.msdnna.tessera.util.docChildCount
 import website.msdnna.tessera.util.docExportFormats
+import website.msdnna.tessera.util.docHasPins
 import website.msdnna.tessera.util.docImportLimit
 import website.msdnna.tessera.util.docImportRoute
 import website.msdnna.tessera.util.docOpenThreadCount
+import website.msdnna.tessera.util.docPins
 import website.msdnna.tessera.util.docTiles
 import website.msdnna.tessera.util.documentApprovalState
 import website.msdnna.tessera.util.errorMessage
@@ -83,6 +90,8 @@ data class DocumentsUiState(
     val templates: DocTemplatesState = DocTemplatesState(),
     /** A converted file waiting for the editor to parse it — see [DocPendingImport]. */
     val pendingImport: DocPendingImport? = null,
+    /** The open document's stage and meeting chips (#3044, #3046). */
+    val pins: DocPins = DocPins(),
 )
 
 /**
@@ -293,9 +302,18 @@ data class DocLinksState(
 
     /** Already-linked tasks are dropped from the picker rather than offered and
      *  refused: re-linking the same pair is a no-op server-side, so offering it
-     *  would be a button that appears to do nothing. */
+     *  would be a button that appears to do nothing.
+     *
+     *  "The same pair" is the link's own key — (документ, задача, блок), not the
+     *  task alone. A task linked to the document as a whole may also be linked to
+     *  the clause it implements, which is what the key is for (миграция 0059);
+     *  hiding it by task id made that link unreachable, and the picker simply
+     *  dropped the task with nothing said. So the anchor the panel is armed with
+     *  is part of what counts as already linked. */
     fun candidates(query: String): List<WorkspaceTask> {
-        val linked = links.mapTo(mutableSetOf()) { it.taskId }
+        val linked = links.asSequence()
+            .filter { it.blockId == anchorBlockId }
+            .mapTo(mutableSetOf()) { it.taskId }
         val q = query.trim().lowercase()
         return tasks.asSequence()
             .filter { it.number != null && it.id !in linked }
@@ -330,20 +348,67 @@ class DocumentsViewModel(
     // documents: the workspace's tasks and its members.
     private val taskRepo: TaskRepository = TaskRepository(),
     private val wsRepo: WorkspaceRepository = WorkspaceRepository(),
+    // The captions of the head's chips (#3032): the workspace's stages and meetings.
+    private val milestoneRepo: MilestoneRepository = MilestoneRepository(),
+    private val conferenceRepo: ConferenceRepository = ConferenceRepository(),
 ) : ViewModel() {
     private val _state = MutableStateFlow(DocumentsUiState())
     val state: StateFlow<DocumentsUiState> = _state.asStateFlow()
 
     private var workspaceId: String = ""
 
+    /**
+     * Loads a workspace's documents.
+     *
+     * A change of workspace wipes the state first (#2932). Everything in it but
+     * the converter belongs to ONE workspace, and the ViewModel outlives it:
+     * `viewModel()` in DocumentsScreen is bound to the host, not to the
+     * workspace, and the section stays mounted while the workspace under it is
+     * switched — so the grid, the breadcrumb trail, the open reader and the
+     * pickers of the links panel were all still the previous one's. Nor does the
+     * reset alone suffice: the failing branch returns without writing anything,
+     * which left the other workspace's documents on screen under a red banner,
+     * passing for this one's — and tapping a tile there opens a document from a
+     * workspace the reader has since left.
+     *
+     * [reload] comes through here with the same id and must NOT close the
+     * reader, hence the reset is gated on the id actually changing.
+     */
     fun load(workspaceId: String) {
+        val switched = workspaceId != this.workspaceId
         this.workspaceId = workspaceId
-        _state.update { it.copy(loading = true, error = null) }
-        launchCatching {
-            val docs = repo.list(workspaceId)
-            _state.update { it.copy(loading = false).withDocs(docs) }
+        _state.update {
+            if (switched) {
+                DocumentsUiState(
+                    loading = true,
+                    // The converter describes the server, not the workspace.
+                    // Re-asking would grey out the office half of the import
+                    // picker for a round trip and answer the same thing.
+                    templates = DocTemplatesState(converter = it.templates.converter),
+                )
+            } else {
+                it.copy(loading = true, error = null)
+            }
+        }
+        viewModelScope.launch {
+            val result = runCatching { repo.list(workspaceId) }
+            if (stale(workspaceId)) return@launch
+            result.fold(
+                onSuccess = { docs -> _state.update { it.copy(loading = false, error = null).withDocs(docs) } },
+                onFailure = { e -> _state.update { it.copy(loading = false, error = errorMessage(e)) } },
+            )
         }
     }
+
+    /**
+     * The answer is no longer about the workspace that is open now.
+     *
+     * Two loads are in flight at once whenever the workspace is switched while
+     * the first list is still on the wire: the old request is in
+     * [viewModelScope], which the composition restarting does not cancel, so
+     * without this check a slow answer overwrites the list that replaced it.
+     */
+    private fun stale(requested: String): Boolean = workspaceId != requested
 
     /**
      * Opens a document. The tile's own row is shown immediately (title, so the
@@ -363,6 +428,7 @@ class DocumentsViewModel(
                 comments = DocCommentsState(),
                 history = DocHistoryState(),
                 links = DocLinksState(tasks = it.links.tasks, members = it.links.members),
+                pins = DocPins(),
             )
         }
         viewModelScope.launch {
@@ -381,6 +447,7 @@ class DocumentsViewModel(
                         )
                     }
                     loadComments(doc.id)
+                    loadPins(full)
                     // Loaded with the body, not with the panel: the button over
                     // the document carries the number of linked tasks, and a
                     // count that only appears once the panel has been opened is
@@ -394,6 +461,37 @@ class DocumentsViewModel(
                     }
                 },
             )
+        }
+    }
+
+    /**
+     * Resolves the open document's chips (#3044, #3046). The lists are fetched
+     * only when the document has a pin, and kept per workspace — opening the
+     * next document of the same sprint costs nothing.
+     */
+    private var pinStages: Pair<String, List<WorkspaceMilestone>>? = null
+    private var pinMeetings: Pair<String, List<Conference>>? = null
+
+    private fun loadPins(doc: Document) {
+        if (!docHasPins(doc) || workspaceId.isBlank()) return
+        val requested = workspaceId
+        viewModelScope.launch {
+            val stages = if (doc.milestoneId == null) {
+                emptyList()
+            } else {
+                pinStages?.takeIf { it.first == requested }?.second
+                    ?: runCatching { milestoneRepo.workspaceList(requested) }.getOrDefault(emptyList())
+                        .also { pinStages = requested to it }
+            }
+            val meetings = if (doc.conferenceId == null) {
+                emptyList()
+            } else {
+                pinMeetings?.takeIf { it.first == requested }?.second
+                    ?: runCatching { conferenceRepo.list(requested) }.getOrDefault(emptyList())
+                        .also { pinMeetings = requested to it }
+            }
+            if (stale(requested) || _state.value.openId != doc.id) return@launch
+            _state.update { it.copy(pins = docPins(doc, stages, meetings)) }
         }
     }
 
@@ -730,19 +828,20 @@ class DocumentsViewModel(
      */
     private fun ensureLinkPickers() {
         if (workspaceId.isBlank()) return
+        val requested = workspaceId
         val l = _state.value.links
         if (l.tasks.isEmpty()) {
             viewModelScope.launch {
-                runCatching { taskRepo.workspaceTasks(workspaceId) }.getOrNull()?.let { tasks ->
-                    _state.update { it.copy(links = it.links.copy(tasks = tasks)) }
-                }
+                val tasks = runCatching { taskRepo.workspaceTasks(requested) }.getOrNull()
+                if (stale(requested)) return@launch
+                tasks?.let { rows -> _state.update { it.copy(links = it.links.copy(tasks = rows)) } }
             }
         }
         if (l.members.isEmpty()) {
             viewModelScope.launch {
-                runCatching { wsRepo.members(workspaceId) }.getOrNull()?.let { members ->
-                    _state.update { it.copy(links = it.links.copy(members = members)) }
-                }
+                val members = runCatching { wsRepo.members(requested) }.getOrNull()
+                if (stale(requested)) return@launch
+                members?.let { rows -> _state.update { it.copy(links = it.links.copy(members = rows)) } }
             }
         }
     }
@@ -936,8 +1035,10 @@ class DocumentsViewModel(
         _state.update { it.copy(templates = it.templates.copy(sheetOpen = true, error = null)) }
         if (workspaceId.isBlank()) return
         _state.update { it.copy(templates = it.templates.copy(loading = true)) }
+        val requested = workspaceId
         viewModelScope.launch {
-            val result = runCatching { repo.templates(workspaceId) }
+            val result = runCatching { repo.templates(requested) }
+            if (stale(requested)) return@launch
             _state.update { st ->
                 result.fold(
                     onSuccess = { saved ->

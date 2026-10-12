@@ -75,14 +75,14 @@ func (h *API) RunConferenceRecordingWorker(ctx context.Context) {
 	// Catch up at startup: a restart mid-recording is exactly the case where
 	// rows are left active with nobody polling them, and waiting a minute to
 	// notice would leave the red dot on for that whole minute.
-	h.withAdvisoryLock(ctx, "conference_recordings", func() { h.SweepConferenceRecordings(ctx) })
+	h.withAdvisoryLock(ctx, confRecordingsLock, func() { h.SweepConferenceRecordings(ctx) })
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobConfRecordings, opRecordingSweep)
-			h.withAdvisoryLock(ctx, "conference_recordings", func() { h.SweepConferenceRecordings(ctx) })
+			h.withAdvisoryLock(ctx, confRecordingsLock, func() { h.SweepConferenceRecordings(ctx) })
 		}
 	}
 }

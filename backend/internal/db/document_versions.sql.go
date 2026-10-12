@@ -234,8 +234,44 @@ type PruneDocumentVersionsParams struct {
 // PruneDocumentVersions caps the automatic history of one document, keeping the
 // newest @keep session snapshots. Manual versions are excluded from both the
 // deletion and the count: they are milestones somebody asked to keep, and an
-// afternoon of typing must not push them out of the journal.
+// afternoon of typing must not push them out of the journal. They are not
+// unbounded either — see PruneManualDocumentVersions below.
 func (q *Queries) PruneDocumentVersions(ctx context.Context, arg PruneDocumentVersionsParams) error {
 	_, err := q.db.Exec(ctx, pruneDocumentVersions, arg.DocumentID, arg.Keep)
+	return err
+}
+
+const pruneManualDocumentVersions = `-- name: PruneManualDocumentVersions :exec
+DELETE FROM document_versions
+WHERE document_versions.document_id = $1
+  AND document_versions.manual = true
+  AND NOT EXISTS (
+      SELECT 1 FROM document_approvals a WHERE a.version_id = document_versions.id
+  )
+  AND document_versions.id NOT IN (
+      SELECT v.id FROM document_versions v
+      WHERE v.document_id = $1 AND v.manual = true
+      ORDER BY v.revision DESC
+      LIMIT $2
+  )
+`
+
+type PruneManualDocumentVersionsParams struct {
+	DocumentID uuid.UUID `json:"document_id"`
+	Keep       int32     `json:"keep"`
+}
+
+// PruneManualDocumentVersions caps the *manual* half of the journal, which had no
+// bound at all: nothing prunes it, there is no endpoint that deletes a version,
+// and three paths write into it — the explicit snapshot button, a rollback (two
+// rows per click: "Перед откатом" and "Откат к версии N") and raising an approval
+// route. Each row is a full copy of the body, so an afternoon of rollbacks is tens
+// of megabytes nobody can reclaim.
+//
+// A version a route pinned is never touched: document_approvals.version_id is
+// ON DELETE RESTRICT, so deleting one would not orphan the route — it would fail
+// the whole statement, and with it the snapshot the user just asked for.
+func (q *Queries) PruneManualDocumentVersions(ctx context.Context, arg PruneManualDocumentVersionsParams) error {
+	_, err := q.db.Exec(ctx, pruneManualDocumentVersions, arg.DocumentID, arg.Keep)
 	return err
 }

@@ -45,6 +45,34 @@ describe('notificationText', () => {
         'Иван упомянул(а) вас в #7 «глянь»',
         'Иван mentioned you in #7 “глянь”',
       ],
+      // What was done to a task the reader takes part in (#3114).
+      [
+        { event: 'task_unassigned', actor: 'Иван', task_number: 42, title: 'Полить цветы' },
+        'Иван снял(а) вас с задачи #42 «Полить цветы»',
+        'Иван unassigned you from task #42 “Полить цветы”',
+      ],
+      [
+        { event: 'task_completed', actor: 'Иван', task_number: 42 },
+        'Иван выполнил(а) задачу #42',
+        'Иван completed task #42',
+      ],
+      [
+        { event: 'task_reopened', actor: 'Иван', task_number: 42 },
+        'Иван вернул(а) в работу задачу #42',
+        'Иван reopened task #42',
+      ],
+      // The task is gone: number, title and board travel in the payload alone.
+      [
+        {
+          event: 'task_deleted',
+          actor: 'Иван',
+          task_number: 42,
+          title: 'Очень длинное название задачи',
+          board_id: 'b-1',
+        },
+        'Иван удалил(а) задачу #42 «Очень длинное название задачи»',
+        'Иван deleted task #42 “Очень длинное название задачи”',
+      ],
       [
         { event: 'task_due_soon', task_number: 7, title: 'Полить цветы' },
         'Приближается срок задачи #7 «Полить цветы»',
@@ -57,6 +85,12 @@ describe('notificationText', () => {
         'Иван приглашает вас в конференцию «Летучка»',
         'Иван invited you to a conference “Летучка”',
       ],
+      // An @-mention in a call's chat (#3055): the call's name, no #ref.
+      [
+        { event: 'conference_mention', actor: 'Иван', name: 'Летучка', conference_id: 'c-1' },
+        'Иван упомянул(а) вас в чате встречи «Летучка»',
+        'Иван mentioned you in the chat of “Летучка”',
+      ],
     ]
     for (const [payload, wantRu] of cases) {
       expect(notificationText(N(payload), ru())).toBe(wantRu)
@@ -65,6 +99,31 @@ describe('notificationText', () => {
     for (const [payload, , wantEn] of cases) {
       expect(notificationText(N(payload), en())).toBe(wantEn)
     }
+  })
+
+  // A seeded column is a server-born name with a name_key (#2800), so the bell
+  // has to caption it the way the board does — otherwise the same column reads
+  // "Done" on the card and «Готово» one panel over.
+  it('captions a seeded column in the reader s language', async () => {
+    const seeded = {
+      event: 'task_moved',
+      actor: 'Иван',
+      task_number: 42,
+      column: 'Готово',
+      column_key: 'done',
+    }
+    expect(notificationText(N(seeded), ru())).toBe('Иван переместил(а) задачу #42 → «Готово»')
+    await setI18nLocale('en')
+    expect(notificationText(N(seeded), en())).toBe('Иван moved task #42 → “Done”')
+  })
+
+  it('shows a user-named column verbatim, and falls back for an unknown key', async () => {
+    // No key — the server drops it on rename, so this name is the user's own.
+    const mine = { event: 'task_moved', actor: 'Иван', task_number: 42, column: 'Протестировано' }
+    const unknown = { ...mine, column: 'Приёмка', column_key: 'acceptance' }
+    await setI18nLocale('en')
+    expect(notificationText(N(mine), en())).toBe('Иван moved task #42 → “Протестировано”')
+    expect(notificationText(N(unknown), en())).toBe('Иван moved task #42 → “Приёмка”')
   })
 
   // The changed fields arrive as machine names and are joined by Intl.ListFormat,
@@ -115,6 +174,30 @@ describe('notificationText', () => {
     ).toBe('GitLab · a/b: sync failed — 401 (after 1h 1m)')
   })
 
+  // A failure reason is the integration's own error text, so it is spliced in
+  // verbatim — but the "we don't know why" default is a UI string and belongs
+  // here, in the reader's language. A payload that carried it would read
+  // "sync failed — неизвестная ошибка" on an English screen, and an empty one
+  // would leave the dash dangling.
+  it('words an unknown sync failure reason in the reader s language', async () => {
+    const failed = (payload, opts) =>
+      notificationText(
+        N({ event: 'integration_sync_failed', label: 'GitLab · a/b', ...payload }),
+        opts,
+      )
+
+    expect(failed({ reason: '401', seconds: 5 }, ru())).toBe(
+      'GitLab · a/b: синхронизация не удалась — 401 (за 5 с)',
+    )
+    expect(failed({ seconds: 5 }, ru())).toBe(
+      'GitLab · a/b: синхронизация не удалась — неизвестная ошибка (за 5 с)',
+    )
+    await setI18nLocale('en')
+    expect(failed({ seconds: 5 }, en())).toBe(
+      'GitLab · a/b: sync failed — unknown error (after 5s)',
+    )
+  })
+
   // A reminder's body is the user's own text: content, never translated. Only
   // the empty-message default is a UI string.
   it('shows a reminder message verbatim and falls back to a translated default', async () => {
@@ -157,7 +240,11 @@ describe('notificationTitle', () => {
   it('titles a native notification by kind', async () => {
     expect(notificationTitle('mention')).toBe('Вас упомянули')
     expect(notificationTitle('conference_invite')).toBe('Приглашение в конференцию')
+    expect(notificationTitle('deleted')).toBe('Задача удалена')
+    expect(notificationTitle('unassigned')).toBe('Вас сняли с задачи')
     await setI18nLocale('en')
+    expect(notificationTitle('completed')).toBe('Task completed')
+    expect(notificationTitle('reopened')).toBe('Task reopened')
     expect(notificationTitle('mention')).toBe('You were mentioned')
     expect(notificationTitle('conference_invite')).toBe('Conference invitation')
   })
@@ -178,6 +265,12 @@ describe('notificationRoute', () => {
     ).toBe('/conferences/c-1')
   })
 
+  it('opens the «Входящие» panel on the note for a note mention (#3040)', () => {
+    expect(
+      notificationRoute({ kind: 'mention', payload: { event: 'note_mention', note_id: 'n-1' } }),
+    ).toBe('?inbox=notes&note=n-1')
+  })
+
   it('opens the board with the task query for a task notification', () => {
     expect(notificationRoute({ task_id: 't-1', task_board_id: 'b-1' })).toBe('/board/b-1?task=t-1')
   })
@@ -189,6 +282,15 @@ describe('notificationRoute', () => {
       notificationRoute({ kind: 'integration_sync', payload: { event: 'integration_sync_ok' } }),
     ).toBe(null)
     expect(notificationRoute({ task_id: 't-1' })).toBe(null)
+    // A deleted task (#3114): the row has no task_id, the payload names a board
+    // the task is no longer on — there is nothing to open.
+    expect(
+      notificationRoute({
+        kind: 'deleted',
+        task_id: null,
+        payload: { event: 'task_deleted', task_number: 42, board_id: 'b-1' },
+      }),
+    ).toBe(null)
     expect(notificationRoute(null)).toBe(null)
   })
 })

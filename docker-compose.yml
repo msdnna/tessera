@@ -8,8 +8,26 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tessera}
       POSTGRES_DB: ${POSTGRES_DB:-tessera}
       TZ: ${TZ:-Europe/Moscow}
+    # Loopback only. The port is published for host-run tooling — cmd/migrate,
+    # backend tests, `make migrate` — and .env.example points all of it at
+    # POSTGRES_HOST=localhost, so 127.0.0.1 is the whole of the documented use.
+    #
+    # A bare "5432:5432" binds every interface instead, and the default password
+    # in .env.example is `tessera`: on a box with a LAN address or a VPN one
+    # (measured here: both answered, including the tailnet), that published the
+    # whole tracker — every task, comment, password hash and GitLab token — to
+    # anyone who could route to the host. The production stack in
+    # deploy/docker-compose.yml gives postgres no host port at all and calls that
+    # its data-confidentiality boundary; this is the same boundary for the
+    # self-hosted and dev stack, drawn where host tooling still works (#2932).
+    #
+    # backend (8090) and frontend (8083) below stay on every interface on
+    # purpose: an Android device or a phone browser on the LAN has to reach them.
+    #
+    # POSTGRES_PORT is the host side, the same variable .env.example hands to
+    # host tooling — it was documented there and read by nothing.
     ports:
-      - "5432:5432"
+      - "127.0.0.1:${POSTGRES_PORT:-5432}:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     networks:

@@ -3,7 +3,7 @@ title: The description and comment editor
 category: Tasks
 order: 31
 keywords: markdown, editor, toolbar, formatting, image, attachment, mermaid, diagram, full screen, preview, spoiler, checkbox, code
-updated: 2026-08-28
+updated: 2026-10-09
 ---
 
 A task description, a comment, a note and the text in a document are all edited by the same editor. It stores **Markdown** — not a house format and not HTML — so the text survives being copied into any other tool.
@@ -29,6 +29,35 @@ Buttons apply to the selected text; with nothing selected they insert a stub and
 | Spoiler | a `<details>` block — collapsed text under a caption |
 
 You don't have to look at the toolbar at all: **select some text and a compact bar floats above the selection** with the same bold, italic, strikethrough, code and link.
+
+## Formatting keys
+
+| Key | Action |
+|---|---|
+| **Ctrl+B** | bold |
+| **Ctrl+I** | italic |
+| **Ctrl+Shift+X** | strikethrough |
+| **Ctrl+E** | code |
+| **Ctrl+Shift+K** | link (**Ctrl+K** belongs to the command palette) |
+| **Ctrl+Shift+7** | numbered list |
+| **Ctrl+Shift+8** | bulleted list |
+| **Ctrl+Enter** | send a comment or save the description |
+
+On a Mac it is **⌘** instead of Ctrl. Pressing a key again takes the mark off: **Ctrl+B** over bold text makes it plain. The selection bubble's buttons name their keys in their tooltips.
+
+While you type, the markup is tinted right in the field: the `##`, `**`, `` ` ``, `- [ ]` markers are faded, headings stand out, and mentions and task links take the accent colour.
+
+## The @, # and / lists
+
+- **`@`** — people. Those already in the task come first: assignees, the author, whoever wrote in the thread; then the rest of the workspace and the GitLab logins.
+- **`#`** — tasks of the whole workspace, by number or by words of the title. Each row shows the project and the stage (or the board).
+- **`/`** — commands, at the start of a line and in comments only, grouped into Fields, Status, Links, Subtasks and Custom.
+
+**↑ ↓** pick a row, **Enter** or **Tab** inserts it, **Esc** closes the list and leaves what you typed as it is. When nothing matches, the list says so — e.g. «Nobody — «@olya» stays as text».
+
+## Quote in reply
+
+Select a stretch of the description or of someone's comment and **«Quote in reply»** and «Link to the fragment» appear over it. Quoting (or **Q** while the bubble is up) adds the selection to the new comment as `> …` lines and puts the cursor there. «Link to the fragment» is not built yet — it is a «Soon» stub.
 
 ## Checkboxes work in finished text
 
@@ -82,9 +111,9 @@ Inside code **nothing is substituted**: `#2550` in a code sample doesn't become 
 
 ## Preview and full screen
 
-The eye button switches **editing ⇄ preview**: you see exactly what everyone else will.
+The **«Write · Preview»** switch over the field shows exactly what everyone else will see.
 
-The button with diverging arrows opens the **full-screen editor**. Its presentation is different — **two panes side by side: text on the left, a live preview on the right** that redraws as you type. For a long description that beats toggling back and forth. Closing the full-screen window saves the text — it is the same moment as moving the focus out of the field.
+The button with the outward arrows (**«Full screen»** — in the comment's «Aa» row and in the description's bar) opens the **fullscreen editor**, a large window over the task. It has three modes: **«Write»** (**Ctrl+1**), **«Side by side»** (**Ctrl+2**, the default: the text on the left, a live preview with scrolling in sync on the right) and **«Preview»** (**Ctrl+3**). The footer tells when the text was last saved. **Esc** folds the window back into the field and keeps the text; **Ctrl+Enter** or «Done» does what it does in the field: the description saves, the comment is sent. The @ # / lists and the selection bubble work inside. On a phone the window takes the whole screen and opens on «Write».
 
 ## Mentions and task links
 
@@ -94,4 +123,6 @@ One difference is worth keeping in mind: **only a comment sends a mention notifi
 
 ## What the editor saves, and when
 
-A description is saved when you move the focus out of the field — there is no separate Save button. A comment is sent with the button or with **Ctrl+Enter**.
+The description opens for editing with a click on the text, the **«Edit»** button in its corner or the **I** key (the old **Shift+E** still works). Under it are **«Cancel Esc»** and **«Save Ctrl+Enter»**. If something has been typed, **Esc** first asks **«Discard changes?»**: **Enter** discards, another **Esc** keeps editing. The draft is still saved whenever the focus leaves the field. If the description was changed in GitLab meanwhile, the conflicts window opens.
+
+A comment is sent with the button or with **Ctrl+Enter**.

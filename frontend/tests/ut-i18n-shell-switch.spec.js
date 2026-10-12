@@ -1,10 +1,10 @@
-import { describe, it, expect, afterEach, vi } from 'vitest'
+import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
 import { mount } from '@vue/test-utils'
 import { setI18nLocale } from '@/i18n'
 import { isReviewColumn, columnStatusName } from '@/utils/columnStatus'
 import ColumnHeader from '@/components/ColumnHeader.vue'
 import MembersModal from '@/components/MembersModal.vue'
-import ConfirmByName from '@/components/ConfirmByName.vue'
 
 // Wave 8 of #2799 — the app shell (sidebar, layout, workspace tools, column
 // header). The option tables here live inside dropdowns and selects, which is
@@ -42,30 +42,46 @@ afterEach(async () => {
 describe('column header', () => {
   const dcol = { key: 'c1', name: 'В процессе', color: '' }
 
-  it('re-renders the context menu after a switch', async () => {
+  // The v2 column menu (#2969): ActionMenu rows built in a computed, so their
+  // labels follow a language switch.
+  const labels = (w) => w.vm.menuItems.filter((o) => !o.gap).map((o) => o.label)
+  it('re-renders the column menu after a switch', async () => {
     const w = mount(ColumnHeader, { props: { dcol, editable: true } })
-    expect(w.vm.ctxOptions.map((o) => o.label).filter(Boolean)).toEqual([
+    expect(labels(w)).toEqual([
       'Переименовать',
-      'Сделать завершающей',
+      'Цвет',
+      'Колонка «Готово»',
+      'Свернуть',
+      'Сдвинуть влево',
+      'Сдвинуть вправо',
+      'Новая колонка справа',
       'Удалить колонку',
     ])
 
     await setI18nLocale('en')
-    expect(w.vm.ctxOptions.map((o) => o.label).filter(Boolean)).toEqual([
-      'Rename',
-      'Make it completing',
-      'Delete the column',
+    expect(labels(w)[0]).toBe('Rename')
+    expect(labels(w).at(-1)).toBe('Delete the column')
+    // The keys drive onMenu; they are wiring, not text.
+    expect(w.vm.menuItems.filter((o) => !o.gap).map((o) => o.key)).toEqual([
+      'rename',
+      'color',
+      'done',
+      'collapse',
+      'moveLeft',
+      'moveRight',
+      'addRight',
+      'delete',
     ])
-    // The keys drive onCtxSelect; they are wiring, not text.
-    expect(w.vm.ctxOptions.map((o) => o.key)).toEqual(['rename', 'done', 'd1', 'delete'])
   })
 
-  it('flips the done entry with the column state, in either language', async () => {
+  it('the done switch follows the column state, in either language', async () => {
     const done = mount(ColumnHeader, { props: { dcol, editable: true, isDone: true } })
-    expect(done.vm.ctxOptions[1].label).toBe('Снять завершение')
+    const row = () => done.vm.menuItems.find((o) => o.key === 'done')
+    expect(row().toggle).toBe(true)
+    expect(row().label).toBe('Колонка «Готово»')
 
     await setI18nLocale('en')
-    expect(done.vm.ctxOptions[1].label).toBe('Stop completing')
+    expect(row().label).toBe('“Done” column')
   })
 })
 
@@ -86,6 +102,10 @@ describe('column status glyph', () => {
 })
 
 describe('members modal', () => {
+  // The invitation rows render their expiry through useFormat, so the modal now
+  // reads the profile's date preferences off the theme store.
+  beforeEach(() => setActivePinia(createPinia()))
+
   it('re-renders the role options after a switch', async () => {
     const w = mount(MembersModal, { props: { show: false, wsId: 'w1' } })
     expect(w.vm.roleOptions.map((o) => o.label)).toEqual(['Участник', 'Админ'])
@@ -94,28 +114,5 @@ describe('members modal', () => {
     expect(w.vm.roleOptions.map((o) => o.label)).toEqual(['Member', 'Admin'])
     // Roles are the wire format the server checks; they never move.
     expect(w.vm.roleOptions.map((o) => o.value)).toEqual(['member', 'admin'])
-  })
-})
-
-describe('confirm-by-name dialog', () => {
-  // The title and the confirm button used to default to Russian literals in the
-  // prop declaration. A literal default is never empty, so a fallback to the
-  // catalogue inside the template could not fire: every caller that relied on
-  // the default would keep a Russian dialog in an English interface.
-  it('falls back to the catalogue when the caller passes no wording', async () => {
-    const w = mount(ConfirmByName, { props: { show: true, name: 'Alpha' } })
-    expect(w.vm.cardTitle).toBe('Подтвердите удаление')
-    expect(w.vm.confirmLabel).toBe('Удалить')
-
-    await setI18nLocale('en')
-    expect(w.vm.cardTitle).toBe('Confirm deletion')
-    expect(w.vm.confirmLabel).toBe('Delete')
-  })
-
-  it('still prefers what the caller passed', async () => {
-    const w = mount(ConfirmByName, {
-      props: { show: true, name: 'Alpha', title: 'Удалить пространство' },
-    })
-    expect(w.vm.cardTitle).toBe('Удалить пространство')
   })
 })

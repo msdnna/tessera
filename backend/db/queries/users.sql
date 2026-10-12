@@ -13,9 +13,17 @@ SELECT * FROM users WHERE id = $1;
 SELECT count(*) FROM users;
 
 -- name: ListUsers :many
-SELECT id, email, name, is_admin, active, email_verified, created_at, updated_at
+SELECT id, email, name, is_admin, active, email_verified, created_at, updated_at, last_seen_at
 FROM users
 ORDER BY name;
+
+-- name: ListAllMemberships :many
+-- The admin panel's «Пространства» column (#3078): every membership on the
+-- instance with its workspace name, read once and grouped by user in Go.
+SELECT m.user_id, m.workspace_id, w.name AS workspace_name, m.role
+FROM memberships m
+JOIN workspaces w ON w.id = m.workspace_id
+ORDER BY w.name;
 
 -- name: SetUserAdmin :exec
 UPDATE users SET is_admin = $2, updated_at = now() WHERE id = $1;
@@ -41,3 +49,8 @@ UPDATE users SET active = $2, updated_at = now() WHERE id = $1;
 
 -- name: MarkEmailVerified :exec
 UPDATE users SET email_verified = true, updated_at = now() WHERE id = $1;
+
+-- name: ChangeUserEmail :one
+-- The new address was proven by a code sent to it, so it lands verified (#3058).
+UPDATE users SET email = $2, email_verified = true, updated_at = now() WHERE id = $1
+RETURNING *;

@@ -13,6 +13,11 @@ vi.mock('naive-ui', async () => {
   const actual = await vi.importActual('naive-ui')
   return { ...actual, useMessage: () => toast }
 })
+// The message API moved out of naive (composables/useMessage, #3117): route it
+// to the naive mock above, where this spec keeps its spies.
+vi.mock('@/composables/useMessage', async () => ({
+  useMessage: (await import('naive-ui')).useMessage,
+}))
 
 const api = {
   list: vi.fn(),
@@ -22,7 +27,10 @@ const api = {
   leave: vi.fn(),
   end: vi.fn(),
   remove: vi.fn(),
+  update: vi.fn(),
   participants: vi.fn(),
+  // «Принять / Отклонить» (#3051).
+  rsvp: vi.fn(),
   // The recordings panel under the room (#2877); empty here, it has its own spec.
   recordings: vi.fn(() => Promise.resolve({ data: [] })),
   // The embedded room (#2871) reaches for a media token. jsdom has no
@@ -31,7 +39,17 @@ const api = {
   token: vi.fn(() => Promise.reject(new Error('no media in jsdom'))),
 }
 // The invite popover (#2891) prefetches the workspace roster when a lobby opens.
-const wsApi = { members: vi.fn(() => Promise.resolve({ data: [] })) }
+// groups/projects/commands are what selectWorkspace fetches — a conference opened
+// by link may live outside the remembered workspace and has to pull the scope
+// after it (#2932), which runs that path.
+const wsApi = {
+  members: vi.fn(() => Promise.resolve({ data: [] })),
+  groups: vi.fn(() => Promise.resolve({ data: [] })),
+  projects: vi.fn(() => Promise.resolve({ data: [] })),
+  commands: vi.fn(() => Promise.resolve({ data: { builtin: [], custom: [] } })),
+  // «К этапу» in the schedule form (#3053).
+  milestones: vi.fn(() => Promise.resolve({ data: [] })),
+}
 // getAccessToken is what useRealtime reads on mount; null keeps the socket from
 // ever opening in jsdom (it retries on a timer, which unmount clears).
 vi.mock('@/api', () => ({ conferences: api, workspaces: wsApi, getAccessToken: () => null }))
@@ -122,7 +140,9 @@ describe('conferences list', () => {
     expect(rows).toHaveLength(1)
     const text = rows[0].text()
     expect(text).toContain('Ежедневная летучка')
-    expect(text).toContain('Запланирована')
+    // v2 (#3107): a planned call sits under its day — this one's day is gone, so
+    // it is filed with the plans that never started.
+    expect(w.text()).toContain('Прошли, но не начались')
     expect(text).toContain('Приглашено: 3')
     expect(text).toContain('Аня')
   })
@@ -136,11 +156,14 @@ describe('conferences list', () => {
     })
     const { w } = await mountAt('/conferences')
     const rows = w.findAll('[data-testid="conference-row"]')
-    expect(rows[0].text()).toContain('Завершилась')
-    expect(rows[1].text()).toContain('Началась')
+    // v2 (#3107): the call that is on now leads the list as a card.
+    const live = rows.find((r) => r.text().includes('Началась'))
+    const ended = rows.find((r) => r.text().includes('Завершилась'))
+    expect(rows[0]).toBe(live)
+    expect(ended).toBeTruthy()
     // active_count is only shown when somebody is actually in the room.
-    expect(rows[1].text()).toContain('В комнате: 2')
-    expect(rows[0].text()).not.toContain('В комнате')
+    expect(live.text()).toContain('В комнате: 2')
+    expect(ended.text()).not.toContain('В комнате')
   })
 
   it('refetches with the status filter and shows the filtered empty state', async () => {
@@ -177,7 +200,65 @@ describe('scheduling', () => {
       // The retention the dialog defaults to (#2877) — sent explicitly so the
       // number the user saw is the number that applies.
       recording_ttl_days: 30,
+      // The plan (#3034): 30 minutes by default, no repeat (nothing to repeat
+      // without a start), no stage.
+      duration_minutes: 30,
+      recurrence: '',
+      timezone: '',
+      milestone_id: null,
     })
+  })
+
+  it("sends the repeat with the reader's zone and the stage", async () => {
+    api.create.mockResolvedValue({ data: conf({ id: 'new3' }) })
+    wsApi.milestones.mockResolvedValue({
+      data: [{ id: 'm43', title: 'Спринт 43', project_name: 'Web', state: 'active' }],
+    })
+    const { w } = await mountAt('/conferences')
+    w.vm.openDialog()
+    await flushPromises()
+    w.vm.dlg.title = 'Стендап'
+    w.vm.dlg.at = Date.parse('2026-10-09T08:00:00Z')
+    w.vm.dlg.duration = 15
+    w.vm.pickRepeat('weekdays')
+    w.vm.pickStage('m43')
+    await w.vm.submit()
+    const body = api.create.mock.calls[0][1]
+    expect(body).toMatchObject({
+      duration_minutes: 15,
+      recurrence: 'weekdays',
+      milestone_id: 'm43',
+      scheduled_at: '2026-10-09T08:00:00.000Z',
+    })
+    expect(body.timezone).toBeTruthy()
+  })
+
+  it('edits a meeting with the same form, keeping its task', async () => {
+    api.update.mockResolvedValue({ data: conf() })
+    const { w } = await mountAt('/conferences')
+    w.vm.openEdit(
+      conf({
+        id: 'c9',
+        task_id: 't1',
+        scheduled_at: '2026-10-09T08:00:00Z',
+        duration_minutes: 45,
+        recurrence: 'biweekly',
+        milestone_id: 'm1',
+      }),
+      null,
+    )
+    w.vm.pickRepeat('none')
+    await w.vm.submit()
+    expect(api.create).not.toHaveBeenCalled()
+    expect(api.update).toHaveBeenCalledWith(
+      'c9',
+      expect.objectContaining({
+        task_id: 't1',
+        duration_minutes: 45,
+        recurrence: '',
+        milestone_id: 'm1',
+      }),
+    )
   })
 
   it('falls back to the default retention when the field is cleared', async () => {
@@ -200,6 +281,25 @@ describe('scheduling', () => {
     await w.vm.submit()
     expect(api.create).not.toHaveBeenCalled()
     expect(toast.warning).toHaveBeenCalled()
+  })
+})
+
+describe('instant meeting (v2, #3107)', () => {
+  it('creates an untimed call, opens it and joins it', async () => {
+    const created = conf({ id: 'now1', title: 'Встреча 12:00' })
+    api.create.mockResolvedValue({ data: created })
+    api.get.mockResolvedValue({ data: { conference: created, participants: [part()] } })
+    const joined = part({ joined_at: '2026-09-03T09:00:00Z' })
+    api.join.mockResolvedValue({
+      data: { conference: conf({ status: 'live' }), participant: joined },
+    })
+    const { w, router } = await mountAt('/conferences')
+    await w.get('[data-testid="conference-instant"]').trigger('click')
+    await flushPromises()
+    await flushPromises()
+    expect(api.create.mock.calls[0][1].scheduled_at).toBeNull()
+    expect(router.currentRoute.value.path).toBe('/conferences/now1')
+    expect(api.join).toHaveBeenCalledWith('now1')
   })
 })
 
@@ -258,8 +358,81 @@ describe('one conference', () => {
     expect(w.vm.canModerate).toBe(false)
   })
 
+  it('gates «Завершить» on the workspace role, not the global admin flag (#2932)', async () => {
+    // The server's canManageConference asks for owner/admin OF THE WORKSPACE.
+    // Testing user.is_admin instead was wrong in both directions at once.
+    api.get.mockResolvedValue({
+      data: { conference: conf({ status: 'live' }), participants: [part({ role: 'member' })] },
+    })
+    const { w } = await mountAt('/conferences/c1')
+
+    // (1) An instance admin who is only a plain member here: the button used to
+    // show and the server answered 403.
+    useAuthStore().user = { id: 'u9', is_admin: true }
+    await flushPromises()
+    expect(w.vm.canModerate).toBe(false)
+    expect(w.find('[data-testid="conference-end"]').exists()).toBe(false)
+
+    // (2) The workspace's own owner, who did not schedule the call: the server
+    // accepts them — and does inside the room already, where the seat is
+    // computed server-side — so the lobby must not be the one place that refuses.
+    useWorkspacesStore().list = [{ id: 'ws1', my_role: 'owner' }]
+    await flushPromises()
+    expect(w.vm.canModerate).toBe(true)
+    expect(w.find('[data-testid="conference-end"]').exists()).toBe(true)
+  })
+
+  it('keeps «Завершить» for a host who is neither creator nor workspace manager', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        conference: conf({ status: 'live' }),
+        participants: [part({ user_id: 'u9', role: 'host' })],
+      },
+    })
+    const { w } = await mountAt('/conferences/c1')
+    useAuthStore().user = { id: 'u9', is_admin: false }
+    await flushPromises()
+    expect(w.vm.canModerate).toBe(true)
+  })
+
+  it('follows a call opened by link into its own workspace (#2932)', async () => {
+    // The invitation notification deep-links straight to /conferences/<id>, and the
+    // backend authorises the call against ITS workspace — so the lobby opens while
+    // the app is still pointed at the remembered one. Every scope decision here
+    // reads currentId: the realtime filter (`ev.scope !== ws.currentId`) would drop
+    // the call's own events, and the invite roster would be the wrong workspace's
+    // members, none of whom the server will let into this call.
+    api.get.mockResolvedValue({
+      data: { conference: conf({ workspace_id: 'ws2' }), participants: [part()] },
+    })
+    const { w, router } = await mountAt('/conferences/c1')
+    await flushPromises()
+    expect(useWorkspacesStore().currentId).toBe('ws2')
+    expect(wsApi.members).toHaveBeenCalledWith('ws2')
+    // …and pulling the scope across must not trip the guard that bounces an open
+    // call when the user switches workspaces by hand: this IS its workspace.
+    expect(router.currentRoute.value.path).toBe('/conferences/c1')
+    expect(w.text()).toContain('Ежедневная летучка')
+  })
+
+  it('still bounces an open call when the user switches away by hand', async () => {
+    // The other half of the guard above: a hand-picked workspace leaves the call
+    // outside the visible scope, and the lobby has to close rather than 403.
+    api.get.mockResolvedValue({ data: { conference: conf(), participants: [part()] } })
+    const { router } = await mountAt('/conferences/c1')
+    useWorkspacesStore().currentId = 'ws9'
+    await flushPromises()
+    expect(router.currentRoute.value.path).toBe('/conferences')
+  })
+
   it('reports a deleted conference instead of leaving the previous one on screen', async () => {
-    api.get.mockRejectedValue({ response: { status: 404 }, message: 'not found' })
+    // `status` on the error itself — the api client rejects with an Error of
+    // its own and drops the axios `response` (pinned in st-api.spec.js). With
+    // the old axios-shaped fixture this case passed while the running app
+    // toasted "not found" on top of the page that already said it (#2932).
+    api.get.mockRejectedValue(
+      Object.assign(new Error('Не найдено'), { status: 404, raw: 'not found' }),
+    )
     const { w } = await mountAt('/conferences/c1')
     expect(w.text()).toContain('Конференция не найдена')
     // A 404 is the expected answer for a deleted meeting — not a toast.
@@ -312,8 +485,58 @@ describe('routing', () => {
     mounted.push(w)
     await flushPromises()
 
-    // Rendered, and rendered into the topbar rather than inline.
-    expect(document.getElementById('tb-slot-left').textContent).toContain('К списку')
+    // Rendered, and rendered into the topbar rather than inline: the way back
+    // and the call's name (v2, #3107).
+    const left = document.getElementById('tb-slot-left')
+    expect(left.querySelector('[data-testid="conference-back"]').getAttribute('aria-label')).toBe(
+      'К списку',
+    )
+    expect(left.textContent).toContain('Ежедневная летучка')
     expect(w.text()).toContain('Ежедневная летучка')
+  })
+})
+
+// «Принять / Отклонить» an invitation (#3051): in the row while unanswered, as a
+// word once answered, and in the lobby.
+describe('conference invitation answer', () => {
+  it('answers from the row and shows the answer', async () => {
+    api.list.mockResolvedValue({ data: [conf({ created_by: 'u2', my_rsvp: 'pending' })] })
+    api.rsvp.mockResolvedValue({ data: {} })
+    const { w } = await mountAt('/conferences')
+    await w.get('[data-testid="conference-row-accept"]').trigger('click')
+    await flushPromises()
+    expect(api.rsvp).toHaveBeenCalledWith('c1', 'accepted')
+    expect(w.find('[data-testid="conference-row-rsvp"]').exists()).toBe(false)
+    expect(w.get('[data-testid="conference-row-answer"]').text()).toBe('Иду')
+  })
+
+  it('puts the answer back when the server refuses', async () => {
+    api.list.mockResolvedValue({ data: [conf({ created_by: 'u2', my_rsvp: 'pending' })] })
+    api.rsvp.mockRejectedValue(new Error('нет'))
+    const { w } = await mountAt('/conferences')
+    await w.get('[data-testid="conference-row-decline"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="conference-row-rsvp"]').exists()).toBe(true)
+    expect(toast.error).toHaveBeenCalledWith('нет')
+  })
+
+  it('offers the answer in the lobby to an invited member', async () => {
+    api.get.mockResolvedValue({
+      data: {
+        conference: conf({ created_by: 'u2' }),
+        participants: [
+          part({ user_id: 'u2', role: 'host', rsvp: 'accepted' }),
+          part({ role: 'member', rsvp: 'pending' }),
+        ],
+      },
+    })
+    api.rsvp.mockResolvedValue({ data: {} })
+    const { w } = await mountAt('/conferences/c1')
+    const box = w.get('[data-testid="conference-rsvp"]')
+    expect(box.attributes('data-rsvp')).toBe('pending')
+    await w.get('[data-testid="conference-rsvp-decline"]').trigger('click')
+    await flushPromises()
+    expect(api.rsvp).toHaveBeenCalledWith('c1', 'declined')
+    expect(w.get('[data-testid="conference-rsvp"]').attributes('data-rsvp')).toBe('declined')
   })
 })

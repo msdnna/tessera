@@ -61,19 +61,30 @@ func ParseAccessToken(secret, tokenStr string) (uuid.UUID, error) {
 // cookie is the only credential the browser will attach — see
 // handlers/auth_cookie.go. The lifetime matches the refresh token: the cookie is
 // meant to last exactly as long as the session that minted it.
+//
+// "The session that minted it" is a statement the token itself has to carry, and
+// for a long time it did not: the payload was a subject and an expiry, so the
+// only thing a verifier could ask about it was whether the account still exists.
+// The two gestures that end a session — a password change and a logout — revoke
+// the refresh chain and cut the sockets, and left a copy of this cookie reading
+// inline images for the remaining thirty days (#2932). The session id below is
+// what makes the claim checkable: it names the refresh-token row the cookie was
+// issued beside, and that row is exactly what revocation already destroys.
 const (
 	MediaTokenTTL = RefreshTokenTTL
 	// mediaAudience separates media tokens from access tokens on the same key.
 	mediaAudience = "media"
 )
 
-// NewMediaToken signs the long-lived, image-only credential for a user.
-func NewMediaToken(secret string, userID uuid.UUID) (string, error) {
+// NewMediaToken signs the long-lived, image-only credential for a user, bound to
+// the refresh-token row (sessionID) it is handed out beside.
+func NewMediaToken(secret string, userID, sessionID uuid.UUID) (string, error) {
 	now := time.Now()
 	claims := Claims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   userID.String(),
 			Audience:  jwt.ClaimStrings{mediaAudience},
+			ID:        sessionID.String(),
 			IssuedAt:  jwt.NewNumericDate(now),
 			ExpiresAt: jwt.NewNumericDate(now.Add(MediaTokenTTL)),
 		},
@@ -81,18 +92,34 @@ func NewMediaToken(secret string, userID uuid.UUID) (string, error) {
 	return jwt.NewWithClaims(jwt.SigningMethodHS256, claims).SignedString([]byte(secret))
 }
 
-// ParseMediaToken validates a media token and returns its owner. The audience
-// must be present, so an access token can't be replayed as one (and, with the
-// check in ParseAccessToken, not the other way round either).
-func ParseMediaToken(secret, tokenStr string) (uuid.UUID, error) {
+// ParseMediaToken validates a media token and returns its owner and the session
+// it belongs to. The audience must be present, so an access token can't be
+// replayed as one (and, with the check in ParseAccessToken, not the other way
+// round either).
+//
+// A token without a session id is refused rather than accepted as
+// account-scoped: those are the cookies minted before the binding existed, and
+// letting them through would keep the hole open for their full thirty days. The
+// cost of refusing is one round of broken images until the client's next
+// /auth/refresh, which reissues the cookie in the same response it rotates the
+// refresh token in.
+func ParseMediaToken(secret, tokenStr string) (userID, sessionID uuid.UUID, err error) {
 	claims, err := parseSigned(secret, tokenStr)
 	if err != nil {
-		return uuid.Nil, err
+		return uuid.Nil, uuid.Nil, err
 	}
 	if !hasAudience(claims.Audience, mediaAudience) {
-		return uuid.Nil, fmt.Errorf("token is not a media token")
+		return uuid.Nil, uuid.Nil, fmt.Errorf("token is not a media token")
 	}
-	return uuid.Parse(claims.Subject)
+	userID, err = uuid.Parse(claims.Subject)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, err
+	}
+	sessionID, err = uuid.Parse(claims.ID)
+	if err != nil {
+		return uuid.Nil, uuid.Nil, fmt.Errorf("media token carries no session")
+	}
+	return userID, sessionID, nil
 }
 
 // hasAudience reports whether the claim carries the given audience.

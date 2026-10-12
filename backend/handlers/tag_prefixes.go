@@ -46,7 +46,13 @@ func (h *API) ListTagPrefixes(c *gin.Context) {
 // that render scoped tag pills but have no single project to scope to. Prefixes
 // are already canonical in storage; the same prefix may be labelled differently
 // per project, so rows are deduped by prefix with the first non-empty label
-// winning (query order is by prefix, so the result is stable).
+// winning.
+//
+// Which label that is comes from the query's order, and it has to be an order
+// nothing but a rename of that very label can move: the oldest project using the
+// prefix owns the workspace-wide wording (see ListWorkspaceTagPrefixes in
+// db/queries — ordering by prefix alone made a group on Home rename itself after
+// an unrelated edit in a neighbouring project).
 func (h *API) ListWorkspaceTagPrefixes(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok || !h.requireMember(c, wsID) {

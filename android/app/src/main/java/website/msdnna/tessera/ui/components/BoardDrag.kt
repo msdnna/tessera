@@ -209,12 +209,31 @@ fun Modifier.draggableCard(state: BoardDragState, task: Task, onDrop: () -> Unit
         }
 }
 
-/** Registers a column's window bounds so drops can target it. */
-fun Modifier.dropColumn(state: BoardDragState, columnId: String): Modifier =
+/**
+ * Registers a column's window bounds so drops can target it — and drops them
+ * again when the column leaves the board.
+ *
+ * The cleanup is not housekeeping. [BoardDragState.resolveDrop] picks the target
+ * by the FIRST registered rect that contains the finger, so a rect left behind by
+ * a column that is gone (deleted here, or by somebody else over the WebSocket)
+ * goes on catching every drop over the slot the next column slid into: the card
+ * is sent to a column that no longer exists and the server refuses the move
+ * ("column does not belong to this board"), again and again, until the board
+ * screen is left. For a SUBTASK that is worse than a refused drop —
+ * `BoardViewModel.dropTask` detaches it from its parent before moving it, so the
+ * failed drop still leaves the card promoted to top level. Cards have always
+ * dropped their bounds on dispose (see [draggableCard]); columns were the half
+ * that never did (#2932).
+ */
+fun Modifier.dropColumn(state: BoardDragState, columnId: String): Modifier = composed {
+    DisposableEffect(columnId) {
+        onDispose { state.columnBounds.remove(columnId) }
+    }
     this.onGloballyPositioned { coords ->
         val tl = coords.positionInWindow()
         state.columnBounds[columnId] = Rect(tl.x, tl.y, tl.x + coords.size.width, tl.y + coords.size.height)
     }
+}
 
 /** A full card ghost of the dragged task, tracking the finger. Suppressed for
  *  subtasks (reorder is within the parent's small list, where a full-card ghost

@@ -2,42 +2,33 @@
 import { ref, computed, watch, h } from 'vue'
 import { useI18n } from 'vue-i18n'
 import draggable from 'vuedraggable'
+import { NButton, NScrollbar, NText, NIcon, NDropdown, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
-  NSelect,
-  NButton,
-  NInput,
-  NModal,
-  NCard,
-  NScrollbar,
-  NText,
-  NIcon,
-  NDropdown,
-  NTooltip,
-  useMessage,
-} from 'naive-ui'
-import {
-  HomeOutline,
+  CheckmarkDoneOutline,
   DocumentTextOutline,
   DocumentsOutline,
   VideocamOutline,
-  AlarmOutline,
   RibbonOutline,
   AddOutline,
   FolderOutline,
-  EllipsisHorizontalOutline,
-  TrashOutline,
+  ChevronDownOutline,
+  ChevronForwardOutline,
+  SearchOutline,
 } from '@vicons/ionicons5'
 
 const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
-const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
-import { useRoute, useRouter } from 'vue-router'
-import { workspaces as wsApi } from '@/api'
+import { useRoute } from 'vue-router'
 import { useWorkspacesStore } from '@/stores/workspaces'
-import { useAuthStore } from '@/stores/auth'
-import { useTourStore } from '@/stores/tour'
+import { useConflictsStore } from '@/stores/conflicts'
+import { useWorkspaceMenu } from '@/composables/useWorkspaceMenu'
+import ActionMenu from './kit/ActionMenu.vue'
 import { workspaceName } from '@/utils/defaultNames'
-import ConfirmByName from './ConfirmByName.vue'
-import ProjectCreateModal from './ProjectCreateModal.vue'
+import ProjectCreatePopover from './sidebar/ProjectCreatePopover.vue'
+import NewGroupRow from './sidebar/NewGroupRow.vue'
+import { useSidebarDraft } from '@/composables/useSidebarDraft'
+import { handleRowKeys, handleTreeNav } from '@/composables/useRowKeys'
+import { useShortcuts } from '@/composables/useShortcuts'
 import {
   moveSidebarGroup,
   moveSidebarProject,
@@ -46,29 +37,29 @@ import {
   onDragEnd,
 } from '@/composables/useSidebarDnd'
 import SidebarNode from './SidebarNode.vue'
+import FavoritesSection from './sidebar/FavoritesSection.vue'
 import ProjectRow from './ProjectRow.vue'
+import ArchivedProjectsRow from './sidebar/ArchivedProjectsRow.vue'
 import EmptyState from './EmptyState.vue'
 import SidebarFooter from './SidebarFooter.vue'
-import WorkspaceTools from './WorkspaceTools.vue'
 import SidebarRailNode from './SidebarRailNode.vue'
-import BrandLogo from './BrandLogo.vue'
+import { useSidebarSize } from '@/composables/useSidebarSize'
 
 defineProps({
   mobile: { type: Boolean, default: false },
   collapsed: { type: Boolean, default: false },
-  // Expanded but too narrow for the brand tools / add-workspace button.
-  narrow: { type: Boolean, default: false },
 })
+// The phone's drawer (#2976): «Найти доску» asks the shell for the palette
+// narrowed to boards and stages — the drawer has to close first.
+const emit = defineEmits(['find'])
 
 const { t } = useI18n()
 const store = useWorkspacesStore()
-const auth = useAuthStore()
-const tour = useTourStore()
+const conflicts = useConflictsStore()
 const message = useMessage()
 const route = useRoute()
-const router = useRouter()
 
-const wsOptions = computed(() => store.list.map((w) => ({ label: workspaceName(w), value: w.id })))
+const { toggle: toggleSidebar } = useSidebarSize()
 const rootGroups = computed(() => store.childGroups(null))
 const ungrouped = computed(() => store.projectsInGroup(null))
 
@@ -83,10 +74,13 @@ const activeRailId = computed(() => {
   if (!proj) return null
   if (!proj.group_id) return proj.id // ungrouped → its own rail node
   let g = store.groups.find((x) => x.id === proj.group_id)
-  while (g?.parent_id) {
-    const parent = store.groups.find((x) => x.id === g.parent_id)
-    if (!parent) break
+  // parentGroupOf, not parent_id: it follows the cycle-broken edges the tree is
+  // drawn from, so this walk ends on the same root the nodes show instead of
+  // going round a ring forever (#2932).
+  let parent = g ? store.parentGroupOf(g.id) : null
+  while (parent) {
     g = parent
+    parent = store.parentGroupOf(g.id)
   }
   return g?.id ?? null
 })
@@ -106,149 +100,121 @@ const addOptions = computed(() => [
   { label: t('shell.tree.addGroup'), key: 'group', icon: menuIcon(FolderOutline) },
 ])
 
-async function onWorkspaceChange(id) {
-  await store.selectWorkspace(id)
+// v2 interaction model (#2969): a project is created in a popover form at the
+// «+», a group as an empty row typed in place at the end of the tree. (The
+// form reports its project to the Get Started guide itself; so does the row.)
+const projFormOpen = ref(false)
+const addBtn = ref(null)
+const draft = useSidebarDraft()
+function addAtRoot(key) {
+  if (key === 'project') projFormOpen.value = true
+  else draft.startGroup(null)
 }
 
-// Projects are named in a modal (the name decides the URL address, which is
-// assigned once); groups keep the create-then-rename flow.
-const projModalShow = ref(false)
+// ── keyboard: ↑/↓ over the rows, G S to get in, ⇧N on «Проекты» ──
+const treeBox = ref(null)
+function onTreeKey(e) {
+  handleTreeNav(e, treeBox.value?.closest('.sidebar') || treeBox.value)
+}
+function onHeadKey(e) {
+  handleRowKeys(e, {
+    'row.new': () => draft.startGroup(null),
+    'row.menu': () => addBtn.value?.$el?.click(),
+  })
+}
+// G S lands on the open board's row — in the tree, else in «Избранное» (#3115)
+// — or on the first row: a favourite when there are any, the tree's otherwise.
+function focusTree() {
+  const root = treeBox.value
+  if (!root) return
+  const side = root.closest('.sidebar') || root
+  const target =
+    root.querySelector('.board-row.active[data-tree-row]') ||
+    side.querySelector('.fav-row.active[data-tree-row]') ||
+    side.querySelector('.fav-row[data-tree-row]') ||
+    root.querySelector('[data-tree-row]')
+  target?.focus()
+  target?.scrollIntoView?.({ block: 'nearest' })
+}
+useShortcuts({ 'nav.goSidebar': focusTree })
 
-// The project modal reports its new project so the Get Started guide can point
-// its next step («+» to add a board) at that row rather than the first (#2753).
-function onProjectCreated(project) {
-  tour.noteCreated({ projectId: project?.id })
-  store.refresh()
-}
-
-async function addAtRoot(key) {
-  if (key === 'project') {
-    projModalShow.value = true
-    return
-  }
-  try {
-    // Same as onProjectCreated above: the guide's «Группа создана» and «перетащите
-    // проект в группу» steps have to point at the group this click just made, not
-    // at whichever group happens to be first in the tree (#2778 rework).
-    // The seed name is localised: a group is renamed right after it appears (the
-    // guide's next step is exactly that), so it reads in the language the person
-    // is working in rather than in whichever one the server was seeded with.
-    const res = await wsApi.createGroup(store.currentId, { name: t('shell.group.defaultName') })
-    tour.noteCreated({ groupId: res.data?.id })
-    await store.refresh()
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-
-// new-workspace modal
-const wsModal = ref({ show: false, value: '' })
-async function createWorkspace() {
-  const n = wsModal.value.value.trim()
-  if (!n) return
-  try {
-    const res = await wsApi.create({ name: n })
-    wsModal.value.show = false
-    wsModal.value.value = ''
-    await store.loadWorkspaces()
-    await store.selectWorkspace(res.data.id)
-  } catch (e) {
-    message.error(e.message)
-  }
-}
-
-// Workspace settings menu — deletion is owner-only (server enforces it too).
-const isOwner = computed(() => !!store.current && store.current.owner_id === auth.user?.id)
-const wsMenuOptions = computed(() =>
-  isOwner.value
-    ? [
-        {
-          label: t('shell.workspace.delete'),
-          key: 'delete',
-          icon: dangerIcon(TrashOutline),
-          props: { style: 'color:#e0533d' },
-        },
-      ]
-    : [],
-)
-const wsDeleteShow = ref(false)
-function onWsMenuSelect(key) {
-  if (key === 'delete') {
-    if (store.list.length <= 1) {
-      message.warning(t('shell.workspace.deleteLast'))
-      return
-    }
-    wsDeleteShow.value = true
-  }
-}
-async function deleteWorkspace() {
-  try {
-    await store.removeWorkspace(store.currentId)
-    message.success(t('shell.workspace.deleted'))
-    router.push('/') // the tree fully changed — land on Home
-  } catch (e) {
-    message.error(e.message)
-  }
-}
+// The workspace menu under its name (v2): members, integrations, appearance,
+// create, delete — the doors of the former tool row live here now.
+const wsHead = ref(null)
+const wsMenuOpen = ref(false)
+const wsMenu = useWorkspaceMenu(null, () => wsHead.value)
 </script>
 
 <template>
-  <div class="sidebar" data-testid="sidebar" :class="{ collapsed, 'sb-dragging': sidebarDragging }">
+  <div
+    class="sidebar"
+    data-testid="sidebar"
+    :class="{ collapsed, mobile, 'sb-dragging': sidebarDragging }"
+  >
     <div class="brand">
-      <!-- Expanded: wordmark sized so its text stays no taller than the tool icons
-           to its right. Collapsed rail: the mark, a touch larger. -->
-      <BrandLogo
-        class="brand-logo"
-        :height="collapsed ? 26 : 19"
-        :mark="collapsed"
-        :wordmark="!collapsed"
-      />
-      <!-- Tools live here (right of the logo) when expanded; when the rail is
-           collapsed (desktop) they move to the header instead. -->
-      <WorkspaceTools
-        v-if="mobile || (!collapsed && !narrow)"
-        class="brand-tools"
+      <!-- The logo and the workspace tiles live on the rail now (v2, #2955);
+           the header names the current workspace and holds its menu. -->
+      <button
+        v-if="!collapsed"
+        ref="wsHead"
+        type="button"
+        class="ws-head"
+        :class="{ open: wsMenuOpen }"
+        data-testid="ws-head"
+        aria-haspopup="menu"
+        :aria-expanded="wsMenuOpen"
+        @click="wsMenuOpen = !wsMenuOpen"
+      >
+        <span class="ws-head-name">{{ workspaceName(store.current) }}</span>
+        <span
+          v-if="conflicts.count"
+          class="ws-head-dot"
+          :title="t('shell.tools.integrationsConflicts', { count: conflicts.count })"
+        />
+        <n-icon :component="ChevronDownOutline" :size="13" class="ws-head-chev" />
+      </button>
+      <button
+        v-else
+        type="button"
+        class="ws-expand"
+        :title="t('shell.layout.expand')"
+        @click="toggleSidebar"
+      >
+        <n-icon :component="ChevronForwardOutline" :size="16" />
+      </button>
+      <ActionMenu
+        v-model:show="wsMenuOpen"
+        :anchor="() => wsHead"
         placement="bottom-start"
+        :offset="{ x: 0, y: 4 }"
+        :width="280"
+        :header="wsMenu.header.value"
+        :items="wsMenu.items.value"
+        testid="ws-menu"
+        @select="wsMenu.select"
       />
     </div>
-
     <div v-if="collapsed" class="rail-sep" />
 
-    <div v-if="!collapsed" class="ws-switch" data-tour="ws-switch">
-      <n-select
-        :value="store.currentId"
-        :options="wsOptions"
-        size="small"
-        @update:value="onWorkspaceChange"
-      />
-      <n-button
-        v-if="!narrow"
-        quaternary
-        circle
-        size="small"
-        :title="t('shell.workspace.create')"
-        @click="wsModal.show = true"
-      >
-        <n-icon :component="AddOutline" />
-      </n-button>
-      <n-dropdown
-        v-if="!narrow && wsMenuOptions.length"
-        trigger="click"
-        placement="bottom-end"
-        :options="wsMenuOptions"
-        @select="onWsMenuSelect"
-      >
-        <n-button quaternary circle size="small" :title="t('shell.workspace.settings')">
-          <n-icon :component="EllipsisHorizontalOutline" />
-        </n-button>
-      </n-dropdown>
-    </div>
+    <button
+      v-if="mobile"
+      type="button"
+      class="sb-find"
+      data-testid="drawer-find-board"
+      @click="emit('find')"
+    >
+      <n-icon :component="SearchOutline" :size="18" />
+      <span>{{ t('shell.mobile.findBoard') }}</span>
+    </button>
 
     <nav class="nav">
-      <n-tooltip :disabled="!collapsed" placement="right">
+      <!-- «Входящие» is the header's button (and G I) alone (#3112); on a phone
+           it and «Мои задачи» are tabs of the bottom navigation (#2976) — the
+           drawer keeps the tree and the places. -->
+      <n-tooltip v-if="!mobile" :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/" class="nav-link" active-class="nav-link-home-noop" data-nav="home">
-            <n-icon :component="HomeOutline" :size="18" />
+            <n-icon :component="CheckmarkDoneOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.home') }}</span>
           </router-link>
         </template>
@@ -256,21 +222,9 @@ async function deleteWorkspace() {
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/notes" class="nav-link" data-nav="notes">
-            <n-icon :component="DocumentTextOutline" :size="18" />
-            <span v-if="!collapsed">{{ t('shell.nav.notes') }}</span>
-          </router-link>
-        </template>
-        {{ t('shell.nav.notes') }}
-      </n-tooltip>
-      <n-tooltip :disabled="!collapsed" placement="right">
-        <template #trigger>
           <router-link to="/documents" class="nav-link" data-nav="documents">
-            <n-icon :component="DocumentsOutline" :size="18" />
-            <span v-if="!collapsed" class="nav-label">
-              {{ t('shell.nav.documents')
-              }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
-            </span>
+            <n-icon :component="DocumentsOutline" :size="16" />
+            <span v-if="!collapsed">{{ t('shell.nav.documents') }}</span>
           </router-link>
         </template>
         {{ t('shell.nav.documents') }}
@@ -278,28 +232,16 @@ async function deleteWorkspace() {
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
           <router-link to="/conferences" class="nav-link" data-nav="conferences">
-            <n-icon :component="VideocamOutline" :size="18" />
-            <span v-if="!collapsed" class="nav-label">
-              {{ t('shell.nav.conferences')
-              }}<sup class="nav-badge">{{ t('shell.nav.newBadge') }}</sup>
-            </span>
+            <n-icon :component="VideocamOutline" :size="16" />
+            <span v-if="!collapsed">{{ t('shell.nav.conferences') }}</span>
           </router-link>
         </template>
         {{ t('shell.nav.conferences') }}
       </n-tooltip>
       <n-tooltip :disabled="!collapsed" placement="right">
         <template #trigger>
-          <router-link to="/reminders" class="nav-link" data-nav="reminders">
-            <n-icon :component="AlarmOutline" :size="18" />
-            <span v-if="!collapsed">{{ t('shell.nav.reminders') }}</span>
-          </router-link>
-        </template>
-        {{ t('shell.nav.reminders') }}
-      </n-tooltip>
-      <n-tooltip :disabled="!collapsed" placement="right">
-        <template #trigger>
           <router-link to="/milestones" class="nav-link" data-nav="milestones">
-            <n-icon :component="RibbonOutline" :size="18" />
+            <n-icon :component="RibbonOutline" :size="16" />
             <span v-if="!collapsed">{{ t('shell.nav.milestones') }}</span>
           </router-link>
         </template>
@@ -312,7 +254,18 @@ async function deleteWorkspace() {
 
     <div v-if="collapsed" class="rail-sep" />
 
-    <div v-if="!collapsed" class="proj-head">
+    <!-- «Избранное» (#3115): the reader's starred boards, over «Проекты». -->
+    <FavoritesSection v-if="!collapsed" />
+
+    <div
+      v-if="!collapsed"
+      class="proj-head"
+      data-tree-row
+      tabindex="-1"
+      @keydown="onHeadKey"
+      @keydown.down.prevent="onTreeKey"
+      @keydown.up.prevent="onTreeKey"
+    >
       <n-text depth="3" strong>{{ t('shell.tree.projects') }}</n-text>
       <!-- node-props tags each option for the Get Started guide (#2753): naive
            merges them into the option node, so the tour can anchor on a menu
@@ -323,55 +276,70 @@ async function deleteWorkspace() {
         :node-props="(o) => ({ 'data-tour': `menu-${o.key}` })"
         @select="addAtRoot"
       >
-        <n-button text size="small" :title="t('shell.tree.add')" data-tour="proj-add">
+        <n-button
+          ref="addBtn"
+          text
+          size="small"
+          :title="t('shell.tree.add')"
+          data-tour="proj-add"
+          data-testid="tree-add"
+        >
           <n-icon :component="AddOutline" />
         </n-button>
       </n-dropdown>
     </div>
 
-    <n-scrollbar v-if="!collapsed" class="tree">
-      <draggable
-        :list="rootGrpModel"
-        group="sidebar-grp"
-        item-key="id"
-        ghost-class="sb-ghost"
-        class="sb-dropzone"
-        :animation="150"
-        :delay="160"
-        :delay-on-touch-only="true"
-        :touch-start-threshold="6"
-        @start="onDragStart"
-        @end="onDragEnd"
-        @change="onRootGrp"
-      >
-        <template #item="{ element }">
-          <SidebarNode :group="element" :depth="0" />
-        </template>
-      </draggable>
-      <draggable
-        :list="rootProjModel"
-        group="sidebar-proj"
-        item-key="id"
-        ghost-class="sb-ghost"
-        class="sb-dropzone"
-        :animation="150"
-        :delay="160"
-        :delay-on-touch-only="true"
-        :touch-start-threshold="6"
-        @start="onDragStart"
-        @end="onDragEnd"
-        @change="onRootProj"
-      >
-        <template #item="{ element }">
-          <ProjectRow :project="element" :depth="0" />
-        </template>
-      </draggable>
-      <EmptyState
-        v-if="!rootGroups.length && !ungrouped.length"
-        :icon="FolderOutline"
-        :text="t('shell.tree.empty')"
-        size="small"
-      />
+    <!-- content-style, not CSS: Naive styles the content box itself, so a
+         padding rule from here doesn't win — and without one the rows ran flush
+         to the sidebar's right edge. The same 8px gutter as the links above. -->
+    <n-scrollbar v-if="!collapsed" class="tree" content-style="padding: 0 8px">
+      <div ref="treeBox" class="tree-box" @keydown="onTreeKey">
+        <draggable
+          :list="rootGrpModel"
+          group="sidebar-grp"
+          item-key="id"
+          ghost-class="sb-ghost"
+          class="sb-dropzone"
+          :animation="150"
+          :delay="160"
+          :delay-on-touch-only="true"
+          :touch-start-threshold="6"
+          @start="onDragStart"
+          @end="onDragEnd"
+          @change="onRootGrp"
+        >
+          <template #item="{ element }">
+            <SidebarNode :group="element" :depth="0" />
+          </template>
+        </draggable>
+        <NewGroupRow v-if="draft.isGroupDraft(null)" />
+        <draggable
+          :list="rootProjModel"
+          group="sidebar-proj"
+          item-key="id"
+          ghost-class="sb-ghost"
+          class="sb-dropzone"
+          :animation="150"
+          :delay="160"
+          :delay-on-touch-only="true"
+          :touch-start-threshold="6"
+          @start="onDragStart"
+          @end="onDragEnd"
+          @change="onRootProj"
+        >
+          <template #item="{ element }">
+            <ProjectRow :project="element" :depth="0" />
+          </template>
+        </draggable>
+        <EmptyState
+          v-if="!rootGroups.length && !ungrouped.length && !draft.draft.value"
+          :icon="FolderOutline"
+          :text="t('shell.tree.empty')"
+          size="small"
+        />
+        <!-- «Архив проектов» (#3005): archived projects are out of the tree. -->
+        <ArchivedProjectsRow />
+      </div>
     </n-scrollbar>
     <n-scrollbar v-else class="rail-scroll">
       <div class="rail">
@@ -392,41 +360,27 @@ async function deleteWorkspace() {
       </div>
     </n-scrollbar>
 
-    <SidebarFooter :mobile="mobile" :collapsed="collapsed" />
+    <!-- The profile, settings, help and signing out are the «Ещё» tab on a
+         phone (#2976). -->
+    <SidebarFooter v-if="!mobile" :collapsed="collapsed" />
 
-    <ProjectCreateModal v-model:show="projModalShow" @created="onProjectCreated" />
-
-    <n-modal v-model:show="wsModal.show">
-      <n-card :title="t('shell.workspace.create')" style="max-width: 360px" role="dialog">
-        <n-input
-          v-model:value="wsModal.value"
-          :placeholder="t('shell.workspace.namePlaceholder')"
-          @keyup.enter="createWorkspace"
-        />
-        <template #footer>
-          <n-button type="primary" @click="createWorkspace">{{
-            t('common.action.create')
-          }}</n-button>
-        </template>
-      </n-card>
-    </n-modal>
-
-    <ConfirmByName
-      v-model:show="wsDeleteShow"
-      :name="workspaceName(store.current)"
-      :title="t('shell.workspace.delete')"
-      :message="t('shell.workspace.deleteMessage')"
-      @confirm="deleteWorkspace"
-    />
+    <ProjectCreatePopover v-model:show="projFormOpen" :anchor="() => addBtn?.$el || null" />
   </div>
 </template>
 
 <style scoped>
+.proj-head {
+  outline: 0;
+  border-radius: var(--t-r-ctl);
+}
+.proj-head:focus-visible {
+  box-shadow: inset 0 0 0 2px var(--t-primary);
+}
 .sidebar {
   display: flex;
   flex-direction: column;
   height: 100%;
-  /* Clip rather than scroll when the sidebar is dragged narrow. */
+  /* Clip rather than scroll while the sidebar animates between widths. */
   overflow-x: hidden;
 }
 .brand {
@@ -437,23 +391,67 @@ async function deleteWorkspace() {
   min-width: 0;
   box-sizing: border-box;
 }
-/* Pin the expanded header height to the tool row's height. Otherwise the row
-   collapses to the (shorter) logo height whenever the tools hide at the `narrow`
-   breakpoint or the notification badge changes — and align-items:center then
-   nudges the wordmark vertically (visible jitter while dragging the sidebar).
-   flex-shrink:0 is essential: the sidebar is a flex column that can overflow, and
-   without it the flex layout squeezes .brand down to its (tool-less) min-content,
-   defeating the fixed height. */
+/* A fixed header height. flex-shrink:0 is essential: the sidebar is a flex
+   column that can overflow, and without it the flex layout squeezes .brand down
+   to its min-content, defeating the fixed height. */
 .sidebar:not(.collapsed) .brand {
   height: 46px;
   flex-shrink: 0;
 }
-.ws-switch > :first-child {
-  flex: 1;
+/* Current workspace, v2 header (#2955): its name and the menu chevron. */
+.ws-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
+  height: 32px;
+  padding: 0 8px;
+  margin-left: -4px;
+  border: none;
+  border-radius: var(--t-r-ctl);
+  background: transparent;
+  color: var(--t-text1);
+  font: inherit;
+  font-size: 14.5px;
+  font-weight: 650;
+  cursor: pointer;
 }
-.brand-tools {
-  margin-left: auto;
+.ws-head:hover,
+.ws-head.open {
+  background: var(--t-hover-side);
+}
+.ws-head-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ws-head-chev {
+  flex: none;
+  color: var(--t-text3);
+}
+.ws-expand {
+  width: 40px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: var(--t-r-ctl);
+  background: transparent;
+  color: var(--t-text3);
+  cursor: pointer;
+}
+.ws-expand:hover {
+  background: var(--t-hover-side);
+  color: var(--t-text1);
+}
+/* Unresolved GitLab conflicts — the count is in the menu's Integrations row. */
+.ws-head-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #e0922f;
 }
 .sidebar.collapsed .brand {
   justify-content: center;
@@ -468,12 +466,10 @@ async function deleteWorkspace() {
   width: 40px;
   padding: 8px 0;
 }
-/* Thin separators between functional groups (logo / nav / projects) in the
-   collapsed rail. */
+/* Gap between functional groups (logo / nav / projects) in the collapsed rail —
+   v2 separates them with space, not a line (#2953). */
 .rail-sep {
-  height: 1px;
-  background: var(--t-border);
-  margin: 6px 12px;
+  height: 12px;
 }
 .rail-scroll {
   flex: 1;
@@ -486,15 +482,6 @@ async function deleteWorkspace() {
   padding: 2px 0;
 }
 /* Brand lockup (mark + wordmark) in the header; collapses to the mark on the rail. */
-.brand-logo {
-  flex: none;
-}
-.ws-switch {
-  display: flex;
-  gap: 6px;
-  padding: 12px;
-  align-items: center;
-}
 .nav {
   display: flex;
   flex-direction: column;
@@ -503,55 +490,98 @@ async function deleteWorkspace() {
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 8px;
-  border-radius: 6px;
-  font-size: 14px;
+  gap: 10px;
+  height: 32px;
+  padding: 0 8px;
+  border-radius: var(--t-r-ctl);
+  font-size: 13.5px;
   color: var(--t-text2);
   text-decoration: none;
 }
+.nav-link :deep(.n-icon) {
+  color: var(--t-text3);
+}
 .nav-link:hover {
-  background: var(--t-hover);
+  background: var(--t-hover-side);
 }
-.nav-label {
-  display: inline-flex;
-  align-items: flex-start;
-}
-.nav-badge {
-  margin-left: 3px;
-  padding: 1px 5px;
-  border-radius: 999px;
-  font-size: 9px;
-  line-height: 1.3;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  text-transform: lowercase;
-  color: var(--t-primary);
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-}
+/* Active item: the v2 active level (accent mixed over the sidebar) and the
+   icon painted with the accent gradient. */
 .nav-link.router-link-active,
 .nav-link.router-link-exact-active {
-  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
-  color: var(--t-primary);
+  background: var(--t-active);
+  color: var(--t-text1);
   font-weight: 600;
+}
+.nav-link.router-link-active :deep([fill='currentColor']),
+.nav-link.router-link-exact-active :deep([fill='currentColor']) {
+  fill: url(#t-accent-grad-svg);
+}
+.nav-link.router-link-active :deep([stroke='currentColor']),
+.nav-link.router-link-exact-active :deep([stroke='currentColor']) {
+  stroke: url(#t-accent-grad-svg);
 }
 .proj-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 4px 12px;
-  margin-top: 8px;
+  height: 28px;
+  padding: 0 16px;
+  margin-top: 14px;
+}
+.proj-head :deep(.n-text) {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
 }
 .nav {
   margin-top: 2px;
 }
 .tree {
   flex: 1;
-  padding: 0 6px;
 }
+
 .empty {
   display: block;
   font-size: 12px;
   padding: 8px;
+}
+
+/* ── the phone's drawer (#2976 — package G «Дровер») ── */
+.sidebar.mobile .brand {
+  padding-top: calc(14px + var(--safe-top));
+}
+.sb-find {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  height: 44px;
+  margin: 6px 10px 8px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-sub);
+  color: var(--t-placeholder);
+  font: inherit;
+  font-size: 15px;
+  text-align: left;
+  cursor: pointer;
+}
+/* The places go under the tree, the tree takes what is left. */
+.sidebar.mobile .nav {
+  order: 10;
+  padding: 6px 8px calc(10px + var(--safe-bottom));
+}
+.sidebar.mobile .nav-link {
+  height: 46px;
+  gap: 14px;
+  font-size: 15px;
+}
+.sidebar.mobile :deep(.row) {
+  min-height: 44px;
+  font-size: 15px;
+}
+.sidebar.mobile :deep(.group-row) {
+  min-height: 40px;
 }
 </style>

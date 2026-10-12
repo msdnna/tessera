@@ -10,6 +10,7 @@
 // GitLab verbatim, so "@Евгений Полянский" resolves to nothing there — the GitLab
 // login has to be what lands in the text, while the readable name stays on screen.
 import { i18n } from '@/i18n'
+import { renderRich } from '@/utils/markdown'
 
 // Roles as shown on the hover card, sharing the member-list catalogue entries.
 // Unknown roles fall back to the raw value rather than to "member" — inventing a
@@ -22,6 +23,16 @@ export function roleLabel(role) {
   return ROLES.includes(role) ? i18n.global.t(`shell.members.${role}`) : role
 }
 
+// linkedUserId reads the Tessera user a GitLab roster row points back at, by
+// *either* link the server reports: `tessera_user_id` when that person signed in
+// through GitLab, `tessera_user_id_pat` when they connected a personal access
+// token instead. Every place that asks "is this row already a member?" has to
+// read both — honouring only the first listed a PAT-linked member's roster row a
+// second time, as an outsider.
+function linkedUserId(g) {
+  return g.tessera_user_id || g.tessera_user_id_pat || null
+}
+
 // glLoginsByUserId maps tessera_user_id → gl_username from the *unfiltered* GitLab
 // roster map. gitlabMembersList drops entries already mapped to a Tessera member,
 // which is precisely the half we need here, so this takes the raw map. Covers both
@@ -29,7 +40,7 @@ export function roleLabel(role) {
 export function glLoginsByUserId(gitlabMembersMap) {
   const out = {}
   for (const g of Object.values(gitlabMembersMap || {})) {
-    const uid = g.tessera_user_id || g.tessera_user_id_pat
+    const uid = linkedUserId(g)
     if (uid && g.gl_username && !out[uid]) out[uid] = g.gl_username
   }
   return out
@@ -40,17 +51,18 @@ export function glLoginsByUserId(gitlabMembersMap) {
 //
 // Where a member's inserted login comes from, in order:
 //   1. the member's own OAuth identity (`gl_username` on the /members row);
-//   2. the GitLab project roster (`gitlabMembers` rows carrying `tessera_user_id`,
-//      i.e. OAuth-linked users listed there);
-//   3. the raw roster map (`gitlabMembersMap`), which also covers PAT-linked
-//      members via `tessera_user_id_pat`;
+//   2. the GitLab project roster (`gitlabMembers` rows pointing back at them by
+//      either link — see `linkedUserId`);
+//   3. the raw roster map (`gitlabMembersMap`), for callers that hand over an
+//      already-filtered list as `gitlabMembers`;
 //   4. nothing — members with no GitLab account keep inserting their name.
 //
 // Pass the FULL GitLab roster as `gitlabMembers` (Object.values of the store map),
 // not the already-filtered gitlabMembersList: a member who signed in via GitLab
 // OAuth is in the Tessera roster (matched on user id) yet mentioned by their
 // `@gl_username`. A GitLab user mapped to a Tessera member is folded into that
-// member (carrying the username) rather than listed twice.
+// member (carrying the username) rather than listed twice — by *either* link, so
+// a member who connected GitLab with a personal access token is folded in too.
 export function buildMentionItems(members, gitlabMembers, gitlabMembersMap) {
   const mems = members || []
   const gls = gitlabMembers || []
@@ -59,7 +71,8 @@ export function buildMentionItems(members, gitlabMembers, gitlabMembersMap) {
   // `@gl_username` they're actually mentioned by.
   const glByTesseraUser = new Map()
   for (const g of gls) {
-    if (g.tessera_user_id) glByTesseraUser.set(g.tessera_user_id, g)
+    const uid = linkedUserId(g)
+    if (uid && !glByTesseraUser.has(uid)) glByTesseraUser.set(uid, g)
   }
   const memberIds = new Set(mems.map((m) => m.user_id))
   return [
@@ -85,7 +98,10 @@ export function buildMentionItems(members, gitlabMembers, gitlabMembersMap) {
     }),
     // GitLab-only users: not linked to any Tessera member in this workspace.
     ...gls
-      .filter((g) => !(g.tessera_user_id && memberIds.has(g.tessera_user_id)))
+      .filter((g) => {
+        const uid = linkedUserId(g)
+        return !(uid && memberIds.has(uid))
+      })
       .map((g) => ({
         id: null,
         label: g.gl_username,
@@ -95,6 +111,32 @@ export function buildMentionItems(members, gitlabMembers, gitlabMembersMap) {
         gitlab: true,
       })),
   ]
+}
+
+// mentionIdsIn returns the workspace-member ids a piece of content mentions, in
+// the order they are written and without repeats — the list the server is handed
+// so those people get a "mention" notification.
+//
+// It reads them back off the rendered output instead of scanning the source,
+// because the chip the reader sees IS the promise that the person was told. A
+// text scan breaks that promise in both directions: "@Иван" inside a fenced code
+// block draws no chip yet would notify, and a name typed by hand (or seeded by
+// the reply composer, which writes "@" + author name) draws a resolved chip yet
+// would notify nobody, since the composer only knew the rows picked from its own
+// popup. Rendering here costs one marked+sanitize pass per submitted comment.
+//
+// Rows with no `id` (GitLab-only users) carry no data-id and so drop out on
+// their own: the handle stays in the text for GitLab to resolve on writeback,
+// and Tessera has nobody to notify.
+export function mentionIdsIn(src, items) {
+  if (!src || typeof DOMParser === 'undefined') return []
+  const doc = new DOMParser().parseFromString(renderRich(src, items), 'text/html')
+  const out = []
+  for (const el of doc.querySelectorAll('span.mention[data-id]')) {
+    const id = el.getAttribute('data-id')
+    if (id && !out.includes(id)) out.push(id)
+  }
+  return out
 }
 
 // resolveMention turns a rendered mention chip back into the person it names.

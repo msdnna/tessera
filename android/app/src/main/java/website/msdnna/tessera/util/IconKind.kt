@@ -116,6 +116,9 @@ object Ion {
     const val CART = "cart"
     const val HEART = "heart"
     const val STAR = "star"
+
+    /** The filled star of a favourite board (#3115); [STAR] is the outline. */
+    const val STAR_FILLED = "star_filled"
     const val FLAG = "flag"
     const val CONSTRUCT = "construct"
     const val BOOK = "book"
@@ -138,6 +141,14 @@ object Ion {
     const val WARNING = "warning"
     const val CONTRACT = "contract"
     const val CALL = "call"
+
+    // Meetings v2 (#3034): reactions, the stage pill, a task line and «@» in the
+    // chat — the web's HappyOutline / TrailSignOutline / AddCircleOutline /
+    // AtOutline, the same ionicons-5 glyphs.
+    const val HAPPY = "happy"
+    const val TRAIL_SIGN = "trail_sign"
+    const val ADD_CIRCLE = "add_circle"
+    const val AT = "at"
 
     // Participants and moderation (#2896 §6).
     const val HAND_RIGHT = "hand_right"

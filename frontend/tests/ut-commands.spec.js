@@ -7,6 +7,7 @@ import {
   matchCommands,
   commandInsertText,
   hasCommandLine,
+  builtinCommandKeys,
 } from '@/utils/commands'
 
 describe('canonCommandKey', () => {
@@ -146,5 +147,49 @@ describe('hasCommandLine', () => {
     expect(hasCommandLine('cd /home')).toBe(false)
     expect(hasCommandLine('просто текст')).toBe(false)
     expect(hasCommandLine('')).toBe(false)
+  })
+
+  // KEY_RE (и commandKeyRe на сервере) разрешают ключ с цифры, значит «/1on1» —
+  // такая же команда словаря, как «/approve». Гейт на [a-z] молча не запрашивал
+  // для неё превью, и редактор не показывал ничего.
+  it('counts a digit-led key as a command', () => {
+    expect(hasCommandLine('/1on1')).toBe(true)
+    expect(hasCommandLine('заметка\n/2fa включить')).toBe(true)
+  })
+})
+
+// Сервер держит в quickact.byKey и ключ, и алиасы, а IsBuiltin сверяется именно
+// с ней — значит «встроенным» для словаря workspace'а является и алиас тоже.
+describe('builtinCommandKeys', () => {
+  const REGISTRY = [
+    { key: 'close', aliases: ['done'] },
+    { key: 'assign', aliases: ['assignee'] },
+    { key: 'blocked_by', aliases: ['blockedby'] },
+    { key: 'archive', aliases: [] },
+  ]
+
+  it('collects aliases alongside registry keys', () => {
+    const keys = builtinCommandKeys(REGISTRY)
+    expect(keys.has('done')).toBe(true)
+    expect(keys.has('assignee')).toBe(true)
+    expect(keys.has('blockedby')).toBe(true)
+  })
+
+  it('still collects the keys themselves', () => {
+    const keys = builtinCommandKeys(REGISTRY)
+    expect(keys.has('close')).toBe(true)
+    expect(keys.has('archive')).toBe(true)
+    expect(keys.size).toBe(7)
+  })
+
+  it('canonicalises both halves', () => {
+    const keys = builtinCommandKeys([{ key: '/Close ', aliases: [' DONE'] }])
+    expect([...keys].sort()).toEqual(['close', 'done'])
+  })
+
+  it('is safe on junk', () => {
+    expect(builtinCommandKeys().size).toBe(0)
+    expect(builtinCommandKeys([null, { key: '' }, { key: 'x' }]).size).toBe(1)
+    expect(builtinCommandKeys([{ key: 'x', aliases: null }]).size).toBe(1)
   })
 })

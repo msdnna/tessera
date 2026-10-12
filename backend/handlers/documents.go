@@ -40,12 +40,28 @@ func (h *API) CreateDocument(c *gin.Context) {
 		ParentID   *uuid.UUID `json:"parent_id"`
 		ProjectID  *uuid.UUID `json:"project_id"`
 		TemplateID *uuid.UUID `json:"template_id"`
+		// The stage (#3044) and the meeting (#3046) the document starts pinned to.
+		MilestoneID  *uuid.UUID `json:"milestone_id"`
+		ConferenceID *uuid.UUID `json:"conference_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
 	if req.ParentID != nil && !h.parentInWorkspace(c, *req.ParentID, wsID) {
+		return
+	}
+	// The project gets the same check as the parent above, and for a sharper
+	// reason than symmetry: TransferProject re-stamps workspace_id on a
+	// project's documents by project_id alone, so one pinned across the boundary
+	// leaves this workspace the next time that project moves.
+	if req.ProjectID != nil && !h.projectInWorkspace(c, *req.ProjectID, wsID) {
+		return
+	}
+	if req.MilestoneID != nil && !h.milestoneInWorkspace(c, *req.MilestoneID, wsID) {
+		return
+	}
+	if req.ConferenceID != nil && !h.conferenceInWorkspace(c, *req.ConferenceID, wsID) {
 		return
 	}
 	seed, ok := h.seedFromTemplate(c, wsID, req.TemplateID)
@@ -59,16 +75,18 @@ func (h *API) CreateDocument(c *gin.Context) {
 	}
 	uid := middleware.CurrentUser(c)
 	doc, err := h.q.CreateDocument(c, db.CreateDocumentParams{
-		WorkspaceID: wsID,
-		ProjectID:   req.ProjectID,
-		ParentID:    req.ParentID,
-		AuthorID:    &uid,
-		Title:       req.Title,
-		Slug:        h.uniqueDocumentSlug(c, wsID, req.Title),
-		Icon:        req.Icon,
-		Position:    h.nextDocumentPosition(c, wsID, req.ParentID),
-		Content:     seed.content,
-		Preview:     seed.preview,
+		WorkspaceID:  wsID,
+		ProjectID:    req.ProjectID,
+		ParentID:     req.ParentID,
+		AuthorID:     &uid,
+		Title:        req.Title,
+		Slug:         h.uniqueDocumentSlug(c, wsID, req.Title),
+		Icon:         req.Icon,
+		Position:     h.nextDocumentPosition(c, wsID, req.ParentID),
+		Content:      seed.content,
+		Preview:      seed.preview,
+		MilestoneID:  req.MilestoneID,
+		ConferenceID: req.ConferenceID,
 	})
 	if err != nil {
 		fail(c, err)
@@ -216,6 +234,9 @@ func (h *API) UpdateDocument(c *gin.Context) {
 		next.Icon = *req.Icon
 	}
 	if req.ProjectID != nil {
+		if !h.projectInWorkspace(c, *req.ProjectID, doc.WorkspaceID) {
+			return
+		}
 		next.ProjectID = req.ProjectID
 	}
 	if req.Position != nil {
@@ -259,55 +280,13 @@ func (h *API) DeleteDocument(c *gin.Context) {
 		})
 		return
 	}
-	// Collect the subtree *before* deleting it: afterwards the rows are gone and
-	// there is nothing left to walk, while a nested document's participants would
-	// go on typing into a row that no longer exists (#2729).
-	doomed := h.documentSubtreeIDs(c, doc)
-	if err := h.q.DeleteDocumentSubtree(c, doc.ID); err != nil {
-		fail(c, err)
+	// The trash (0086): the subtree is hidden, not erased — its rooms close, its
+	// images stay until PurgeDeletedDocument / trash_purge erase the rows.
+	if !h.softDeleteDocument(c, doc) {
 		return
 	}
-	if h.docRooms != nil {
-		for _, id := range doomed {
-			h.docRooms.Drop(id)
-		}
-	}
-	h.broadcast(doc.WorkspaceID, "document.deleted", gin.H{"id": doc.ID})
+	h.broadcastAs(c, doc.WorkspaceID, "document.deleted", gin.H{"id": doc.ID})
 	c.Status(http.StatusNoContent)
-}
-
-// documentSubtreeIDs returns the document and every document nested below it.
-//
-// The delete itself uses a recursive CTE; this walks the workspace's flat list
-// in Go instead, because the ids are wanted for the live rooms (#2729) rather
-// than for the statement, and a second SQL round trip on a rare, already
-// multi-query path buys nothing. A read error degrades to "just this document":
-// the delete must not fail because a socket bookkeeping list came up short.
-func (h *API) documentSubtreeIDs(c *gin.Context, doc db.Document) []uuid.UUID {
-	ids := []uuid.UUID{doc.ID}
-	docs, err := h.q.ListDocuments(c, doc.WorkspaceID)
-	if err != nil {
-		return ids
-	}
-	// Breadth-first over the parent links; the tree is a tree (reparentAllowed
-	// rejects cycles), so this terminates.
-	for frontier := ids; len(frontier) > 0; {
-		var next []uuid.UUID
-		for i := range docs {
-			if docs[i].ParentID == nil {
-				continue
-			}
-			for _, parent := range frontier {
-				if *docs[i].ParentID == parent {
-					next = append(next, docs[i].ID)
-					break
-				}
-			}
-		}
-		ids = append(ids, next...)
-		frontier = next
-	}
-	return ids
 }
 
 // loadDocument fetches a document (path param :id) and authorizes via its
@@ -408,5 +387,9 @@ func documentMeta(d db.Document) gin.H {
 		"icon":         d.Icon,
 		"position":     d.Position,
 		"updated_at":   d.UpdatedAt,
+		// The head's chips (#3044, #3046): an open document follows a re-pin made
+		// in another tab without reloading its body.
+		"milestone_id":  d.MilestoneID,
+		"conference_id": d.ConferenceID,
 	}
 }

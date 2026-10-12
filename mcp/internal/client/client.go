@@ -30,21 +30,39 @@ type Client struct {
 	selfMu     sync.Mutex // guards the memoised /auth/me lookup
 	selfLoaded bool
 	selfID     string
+	selfLoc    *time.Location // profile timezone, nil when unset or unloadable
 }
 
 // New builds a client for the given API base URL and token. Timeouts mirror the
 // backend's GitLab client: short dial/handshake so an unreachable host fails
 // fast, with a generous overall ceiling for larger list responses.
+//
+// CheckRedirect re-applies ownTarget on every hop, so the bearer token cannot be
+// walked off the backend by a redirect. net/http does drop Authorization by
+// itself, but only when the hop crosses to another *domain* — the port plays no
+// part in its comparison, so a hop from our own host to another service on the
+// same machine kept the header. Same rule, every hop, one place.
 func New(baseURL, token string) *Client {
 	tr := &http.Transport{
 		DialContext:         (&net.Dialer{Timeout: 5 * time.Second}).DialContext,
 		TLSHandshakeTimeout: 5 * time.Second,
 	}
-	return &Client{
+	c := &Client{
 		baseURL: strings.TrimRight(baseURL, "/"),
 		token:   token,
 		http:    &http.Client{Timeout: 30 * time.Second, Transport: tr},
 	}
+	c.http.CheckRedirect = func(req *http.Request, via []*http.Request) error {
+		// Setting CheckRedirect replaces net/http's own cap, so carry it over.
+		if len(via) >= 10 {
+			return fmt.Errorf("stopped after 10 redirects")
+		}
+		if !c.ownTarget(req.URL.String()) {
+			req.Header.Del("Authorization")
+		}
+		return nil
+	}
+	return c
 }
 
 // WebBaseURL returns the human-facing base (API base minus the trailing /api),
@@ -124,25 +142,70 @@ func (c *Client) do(req *http.Request, method, path string, out any) error {
 	return json.NewDecoder(resp.Body).Decode(out)
 }
 
-// SelfID returns the user id owning the token (via /auth/me), memoised for the
-// process. Best-effort: returns "" if the lookup fails, so callers must treat an
-// empty id as "unknown" rather than a match.
-func (c *Client) SelfID(ctx context.Context) string {
-	c.selfMu.Lock()
-	defer c.selfMu.Unlock()
+// loadSelf performs the memoised /auth/me lookup, which answers two questions at
+// once: who owns the token, and which calendar they live in. Caller holds selfMu.
+//
+// Best-effort throughout: a failed lookup leaves both answers at their "unknown"
+// value rather than failing the tool that asked. The zone is skipped when the
+// profile leaves it blank — on the web that blank means "whatever the browser
+// is", a value the server cannot re-derive (see resolvedTimezone in
+// frontend/src/utils/format.js), and here it means the same thing: fall through
+// to the process's own zone.
+func (c *Client) loadSelf(ctx context.Context) {
 	if c.selfLoaded {
-		return c.selfID
+		return
 	}
 	c.selfLoaded = true
 	var out struct {
 		User struct {
 			ID string `json:"id"`
 		} `json:"user"`
+		Preferences struct {
+			Timezone string `json:"timezone"`
+		} `json:"preferences"`
 	}
-	if err := c.get(ctx, "/auth/me", nil, &out); err == nil {
-		c.selfID = out.User.ID
+	if err := c.get(ctx, "/auth/me", nil, &out); err != nil {
+		return
 	}
+	c.selfID = out.User.ID
+	if tz := strings.TrimSpace(out.Preferences.Timezone); tz != "" {
+		if loc, err := time.LoadLocation(tz); err == nil {
+			c.selfLoc = loc
+		}
+	}
+}
+
+// SelfID returns the user id owning the token (via /auth/me), memoised for the
+// process. Best-effort: returns "" if the lookup fails, so callers must treat an
+// empty id as "unknown" rather than a match.
+func (c *Client) SelfID(ctx context.Context) string {
+	c.selfMu.Lock()
+	defer c.selfMu.Unlock()
+	c.loadSelf(ctx)
 	return c.selfID
+}
+
+// Location returns the calendar the token's owner lives in — the profile
+// timezone, else the process's own zone.
+//
+// Everything that buckets by day has to use it, because a due date is a day, not
+// an instant: it is stored as midnight in the writer's zone and carries that
+// offset back (`"due":"2026-09-19T00:00:00+03:00"`). Ranking against the
+// *process's* midnight therefore answered a different question than every other
+// surface the same user reads — the backend resolves the same profile zone for
+// its own day buckets (callerLocation in handlers/api.go) and the web lets the
+// `timezone` preference win over the browser's zone (utils/taskFilter.js). With
+// the MCP host an hour west of the profile, every task due today came back
+// `overdue: true` for the whole of the day it was actually due on, and next_task
+// put it ahead of work that really was late.
+func (c *Client) Location(ctx context.Context) *time.Location {
+	c.selfMu.Lock()
+	defer c.selfMu.Unlock()
+	c.loadSelf(ctx)
+	if c.selfLoc != nil {
+		return c.selfLoc
+	}
+	return time.Local
 }
 
 // ListWorkspaces returns the workspaces the token's owner belongs to.
@@ -210,6 +273,15 @@ func (c *Client) ListBoardTasks(ctx context.Context, boardID, milestone string) 
 	}
 	var out []model.Task
 	return out, c.get(ctx, "/boards/"+boardID+"/tasks", q, &out)
+}
+
+// ListBoardSubtasks returns every subtask on a board (parent_id set), at all
+// nesting levels, the way the kanban loads them to draw under their cards.
+// Companion to ListBoardTasks, which is top-level only — between them they cover
+// every active task on the board.
+func (c *Client) ListBoardSubtasks(ctx context.Context, boardID string) ([]model.Task, error) {
+	var out []model.Task
+	return out, c.get(ctx, "/boards/"+boardID+"/subtasks", nil, &out)
 }
 
 // ListWorkspaceTasks returns tasks across a workspace. When assigneeMe is true
@@ -453,10 +525,67 @@ func (c *Client) UploadMedia(ctx context.Context, filename, mimeType string, dat
 	return out.URL, nil
 }
 
+// ownTarget reports whether a fetch target is the very backend this client is
+// configured for — the only address the bearer token may travel to.
+//
+// Scheme as well as host: a token minted for an https install has no business
+// going out over plaintext to the same name, and every ref this client builds
+// itself inherits the base URL's scheme, so nothing legitimate is lost. A default
+// port written out explicitly still counts as the same host, since that is how a
+// URL copied out of an address bar comes back.
+func (c *Client) ownTarget(target string) bool {
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return false
+	}
+	u, err := url.Parse(target)
+	if err != nil {
+		return false
+	}
+	return strings.EqualFold(u.Scheme, base.Scheme) && hostKey(u) == hostKey(base)
+}
+
+// hostKey is a URL's host with its port spelled out, so "example" and
+// "example:443" under https compare equal.
+func hostKey(u *url.URL) string {
+	port := u.Port()
+	if port == "" {
+		switch strings.ToLower(u.Scheme) {
+		case "http":
+			port = "80"
+		case "https":
+			port = "443"
+		}
+	}
+	return strings.ToLower(u.Hostname()) + ":" + port
+}
+
 // FetchImage downloads image bytes for a reference taken from a task: an
 // "attachment:<id>" ref (auth-protected download) or a URL — either "/api/…"
 // relative to the host, a "/…" path relative to the API base, or an absolute
 // http(s) URL. Returns the bytes and their MIME type.
+//
+// The token goes out only to our own backend (ownTarget), and that is not a
+// precaution — it is the whole point of the check. A ref is not ours: it is
+// scraped out of a task's description and comments (collectImages), text any
+// workspace member writes and the GitLab sync mirrors from an issue body
+// verbatim. `![x](https://elsewhere/p.png)` in there used to be fetched with
+// `Authorization: Bearer tsra_…` attached, so viewing the screenshots on a task —
+// which is what the agent is asked to do with them — handed the MCP server's
+// personal access token to whoever wrote the line. That token is not scoped to a
+// workspace: it is the whole API as its owner, and on this install its owner is an
+// account with the board's history in reach (#2932).
+//
+// A foreign URL is still fetched, just anonymously: an external screenshot is a
+// real thing to want to look at, and the fetch is only ever made because a caller
+// asked for this task's images. (The request itself does tell that host someone
+// read the task — the same beacon the pinned-assignee avatar URL was; there is no
+// avoiding it short of refusing the ref, and the credential is the part that
+// cannot be taken back.)
+//
+// Redirects are covered by the same rule one layer down, in New's CheckRedirect —
+// net/http's own stripping compares domains and ignores the port, which is not
+// enough on a host that runs more than one service.
 func (c *Client) FetchImage(ctx context.Context, ref string) ([]byte, string, error) {
 	var target string
 	switch {
@@ -477,7 +606,11 @@ func (c *Client) FetchImage(ctx context.Context, ref string) ([]byte, string, er
 	if err != nil {
 		return nil, "", err
 	}
-	req.Header.Set("Authorization", "Bearer "+c.token) // harmless for public /uploads, required for attachments
+	if c.ownTarget(target) {
+		// Harmless for public /uploads, required for attachments — and withheld from
+		// anywhere else, see above.
+		req.Header.Set("Authorization", "Bearer "+c.token)
+	}
 	resp, err := c.http.Do(req)
 	if err != nil {
 		return nil, "", fmt.Errorf("GET %s: %w", target, err)

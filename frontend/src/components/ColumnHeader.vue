@@ -1,20 +1,30 @@
 <script setup>
-import { ref, computed, nextTick, h } from 'vue'
+// A column's header (v2 #2954; interaction model #2969): the name renames in
+// place (double click or F2), the «⋯» and the right click open the row menu,
+// and the delete happens at once — the board offers the undo in a toast.
+import { ref, computed, watch } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NButton, NInput, NPopover, NPopconfirm, NDropdown, useMessage } from 'naive-ui'
+import { NIcon, NTooltip } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import {
+  AddOutline,
+  ArrowBackOutline,
+  ArrowForwardOutline,
+  CheckmarkDoneOutline,
+  ChevronBackOutline,
+  ColorPaletteOutline,
+  CreateOutline,
   EllipsisHorizontalOutline,
   TrashOutline,
-  CheckmarkDoneOutline,
-  CreateOutline,
-  ChevronBackOutline,
 } from '@vicons/ionicons5'
 import TesseraIcon from './TesseraIcon.vue'
-
-const menuIcon = (icon) => () => h(NIcon, null, { default: () => h(icon) })
-const dangerIcon = (icon) => () => h(NIcon, { color: '#e0533d' }, { default: () => h(icon) })
+import TagPill from './TagPill.vue'
+import ShortcutKeys from './ShortcutKeys.vue'
+import InlineEdit from './kit/InlineEdit.vue'
+import ActionMenu from './kit/ActionMenu.vue'
 import { columns as columnsApi } from '@/api'
 import { columnStatusName } from '@/utils/columnStatus'
+import { humanizeError } from '@/utils/errors'
 
 const { t } = useI18n()
 
@@ -24,11 +34,38 @@ const props = defineProps({
   total: { type: Number, default: 0 }, // same, with every subtask folded in (#2850)
   estimate: { type: String, default: '' }, // Σ estimate (milestone grouping); '' = hide
   editable: { type: Boolean, default: false }, // status columns only
+  readonly: { type: Boolean, default: false }, // archive view: look, don't touch
   isDone: { type: Boolean, default: false }, // task-completing column
   first: { type: Boolean, default: false }, // leftmost column (To-Do icon)
+  last: { type: Boolean, default: false }, // rightmost column (no «move right»)
   collapsed: { type: Boolean, default: false }, // rendered as a narrow strip
+  // The board's last status column can't be deleted: its cards would have
+  // nowhere to move (the server answers 409).
+  canDelete: { type: Boolean, default: true },
+  // { key, n } — the board asks this header to open its rename (F2 on the
+  // column, Tab from the previous header). `n` makes a repeat request count.
+  renameRequest: { type: Object, default: null },
+  // A tag column (grouping by tag, #2954) titles itself with the tag's own pill,
+  // in the board's friendly prefix names (canonical prefix → label).
+  prefixNames: { type: Object, default: () => ({}) },
 })
-const emit = defineEmits(['changed', 'set-done', 'toggle-collapse'])
+const emit = defineEmits([
+  'changed',
+  'set-done',
+  'toggle-collapse',
+  'rename-next',
+  'delete',
+  'move',
+  'add-right',
+])
+
+// `editable` says the lane is a real status column (tag/milestone lanes are not);
+// `readonly` says the board is being *looked at*, not worked on — the archive view.
+// Only the two together open the menu, the rename and the drag handle: the
+// archive shows — and counts — only archived cards, so a menu acting on the
+// whole column over a header reading «3» would mislead. Card DnD, column DnD and
+// the card menus are already closed in the archive (KanbanBoard `archivedMode`).
+const canEdit = computed(() => props.editable && !props.readonly)
 
 // Status glyph from the Tessera icon pack: done = check circle,
 // first = empty circle, review = ⅔-pie, other middle = in-progress (half). Filled
@@ -63,82 +100,136 @@ const countTitle = computed(() =>
     : t('board.column.countTitleFlat', { tasks: props.count }),
 )
 
-function toggleDone() {
-  emit('set-done', props.isDone ? null : props.dcol.key)
-  settingsOpen.value = false
-}
+const message = useMessage()
 
-// ── right-click context menu (status columns only) ──
-const ctxShow = ref(false)
-const ctxX = ref(0)
-const ctxY = ref(0)
-const ctxOptions = computed(() => [
-  { label: t('board.column.rename'), key: 'rename', icon: menuIcon(CreateOutline) },
+// ── the row menu: «⋯» or a right click ──
+const menuOpen = ref(false)
+const menuAt = ref(null) // { x, y } for a right click, null for the «⋯» button
+const menuBtn = ref(null)
+const menuAnchor = () => menuAt.value || menuBtn.value || null
+const menuItems = computed(() => [
+  { key: 'rename', label: t('board.column.rename'), icon: CreateOutline, keys: 'col.rename' },
   {
-    label: props.isDone ? t('board.column.unsetDone') : t('board.column.setDone'),
-    key: 'done',
-    icon: menuIcon(CheckmarkDoneOutline),
+    key: 'color',
+    label: t('board.column.color'),
+    icon: ColorPaletteOutline,
+    swatch: props.dcol.color || '',
   },
-  { type: 'divider', key: 'd1' },
   {
-    label: t('board.column.delete'),
+    key: 'done',
+    label: t('board.column.doneToggle'),
+    icon: CheckmarkDoneOutline,
+    toggle: props.isDone,
+  },
+  { gap: true },
+  {
+    key: 'collapse',
+    label: t('board.column.collapseShort'),
+    icon: ChevronBackOutline,
+    keys: 'view.collapse',
+  },
+  ...(props.first
+    ? []
+    : [
+        {
+          key: 'moveLeft',
+          label: t('board.column.moveLeft'),
+          icon: ArrowBackOutline,
+          keys: 'col.moveLeft',
+        },
+      ]),
+  ...(props.last
+    ? []
+    : [
+        {
+          key: 'moveRight',
+          label: t('board.column.moveRight'),
+          icon: ArrowForwardOutline,
+          keys: 'col.moveRight',
+        },
+      ]),
+  { key: 'addRight', label: t('board.column.addRight'), icon: AddOutline },
+  { gap: true },
+  {
     key: 'delete',
-    icon: dangerIcon(TrashOutline),
-    props: { style: 'color:#e0533d' },
+    label: t('board.column.delete'),
+    icon: TrashOutline,
+    danger: true,
+    keys: 'col.delete',
+    disabled: !props.canDelete,
+    disabledTitle: t('board.column.lastColumn'),
   },
 ])
-function onCtx(e) {
-  if (!props.editable) return
-  e.preventDefault()
-  ctxShow.value = false
-  ctxX.value = e.clientX
-  ctxY.value = e.clientY
-  nextTick(() => (ctxShow.value = true))
+function openMenu(at = null) {
+  if (!canEdit.value) return
+  menuAt.value = at
+  menuOpen.value = true
 }
-function onCtxSelect(key) {
-  ctxShow.value = false
+function onCtx(e) {
+  if (!canEdit.value) return
+  e.preventDefault()
+  openMenu({ x: e.clientX, y: e.clientY })
+}
+function onMenu(key, value) {
   if (key === 'rename') startRename()
-  else if (key === 'done') toggleDone()
-  else if (key === 'delete') removeCol()
+  else if (key === 'color') setColor(value)
+  else if (key === 'done') emit('set-done', value ? props.dcol.key : null)
+  else if (key === 'collapse') emit('toggle-collapse')
+  else if (key === 'moveLeft') emit('move', 'left')
+  else if (key === 'moveRight') emit('move', 'right')
+  else if (key === 'addRight') emit('add-right')
+  else if (key === 'delete') emit('delete')
 }
 
-const message = useMessage()
+// ── rename in place ──
 const renaming = ref(false)
 const nameEdit = ref('')
-const settingsOpen = ref(false)
-const swatches = [
-  '',
-  '#9aa0aa',
-  '#7c5cff',
-  '#2f80ed',
-  '#0eb0a9',
-  '#18a058',
-  '#f0a020',
-  '#e0533d',
-  '#eb2f96',
-]
-
-// Same-hue diagonal gradient for a colour swatch (flat fallback for "default").
-function swatchBg(s) {
-  if (!s) return 'var(--t-border)'
-  return `linear-gradient(to top right, color-mix(in srgb, ${s} 86%, #000), ${s} 50%, color-mix(in srgb, ${s} 86%, #fff))`
-}
+const renameError = ref('')
+const renameBusy = ref(false)
+const editor = ref(null)
 
 function startRename() {
-  if (!props.editable) return
+  if (!canEdit.value || renaming.value) return
   nameEdit.value = props.dcol.name
+  renameError.value = ''
   renaming.value = true
 }
-async function commitRename() {
+watch(
+  () => props.renameRequest,
+  (req) => {
+    if (req && req.key === props.dcol.key) startRename()
+  },
+)
+function cancelRename() {
   renaming.value = false
-  const n = nameEdit.value.trim()
-  if (!n || n === props.dcol.name) return
-  try {
-    await columnsApi.update(props.dcol.key, { name: n, color: props.dcol.color || '' })
-    emit('changed')
-  } catch (e) {
-    message.error(e.message)
+  renameError.value = ''
+}
+async function commitRename(value, { via }) {
+  if (!renaming.value || renameBusy.value) return
+  const n = value.trim()
+  if (!n) {
+    // An empty name is never saved. Clicking away just drops the edit; ↵ and
+    // Tab say why and keep the field.
+    if (via === 'blur') return cancelRename()
+    renameError.value = t('board.column.nameEmpty')
+    editor.value?.focus()
+    return
   }
+  if (n !== props.dcol.name) {
+    renameBusy.value = true
+    try {
+      await columnsApi.update(props.dcol.key, { name: n, color: props.dcol.color || '' })
+      emit('changed')
+    } catch (e) {
+      renameBusy.value = false
+      renameError.value = humanizeError(e)
+      editor.value?.focus()
+      return
+    }
+    renameBusy.value = false
+  }
+  cancelRename()
+  if (via === 'tab') emit('rename-next')
 }
 async function setColor(c) {
   try {
@@ -148,182 +239,218 @@ async function setColor(c) {
     await columnsApi.update(props.dcol.key, { name: rawName.value, color: c })
     emit('changed')
   } catch (e) {
-    message.error(e.message)
+    message.error(humanizeError(e))
   }
 }
-async function removeCol() {
-  try {
-    await columnsApi.remove(props.dcol.key)
-    settingsOpen.value = false
-    emit('changed')
-  } catch (e) {
-    message.error(e.message)
-  }
-}
+
+defineExpose({ startRename, openMenu })
 </script>
 
 <template>
-  <div class="col-head" @contextmenu="onCtx">
+  <div class="col-head" :class="{ ro: readonly, editing: renaming }" @contextmenu="onCtx">
+    <!-- The status glyph stays in the archive (it is what the column *is*), but
+         `col-drag` — the Sortable handle and its grab cursor — comes off with the
+         rest of the editing: the column draggable is disabled there anyway. -->
     <TesseraIcon
       v-if="editable"
       :name="statusName"
       :variant="statusVariant"
-      class="col-stat col-drag"
+      class="col-stat"
+      :class="{ 'col-drag': canEdit && !renaming }"
       :style="{ color: statusColor }"
-      :title="isDone ? t('board.column.doneTitle') : t('board.column.dragTitle')"
+      :title="isDone ? t('board.column.doneTitle') : readonly ? '' : t('board.column.dragTitle')"
     />
-    <n-input
+    <InlineEdit
       v-if="renaming"
-      v-model:value="nameEdit"
-      size="tiny"
-      autofocus
-      @keyup.enter="commitRename"
-      @blur="commitRename"
+      ref="editor"
+      v-model="nameEdit"
+      variant="header"
+      hint="column"
+      :error="renameError"
+      :busy="renameBusy"
+      :placeholder="t('board.column.namePlaceholder')"
+      :hint-left="-6"
+      data-testid="column-rename-input"
+      @commit="commitRename"
+      @cancel="cancelRename"
     />
-    <span v-else class="col-title col-drag" @dblclick="startRename">{{ dcol.name }}</span>
-    <span class="count" :title="countTitle" data-testid="column-count"
-      >{{ count }}<span v-if="showTotal" class="count-sub">{{ ' (' + total + ')' }}</span></span
-    >
-    <span v-if="estimate" class="col-est" :title="t('board.column.estimateTitle')"
-      >Σ {{ estimate }}</span
-    >
-    <n-button
-      text
-      size="tiny"
-      class="col-collapse"
-      :title="t('board.column.collapse')"
-      @click.stop="emit('toggle-collapse')"
-    >
-      <n-icon :component="ChevronBackOutline" />
-    </n-button>
-    <n-popover v-if="editable" v-model:show="settingsOpen" trigger="click" placement="bottom-end">
+    <TagPill v-else-if="dcol.tag" :tag="dcol.tag" :prefix-names="prefixNames" class="col-tag" />
+    <!-- `title` is not decoration here: the caption is clipped to one line below,
+         and a tag lane's caption is whatever the reader named the tag. -->
+    <n-tooltip v-else-if="canEdit" placement="bottom-start" :delay="700" :show-arrow="false">
       <template #trigger>
-        <n-button text size="tiny" class="col-menu">
-          <n-icon :component="EllipsisHorizontalOutline" />
-        </n-button>
+        <span
+          class="col-title col-drag can-rename"
+          :aria-label="dcol.name"
+          @dblclick="startRename"
+          >{{ dcol.name }}</span
+        >
       </template>
-      <div class="settings">
-        <div class="swatches">
-          <button
-            v-for="s in swatches"
-            :key="s || 'none'"
-            class="sw"
-            :class="{ active: s === (dcol.color || '') }"
-            :style="{ backgroundImage: swatchBg(s) }"
-            :title="s || t('board.column.colorDefault')"
-            @click="setColor(s)"
-          />
-        </div>
-        <n-button
-          :type="isDone ? 'success' : 'default'"
-          :ghost="isDone"
-          size="small"
-          block
-          @click="toggleDone"
-        >
-          <template #icon><n-icon :component="CheckmarkDoneOutline" /></template>
-          {{ isDone ? t('board.column.unsetDone') : t('board.column.setDone') }}
-        </n-button>
-        <n-popconfirm
-          :positive-button-props="{ type: 'error', 'data-testid': 'column-delete-confirm' }"
-          :positive-text="t('common.action.delete')"
-          @positive-click="removeCol"
-        >
-          <template #trigger>
-            <n-button type="error" ghost size="small" block data-testid="column-delete">
-              <template #icon><n-icon :component="TrashOutline" /></template>
-              {{ t('board.column.delete') }}
-            </n-button>
-          </template>
-          {{ t('board.column.deleteConfirm') }}
-        </n-popconfirm>
-      </div>
-    </n-popover>
+      <span class="ch-tip">
+        {{ t('board.column.renameHint') }}
+        <ShortcutKeys id="col.rename" />
+      </span>
+    </n-tooltip>
+    <span
+      v-else
+      class="col-title"
+      :class="{ neutral: !editable && !dcol.color }"
+      :title="dcol.name"
+      >{{ dcol.name }}</span
+    >
+    <template v-if="!renaming">
+      <span class="count" :title="countTitle" data-testid="column-count"
+        >{{ count }}<span v-if="showTotal" class="count-sub">{{ ' (' + total + ')' }}</span></span
+      >
+      <span v-if="estimate" class="col-est" :title="t('board.column.estimateTitle')"
+        >Σ {{ estimate }}</span
+      >
+      <span class="col-gap" />
+      <button
+        type="button"
+        class="col-collapse"
+        :title="t('board.column.collapse')"
+        @click.stop="emit('toggle-collapse')"
+      >
+        <n-icon :component="ChevronBackOutline" />
+      </button>
+      <button
+        v-if="canEdit"
+        ref="menuBtn"
+        type="button"
+        class="col-menu"
+        :class="{ open: menuOpen && !menuAt }"
+        :title="t('common.action.more')"
+        aria-haspopup="menu"
+        :aria-expanded="menuOpen"
+        data-testid="column-menu"
+        @click.stop="openMenu()"
+      >
+        <n-icon :component="EllipsisHorizontalOutline" />
+      </button>
+    </template>
 
-    <n-dropdown
-      trigger="manual"
-      placement="bottom-start"
-      :show="ctxShow"
-      :x="ctxX"
-      :y="ctxY"
-      :options="ctxOptions"
-      @select="onCtxSelect"
-      @clickoutside="ctxShow = false"
+    <ActionMenu
+      v-model:show="menuOpen"
+      :anchor="menuAnchor"
+      :placement="menuAt ? 'point' : 'bottom-end'"
+      :offset="menuAt ? { x: 0, y: 0 } : { x: 0, y: 6 }"
+      :width="284"
+      :header="dcol.name"
+      :header-aside="t('board.column.tasks', count)"
+      :items="menuItems"
+      testid="column-actions"
+      @select="onMenu"
     />
   </div>
 </template>
 
 <style scoped>
+/* v2 (#2954): a 30px row straight on the column's tint — no chips, counts in
+   muted text, the controls are bare 22×24 icon buttons. */
 .col-head {
   display: flex;
   align-items: center;
-  gap: 6px;
-  margin-bottom: 8px;
-  padding: 0 2px;
+  gap: 5px;
+  height: 30px;
+  padding: 0 0 0 6px;
+  flex: none;
 }
 .col-stat {
   font-size: 16px;
-  cursor: grab;
   flex: none;
 }
-.col-title {
-  flex: 1;
-  font-weight: 600;
-  color: var(--t-text1);
+/* The grab hand marks the Sortable handle only — the caption and the glyph carry
+   it just while the column can be reordered (canEdit), never as decoration (#2932). */
+.col-drag {
   cursor: grab;
 }
-.count {
-  font-size: 12px;
+.col-title {
+  flex: 0 1 auto;
+  /* min-width: 0 lets a long caption shrink (a tag name often has no break
+     opportunity) instead of pushing the count, chevron and «…» over the next
+     column (#2932); clipped to one line like the collapsed strip. */
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--t-text1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* «Без тегов» / «Без этапа»: the neutral catch-all column reads a step quieter. */
+.col-title.neutral {
+  color: var(--t-text2);
+  cursor: default;
+}
+/* TagPill leaves its box to the call site (a scoped two-tone tag overrides the
+   padding with its own segments). */
+.col-tag {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 12.5px;
+  font-weight: 600;
+  padding: 1px 9px;
+  border-radius: var(--t-r-pill);
+}
+.count,
+.col-est {
+  flex: none;
+  font-size: 12.5px;
   color: var(--t-text3);
-  background: var(--t-hover);
-  border-radius: 10px;
-  padding: 0 7px;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
 .count-sub {
-  opacity: 0.7;
+  opacity: 0.85;
 }
-.col-est {
-  font-size: 11px;
-  color: var(--t-text3);
-  white-space: nowrap;
+.col-gap {
+  flex: 1 1 0;
+  min-width: 0;
 }
+.col-collapse,
 .col-menu {
-  font-size: 16px;
-}
-.col-collapse {
-  font-size: 15px;
-  color: var(--t-text3);
   flex: none;
-}
-.col-collapse:hover {
-  color: var(--t-text1);
-}
-.settings {
-  width: 220px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-.settings :deep(.n-button__content) {
-  white-space: nowrap;
-}
-.swatches {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-}
-.sw {
-  appearance: none;
-  -webkit-appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  background-origin: border-box;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  font-size: 14px;
+  color: var(--t-text3);
   cursor: pointer;
 }
-.sw.active {
-  border-color: var(--t-text1);
+.col-menu {
+  font-size: 15px;
+}
+.col-collapse:hover,
+.col-menu:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.col-menu.open {
+  background: var(--t-active);
+  color: var(--t-primary);
+}
+.can-rename {
+  padding: 2px 5px;
+  margin: 0 -5px;
+  border-radius: 6px;
+}
+.can-rename:hover {
+  background: color-mix(in srgb, var(--t-text1) 8%, transparent);
+}
+.col-head.editing {
+  gap: 6px;
+  padding-right: 4px;
+}
+.ch-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
 }
 </style>

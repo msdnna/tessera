@@ -14,6 +14,20 @@ data class Recurrence(
     // ("yyyy-MM-dd"). Both omitted (null) when not applicable.
     @SerializedName("weekdays") val weekdays: List<Int>? = null,
     @SerializedName("dates") val dates: List<String>? = null,
+    // Monthly/yearly day-of-month anchor (server-managed; `month` only for yearly).
+    // A short month temporarily moves the due date, and without the anchor every
+    // later occurrence inherits the clamp — a task repeating on the 31st becomes a
+    // 28th task the first time it passes through February. The editor's controls
+    // never hold it, so a rule rebuilt from them borrows it back (withStoredAnchor).
+    @SerializedName("day") val day: Int = 0,
+    @SerializedName("month") val month: Int = 0,
+    // The IANA zone the rule's calendar arithmetic runs in on the server ("every
+    // Monday", "the 31st" are calendar statements, and a due date picked here is
+    // local midnight — which east of UTC belongs to the previous UTC day). Kept on
+    // the model even though nothing local reads it: the picker rebuilds the whole
+    // rule out of its controls (`buildRule`), so a field the client forgets is a
+    // field the server loses the moment the recurrence is touched.
+    @SerializedName("tz") val tz: String? = null,
     @SerializedName("trigger") val trigger: String? = null, // complete|column|schedule
     @SerializedName("trigger_column") val triggerColumn: String? = null,
     @SerializedName("target_column") val targetColumn: String? = null,
@@ -97,18 +111,6 @@ data class MoveTaskRequest(
     @SerializedName("after_id") val afterId: String? = null,
 )
 
-/** Full task update — the backend requires all fields (title is mandatory). */
-data class UpdateTaskRequest(
-    @SerializedName("title") val title: String,
-    @SerializedName("description") val description: String = "",
-    @SerializedName("priority") val priority: Int = 0,
-    @SerializedName("due_date") val dueDate: String? = null,
-    @SerializedName("start_date") val startDate: String? = null,
-    @SerializedName("estimate") val estimate: Double? = null,
-    @SerializedName("completed") val completed: Boolean = false,
-    @SerializedName("recurrence") val recurrence: Recurrence? = null,
-)
-
 /** Per-task due-notification overrides; null fields inherit the user default. */
 data class DueNotifyRequest(
     @SerializedName("lead_minutes") val leadMinutes: Int? = null,
@@ -130,9 +132,13 @@ data class GitlabMember(
     @SerializedName("gl_username") val glUsername: String = "",
     @SerializedName("gl_name") val glName: String = "",
     @SerializedName("gl_avatar_url") val glAvatarUrl: String = "",
-    // Non-null when this GitLab member already has a linked Tessera account (via
-    // OAuth identity or a connected PAT) — used to dedup the assignee picker.
+    // The Tessera account this GitLab member is linked to, if any. The server
+    // reports the two links *separately* (ListGitlabProjectMembersByWorkspace):
+    // [tesseraUserId] comes from an OAuth identity, [tesseraUserIdPat] from a
+    // connected personal access token. A PAT-linked person leaves the first one
+    // null, so reading only [tesseraUserId] loses them — see `buildMentionItems`.
     @SerializedName("tessera_user_id") val tesseraUserId: String? = null,
+    @SerializedName("tessera_user_id_pat") val tesseraUserIdPat: String? = null,
 )
 
 data class PinGitlabAssigneeRequest(
@@ -163,7 +169,23 @@ data class Member(
     // @-mention can insert `@login` — a display name with spaces resolves to
     // nobody once the comment is pushed to GitLab.
     @SerializedName("gl_username") val glUsername: String = "",
+    // Activity (#3073): «был в приложении» and «последнее действие здесь».
+    @SerializedName("last_seen_at") val lastSeenAt: String? = null,
+    @SerializedName("last_active_at") val lastActiveAt: String? = null,
 )
+
+/** A pending request to be let into a workspace (#3077), as its managers see it. */
+data class AccessRequest(
+    @SerializedName("id") val id: String = "",
+    @SerializedName("user_id") val userId: String = "",
+    @SerializedName("user_name") val userName: String = "",
+    @SerializedName("user_email") val userEmail: String = "",
+    @SerializedName("board_name") val boardName: String = "",
+    @SerializedName("message") val message: String = "",
+    @SerializedName("created_at") val createdAt: String = "",
+)
+
+data class TransferOwnerRequest(@SerializedName("user_id") val userId: String)
 
 data class CreateTagRequest(
     @SerializedName("name") val name: String,

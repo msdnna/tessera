@@ -3,12 +3,12 @@ title: The board archive
 category: Boards
 order: 26
 keywords: archive, archived, restore, read-only, delete, subtasks, detach
-updated: 2026-08-28
+updated: 2026-10-10
 ---
 
-The archive is where tasks go that are no longer wanted on the board but would be a shame to lose. It isn't a bin with delayed deletion: nothing disappears from the archive on its own.
+The archive is where tasks go that are no longer wanted on the board but would be a shame to lose. It isn't the [trash](/help/trash): nothing disappears from the archive on its own.
 
-The **Archive** button sits in the board header, next to “Tags” and “Milestones”.
+The archive opens from the board menu — the **“⋯”** button on the right of the board bar, the **Archive** entry (a tick next to it means the archive is open). On a phone it is the same three-dot menu in the header.
 
 ![The board archive: read-only cards](../assets/board-archive-light.png)
 
@@ -24,9 +24,9 @@ Entering the archive clears a milestone scope if one was set: the archived listi
 
 ## How a task gets into the archive
 
-The **Archive** entry is in the card's context menu (right click) and in the task window itself.
+The **Archive** entry is in the card's menu (right click or the card's “⋯”) and in the task window's “⋯” menu. The task goes to the archive at once, and a message with an **Undo** button (<kbd>Ctrl</kbd> <kbd>Z</kbd>) appears at the bottom — if it was a slip, the task comes back.
 
-If the task has subtasks, the question comes with a choice:
+From the card's menu a task goes together with its subtasks. In the task window the Archive entry of a task with subtasks offers a choice:
 
 - **Archive together with the subtasks** — the whole tree goes to the archive at once and comes back at once.
 - **Detach the subtasks** — the children stay on the board as tasks of their own, and only the parent is archived.
@@ -43,7 +43,10 @@ Subtasks that went to the archive with their parent come back with it.
 
 The difference matters and is easy to miss:
 
-- **Archive** — the task is kept with all of its history, comments and attachments, it's visible in the archive and it can be brought back.
-- **Delete a column** — the column disappears **together with its tasks, bypassing the archive**. That is irreversible. Before deleting a column, move the tasks you need to another one or send them to the archive.
+- **Archive** — the task is kept with all of its history, comments and attachments, it's visible in the archive and it can be brought back. The archive has no time limit.
+- **Delete** — the task goes to the [board's trash](/help/trash) and disappears for good after 30 days; until then it can be brought back.
+- **Delete a column** — the column goes (an undo is in the message at the bottom right after), and its tasks **move to the neighbouring column** — nothing is lost.
+
+A whole project can be archived too — see [Archived projects](/help/project-archive).
 
 When in doubt, archive. That's exactly what it exists for — so you never have to choose between “it's in the way on the board” and “it would be a shame to lose it”.

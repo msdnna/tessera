@@ -2,6 +2,7 @@
 title: Заметки
 category: Заметки
 order: 50
+platforms: android
 keywords: заметки, записи, черновик, markdown, проект, поиск
 updated: 2026-08-21
 ---

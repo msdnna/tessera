@@ -7,7 +7,15 @@ const apiMock = vi.hoisted(() => ({
 }))
 vi.mock('@/api', () => apiMock)
 
-import { useTourStore, TOUR_DONE, TOUR_SKIPPED, TOUR_STEP_KEY } from '@/stores/tour'
+import {
+  useTourStore,
+  TOUR_DONE,
+  TOUR_SKIPPED,
+  TOUR_STEP_KEY,
+  TOUR_CHAPTER_PREFIX,
+  DONE_MS,
+} from '@/stores/tour'
+import { CHAPTERS } from '@/data/getStarted'
 import { anchorSelector } from '@/composables/useTourAnchor'
 import { arcPath, arcPathBowed, tourArc, headPoints, layoutArrow } from '@/utils/tourArrow'
 
@@ -27,6 +35,9 @@ beforeEach(() => {
   localStorage.clear()
   vi.clearAllMocks()
   setActivePinia(createPinia())
+  // The «Засчитано» beat (#3000) is covered on its own below; everything else
+  // drives the engine synchronously.
+  useTourStore().doneMs = 0
 })
 afterEach(() => localStorage.clear())
 
@@ -109,9 +120,12 @@ describe('tour store', () => {
     const tokenised = '[data-tour-project="{project}"] [data-tour="board-add"]'
     t.start([{ id: 'board-add', anchor: tokenised, mode: 'action' }])
 
-    // No id yet → the token collapses to a selector that matches nothing, so the
-    // step waits instead of grabbing a stray element.
-    expect(t.anchors).toEqual(['[data-tour-project=""] [data-tour="board-add"]'])
+    // No id yet → a token used as a scope is dropped (#3000: a chapter started
+    // mid-way has no ctx — «+» of any project beats counting down to nothing)…
+    expect(t.anchors).toEqual(['[data-tour="board-add"]'])
+    // …while a token that IS the anchor matches nothing, so the step waits for
+    // the entity instead of grabbing a stray row.
+    expect(t.resolve('[data-tour-board="{board}"]')).toBe('[data-tour-board=""]')
 
     t.noteCreated({ projectId: 'p-42' })
     expect(t.anchors).toEqual(['[data-tour-project="p-42"] [data-tour="board-add"]'])
@@ -127,7 +141,7 @@ describe('tour store', () => {
     const t = useTourStore()
     const tokenised = '[data-tour-group="{group}"] [data-tour="group-row"]'
     t.start([{ id: 'group-created', anchor: tokenised }])
-    expect(t.anchors).toEqual(['[data-tour-group=""] [data-tour="group-row"]'])
+    expect(t.anchors).toEqual(['[data-tour="group-row"]'])
 
     t.noteCreated({ groupId: 'g-9' })
     expect(t.anchors).toEqual(['[data-tour-group="g-9"] [data-tour="group-row"]'])
@@ -281,7 +295,7 @@ describe('tour store', () => {
           mode: 'action',
           advanceOn: { set: '[data-tour="tm-due"][data-tour-set]' },
         },
-        { id: 'after', anchor: 'tm-save', mode: 'info' },
+        { id: 'after', anchor: 'tm-close', mode: 'info' },
       ]
 
       it('advances as soon as the field carries a value', () => {
@@ -327,6 +341,18 @@ describe('tour store', () => {
         t.located('dnd-card', 'К работе')
         expect(t.current.id).toBe('dnd-card')
 
+        t.located('dnd-card', 'В процессе')
+        expect(t.current.id).toBe('after')
+      })
+
+      it('waits for the card to be drawn before taking a baseline (#3104)', () => {
+        // The board draws its cards after the step opened: "no card yet" must not
+        // become the baseline, or the card's first appearance reads as a move.
+        const t = useTourStore()
+        t.start(MOVED_STEPS)
+        t.located('dnd-card', undefined)
+        t.located('dnd-card', 'К работе')
+        expect(t.current.id).toBe('dnd-card')
         t.located('dnd-card', 'В процессе')
         expect(t.current.id).toBe('after')
       })
@@ -403,6 +429,144 @@ describe('tour store', () => {
       t.anchorMissing('workspaces')
       expect(t.current.id).toBe('open-menu')
     })
+  })
+})
+
+// v2 (#3000): chapters, «Назад», «Прервать?», the «Засчитано» beat and the two
+// new advancement rules.
+describe('tour store · v2', () => {
+  const INFO3 = [
+    { id: 'a', anchor: 'x', mode: 'info' },
+    { id: 'b', anchor: 'x', mode: 'info' },
+    { id: 'c', anchor: 'x', mode: 'action', advanceOn: { click: true } },
+    { id: 'd', anchor: 'x', mode: 'info' },
+  ]
+
+  it('starts a chapter by id and persists chapter:step for F5', () => {
+    const t = useTourStore()
+    expect(t.start('basics')).toBe(true)
+    expect(t.chapter).toBe('basics')
+    expect(t.current.id).toBe(CHAPTERS[0].steps[0].id)
+    expect(t.total).toBe(10)
+    expect(t.number).toBe(1)
+    expect(localStorage.getItem(TOUR_STEP_KEY)).toBe(`basics:${t.current.id}`)
+    expect(t.persisted()).toEqual({ chapter: 'basics', step: t.current.id })
+    expect(t.start('no-such-chapter')).toBe(false)
+  })
+
+  it('reads a v1 bare step id as «Основы»', () => {
+    localStorage.setItem(TOUR_STEP_KEY, 'tree-add')
+    expect(useTourStore().persisted()).toEqual({ chapter: 'basics', step: 'tree-add' })
+  })
+
+  it('goes back across info steps only — never through an action step', () => {
+    const t = useTourStore()
+    t.start(INFO3)
+    expect(t.canBack).toBe(false) // first step
+    t.next()
+    expect(t.canBack).toBe(true)
+    t.back()
+    expect(t.current.id).toBe('a')
+    t.next()
+    t.next() // → c (action)
+    expect(t.canBack).toBe(false)
+    t.clicked('c')
+    expect(t.current.id).toBe('d')
+    // d's previous step is an action step: what it created stays, no way back.
+    expect(t.canBack).toBe(false)
+    t.back()
+    expect(t.current.id).toBe('d')
+  })
+
+  it('asks «Прервать?» and resumes, continues later or ends for good', async () => {
+    const t = useTourStore()
+    t.start('basics')
+    t.next()
+    t.abort()
+    expect(t.confirming).toBe(true)
+    t.resume()
+    expect(t.confirming).toBe(false)
+    expect(t.active).toBe(true)
+
+    // «Продолжить позже»: off the screen, nothing written, the step kept.
+    const at = t.current.id
+    t.abort()
+    t.later()
+    expect(t.active).toBe(false)
+    expect(apiMock.acknowledgements.ack).not.toHaveBeenCalled()
+    expect(t.persisted()).toEqual({ chapter: 'basics', step: at })
+
+    // «Завершить обучение»: the autostart is over.
+    t.start('basics')
+    t.abort()
+    await t.skip()
+    expect(t.active).toBe(false)
+    expect(apiMock.acknowledgements.ack).toHaveBeenCalledWith(TOUR_SKIPPED)
+  })
+
+  it('acks the chapter at its end, and «Основы» clears the autostart too', async () => {
+    const t = useTourStore()
+    t.start('tags')
+    while (!t.isLast) t.anchorMissing(t.current.id)
+    await t.finish()
+    expect(apiMock.acknowledgements.ack).toHaveBeenCalledWith(TOUR_CHAPTER_PREFIX + 'tags')
+    expect(apiMock.acknowledgements.ack).not.toHaveBeenCalledWith(TOUR_DONE)
+
+    vi.clearAllMocks()
+    t.start('basics')
+    await t.finish()
+    expect(apiMock.acknowledgements.ack).toHaveBeenCalledWith(TOUR_CHAPTER_PREFIX + 'basics')
+    expect(apiMock.acknowledgements.ack).toHaveBeenCalledWith(TOUR_DONE)
+  })
+
+  it('appear: any match ends the step; vanish: a match that drops to none', () => {
+    const t = useTourStore()
+    t.start([
+      { id: 'open', anchor: 'x', mode: 'action', advanceOn: { appear: 'tm-close' } },
+      { id: 'close', anchor: 'tm-close', mode: 'action', advanceOn: { vanish: 'tm-close' } },
+      { id: 'end', anchor: 'x', mode: 'info' },
+    ])
+    t.counted('open', 0)
+    expect(t.current.id).toBe('open')
+    t.counted('open', 1)
+    expect(t.current.id).toBe('close')
+    // Nothing on screen yet is not "closed".
+    t.counted('close', 0)
+    expect(t.current.id).toBe('close')
+    t.counted('close', 1)
+    t.counted('close', 0)
+    expect(t.current.id).toBe('end')
+  })
+
+  it('says «Засчитано» for a moment before the next step', () => {
+    vi.useFakeTimers()
+    try {
+      const t = useTourStore()
+      t.doneMs = DONE_MS
+      t.start(INFO3, { fromId: 'c' })
+      t.clicked('c')
+      expect(t.flash).toBe('c')
+      expect(t.current.id).toBe('c')
+      // A second report during the beat changes nothing.
+      t.clicked('c')
+      vi.advanceTimersByTime(DONE_MS)
+      expect(t.flash).toBe(null)
+      expect(t.current.id).toBe('d')
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('every chapter has steps with unique ids, and only the last is final', () => {
+    const ids = new Set()
+    for (const ch of CHAPTERS) {
+      expect(ch.steps.length, ch.id).toBeGreaterThan(0)
+      ch.steps.forEach((s, i) => {
+        expect(ids.has(s.id), s.id).toBe(false)
+        ids.add(s.id)
+        if (s.final) expect(i, `${ch.id}: ${s.id}`).toBe(ch.steps.length - 1)
+      })
+    }
   })
 })
 

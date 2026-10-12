@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script><style>.cp-in::placeholder{color:var(--t-placeholder)}</style></helmet>
+<div style="width:100%;box-sizing:border-box;border-radius:16px;background:var(--v-pop);box-shadow:var(--v-sh-pop);overflow:hidden;font-family:var(--v-font);color:var(--t-text1);--t-surface:var(--v-pop)">
+<sc-if value="{{ touch }}" hint-placeholder-val="{{ false }}"><div style="display:flex;justify-content:center;padding-top:8px"><span style="width:36px;height:5px;border-radius:3px;background:var(--v-kbd)"></span></div></sc-if>
+<div style="display:flex;align-items:center;gap:8px;padding:12px 14px 0">
+<sc-if value="{{ segRing }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:2px;padding:3px;border-radius:9px;background:var(--v-input);outline:2px solid var(--t-primary);outline-offset:2px">
+<sc-if value="{{ isNote }}" hint-placeholder-val="{{ false }}"><span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12.5px;font-weight:600"><x-import component-from-global-scope="Tessera.Icon" name="DocumentTextOutline" size="14" hint-size="14px,14px"></x-import>Заметка</span><span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px;color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="AlarmOutline" size="14" hint-size="14px,14px"></x-import>Напоминание</span></sc-if>
+<sc-if value="{{ isRem }}" hint-placeholder-val="{{ true }}"><span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;font-size:12.5px;color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="DocumentTextOutline" size="14" hint-size="14px,14px"></x-import>Заметка</span><span style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12.5px;font-weight:600"><x-import component-from-global-scope="Tessera.Icon" name="AlarmOutline" size="14" color="var(--t-primary)" hint-size="14px,14px"></x-import>Напоминание</span></sc-if>
+</div></sc-if>
+<sc-if value="{{ segPlain }}" hint-placeholder-val="{{ true }}"><div style="display:flex;gap:2px;padding:3px;border-radius:9px;background:var(--v-input)">
+<sc-if value="{{ isNote }}" hint-placeholder-val="{{ true }}"><span onClick="{{ toNote }}" style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12.5px;font-weight:600;cursor:pointer"><x-import component-from-global-scope="Tessera.Icon" name="DocumentTextOutline" size="14" hint-size="14px,14px"></x-import>Заметка</span><span onClick="{{ toRem }}" style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;font-size:12.5px;color:var(--t-text2);cursor:pointer" style-hover="background:var(--v-hover)"><x-import component-from-global-scope="Tessera.Icon" name="AlarmOutline" size="14" hint-size="14px,14px"></x-import>Напоминание</span></sc-if>
+<sc-if value="{{ isRem }}" hint-placeholder-val="{{ false }}"><span onClick="{{ toNote }}" style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;font-size:12.5px;color:var(--t-text2);cursor:pointer" style-hover="background:var(--v-hover)"><x-import component-from-global-scope="Tessera.Icon" name="DocumentTextOutline" size="14" hint-size="14px,14px"></x-import>Заметка</span><span onClick="{{ toRem }}" style="height:26px;display:flex;align-items:center;gap:6px;padding:0 10px;border-radius:7px;background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12.5px;font-weight:600;cursor:pointer"><x-import component-from-global-scope="Tessera.Icon" name="AlarmOutline" size="14" color="var(--t-primary)" hint-size="14px,14px"></x-import>Напоминание</span></sc-if>
+</div></sc-if>
+<sc-if value="{{ auto }}" hint-placeholder-val="{{ true }}"><span style="font-size:12px;color:var(--t-text3)">по тексту</span></sc-if>
+<sc-if value="{{ manual }}" hint-placeholder-val="{{ false }}"><span onClick="{{ toAuto }}" style="height:22px;display:flex;align-items:center;gap:4px;padding:0 8px;border-radius:999px;background:var(--v-pill);font-size:12px;color:var(--t-text2);cursor:pointer">вручную<x-import component-from-global-scope="Tessera.Icon" name="CloseOutline" size="12" hint-size="12px,12px"></x-import></span></sc-if>
+<span style="flex:1"></span>
+<sc-if value="{{ desk }}" hint-placeholder-val="{{ true }}"><span style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t-text3);white-space:nowrap">во «Входящие»</span></sc-if>
+</div>
+<div style="padding:10px 14px 0">
+<sc-if value="{{ inRing }}" hint-placeholder-val="{{ true }}"><input class="cp-in" value="{{ q }}" onChange="{{ onQ }}" disabled="{{ loading }}" placeholder="Мысль или «завтра 10:00 позвонить в банк»" style="width:100%;height:46px;box-sizing:border-box;padding:0 14px;border:0;outline:0;border-radius:12px;background:var(--v-input);font-family:inherit;font-size:15px;color:var(--t-text1);box-shadow:0 0 0 2px var(--t-primary)"></sc-if>
+<sc-if value="{{ inPlain }}" hint-placeholder-val="{{ false }}"><input class="cp-in" value="{{ q }}" onChange="{{ onQ }}" placeholder="Мысль или «завтра 10:00 позвонить в банк»" style="width:100%;height:46px;box-sizing:border-box;padding:0 14px;border:0;outline:0;border-radius:12px;background:var(--v-input);font-family:inherit;font-size:15px;color:var(--t-text1)" style-focus="box-shadow:0 0 0 2px var(--t-primary)"></sc-if>
+</div>
+<sc-if value="{{ hint }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:6px;padding:12px 16px 2px;font-size:12.5px;line-height:1.45;color:var(--t-text3)">
+<span><span style="color:var(--t-text2)">С датой или временем</span> — напоминание: «завтра 10:00», «пт 18:30», «через 2 ч»</span>
+<span><span style="color:var(--t-text2)">Без даты</span> — заметка. <span style="color:var(--t-text2)">#тег</span> · <span style="color:var(--t-text2)">@человек</span> · <span style="color:var(--t-text2)">/2951</span> или <span style="color:var(--t-text2)">/название</span> — привязка к задаче</span>
+</div></sc-if>
+<sc-if value="{{ hasChips }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px;padding:10px 14px 0">
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:6px">
+<sc-for list="{{ chips }}" as="c" hint-placeholder-count="3">
+<sc-if value="{{ c.when }}" hint-placeholder-val="{{ false }}"><span style="height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px 0 8px;border-radius:999px;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 16%, var(--v-pop)), color-mix(in srgb, var(--t-primary) 26%, var(--v-pop)));font-size:12.5px;font-weight:600;white-space:nowrap"><x-import component-from-global-scope="Tessera.Icon" name="AlarmOutline" size="14" color="var(--t-primary)" hint-size="14px,14px"></x-import>{{ c.label }}</span></sc-if>
+<sc-if value="{{ c.whenOff }}" hint-placeholder-val="{{ false }}"><span style="height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px 0 8px;border-radius:999px;background:var(--v-pill);font-size:12.5px;color:var(--t-text3);white-space:nowrap;text-decoration:line-through"><x-import component-from-global-scope="Tessera.Icon" name="AlarmOutline" size="14" color="var(--t-text3)" hint-size="14px,14px"></x-import>{{ c.label }}</span></sc-if>
+<sc-if value="{{ c.isTag }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TagPill" tag="{{ c.tag }}" prefix-names="{{ pn }}" hint-size="90px,22px"></x-import></sc-if>
+<sc-if value="{{ c.person }}" hint-placeholder-val="{{ false }}"><span style="height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px 0 4px;border-radius:999px;background:var(--v-pill);font-size:12.5px;white-space:nowrap"><x-import component-from-global-scope="Tessera.UserAvatar" name="{{ c.label }}" size="{{ a18 }}" hint-size="18px,18px"></x-import>{{ c.label }}</span></sc-if>
+<sc-if value="{{ c.task }}" hint-placeholder-val="{{ false }}"><span style="height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px 0 8px;border-radius:999px;background:var(--v-pill);font-size:12.5px;white-space:nowrap;max-width:260px"><span style="display:flex;color:#0eb0a9"><x-import component-from-global-scope="Tessera.TesseraIcon" name="status-todo" size="13" hint-size="13px,13px"></x-import></span><span style="color:var(--t-text3)">#{{ c.n }}</span><span style="overflow:hidden;text-overflow:ellipsis">{{ c.label }}</span></span></sc-if>
+<sc-if value="{{ c.missing }}" hint-placeholder-val="{{ false }}"><span style="height:26px;display:inline-flex;align-items:center;gap:6px;padding:0 10px 0 8px;border-radius:999px;background:linear-gradient(to top right, color-mix(in srgb, #e0533d 12%, var(--v-pop)), color-mix(in srgb, #e0533d 22%, var(--v-pop)));font-size:12.5px;white-space:nowrap"><x-import component-from-global-scope="Tessera.Icon" name="AlertCircleOutline" size="14" color="#e0533d" hint-size="14px,14px"></x-import>{{ c.label }} — нет такой задачи</span></sc-if>
+</sc-for>
+</div>
+<div style="display:flex;align-items:baseline;gap:6px;font-size:12.5px;color:var(--t-text3);min-width:0"><span style="flex:0 0 auto">Заголовок</span><span style="color:var(--t-text1);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ title }}</span></div>
+</div></sc-if>
+<sc-if value="{{ body }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px;padding:12px 14px 0">
+<div style="display:flex;align-items:center;gap:2px;padding:3px;border-radius:9px;background:var(--v-input)"><span style="height:24px;display:flex;align-items:center;padding:0 9px;border-radius:7px;background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12px;font-weight:600">Написать</span><span style="height:24px;display:flex;align-items:center;padding:0 9px;font-size:12px;color:var(--t-text2)">Просмотр</span><span style="flex:1"></span><span style="display:flex;gap:2px;color:var(--t-text3)"><span style="width:26px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800">B</span><span style="width:26px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-style:italic;font-weight:600">I</span><span style="width:26px;height:24px;display:flex;align-items:center;justify-content:center"><x-import component-from-global-scope="Tessera.Icon" name="ListOutline" size="14" hint-size="14px,14px"></x-import></span><span style="width:26px;height:24px;display:flex;align-items:center;justify-content:center"><x-import component-from-global-scope="Tessera.Icon" name="CheckboxOutline" size="14" hint-size="14px,14px"></x-import></span><span style="width:26px;height:24px;display:flex;align-items:center;justify-content:center"><x-import component-from-global-scope="Tessera.Icon" name="LinkOutline" size="14" hint-size="14px,14px"></x-import></span><span style="width:26px;height:24px;display:flex;align-items:center;justify-content:center"><x-import component-from-global-scope="Tessera.Icon" name="CodeSlashOutline" size="14" hint-size="14px,14px"></x-import></span><span style="width:26px;height:24px;display:flex;align-items:center;justify-content:center"><x-import component-from-global-scope="Tessera.Icon" name="AtOutline" size="14" hint-size="14px,14px"></x-import></span></span></div>
+<div style="min-height:104px;padding:10px 12px;box-sizing:border-box;border-radius:10px;background:var(--v-input);box-shadow:0 0 0 2px var(--t-primary);font-size:13.5px;line-height:21px"><div>Повестка:</div><div style="color:var(--t-text2)">- статус !418 и пайплайна</div><div style="color:var(--t-text2)">- что режем из 0.150, если не успеваем</div><div style="color:var(--t-text2)">- позвать <span class="accent-grad-text" style="font-weight:600">@Илья</span> по webhook<span style="display:inline-block;width:1.5px;height:16px;margin-left:1px;vertical-align:-3px;background:var(--t-text1)"></span></div></div>
+</div></sc-if>
+<sc-if value="{{ desk }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:10px;height:48px;padding:0 10px 0 16px;margin-top:14px;background:color-mix(in srgb, var(--v-pop) 55%, var(--v-backdrop));font-size:12px;color:var(--t-text3);white-space:nowrap">
+<sc-if value="{{ noBody }}" hint-placeholder-val="{{ true }}"><span onClick="{{ openBody }}" style="display:flex;align-items:center;gap:6px;cursor:pointer"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">⇧↵</span>текст</span></sc-if>
+<sc-if value="{{ body }}" hint-placeholder-val="{{ false }}"><span style="display:flex;align-items:center;gap:6px"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">⌘↵</span>из текста</span></sc-if>
+<span style="display:flex;align-items:center;gap:6px"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">Tab</span>тип</span>
+<span style="flex:1"></span>
+<div style="height:30px;display:flex;align-items:center;gap:8px;padding:0 5px 0 10px;border-radius:8px;font-size:13px;color:var(--t-text2)">Отмена<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">Esc</span></div>
+<sc-if value="{{ pOn }}" hint-placeholder-val="{{ false }}"><div style="height:30px;display:flex;align-items:center;gap:8px;padding:0 5px 0 12px;border-radius:8px;background:var(--t-accent-grad);color:#fff;font-size:13px;font-weight:600;cursor:pointer">Сохранить<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:rgba(255,255,255,.22);font-size:11px">↵</span></div></sc-if>
+<sc-if value="{{ pDis }}" hint-placeholder-val="{{ true }}"><div style="height:30px;display:flex;align-items:center;gap:8px;padding:0 5px 0 12px;border-radius:8px;background:var(--v-pill);color:var(--t-placeholder);font-size:13px;font-weight:600">Сохранить<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);font-size:11px">↵</span></div></sc-if>
+<sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}"><div style="height:30px;display:flex;align-items:center;gap:8px;padding:0 12px 0 10px;border-radius:8px;background:var(--t-accent-grad);color:#fff;font-size:13px;font-weight:600;opacity:.8"><span style="width:12px;height:12px;border-radius:50%;background:conic-gradient(#fff 0 25%, rgba(255,255,255,.3) 25%);-webkit-mask:radial-gradient(circle, transparent 4px, #000 4.5px);mask:radial-gradient(circle, transparent 4px, #000 4.5px)"></span>Сохраняем…</div></sc-if>
+</div></sc-if>
+<sc-if value="{{ touch }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:10px;padding:14px 14px 30px">
+<sc-if value="{{ noBody }}" hint-placeholder-val="{{ true }}"><div style="height:44px;display:flex;align-items:center;gap:8px;padding:0 12px;border-radius:11px;background:var(--v-input);font-size:15px;color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="CreateOutline" size="18" color="var(--t-text3)" hint-size="18px,18px"></x-import>Добавить текст</div></sc-if>
+<div style="display:flex;gap:10px"><div style="flex:1;height:46px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--v-pill);font-size:15px;font-weight:600;color:var(--t-text2)">Отмена</div><div style="flex:2;height:46px;display:flex;align-items:center;justify-content:center;border-radius:12px;background:var(--t-accent-grad);font-size:15px;font-weight:600;color:#fff">Сохранить</div></div>
+</div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:460,&quot;height&quot;:360},&quot;state&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;empty&quot;,&quot;parsed&quot;,&quot;body&quot;,&quot;kfocus&quot;,&quot;error&quot;,&quot;loading&quot;,&quot;manual&quot;],&quot;default&quot;:&quot;parsed&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;touch&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:false,&quot;tsType&quot;:&quot;boolean&quot;}}">
+const TODAY = { d: 6, wd: 2 };
+const WD = ['вс', 'пн', 'вт', 'ср', 'чт', 'пт', 'сб'];
+const WFULL = { понедельник: 1, вторник: 2, среда: 3, среду: 3, четверг: 4, пятница: 5, пятницу: 5, суббота: 6, субботу: 6, воскресенье: 0 };
+const TAGS = { frontend: { id: 'fe', name: 'app::frontend', color: '#7c5cff' }, backend: { id: 'be', name: 'app::backend', color: '#2f80ed' }, design: { id: 'des', name: 'design', color: '#eb2f96' }, bug: { id: 'bug', name: 'bug', color: '#e0533d' }, perf: { id: 'perf', name: 'perf', color: '#0eb0a9' } };
+const PEOPLE = { анна: 'Анна Ким', мария: 'Мария Соколова', илья: 'Илья Петров', дмитрий: 'Дмитрий Орлов', дима: 'Дмитрий Орлов' };
+const TASKS = [{ n: 2951, title: 'Онбординг: пустые доски' }, { n: 2950, title: 'Редизайн доски: убрать разделители' }, { n: 2941, title: 'Падение синхронизации GitLab' }, { n: 2936, title: 'Контраст тегов в тёмной теме' }, { n: 2938, title: 'Напоминания: повтор по будням' }];
+const dayLabel = (off) => { const d = TODAY.d + off; const wd = (TODAY.wd + off) % 7; return (off === 0 ? 'сегодня' : off === 1 ? 'завтра' : off === 2 ? 'послезавтра' : '') + (off <= 2 ? ', ' : '') + WD[wd] + ' ' + d + ' окт.'; };
+function parse(q) {
+  const words = q.split(/\s+/).filter(Boolean);
+  const chips = [], rest = []; let off = null, time = null;
+  for (const w of words) {
+    const lw = w.toLowerCase().replace(/[.,]$/, '');
+    if (lw === 'сегодня') { off = 0; continue; }
+    if (lw === 'завтра') { off = 1; continue; }
+    if (lw === 'послезавтра') { off = 2; continue; }
+    const wi = WD.indexOf(lw); const wf = WFULL[lw];
+    if (wi >= 0 || wf !== undefined) { const t = wi >= 0 ? wi : wf; off = ((t - TODAY.wd + 7) % 7) || 7; continue; }
+    if (/^\d{1,2}:\d{2}$/.test(lw)) { time = lw.padStart(5, '0'); continue; }
+    if (w[0] === '#' && w.length > 1) { const k = lw.slice(1); chips.push({ key: 't' + k, isTag: true, tag: TAGS[k] || { id: k, name: k, color: '#9aa0aa' } }); continue; }
+    if (w[0] === '@' && w.length > 1) { const k = lw.slice(1); chips.push({ key: 'p' + k, person: true, label: PEOPLE[k] || w.slice(1) }); continue; }
+    if (w[0] === '/' && w.length > 1) {
+      const k = lw.slice(1);
+      const t = /^\d+$/.test(k) ? TASKS.find((x) => String(x.n) === k) : TASKS.find((x) => x.title.toLowerCase().includes(k));
+      chips.push(t ? { key: 'k' + t.n, task: true, n: t.n, label: t.title } : { key: 'm' + k, missing: true, label: w });
+      continue;
+    }
+    rest.push(w);
+  }
+  const has = off !== null || time !== null;
+  let when = null;
+  if (has) when = (off === null ? 'сегодня, вт 6 окт.' : dayLabel(off)) + ' · ' + (time || '09:00');
+  let title = rest.join(' ');
+  title = title ? title[0].toUpperCase() + title.slice(1) : '—';
+  return { chips, when, has, title };
+}
+const PRESET = { empty: '', parsed: 'завтра 10:00 созвон по релизу #frontend /2951', body: 'завтра 10:00 созвон по релизу #frontend /2951', kfocus: 'завтра 10:00 созвон по релизу #frontend /2951', error: 'созвон по релизу /2999 @илья', loading: 'завтра 10:00 созвон по релизу #frontend /2951', manual: 'пт 18:00 идеи для ретро #design' };
+class Component extends DCLogic {
+  state = { q: null, type: null, body: null };
+  renderVals() {
+    const st = this.props.state || 'parsed';
+    const touch = !!this.props.touch;
+    const q = this.state.q ?? PRESET[st] ?? '';
+    const p = parse(q);
+    const forced = this.state.type ?? (st === 'manual' ? 'note' : null);
+    const type = forced || (p.has ? 'rem' : 'note');
+    const isRem = type === 'rem';
+    const chips = [];
+    if (p.when) chips.push(isRem ? { key: 'w', when: true, label: p.when } : { key: 'w', whenOff: true, label: p.when });
+    chips.push(...p.chips);
+    const body = this.state.body ?? st === 'body';
+    const loading = st === 'loading';
+    const empty = !q.trim();
+    return {
+      touch, desk: !touch, q, onQ: (e) => this.setState({ q: e.target.value }),
+      isRem, isNote: !isRem, auto: !forced && !empty, manual: !!forced,
+      toNote: () => this.setState({ type: 'note' }), toRem: () => this.setState({ type: 'rem' }), toAuto: () => this.setState({ type: null }),
+      segRing: st === 'kfocus', segPlain: st !== 'kfocus',
+      inRing: st !== 'kfocus', inPlain: st === 'kfocus',
+      hint: empty, hasChips: !empty, chips, title: p.title, pn: { 'app::': 'App' }, a18: 18,
+      body, noBody: !body, openBody: () => this.setState({ body: true }),
+      loading, pOn: !loading && !empty && !chips.some((c) => c.missing), pDis: !loading && (empty || chips.some((c) => c.missing)),
+    };
+  }
+}
+</script>
+</body>
+</html>

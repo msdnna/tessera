@@ -2,6 +2,8 @@ import axios from 'axios'
 import { humanizeError } from '@/utils/errors'
 import { reqStart, reqEnd, setOffline } from '@/composables/useConnection'
 import { apiBaseURL, isTauri } from '@/utils/serverBase'
+import { sGet, sSet, sRemove } from '@/utils/serverStorage'
+import { noteFailure } from '@/utils/lastFailure'
 
 // Web: apiBaseURL() === '/api' (same-origin). Desktop (Tauri): '<server>/api',
 // where <server> is the login-configured origin. See utils/serverBase.js.
@@ -42,8 +44,13 @@ function authModeHeaders() {
 // storedRefreshToken is the desktop-only fallback: on web this is always null,
 // because the token is in a cookie we deliberately cannot read.
 function storedRefreshToken() {
-  return cookieAuth() ? null : localStorage.getItem('tessera_refresh_token')
+  return cookieAuth() ? null : sGet('tessera_refresh_token')
 }
+
+// Bumped by every non-GET request. An in-flight GET issued before the bump was
+// answered by a server that had not seen the write yet, so it may no longer be
+// joinable — see sharedGet below.
+let writeGeneration = 0
 
 // Attach the access token on every request + track liveness for the connection
 // overlay (start now, paired end in the response/error handlers below). Requests
@@ -51,6 +58,7 @@ function storedRefreshToken() {
 // its own in-modal loader) are excluded from the global slow/offline overlay.
 api.interceptors.request.use((config) => {
   if (!config.skipLoader) reqStart()
+  if ((config.method || 'get').toLowerCase() !== 'get') writeGeneration++
   if (accessToken) {
     config.headers.Authorization = `Bearer ${accessToken}`
   }
@@ -125,7 +133,7 @@ async function refreshAccessToken() {
       setAccessToken(data.access_token)
       // Only ever present in body mode (desktop); on web the rotated token went
       // back into the cookie.
-      if (data.refresh_token) localStorage.setItem('tessera_refresh_token', data.refresh_token)
+      if (data.refresh_token) sSet('tessera_refresh_token', data.refresh_token)
       return { token: data.access_token || null, offline: false }
     })
     .catch(refreshFailure)
@@ -144,6 +152,30 @@ export function restoreSession() {
   return refreshAccessToken()
 }
 
+// refusalText digs the server's `{"error": …}` sentence out of an error body.
+//
+// Usually that is a plain object and this is a field read. The exception is a
+// file route: `responseType: 'blob'` applies to the error response too, so a
+// refused download hands back a Blob holding the JSON rather than the parsed
+// object (document export, task attachments, call attachments, call recordings
+// are all on that path). Reading `.error` off a Blob yields undefined, and the
+// caller then showed the axios line — "Request failed with status code 404",
+// protocol English in whatever language the UI is in (#2932).
+//
+// A body that is not JSON at all (a proxy's HTML error page, a truncated file)
+// resolves to '' so the axios message stays the fallback.
+async function refusalText(data) {
+  if (!data) return ''
+  if (typeof data === 'object' && typeof data.text === 'function') {
+    try {
+      return JSON.parse(await data.text())?.error || ''
+    } catch {
+      return ''
+    }
+  }
+  return data.error || ''
+}
+
 api.interceptors.response.use(
   (res) => {
     if (!res.config?.skipLoader) reqEnd(true)
@@ -160,10 +192,16 @@ api.interceptors.response.use(
     const original = err.config
     const isUnauthorized = err.response?.status === 401
     const isRefreshCall = original?.url?.includes('/auth/refresh')
+    // A 401 from the sign-in form itself is a wrong password, not an expired
+    // session: there is nothing to refresh, and treating it as one ran the whole
+    // sign-out teardown — which put the auth screen back on the browser's
+    // language, so a reader who had switched it to Russian saw the form flip to
+    // English under the «wrong password» banner (#3107).
+    const isCredentialCall = /\/auth\/(login|register)$/.test(original?.url || '')
     // Tracks why a refresh attempt on this response failed, so the teardown
     // below can tell "the session is over" from "we couldn't ask".
     let refreshOffline = false
-    if (isUnauthorized && original && !original._retry && !isRefreshCall) {
+    if (isUnauthorized && original && !original._retry && !isRefreshCall && !isCredentialCall) {
       original._retry = true
       const { token: newToken, offline } = await refreshAccessToken()
       if (newToken) {
@@ -177,21 +215,34 @@ api.interceptors.response.use(
     // reach the server the session is left intact and the request just fails —
     // the connection overlay is already up, and the next attempt (once the link
     // is back) refreshes normally instead of landing on /login.
-    if (isUnauthorized && !isRefreshCall && !refreshOffline) {
+    if (isUnauthorized && !isRefreshCall && !isCredentialCall && !refreshOffline) {
       setAccessToken('')
-      localStorage.removeItem('tessera_refresh_token')
-      localStorage.removeItem('tessera_user')
+      sRemove('tessera_refresh_token')
+      sRemove('tessera_user')
       window.dispatchEvent(new CustomEvent('auth:expired'))
     }
     if (refreshOffline) setOffline(true)
     // No message at all → humanizeError answers with its own generic line from
     // the catalogue; a literal here would be one more untranslated string.
-    const raw = err.response?.data?.error || err.message || ''
+    const raw = (await refusalText(err.response?.data)) || err.message || ''
     const wrapped = new Error(humanizeError(raw))
     // Keep the HTTP status reachable: most callers just show `e.message`, but a
     // few need to tell one failure from another (e.g. 409 "address taken" is
     // fixable inline, everything else is a toast).
     wrapped.status = err.response?.status
+    // …and the server's own words, untouched. Status alone doesn't always
+    // separate two outcomes of one call, so a caller that branches has to
+    // compare against the English sentinel — never against `message`, which is
+    // written in whatever language the UI is in and gets rewritten outright the
+    // day that sentinel joins the catalogue (#2932). Mirrors the phone's
+    // `rawErrorText` (android util/Errors.kt).
+    wrapped.raw = raw
+    // The refusal body as the server sent it, for the few answers that carry
+    // more than a sentence — a taken project address names its holder and a
+    // free variant (#3013), a 429 its `retry_after`, a wrong code its
+    // `attempts_left` (#3035).
+    wrapped.data =
+      err.response?.data && typeof err.response.data === 'object' ? err.response.data : null
     // Distinguish "server unreachable" (network/DNS/timeout — no response at all)
     // from an HTTP error the server answered with. Callers that retry (e.g. the
     // comment composer) only retry when offline; a 4xx/5xx is not a connectivity
@@ -201,6 +252,16 @@ api.interceptors.response.use(
     // because the refresh couldn't get through — a connectivity failure, and
     // callers that retry on `offline` should retry this.
     wrapped.offline = !reached || refreshOffline
+    // For the error toast's «Подробнее» (#3117): the request, the answer and the
+    // server's request id, whichever caller ends up reporting the failure.
+    noteFailure({
+      method: String(original?.method || 'get').toUpperCase(),
+      url: original?.url || '',
+      status: err.response?.status || 0,
+      raw,
+      offline: wrapped.offline,
+      requestId: err.response?.headers?.['x-request-id'] || '',
+    })
     return Promise.reject(wrapped)
   },
 )
@@ -211,7 +272,17 @@ api.interceptors.response.use(
 // once. Sharing one in-flight request collapses those duplicate round-trips.
 // Each caller still gets its OWN deep clone of the data, so no consumer can
 // mutate another's copy. Only genuinely concurrent calls share; once the request
-// settles the key is dropped, so this never serves stale data on a later fetch.
+// settles the key is dropped, so a later fetch always goes to the server.
+//
+// "Concurrent" is not enough on its own, though. The list refetch that follows a
+// write (create a tag, invite a member, add a milestone) is the one read that
+// must not be coalesced: a slow GET started before the write — the board loads
+// tags, members and milestones on open and on every resync — is still in flight
+// when the write lands, and joining it hands the caller a list without the row
+// it just created. The picker then looks like the write did nothing, and stays
+// that way until something else happens to refetch. So an entry is joinable only
+// while no write has been issued since it started; after one, the next caller
+// opens a fresh request and the two coexist under the same key.
 const inflightGets = new Map()
 function cloneData(d) {
   if (d == null) return d
@@ -223,12 +294,18 @@ function cloneData(d) {
 }
 function sharedGet(url, config) {
   const key = url + '::' + JSON.stringify(config?.params ?? null)
-  let p = inflightGets.get(key)
-  if (!p) {
-    p = api.get(url, config).finally(() => inflightGets.delete(key))
-    inflightGets.set(key, p)
+  let entry = inflightGets.get(key)
+  if (!entry || entry.gen !== writeGeneration) {
+    // Two entries can now share a key, so the cleanup has to check it is still
+    // the current one — otherwise a superseded request settling would drop the
+    // fresh entry and the next caller would open a third request.
+    entry = { gen: writeGeneration, p: null }
+    entry.p = api.get(url, config).finally(() => {
+      if (inflightGets.get(key) === entry) inflightGets.delete(key)
+    })
+    inflightGets.set(key, entry)
   }
-  return p.then((res) => ({ ...res, data: cloneData(res.data) }))
+  return entry.p.then((res) => ({ ...res, data: cloneData(res.data) }))
 }
 
 export const auth = {
@@ -252,6 +329,10 @@ export const auth = {
   // back on the tessera:// deep link instead of the web SPA route (#2696).
   gitlabAuthorizeUrl: (platform) =>
     `${apiBaseURL()}/auth/gitlab/authorize${platform ? `?platform=${platform}` : ''}`,
+  // Desktop only: trade the one-time code from the tessera:// deep link for the session
+  // (#2932). The link itself carries no tokens — the OS hands it to the app as a
+  // command-line argument, which every local process can read.
+  oauthHandoff: (code) => api.post('/auth/oauth/handoff', { code }),
 }
 
 export const accountFlows = {
@@ -261,11 +342,23 @@ export const accountFlows = {
   resetPassword: (token, newPassword) =>
     api.post('/auth/reset-password', { token, new_password: newPassword }),
   acceptInvitation: (token) => api.post('/invitations/accept', { token }),
+  // v2 (#3035). The code screen's state, the code itself, the address change.
+  verification: () => api.get('/auth/verification'),
+  verifyCode: (code) => api.post('/auth/verify-code', { code }),
+  startEmailChange: (email, password) => api.post('/auth/email-change', { email, password }),
+  cancelEmailChange: () => api.delete('/auth/email-change'),
+  // A recovery link's deadline, without spending it (#3060).
+  checkResetToken: (token) => api.post('/auth/reset-password/check', { token }),
+  // The invitation page's preview and «Отклонить» (#3059) — no session needed.
+  lookupInvitation: (token) => api.post('/invitations/lookup', { token }),
+  declineInvitation: (token) => api.post('/invitations/decline', { token }),
 }
 
 export const users = {
   updateProfile: (data) => api.patch('/users/me', data),
-  changePassword: (data) => api.put('/users/me/password', data),
+  // Hands back a replacement session (the change revokes every existing one),
+  // so it needs the delivery-mode header like login/register do.
+  changePassword: (data) => api.put('/users/me/password', data, { headers: authModeHeaders() }),
   updatePreferences: (data) => api.put('/users/me/preferences', data),
   uploadAvatar: (file) => {
     const form = new FormData()
@@ -291,31 +384,48 @@ export const meta = {
 export const acknowledgements = {
   list: () => api.get('/users/me/acknowledgements', { skipLoader: true }),
   ack: (key) => api.post('/users/me/acknowledgements', { key }, { skipLoader: true }),
+  // One exact key, or a whole namespace (`prefix` must end in «:») — #3100.
+  forget: ({ key, prefix }) =>
+    api.delete('/users/me/acknowledgements', {
+      params: key ? { key } : { prefix },
+      skipLoader: true,
+    }),
 }
 
 // Global-admin panel (every endpoint re-checks is_admin server-side).
 export const admin = {
   listUsers: () => api.get('/admin/users'),
+  listInvitations: () => api.get('/admin/invitations'),
+  deleteInvitation: (id) => api.delete(`/admin/invitations/${id}`),
   setActive: (id, active) => api.patch(`/admin/users/${id}/active`, { active }),
   setAdmin: (id, isAdmin) => api.patch(`/admin/users/${id}/admin`, { admin: isAdmin }),
   resetLink: (id) => api.post(`/admin/users/${id}/reset-link`),
   // GitLab OAuth app config.
   getOAuth: () => api.get('/admin/oauth/gitlab'),
   setOAuth: (data) => api.put('/admin/oauth/gitlab', data),
-  // Background jobs panel (instance-level).
-  jobs: () => api.get('/admin/jobs', { skipLoader: true }),
+  // Background jobs panel (instance-level): live jobs + the 30-day history
+  // (#3067); params.type narrows to one family.
+  jobs: (params) => api.get('/admin/jobs', { params, skipLoader: true }),
+  // One job with its log; `after` — only the lines past that seq.
+  job: (key, after = 0) =>
+    api.get(`/admin/jobs/${encodeURIComponent(key)}`, { params: { after }, skipLoader: true }),
   runJob: (key) =>
     api.post(`/admin/jobs/${encodeURIComponent(key)}/run`, null, { skipLoader: true }),
   cancelJob: (key) =>
     api.post(`/admin/jobs/${encodeURIComponent(key)}/cancel`, null, { skipLoader: true }),
+  // «Статья помогла?» totals per article and language (#3071).
+  helpFeedback: () => api.get('/admin/help-feedback'),
 }
 
 export const workspaces = {
   list: () => api.get('/workspaces'),
   get: (id) => api.get(`/workspaces/${id}`),
   create: (data) => api.post('/workspaces', data),
+  update: (id, data) => api.patch(`/workspaces/${id}`, data), // { name }
   // Dangerous: delete a workspace with everything in it (owner only, 403 otherwise).
   remove: (id) => api.delete(`/workspaces/${id}`),
+  // What that delete takes with it: { projects, boards, tasks } (#3014).
+  counts: (id) => api.get(`/workspaces/${id}/counts`),
   members: (id) => sharedGet(`/workspaces/${id}/members`),
   gitlabMembers: (id) => sharedGet(`/workspaces/${id}/gitlab/members`),
   addMember: (id, data) => api.post(`/workspaces/${id}/members`, data),
@@ -325,15 +435,39 @@ export const workspaces = {
   invitations: (id) => api.get(`/workspaces/${id}/invitations`),
   createInvitation: (id, data) => api.post(`/workspaces/${id}/invitations`, data),
   deleteInvitation: (id, invId) => api.delete(`/workspaces/${id}/invitations/${invId}`),
+  // «Ещё раз» / «Продлить» (#3061): a new link, a fresh week, a new letter.
+  resendInvitation: (id, invId) => api.post(`/workspaces/${id}/invitations/${invId}/resend`),
+  // The shared invitation link (#3062): its URL comes back only from create.
+  inviteLink: (id) => api.get(`/workspaces/${id}/invite-link`),
+  createInviteLink: (id, data) => api.post(`/workspaces/${id}/invite-link`, data),
+  revokeInviteLink: (id) => api.delete(`/workspaces/${id}/invite-link`),
+  // Members v2 (#3063): hand the workspace to a member (owner only), leave it
+  // (everyone but the owner), the managers' queue of access requests, and the
+  // member groups («Фронтенд», «Бэкенд»…) — names for sets of members.
+  transferOwner: (id, userId) => api.post(`/workspaces/${id}/owner`, { user_id: userId }),
+  leave: (id) => api.post(`/workspaces/${id}/leave`),
+  accessRequests: (id) => api.get(`/workspaces/${id}/access-requests`),
+  approveAccess: (id, reqId, role = 'member') =>
+    api.post(`/workspaces/${id}/access-requests/${reqId}/approve`, { role }),
+  declineAccess: (id, reqId) => api.post(`/workspaces/${id}/access-requests/${reqId}/decline`),
+  memberGroups: (id) => sharedGet(`/workspaces/${id}/member-groups`),
+  createMemberGroup: (id, data) => api.post(`/workspaces/${id}/member-groups`, data),
   groups: (id) => api.get(`/workspaces/${id}/groups`),
   createGroup: (id, data) => api.post(`/workspaces/${id}/groups`, data),
   projects: (id) => api.get(`/workspaces/${id}/projects`),
+  // «Архив проектов» (#3005): the tree above leaves archived projects out.
+  archivedProjects: (id) => api.get(`/workspaces/${id}/projects`, { params: { archived: 1 } }),
   createProject: (id, data) => api.post(`/workspaces/${id}/projects`, data),
+  // Tile of the workspace on the rail (#2955): { color, icon, icon_mode }.
+  setAppearance: (id, data) => api.put(`/workspaces/${id}/appearance`, data),
   search: (id, q) => api.get(`/workspaces/${id}/search`, { params: { q } }),
   tasks: (id, params) => api.get(`/workspaces/${id}/tasks`, { params }),
   // Resolve a per-workspace task number (#252) to its task — for /board/<slug>?task=<number> links.
   taskByNumber: (id, number) => api.get(`/workspaces/${id}/tasks/by-number/${number}`),
-  summary: (id) => api.get(`/workspaces/${id}/summary`),
+  // `tz` is the caller's resolved IANA zone: the day buckets (overdue / today /
+  // this week) are calendar days, and they have to be the same days the list
+  // under the tiles is filtered by. Omitting it falls back to the profile zone.
+  summary: (id, tz) => api.get(`/workspaces/${id}/summary`, { params: { tz } }),
   // Every tag across the workspace's projects — read-only, for cross-project
   // views (Home). Tags are created/listed per-project (see `projects` below).
   tags: (id) => sharedGet(`/workspaces/${id}/tags`),
@@ -350,18 +484,36 @@ export const workspaces = {
   commands: (id) => api.get(`/workspaces/${id}/commands`),
   // Full desired state of the custom dictionary (owner/admin only).
   setCommands: (id, commands) => api.put(`/workspaces/${id}/commands`, { commands }),
+  // Команды-макросы палитры и шаблоны задач (#3069).
+  macros: (id) => api.get(`/workspaces/${id}/macros`),
+  createMacro: (id, data) => api.post(`/workspaces/${id}/macros`, data),
+  updateMacro: (macroId, data) => api.patch(`/macros/${macroId}`, data),
+  deleteMacro: (macroId) => api.delete(`/macros/${macroId}`),
+  taskTemplates: (id) => api.get(`/workspaces/${id}/task-templates`),
+  createTaskTemplate: (id, data) => api.post(`/workspaces/${id}/task-templates`, data),
+  updateTaskTemplate: (tplId, data) => api.patch(`/task-templates/${tplId}`, data),
+  deleteTaskTemplate: (tplId) => api.delete(`/task-templates/${tplId}`),
 }
 
 export const projects = {
   get: (id) => api.get(`/projects/${id}`),
   update: (id, data) => api.patch(`/projects/${id}`, data),
-  // Change the project's URL address (owner/admin only). Links already handed
-  // out with the old address stop resolving — warn before calling.
+  // Change the project's URL address (owner/admin only). The old address keeps
+  // leading here for 30 days (#3012). A taken one answers 409 with
+  // { suggestion, taken_by? } — see utils/slugTaken.
   setSlug: (id, slug) => api.patch(`/projects/${id}/slug`, { slug }),
+  // A project by its address — a former one included; the answer carries the
+  // current `slug` (#3012).
+  bySlug: (slug) => api.get('/project-by-slug', { params: { slug } }),
   move: (id, data) => api.patch(`/projects/${id}/move`, data),
   // Dangerous: move a project (with all boards/tasks) to another workspace.
   transfer: (id, data) => api.post(`/projects/${id}/transfer`, data),
   remove: (id) => api.delete(`/projects/${id}`),
+  // What that delete takes with it: { boards, tasks } (#3014).
+  counts: (id) => api.get(`/projects/${id}/counts`),
+  // Archive (#3005): reversible, no expiry; owner/admin only.
+  archive: (id) => api.post(`/projects/${id}/archive`),
+  unarchive: (id) => api.post(`/projects/${id}/restore`),
   boards: (id) => api.get(`/projects/${id}/boards`),
   createBoard: (id, data) => api.post(`/projects/${id}/boards`, data),
   tags: (id) => sharedGet(`/projects/${id}/tags`),
@@ -370,6 +522,14 @@ export const projects = {
   deleteTag: (tagId) => api.delete(`/tags/${tagId}`),
   tagPrefixes: (id) => sharedGet(`/projects/${id}/tag-prefixes`),
   setTagPrefixes: (id, prefixes) => api.put(`/projects/${id}/tag-prefixes`, { prefixes }),
+  // One prefix's friendly name (#2990); an empty label clears it.
+  setTagPrefix: (id, prefix, label) => api.patch(`/projects/${id}/tag-prefixes`, { prefix, label }),
+  // The «Проект» window's tag table (#2990): merge duplicates into one tag, and
+  // delete several at once — the answer is what the undo hands back to restore.
+  mergeTags: (id, targetId, sourceIds) =>
+    api.post(`/projects/${id}/tags/merge`, { target_id: targetId, source_ids: sourceIds }),
+  deleteTags: (id, ids) => api.post(`/projects/${id}/tags/delete`, { ids }),
+  restoreTags: (id, tags) => api.post(`/projects/${id}/tags/restore`, { tags }),
   // Per-project estimation override; `null` clears it to inherit the workspace default.
   setEstimation: (id, config) => api.put(`/projects/${id}/estimation`, config),
   // Milestones («Этап»): project-scoped.
@@ -382,6 +542,12 @@ export const milestones = {
   remove: (id) => api.delete(`/milestones/${id}`),
   // Explicitly create this native milestone in GitLab + link them (opt-in per milestone).
   pushToGitlab: (id) => api.post(`/milestones/${id}/gitlab`),
+  // Everything the stage page draws (#2992): progress, burn-up, scope, pace.
+  metrics: (id) => api.get(`/milestones/${id}/metrics`),
+  // GitLab stage write-back (#3010): re-send a write GitLab refused («повторить»),
+  // and settle a stage's conflict — { resolution: ours|theirs|manual, value? }.
+  retryGitlab: (id) => api.post(`/milestones/${id}/gitlab/sync`),
+  resolveConflict: (id, data) => api.post(`/milestones/${id}/gitlab/conflict/resolve`, data),
 }
 
 export const groups = {
@@ -390,27 +556,80 @@ export const groups = {
   remove: (id) => api.delete(`/groups/${id}`),
 }
 
+// Member groups (#3074) — not the project groups above. { name?, color?, member_ids? }
+export const memberGroups = {
+  update: (id, data) => api.patch(`/member-groups/${id}`, data),
+  remove: (id) => api.delete(`/member-groups/${id}`),
+}
+
+// A request to be let into a workspace one is not in (#3077): by the workspace's
+// own link ({ workspace_id }) or a board's ({ project_slug, board_slug } /
+// { board_id }). The answer is { status: 'pending' } and nothing about the space.
+export const accessRequests = {
+  create: (data) => api.post('/access-requests', data),
+}
+
+// A member's own background run — an export or an import (#3068).
+export const jobs = {
+  get: (id, after = 0) => api.get(`/jobs/${id}`, { params: { after }, skipLoader: true }),
+  cancel: (id) => api.post(`/jobs/${id}/cancel`, null, { skipLoader: true }),
+  // responseType blob: the response is the exported file.
+  download: (id) => api.get(`/jobs/${id}/download`, { responseType: 'blob', skipLoader: true }),
+}
+
 export const boards = {
-  get: (id) => api.get(`/boards/${id}`),
+  // `id` may be a UUID or a bare board slug (legacy /board/<slug> links). A slug
+  // is unique only within its project, so wsId tells the backend which of the
+  // caller's workspaces the link is meant for.
+  get: (id, wsId) => api.get(`/boards/${id}`, wsId ? { params: { workspace: wsId } } : undefined),
   // Resolve a /project/<slug>/board/<slug> pair to the board.
   resolve: (projectSlug, boardSlug) =>
     api.get('/board-by-slug', { params: { project: projectSlug, board: boardSlug } }),
   update: (id, data) => api.patch(`/boards/${id}`, data),
   setDoneColumn: (id, columnId) => api.patch(`/boards/${id}/done-column`, { column_id: columnId }),
   remove: (id) => api.delete(`/boards/${id}`),
+  // Undo of a delete while the board is still in the trash (#2969, migration 0078).
+  restore: (id) => api.post(`/boards/${id}/restore`),
   columns: (id) => sharedGet(`/boards/${id}/columns`),
   createColumn: (id, data) => api.post(`/boards/${id}/columns`, data),
   // params.milestone: '<slug|uuid>' scopes to one sprint, 'backlog' to no-sprint tasks.
   tasks: (id, params) => api.get(`/boards/${id}/tasks`, params ? { params } : undefined),
   subtasks: (id) => api.get(`/boards/${id}/subtasks`),
   archive: (id) => api.get(`/boards/${id}/archive`),
+  // The board's trash (#3004): tasks deleted as entries of their own, newest first.
+  trash: (id) => api.get(`/boards/${id}/trash`),
   // Whole-board blocking dependency graph for the Gantt view (raw edge rows).
   dependencies: (id) => api.get(`/boards/${id}/dependencies`),
   createTask: (id, data) => api.post(`/boards/${id}/tasks`, data),
-  // Per-user saved board views (layouts).
+  // «>deploy» / «>ci» (#3099): { mode: run|retry_failed, ref?, variables?, integration_id? }.
+  runCI: (id, data) => api.post(`/boards/${id}/ci/run`, data),
+  // Export / import of the board's tasks as background jobs (#3068): both
+  // answer 202 with `{ job }`. data: { format: 'csv'|'json', task_ids? }.
+  exportTasks: (id, data) => api.post(`/boards/${id}/export`, data, { skipLoader: true }),
+  // formData: file, mapping (JSON), options (JSON).
+  importTasks: (id, formData) =>
+    api.post(`/boards/${id}/import`, formData, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+      skipLoader: true,
+    }),
+  // Saved board views (#2970): the reader's own + the board's shared ones.
   views: (id) => api.get(`/boards/${id}/views`),
-  saveView: (id, data) => api.post(`/boards/${id}/views`, data), // { name, config }
+  // { name, config, scope?: 'user' | 'board', is_default? } — upserts by name.
+  saveView: (id, data) => api.post(`/boards/${id}/views`, data),
+  // Partial: { name?, config?, scope?, is_default?, before_id?, after_id? }.
+  updateView: (viewId, data) => api.patch(`/views/${viewId}`, data),
   deleteView: (viewId) => api.delete(`/views/${viewId}`),
+}
+
+// Favourite boards (#3115): the reader's own starred boards, per workspace.
+// skipLoader — the star and the sidebar section are quiet, instant actions.
+export const favorites = {
+  list: (wsId) => api.get(`/workspaces/${wsId}/favorites`, { skipLoader: true }),
+  add: (boardId) => api.put(`/boards/${boardId}/favorite`, null, { skipLoader: true }),
+  remove: (boardId) => api.delete(`/boards/${boardId}/favorite`, { skipLoader: true }),
+  // { before_id?, after_id? } — the neighbours' board ids.
+  move: (boardId, data) =>
+    api.patch(`/boards/${boardId}/favorite/move`, data, { skipLoader: true }),
 }
 
 export const notes = {
@@ -419,6 +638,14 @@ export const notes = {
   get: (id) => api.get(`/notes/${id}`),
   update: (id, data) => api.patch(`/notes/${id}`, data),
   remove: (id) => api.delete(`/notes/${id}`),
+  // The task modal's «Напоминания и заметки» (#2998): notes tied to the task.
+  forTask: (taskId) => api.get(`/tasks/${taskId}/notes`),
+}
+
+// «Входящие» (#2972): the caller's reminders of the workspace (and those outside
+// every workspace) + the notes they may read, each with its task chip.
+export const inbox = {
+  list: (wsId) => api.get(`/workspaces/${wsId}/inbox`),
 }
 
 export const documents = {
@@ -460,15 +687,21 @@ export const documents = {
   // text corrupts it in a way that only shows up when the download is opened.
   exportFile: (id, format) =>
     api.get(`/documents/${id}/export?format=${format}`, { responseType: 'blob' }),
+  // DELETE puts the document (and, recursive, its nested ones) in the trash
+  // (#3006); the trash lists, restores and purges.
   remove: (id, recursive = false) =>
     api.delete(`/documents/${id}${recursive ? '?recursive=true' : ''}`),
+  trash: (wsId) => api.get(`/workspaces/${wsId}/documents/trash`),
+  untrash: (id) => api.post(`/documents/${id}/restore`),
+  purge: (id) => api.delete(`/documents/${id}/purge`),
   // Block-anchored annotations (#2730). Roots and replies come back in one list
   // and are threaded on the client — it groups them by block to place them next
   // to the text anyway. skipLoader: the panel refetches on a socket nudge, and a
   // colleague resolving a thread must not flash the global progress bar.
   comments: (id) => api.get(`/documents/${id}/comments`, { skipLoader: true }),
   addComment: (id, data) => api.post(`/documents/${id}/comments`, data),
-  updateComment: (commentId, body) => api.patch(`/document-comments/${commentId}`, { body }),
+  updateComment: (commentId, body, mentions = []) =>
+    api.patch(`/document-comments/${commentId}`, { body, mentions }),
   resolveComment: (commentId, resolved = true) =>
     api.patch(`/document-comments/${commentId}/resolve`, { resolved }),
   removeComment: (commentId) => api.delete(`/document-comments/${commentId}`),
@@ -499,6 +732,17 @@ export const documents = {
   createApproval: (id, data) => api.post(`/documents/${id}/approvals`, data),
   decideApproval: (approvalId, data) => api.post(`/document-approvals/${approvalId}/decide`, data),
   cancelApproval: (approvalId) => api.post(`/document-approvals/${approvalId}/cancel`),
+  // A document's stage and meeting (#3044, #3046) — null unpins.
+  setMilestone: (id, milestoneId) =>
+    api.put(`/documents/${id}/milestone`, { milestone_id: milestoneId || null }),
+  setConference: (id, conferenceId) =>
+    api.put(`/documents/${id}/conference`, { conference_id: conferenceId || null }),
+  // The documents pinned to a stage (its page) and to the workspace's meetings
+  // (an agenda chip per row of the meetings list).
+  byMilestone: (milestoneId) =>
+    api.get(`/milestones/${milestoneId}/documents`, { skipLoader: true }),
+  byConferences: (wsId) =>
+    api.get(`/workspaces/${wsId}/conference-documents`, { skipLoader: true }),
 }
 
 // Conferences (#2864). Media never comes through here — it goes to the LiveKit
@@ -521,6 +765,9 @@ export const conferences = {
   leave: (id) => api.post(`/conferences/${id}/leave`),
   end: (id) => api.post(`/conferences/${id}/end`),
   invite: (id, userIds, role) => api.post(`/conferences/${id}/invite`, { user_ids: userIds, role }),
+  // «Принять / Отклонить» an invitation (#3051): response is 'accepted' or
+  // 'declined'; answers the caller's participant row.
+  rsvp: (id, response) => api.put(`/conferences/${id}/rsvp`, { response }, { skipLoader: true }),
   participants: (id) => api.get(`/conferences/${id}/participants`, { skipLoader: true }),
   // Conferences held about a task — for the task page's "discussed in" link.
   byTask: (taskId) => api.get(`/tasks/${taskId}/conferences`, { skipLoader: true }),
@@ -536,17 +783,26 @@ export const conferences = {
   // would skip or repeat a line every time somebody sends one.
   messages: (id, params) => api.get(`/conferences/${id}/messages`, { params, skipLoader: true }),
   // Text only — the common case, and it should not pay for a multipart encoder.
-  postMessage: (id, body) =>
-    api.post(`/conferences/${id}/messages`, { body }, { skipLoader: true }),
+  // `mentions` are the user ids the composer resolved @-handles to (#3055): the
+  // server notifies them, as for a comment.
+  postMessage: (id, body, mentions = []) =>
+    api.post(`/conferences/${id}/messages`, mentions.length ? { body, mentions } : { body }, {
+      skipLoader: true,
+    }),
   // With files. FormData, so the browser sets its own multipart boundary — do
   // not add a Content-Type header here, an explicit one arrives without it and
   // the server cannot parse the form.
-  postMessageWithFiles: (id, body, files) => {
+  postMessageWithFiles: (id, body, files, mentions = []) => {
     const fd = new FormData()
     fd.append('body', body)
+    for (const m of mentions) fd.append('mentions', m)
     for (const f of files) fd.append('files', f)
+    for (const m of mentions) fd.append('mentions', m)
     return api.post(`/conferences/${id}/messages`, fd, { skipLoader: true })
   },
+  // «/» in the chat (#3055): a task on `board_id` plus the chat line that
+  // announces it, in one request. Answers { task, message }.
+  createTask: (id, data) => api.post(`/conferences/${id}/tasks`, data, { skipLoader: true }),
   removeMessage: (messageId) => api.delete(`/conference-messages/${messageId}`),
   // The bytes of one attachment, fetched with our bearer credential. Images are
   // rendered from the blob this returns rather than through an <img src> at the
@@ -584,12 +840,17 @@ export const reminders = {
   create: (data) => api.post('/reminders', data),
   update: (id, data) => api.patch(`/reminders/${id}`, data),
   remove: (id) => api.delete(`/reminders/${id}`),
+  // Moves the reminder later; the server keeps the first time in snoozed_from.
+  snooze: (id, remindAt) => api.post(`/reminders/${id}/snooze`, { remind_at: remindAt }),
+  forTask: (taskId) => api.get(`/tasks/${taskId}/reminders`),
 }
 
 export const columns = {
   update: (id, data) => api.patch(`/columns/${id}`, data),
   move: (id, data) => api.patch(`/columns/${id}/move`, data),
   remove: (id) => api.delete(`/columns/${id}`),
+  // Undo of a delete: the column and the cards it handed over come back (#2969).
+  restore: (id) => api.post(`/columns/${id}/restore`),
 }
 
 export const tasks = {
@@ -597,13 +858,20 @@ export const tasks = {
   // Board cards ship without the description (see backend task_list_dto.go); the
   // card fetches it lazily on hover. Background call — no global progress bar.
   description: (id) => api.get(`/tasks/${id}/description`, { skipLoader: true }),
+  // Follow / unfollow a task (#2963): returns { subscribers, subscribed }.
+  setSubscription: (id, subscribed) => api.put(`/tasks/${id}/subscription`, { subscribed }),
   update: (id, data) => api.patch(`/tasks/${id}`, data),
   move: (id, data) => api.patch(`/tasks/${id}/move`, data),
   setParent: (id, parentId) => api.patch(`/tasks/${id}/parent`, { parent_id: parentId }),
   transfer: (id, data) => api.patch(`/tasks/${id}/transfer`, data),
   archive: (id, opts) => api.patch(`/tasks/${id}/archive`, null, { params: opts }),
   restore: (id) => api.patch(`/tasks/${id}/restore`),
+  // DELETE puts the task (and its subtasks) in the board's trash (#3004);
+  // `untrash` is its undo — POST, unlike the archive's PATCH …/restore above —
+  // and `purge` deletes a trashed task for good.
   remove: (id, opts) => api.delete(`/tasks/${id}`, { params: opts }),
+  untrash: (id) => api.post(`/tasks/${id}/restore`),
+  purge: (id) => api.delete(`/tasks/${id}/purge`),
   addTag: (id, tagId) => api.post(`/tasks/${id}/tags`, { tag_id: tagId }),
   removeTag: (id, tagId) => api.delete(`/tasks/${id}/tags/${tagId}`),
   addAssignee: (id, userId) => api.post(`/tasks/${id}/assignees`, { user_id: userId }),
@@ -624,15 +892,32 @@ export const tasks = {
   events: (id) => api.get(`/tasks/${id}/events`),
   comments: (id) => api.get(`/tasks/${id}/comments`),
   // parentId is optional and last so existing three-argument calls are unchanged.
-  addComment: (id, body, mentions, parentId) =>
-    api.post(`/tasks/${id}/comments`, { body, mentions, parent_id: parentId || null }),
+  // `tz` rides along for the same reason the home summary takes one: a «/due
+  // сегодня» in the body is resolved server-side, and the day it means is the
+  // writer's, not the server's.
+  addComment: (id, body, mentions, parentId, tz) =>
+    api.post(
+      `/tasks/${id}/comments`,
+      { body, mentions, parent_id: parentId || null },
+      { params: { tz } },
+    ),
   // Dry-run the quick actions in a draft comment — same parser as the real
-  // POST, changes nothing. Powers the «Будет применено: …» hint.
-  previewCommands: (id, body) =>
-    api.post(`/tasks/${id}/commands/preview`, { body }, { skipLoader: true }),
-  updateComment: (commentId, body) => api.patch(`/comments/${commentId}`, { body }),
+  // POST, changes nothing. Powers the «Будет применено: …» hint. Same zone as
+  // the real POST, or the hint would name a different day than the command sets.
+  previewCommands: (id, body, tz) =>
+    api.post(`/tasks/${id}/commands/preview`, { body }, { skipLoader: true, params: { tz } }),
+  // `mentions` are the people this edit ADDED, not everyone the new text
+  // mentions — the server cannot tell them apart (it holds the old body as plain
+  // text, without the roster a handle becomes a chip against), and re-sending
+  // the whole set would notify the same people on every typo fix.
+  updateComment: (commentId, body, mentions) =>
+    api.patch(`/comments/${commentId}`, { body, mentions }),
   removeComment: (commentId) => api.delete(`/comments/${commentId}`),
   relations: (id) => api.get(`/tasks/${id}/relations`),
+  // Учёт времени (#2965).
+  time: (id) => api.get(`/tasks/${id}/time`),
+  addTime: (id, body) => api.post(`/tasks/${id}/time`, body),
+  deleteTime: (id, entryId) => api.delete(`/tasks/${id}/time/${entryId}`),
   addRelation: (id, number, kind) => api.post(`/tasks/${id}/relations`, { number, kind }),
   removeRelation: (relationId) => api.delete(`/relations/${relationId}`),
   // The document side of the same link table (#2732). Unlinking is done through
@@ -667,6 +952,10 @@ export const notifications = {
   unreadCount: () => api.get('/notifications/unread-count'),
   markRead: (id) => api.post(`/notifications/${id}/read`),
   markAllRead: () => api.post('/notifications/read-all'),
+  // The page of all notifications (#3049): { items, next_cursor } — the
+  // server filters (all · unread · mentions · assigned · gitlab) and pages by
+  // a keyset cursor; next_cursor is null on the last page.
+  page: (params) => api.get('/notifications/page', { params, skipLoader: true }),
 }
 
 // Notification router: per-user delivery channels + Alertmanager-style routing
@@ -696,6 +985,8 @@ export const notificationRoutes = {
 export const notificationPrefs = {
   get: () => api.get('/notification-prefs'),
   update: (data) => api.put('/notification-prefs', data),
+  // «Не беспокоить» (#3117): an ISO moment, or null to switch it off.
+  dnd: (until) => api.put('/notification-prefs/dnd', { until }),
 }
 
 export const gitlab = {
@@ -703,6 +994,8 @@ export const gitlab = {
   getConnection: () => api.get('/gitlab/connection'),
   connect: (data) => api.post('/gitlab/connection', data), // { base_url, token }
   disconnect: () => api.delete('/gitlab/connection'),
+  // Connect through GitLab OAuth instead of a PAT (#3083) → { url } to navigate to.
+  connectOAuth: (returnTo) => api.post('/gitlab/connection/oauth', { return_to: returnTo }),
   // Per-workspace integration bindings (multi-binding: several GL project → board).
   listIntegrations: (wsId) => sharedGet(`/workspaces/${wsId}/gitlab/integrations`),
   createIntegration: (wsId, data) => api.post(`/workspaces/${wsId}/gitlab/integrations`, data),
@@ -745,7 +1038,14 @@ export const gitlab = {
     api.post(`/workspaces/${wsId}/gitlab/sync-runs/${runId}/actions/${actionId}/retry`),
   // Create a GitLab issue from a task (returns the new link view) + the project's
   // issue templates for prefilling the description.
-  createIssue: (taskId, data) => api.post(`/tasks/${taskId}/gitlab-issue`, data),
+  //
+  // `tz` for the same reason the home summary takes one: the task's due date is
+  // written into the issue as a bare `YYYY-MM-DD` (backend taskDateStr), a day
+  // read out of an instant. Without the zone the server reads it in its own, and
+  // east of that the stored midnight belongs to the previous server day — the
+  // issue is born due a day before the task says it is.
+  createIssue: (taskId, data, tz) =>
+    api.post(`/tasks/${taskId}/gitlab-issue`, data, { params: { tz } }),
   issueTemplates: (wsId, integId) =>
     api.get(`/workspaces/${wsId}/gitlab/issue-templates`, {
       params: integId ? { integration_id: integId } : undefined,
@@ -757,10 +1057,19 @@ export const gitlab = {
   setGroup: (taskId) => api.post(`/tasks/${taskId}/gitlab-group`),
   clearGroup: (taskId) => api.delete(`/tasks/${taskId}/gitlab-group`),
   pushChild: (taskId) => api.post(`/tasks/${taskId}/gitlab-child`),
-  // Write-back conflicts: open-conflict inbox + interactive resolution.
-  conflicts: (wsId) => api.get(`/workspaces/${wsId}/gitlab/conflicts`),
+  // Write-back conflicts: open-conflict inbox + interactive resolution. The
+  // stages' conflicts (#3025) come along on request — entity: 'milestone'.
+  conflicts: (wsId) =>
+    api.get(`/workspaces/${wsId}/gitlab/conflicts`, { params: { include: 'milestones' } }),
   resolveConflict: (taskId, conflictId, data) =>
     api.post(`/tasks/${taskId}/gitlab/conflicts/${conflictId}/resolve`, data), // { resolution, value? }
+  // Several decisions at once (#3089): items = [{ task_id, conflict_id, resolution, value? }].
+  resolveConflicts: (wsId, items) =>
+    api.post(`/workspaces/${wsId}/gitlab/conflicts/resolve`, { items }),
+  // Label rules (#3087): counters by rule and «Проверить лейбл», on the edited
+  // rules → { hits: [n…], linked, recorded, check?: { outcome, tasks } }.
+  previewRules: (wsId, data) =>
+    api.post(`/workspaces/${wsId}/gitlab/rules/preview`, data, { skipLoader: true }),
 }
 
 export default api

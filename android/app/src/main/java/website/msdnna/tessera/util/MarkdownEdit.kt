@@ -211,6 +211,15 @@ private fun listItem(line: String): ListItem? {
 }
 
 /**
+ * Counts the fence delimiters above [lineStart]. A ``` line opens a block only
+ * when an even number precedes it; with an odd count the line is the delimiter
+ * that *closes* the block above — and the two are the same three characters, so
+ * this parity is the only thing telling them apart.
+ */
+private fun fenceLinesBefore(value: String, lineStart: Int): Int =
+    CLOSED_BELOW_RE.findAll(value.substring(0, lineStart)).count()
+
+/**
  * The next state for a plain Enter at a collapsed caret, or `null` to let an
  * ordinary newline through. Two cases:
  *  - an opening ``` fence with nothing closing it below → drop a closing fence
@@ -220,8 +229,13 @@ private fun listItem(line: String): ListItem? {
  */
 fun handleEnter(value: String, caret: Int): MdEdit? {
     val line = currentLine(value, caret)
+    // Code fence: only when the caret sits at the end of the line, the line opens
+    // a block rather than closing one, and no fence closes it further down.
+    // Without the parity check, Enter at the end of a just-closed block appended a
+    // third fence — an unpaired opener that swallows the rest of the document into
+    // a code block in the preview (web fixed this in `mdEdit.js`; #2932).
     val fence = FENCE_RE.find(line.text)
-    if (fence != null && caret == line.end) {
+    if (fence != null && caret == line.end && fenceLinesBefore(value, line.start) % 2 == 0) {
         val closedBelow = CLOSED_BELOW_RE.containsMatchIn(value.substring(line.end))
         if (!closedBelow) {
             val indent = fence.groupValues[1]
@@ -232,6 +246,13 @@ fun handleEnter(value: String, caret: Int): MdEdit? {
         }
     }
     val item = listItem(line.text) ?: return null
+    // The marker is only carried when the caret already sits in the item's own
+    // content. With the caret still inside the marker — Home then Enter to open a
+    // line above is the everyday way to get there — the marker was copied onto the
+    // text it was still attached to: `|- foo` came back as `- - foo`, `|1. foo` as
+    // `2. 1. foo`, and on a nested item the indent was split too (web `mdEdit.js`).
+    val contentAt = line.start + line.text.length - item.content.length
+    if (caret < contentAt) return null
     // Empty item → end the list: clear the marker line, leave the caret on it.
     if (item.content.isBlank()) {
         return MdEdit(value.substring(0, line.start) + value.substring(line.end), line.start)

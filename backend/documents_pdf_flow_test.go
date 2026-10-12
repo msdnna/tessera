@@ -69,7 +69,7 @@ func TestDocumentImportPdfRejectsAFileThatIsNotOne(t *testing.T) {
 	if res.Status != http.StatusBadRequest {
 		t.Fatalf("status = %d, want 400", res.Status)
 	}
-	if n := len(c.get("/workspaces/"+ws+"/documents").listBody(t)); n != 0 {
+	if n := len(c.get("/workspaces/" + ws + "/documents").listBody(t)); n != 0 {
 		t.Fatalf("a refused PDF import left %d documents behind", n)
 	}
 }

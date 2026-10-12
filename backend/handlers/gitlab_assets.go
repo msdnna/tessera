@@ -18,6 +18,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
+	"tessera/internal/observability"
 )
 
 // GitLab uploads referenced in synced descriptions/comments are project-relative
@@ -33,6 +34,37 @@ import (
 // the tail and mangle a Tessera URL into "/api/" + a proxy link. RE2 has no
 // lookbehind, so the alternation does the work and rewriteInbound skips the match.
 var uploadRe = regexp.MustCompile(`/api/uploads/[A-Za-z0-9_-]+\.[A-Za-z0-9]+|/uploads/[^\s)"'<>]+`)
+
+// safeUploadPath reports whether a proxy path is a plain GitLab upload
+// reference rather than one that walks out of it.
+//
+// The "/uploads/" prefix alone bounds nothing. The path is lifted out of
+// GitLab-authored text by uploadRe, which allows dots and slashes, and the
+// proxy resolves it against the project's URL before fetching it with the
+// integration owner's token. One ".." segment therefore turns a signed
+// attachment link into a signed link to any endpoint of the instance — and the
+// proxy has to be public (an <img> cannot authenticate), so the answer goes to
+// whoever asks. Percent-escapes are decoded first: the reverse proxy in front
+// of GitLab decodes before it resolves the path, so "%2e%2e" is a ".." by the
+// time anything acts on it.
+func safeUploadPath(p string) bool {
+	if !strings.HasPrefix(p, "/uploads/") {
+		return false
+	}
+	dec, err := url.PathUnescape(p)
+	if err != nil {
+		return false
+	}
+	if strings.Contains(dec, `\`) {
+		return false
+	}
+	for _, seg := range strings.Split(dec, "/") {
+		if seg == "." || seg == ".." {
+			return false
+		}
+	}
+	return true
+}
 
 // assetGitlabConn resolves the connection for the asset/avatar proxies: the
 // instance service token first, else any workspace binding owner's PAT. Returns the
@@ -137,8 +169,42 @@ func rewriteInbound(body string, ours func(string) (string, bool), proxy func(st
 		if src, ok := ours(p); ok {
 			return src
 		}
+		// Not a shape we can bound — leave it as the text GitLab sent. Signing it
+		// would mint a capability for a path nobody chose (see safeUploadPath), and
+		// the round trip stays symmetric because rewriteOutbound has nothing to
+		// match on a path that was never turned into a proxy URL.
+		if !safeUploadPath(p) {
+			return p
+		}
 		return proxy(p)
 	})
+}
+
+// streamProxied hands a proxied GitLab response to the caller on our own origin.
+//
+// The HMAC bounds which file may be fetched; it says nothing about what the file
+// is. Both proxies are public and same-origin, so whatever they return renders
+// with the app's session — and the bytes, along with the Content-Type GitLab
+// declares for them, come from an attachment somebody put on a synced issue. An
+// SVG (or, on the uploads-API branch, anything at all) would therefore decide
+// for itself that it is active content on the origin that holds the session in
+// localStorage, via a link the sync itself wrote into the task description.
+//
+// So: the declared type is honoured only for the image types Tessera serves
+// inline anywhere else (inlineSafeTypes, shared with ServeUpload and
+// DocumentAsset), and everything else is handed over as an opaque download.
+// nosniff pins the verdict and the sandbox CSP neuters anything that still gets
+// rendered — both inert for the real screenshots this proxy exists to show.
+func streamProxied(c *gin.Context, ct string, length int64, body io.Reader) {
+	c.Header("Cache-Control", "private, max-age=3600")
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
+	base, _, _ := strings.Cut(ct, ";")
+	if !inlineSafeTypes[strings.ToLower(strings.TrimSpace(base))] {
+		c.Header("Content-Disposition", "attachment")
+		ct = "application/octet-stream"
+	}
+	c.DataFromReader(http.StatusOK, length, ct, body, nil)
 }
 
 // GitlabAsset proxies a signed GitLab upload: it verifies the HMAC, then streams
@@ -156,8 +222,10 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		return
 	}
 	relPath := string(pb)
-	// Only serve upload paths, and only with a valid signature.
-	if !strings.HasPrefix(relPath, "/uploads/") ||
+	// Only serve real upload paths, and only with a valid signature. The shape
+	// check is not redundant with the HMAC: it is what keeps the HMAC meaningful,
+	// since an older link (or a future signing path) could carry anything.
+	if !safeUploadPath(relPath) ||
 		!hmac.Equal([]byte(c.Query("sig")), []byte(h.signAsset(wsID, relPath))) {
 		c.Status(http.StatusForbidden)
 		return
@@ -188,16 +256,11 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		// stream the bytes. relPath "/uploads/<secret>/<file>" → ".../uploads/<secret>/<file>".
 		apiURL := base + "/api/v4/projects/" + url.QueryEscape(projectPath) + "/uploads/" + rest
 		if req, rerr := http.NewRequestWithContext(c, http.MethodGet, apiURL, nil); rerr == nil {
-			req.Header.Set("PRIVATE-TOKEN", token)
+			setGitlabAuth(req, token)
 			if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
 				if resp.StatusCode == http.StatusOK {
 					defer func() { _ = resp.Body.Close() }()
-					ct := resp.Header.Get("Content-Type")
-					if ct == "" {
-						ct = "application/octet-stream"
-					}
-					c.Header("Cache-Control", "private, max-age=3600")
-					c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+					streamProxied(c, resp.Header.Get("Content-Type"), resp.ContentLength, resp.Body)
 					return
 				}
 				_ = resp.Body.Close()
@@ -211,17 +274,13 @@ func (h *API) GitlabAsset(c *gin.Context) {
 		webURL := base + "/" + projectPath + relPath
 		lastWebURL = webURL
 		if req, rerr := http.NewRequestWithContext(c, http.MethodGet, webURL, nil); rerr == nil {
-			req.Header.Set("PRIVATE-TOKEN", token)
+			setGitlabAuth(req, token)
 			if resp, derr := gitlab.NewHTTPClient().Do(req); derr == nil {
 				ct := resp.Header.Get("Content-Type")
 				// A sign-in redirect serves HTML — only stream real binary content.
 				if resp.StatusCode == http.StatusOK && !strings.HasPrefix(ct, "text/html") {
 					defer func() { _ = resp.Body.Close() }()
-					if ct == "" {
-						ct = "application/octet-stream"
-					}
-					c.Header("Cache-Control", "private, max-age=3600")
-					c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+					streamProxied(c, ct, resp.ContentLength, resp.Body)
 					return
 				}
 				_ = resp.Body.Close()
@@ -283,6 +342,17 @@ func (h *API) GitlabAvatar(c *gin.Context) {
 	c.Redirect(http.StatusFound, rawURL)
 }
 
+// setGitlabAuth puts a connection's token on a request to GitLab: a PAT as
+// PRIVATE-TOKEN, an OAuth access token (#3083) as a Bearer header — GitLab takes
+// only the latter for OAuth.
+func setGitlabAuth(req *http.Request, token string) {
+	if raw, oauth := gitlab.SplitToken(token); oauth {
+		req.Header.Set("Authorization", "Bearer "+raw)
+		return
+	}
+	req.Header.Set("PRIVATE-TOKEN", token)
+}
+
 // imgAttempt is one server-side fetch of the avatar with a specific credential
 // placement. GitLab authenticates differently across its endpoints, so we try the
 // PAT as a Bearer header (what the API/GraphQL accept), a PRIVATE-TOKEN header, and
@@ -300,6 +370,9 @@ type imgAttempt struct {
 // response (status + content-type + a short body snippet) so a session-only route
 // (private instance, no PAT support on /uploads/-/system/user/avatar) is diagnosable.
 func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) bool {
+	// An OAuth connection's token (#3083) arrives marked; the attempts below send
+	// it bare (the Bearer one is the attempt that works for it).
+	token, _ = gitlab.SplitToken(token)
 	var attempts []imgAttempt
 	if token != "" {
 		sep := "?"
@@ -324,6 +397,15 @@ func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) boo
 		if r.URL.Host != ghost {
 			r.Header.Del("PRIVATE-TOKEN")
 			r.Header.Del("Authorization")
+			// Referer too, and for the same reason: the third attempt carries the
+			// PAT in the query string, and net/http sets Referer to the previous
+			// URL verbatim (it strips userinfo, never the query). So on the hop
+			// that leaves GitLab the Referer *is* the credential — which is not a
+			// hypothetical hop: an instance that stores uploads in object storage
+			// answers the avatar route with a 302 to a presigned URL on another
+			// host, and that route is exactly the one the query-param attempt
+			// exists for.
+			r.Header.Del("Referer")
 		}
 		return nil
 	}
@@ -340,15 +422,19 @@ func (h *API) streamGitlabImage(c *gin.Context, rawURL, ghost, token string) boo
 		}
 		resp, derr := client.Do(req)
 		if derr != nil {
-			lastStatus, lastCT, lastBody = 0, "", derr.Error()
+			// Not derr.Error() as-is: a transport failure yields a *url.Error
+			// that quotes the whole request URL, and the third attempt has the
+			// PAT in it. That attempt is also the one that overwrites whatever
+			// the first two recorded, so the credential would be what the
+			// diagnostic below prints.
+			lastStatus, lastCT, lastBody = 0, "", observability.RedactURLs(derr.Error())
 			continue
 		}
 		ct := resp.Header.Get("Content-Type")
 		// Accept a real image only (200, non-text). A sign-in HTML page or a
 		// remaining 3xx means this attempt didn't authenticate — try the next.
 		if resp.StatusCode == http.StatusOK && ct != "" && !strings.HasPrefix(ct, "text/") {
-			c.Header("Cache-Control", "private, max-age=3600")
-			c.DataFromReader(http.StatusOK, resp.ContentLength, ct, resp.Body, nil)
+			streamProxied(c, ct, resp.ContentLength, resp.Body)
 			_ = resp.Body.Close()
 			return true
 		}

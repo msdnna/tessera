@@ -1,0 +1,170 @@
+// Приглашение живёт неделю (backend/handlers/invitations.go invitationTTL), но
+// список «Приглашения» в модалке участников фильтрует только accepted_at —
+// истёкшее остаётся в выдаче ListInvitations навсегда. Пути приёма при этом
+// истёкшие отбрасывают все до одного (AcceptInvitation, acceptInvitationToken,
+// ListPendingInvitationsByEmail), так что строка без срока врёт администратору:
+// он видит «пригласил, ещё не принял», а по ссылке приходит «invalid or expired
+// invitation». Уникального ключа на (workspace_id, email) нет — повторные
+// приглашения копятся, и отличить живое от мёртвого в списке нечем.
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+import { setActivePinia, createPinia } from 'pinia'
+import { mount } from '@vue/test-utils'
+import * as naive from 'naive-ui'
+
+// useMessage() падает без <n-message-provider>; глушим только его, как и
+// остальные спеки компонентов.
+vi.mock('naive-ui', async () => {
+  const actual = await vi.importActual('naive-ui')
+  return {
+    ...actual,
+    useMessage: () => ({ error: vi.fn(), success: vi.fn(), info: vi.fn(), warning: vi.fn() }),
+  }
+})
+
+const invitations = vi.fn()
+vi.mock('@/api', () => ({
+  workspaces: {
+    members: vi.fn(() => Promise.resolve({ data: [] })),
+    invitations: (...a) => invitations(...a),
+    addMember: vi.fn(),
+    createInvitation: vi.fn(),
+    removeMember: vi.fn(),
+    updateMemberRole: vi.fn(),
+    // Members v2 (#3063): the access requests and groups the window also reads.
+    accessRequests: () => Promise.resolve({ data: [] }),
+    memberGroups: () => Promise.resolve({ data: [] }),
+    deleteInvitation: vi.fn(() => Promise.resolve({ data: {} })),
+  },
+}))
+
+// n-modal телепортирует тело наружу — держим его внутри обёртки, как в
+// cx-smoke-components.
+const stubs = {
+  ...naive,
+  ...Object.fromEntries(Object.entries(naive).map(([k, v]) => ['N' + k, v])),
+  teleport: true,
+}
+
+// Полдень UTC: дата совпадает в любой правдоподобной зоне прогона.
+const LIVE = {
+  id: 'i-live',
+  email: 'live@example.com',
+  role: 'member',
+  expires_at: '2126-09-20T12:00:00Z',
+  created_at: '2126-09-13T12:00:00Z',
+}
+const DEAD = {
+  id: 'i-dead',
+  email: 'dead@example.com',
+  role: 'admin',
+  expires_at: '2020-01-10T12:00:00Z',
+  created_at: '2020-01-03T12:00:00Z',
+}
+
+// Загрузка висит на watch без immediate — модалка монтируется закрытой и
+// открывается сменой пропа, ровно как в оболочке.
+// Приглашения вообще показываются только менеджеру (ListInvitations стоит за
+// requireManager), поэтому роль в пространстве — часть исходных условий спека.
+const open = async (rows) => {
+  invitations.mockResolvedValue({ data: rows })
+  const { useWorkspacesStore } = await import('@/stores/workspaces')
+  useWorkspacesStore().list = [{ id: 'ws-1', my_role: 'admin' }]
+  const MembersModal = (await import('@/components/MembersModal.vue')).default
+  const w = mount(MembersModal, { props: { show: false, wsId: 'ws-1' }, global: { stubs } })
+  await w.setProps({ show: true })
+  await new Promise((r) => setTimeout(r, 0))
+  await w.vm.$nextTick()
+  return w
+}
+
+const rowOf = (w, email) => w.findAll('.invite-row').find((r) => r.text().includes(email))
+
+describe('MembersModal: срок приглашения', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  it('помечает истёкшее приглашение, чтобы оно не читалось как «ждёт ответа»', async () => {
+    const w = await open([LIVE, DEAD])
+    const dead = rowOf(w, 'dead@example.com')
+    expect(dead).toBeTruthy()
+    expect(dead.find('.inv-expired').exists()).toBe(true)
+    expect(dead.text()).toContain('Истекло')
+  })
+
+  it('у живого приглашения показывает, до какого числа оно действует', async () => {
+    const w = await open([LIVE, DEAD])
+    const live = rowOf(w, 'live@example.com')
+    expect(live.find('.inv-expired').exists()).toBe(false)
+    // Разделитель даёт useFormat по языку профиля — здесь важно само число.
+    expect(live.find('.inv-until').text()).toMatch(/20[./]09[./]2126/)
+  })
+
+  // Истёкшая строка — единственный способ убрать мусор из списка: отзыв обязан
+  // остаться и на ней.
+  it('оставляет отзыв доступным и на истёкшем приглашении', async () => {
+    const w = await open([DEAD])
+    const dead = rowOf(w, 'dead@example.com')
+    expect(dead.findAll('button').length).toBeGreaterThan(0)
+  })
+})
+
+// Одно поле на два исхода: известный адрес добавляется участником сразу,
+// неизвестный сваливается в приглашение. Развилка — ответ сервера «no user with
+// that email», и сравнивать её можно только с сырой английской строкой: `message`
+// уже причёсан humanizeError и переписывается при добавлении сентинела в каталог
+// (#2932), да ещё и меняется вместе с языком интерфейса.
+describe('MembersModal: развилка «участник или приглашение»', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia())
+    vi.clearAllMocks()
+  })
+
+  const api = async () => (await import('@/api')).workspaces
+
+  const typeAndInvite = async (w, mail) => {
+    await w.find('.invite input').setValue(mail)
+    await w.find('[data-testid="members-invite-submit"]').trigger('click')
+    await new Promise((r) => setTimeout(r, 0))
+    await w.vm.$nextTick()
+  }
+
+  // Перехватчик кладёт сентинел в `raw`, а в `message` — уже готовую фразу.
+  const refusal = () => {
+    const e = new Error('Пользователя с таким email нет — можно отправить приглашение')
+    e.raw = 'no user with that email'
+    e.status = 404
+    return e
+  }
+
+  it('на неизвестный адрес заводит приглашение, а не показывает ошибку', async () => {
+    const w = await open([])
+    const wsApi = await api()
+    wsApi.addMember.mockRejectedValue(refusal())
+    wsApi.createInvitation.mockResolvedValue({ data: { link: 'https://t/invite?token=x' } })
+
+    await typeAndInvite(w, 'stranger@example.com')
+
+    expect(wsApi.createInvitation).toHaveBeenCalledWith('ws-1', {
+      email: 'stranger@example.com',
+      role: 'member',
+    })
+    expect(w.find('.link-box').text()).toBe('https://t/invite?token=x')
+  })
+
+  // Негативный контроль: на любой другой отказ приглашение НЕ заводится —
+  // иначе развилка выродилась бы в «всегда приглашать».
+  it('на другой отказ приглашение не заводит', async () => {
+    const w = await open([])
+    const wsApi = await api()
+    const other = new Error('Недостаточно прав')
+    other.raw = 'requires admin'
+    other.status = 403
+    wsApi.addMember.mockRejectedValue(other)
+
+    await typeAndInvite(w, 'someone@example.com')
+
+    expect(wsApi.createInvitation).not.toHaveBeenCalled()
+  })
+})

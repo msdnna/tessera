@@ -6,8 +6,15 @@
 // a stream when one shows up.
 import { computed, onBeforeUnmount, ref, watch } from 'vue'
 import { NIcon, NTooltip } from 'naive-ui'
-import { MicOffOutline, DesktopOutline, CellularOutline } from '@vicons/ionicons5'
+import {
+  MicOffOutline,
+  MicOutline,
+  DesktopOutline,
+  CellularOutline,
+  HandRightOutline,
+} from '@vicons/ionicons5'
 import UserAvatar from '@/components/UserAvatar.vue'
+import { personHue } from '@/utils/personHue'
 
 const props = defineProps({
   // The flat descriptor from useConfTransport — never a live SDK object.
@@ -19,6 +26,12 @@ const props = defineProps({
   // the stage, their face in the strip — which is why this is a prop rather
   // than something derived from the peer.
   screen: { type: Boolean, default: false },
+  // A raised hand, from the room socket (the SFU knows nothing of it) — drawn as
+  // an amber badge in the tile's corner (v2, #3107).
+  hand: { type: Boolean, default: false },
+  // The grid cell of the call's grid layout: it fills its cell instead of
+  // keeping 16:9.
+  cell: { type: Boolean, default: false },
 })
 
 // Which of the peer's two publications this tile is showing. A screen tile with
@@ -33,6 +46,9 @@ const weakConn = computed(
 )
 
 const videoEl = ref(null)
+
+// v2 (#3107): a tile without video is drawn in the person's own tone.
+const toneStyle = computed(() => ({ '--tone': personHue(props.peer.id) }))
 
 // A phone is held upright, and it publishes what it sees: 9:16. `cover` fits
 // that to the width of a 16:9 tile and throws away everything above and below —
@@ -87,7 +103,8 @@ onBeforeUnmount(() => {
 <template>
   <div
     class="tile"
-    :class="{ stage, speaking: !screen && peer.speaking, video: !!video, screen, portrait }"
+    :class="{ stage, cell, speaking: !screen && peer.speaking, video: !!video, screen, portrait }"
+    :style="toneStyle"
     :data-testid="screen ? 'conference-screen-tile' : 'conference-tile'"
   >
     <!-- muted on the local tile is not cosmetic: an unmuted self-view is a
@@ -123,20 +140,26 @@ onBeforeUnmount(() => {
       <user-avatar v-else :user-id="peer.id" :name="peer.name" class="av" />
     </div>
 
+    <span v-if="hand && !screen" class="hand" data-testid="conference-tile-hand">
+      <n-icon :component="HandRightOutline" :size="15" />
+    </span>
+
+    <!-- The name pill, bottom-left: the mic state in front of the name. -->
     <div class="bar">
-      <n-icon v-if="screen" :component="DesktopOutline" :size="14" class="src-icon" />
-      <span class="name">{{ peer.name }}</span>
-      <n-icon
-        v-if="!screen && !peer.micOn"
-        :component="MicOffOutline"
-        :size="14"
-        class="muted-icon"
-      />
+      <span class="pill">
+        <n-icon v-if="screen" :component="DesktopOutline" :size="13" class="src-icon" />
+        <n-icon v-else-if="!peer.micOn" :component="MicOffOutline" :size="13" class="muted-icon" />
+        <n-icon v-else :component="MicOutline" :size="13" class="mic-icon" />
+        <span class="name">{{ peer.name }}</span>
+      </span>
     </div>
   </div>
 </template>
 
 <style scoped>
+/* v2 (#3107 — PackageE «Звонок»): a tile is a surface in the person's tone
+   (--tone, see personHue), radius 18; the speaker gets a 3px accent ring and a
+   glow; the name is a dark pill bottom-left. */
 .tile {
   position: relative;
   display: flex;
@@ -144,63 +167,69 @@ onBeforeUnmount(() => {
   justify-content: center;
   aspect-ratio: 16 / 9;
   min-height: 96px;
-  border-radius: 10px;
+  border-radius: 18px;
   overflow: hidden;
-  background: var(--t-hover);
-  /* Transparent border reserved up front so the speaking ring does not resize
-     the tile when it appears (the border-box trick used across the app). */
-  border: 2px solid transparent;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, var(--tone, var(--t-primary)) 14%, var(--t-col)),
+    color-mix(in srgb, var(--tone, var(--t-primary)) 24%, var(--t-col))
+  );
+  /* The ring is drawn inside (box-shadow), so it never resizes the tile. */
+  transition: box-shadow 0.15s ease;
 }
 /* The stage keeps 16:9 but is capped by the viewport: at a desktop width the
-   ratio alone would push the toolbar below the fold, and a call whose controls
-   need scrolling to reach is worse than a smaller speaker. */
+   ratio alone would push the toolbar below the fold. */
 .tile.stage {
   min-height: 220px;
   max-height: 44vh;
 }
-/* A live stream is dark by nature; the flat neutral behind it would show as a
-   grey frame in the letterbox until the first frame lands. */
+/* A grid cell fills its cell. */
+.tile.cell {
+  aspect-ratio: auto;
+  min-height: 0;
+  max-height: none;
+  width: 100%;
+  height: 100%;
+}
+/* A live stream is dark by nature; the tone behind it would show in the
+   letterbox until the first frame lands. */
 .tile.video {
   background: #000;
 }
 .tile.speaking {
-  border-color: #18a058;
+  box-shadow:
+    inset 0 0 0 3px var(--t-primary),
+    0 0 22px color-mix(in srgb, var(--t-primary) 45%, transparent);
 }
 .v {
   width: 100%;
   height: 100%;
   object-fit: cover;
 }
-/* A shared screen is the one thing here that must not be cropped: `cover` on a
-   4:3 spreadsheet in a 16:9 tile cuts off exactly the rows being pointed at.
-   Letterboxing is the honest trade. */
+/* A shared screen is the one thing here that must not be cropped. */
 .tile.screen .v {
   object-fit: contain;
 }
-/* Same trade for a phone held upright (#2896): `cover` on a 9:16 stream keeps a
-   vertical sixth of it, which in practice is the caller's chin. */
+/* Same trade for a phone held upright (#2896). */
 .tile.portrait .v {
   object-fit: contain;
 }
-/* The presenter's screen gets more room than a face does — a shared IDE at the
-   dominant-tile height is unreadable. */
 .tile.screen.stage {
   max-height: 62vh;
 }
 .waiting {
   color: var(--t-text3);
 }
-/* Weak-signal badge (#2884): a dark scrim so the coloured glyph reads over both a
-   video frame and a flat avatar tile. */
+/* Weak-signal badge (#2884). */
 .conn {
   position: absolute;
-  top: 6px;
-  left: 6px;
+  top: 10px;
+  left: 10px;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 2px;
-  border-radius: 6px;
+  padding: 3px;
+  border-radius: 7px;
   background: rgb(0 0 0 / 45%);
   z-index: 1;
 }
@@ -210,66 +239,89 @@ onBeforeUnmount(() => {
 .conn.lost {
   color: #e88080;
 }
-.src-icon {
-  flex: none;
-  opacity: 0.85;
+/* A raised hand: the amber of attention, top-right. */
+.hand {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #f0a020 86%, #000),
+    #f0a020 50%,
+    color-mix(in srgb, #f0a020 86%, #fff)
+  );
 }
-/* The avatar is nudged up so it clears the name caption at the bottom of the
-   tile (#2881): on a short strip tile the two otherwise sit almost touching.
-   Margin on a centred flex item shifts its box up by that much. */
+.src-icon,
+.mic-icon,
+.muted-icon {
+  flex: none;
+}
+.muted-icon {
+  color: #ff9a8a;
+}
+/* The avatar is nudged up so it clears the name pill on a short tile. */
 .face {
   display: flex;
   align-items: center;
   justify-content: center;
   margin-bottom: 22px;
 }
-/* The stage tile is tall enough that the avatar already clears the caption, so
-   it keeps a true centre rather than riding high. */
-.stage .face {
+.stage .face,
+.cell .face {
   margin-bottom: 0;
 }
-/* Same circular avatar as everywhere else in the app, just larger. The gradient
-   comes from the accent-gradient helper on the shared component. */
 .av {
   width: 56px;
   height: 56px;
   border-radius: 50%;
   font-size: 20px;
+  font-weight: 700;
   color: #fff;
   background: var(--t-accent-grad);
 }
-.stage .av {
-  width: 96px;
-  height: 96px;
-  font-size: 32px;
+.stage .av,
+.cell .av {
+  width: 72px;
+  height: 72px;
+  font-size: 26px;
 }
 .bar {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 0;
+  left: 10px;
+  right: 10px;
+  bottom: 10px;
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 4px 8px;
-  font-size: 12px;
-  color: var(--t-text2);
+  pointer-events: none;
 }
-/* Only a video tile gets the scrim. Over an arbitrary camera frame there is no
-   safe text colour, so white on a dark fade is the only thing that always
-   reads; over the flat neutral of an avatar tile the same scrim is a dark smear
-   across a light UI, and the design language keeps neutrals flat. */
-.tile.video .bar {
+/* The name pill sits on a dark scrim of its own, so it reads over a tone and
+   over video alike. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 24px;
+  padding: 0 9px 0 7px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: rgb(0 0 0 / 50%);
   color: #fff;
-  background: linear-gradient(to top, rgb(0 0 0 / 55%), transparent);
+  font-size: 12px;
+  font-weight: 600;
 }
 .name {
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-.muted-icon {
-  flex: none;
-  opacity: 0.85;
 }
 </style>

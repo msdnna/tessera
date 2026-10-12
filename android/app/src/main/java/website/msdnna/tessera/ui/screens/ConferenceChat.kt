@@ -24,6 +24,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalResources
 import androidx.compose.ui.platform.testTag
@@ -55,6 +56,7 @@ import website.msdnna.tessera.ui.viewmodels.ConferenceChatUiState
 import website.msdnna.tessera.ui.viewmodels.ConferenceChatViewModel
 import website.msdnna.tessera.util.CONF_CHAT_MAX_BODY
 import website.msdnna.tessera.util.CONF_CHAT_MAX_FILES
+import website.msdnna.tessera.util.ChatMember
 import website.msdnna.tessera.util.ConfPendingFile
 import website.msdnna.tessera.util.ConfPickRefusal
 import website.msdnna.tessera.util.ConfSizeUnit
@@ -92,6 +94,7 @@ internal fun ConferenceChatHost(vm: ConferenceChatViewModel, state: ConferenceCh
         onClose = { vm.close() },
         onDraft = { vm.setDraft(it) },
         onSend = { vm.send(source) },
+        onPickBoard = { vm.pickBoard(it) },
         // Everything, filtered by the server rather than by us: the chat carries
         // logs and archives as often as it carries screenshots, and a MIME filter
         // is how «почему я не могу отправить дамп» starts.
@@ -200,6 +203,7 @@ internal fun ConferenceChatSheet(
     onConfirmRemove: () -> Unit,
     onDownload: (ConferenceAttachment) -> Unit,
     onDismissError: () -> Unit,
+    onPickBoard: (String) -> Unit = {},
 ) {
     val c = Tessera.colors
     val log = rememberLazyListState()
@@ -278,6 +282,8 @@ internal fun ConferenceChatSheet(
                         removable = state.canRemove(message),
                         onAskRemove = { onAskRemove(message.id) },
                         onDownload = onDownload,
+                        members = state.members,
+                        meId = state.meId,
                     )
                 }
             }
@@ -305,6 +311,8 @@ internal fun ConferenceChatSheet(
             )
         }
 
+        ChatSuggest(state = state, onDraft = onDraft)
+        TaskStrip(state = state, onPickBoard = onPickBoard)
         Composer(
             state = state,
             onDraft = onDraft,
@@ -331,8 +339,14 @@ private fun MessageRow(
     removable: Boolean,
     onAskRemove: () -> Unit,
     onDownload: (ConferenceAttachment) -> Unit,
+    members: List<ChatMember> = emptyList(),
+    meId: String = "",
 ) {
     val c = Tessera.colors
+    if (message.isTask) {
+        TaskLine(message)
+        return
+    }
     // A row whose author left the workspace: the message outlives the account,
     // and «» over an avatar would read as a rendering failure.
     val name = message.userName?.takeIf { it.isNotBlank() }
@@ -352,7 +366,7 @@ private fun MessageRow(
                 Text(at, color = c.text3, fontSize = 11.sp)
             }
             if (message.body.isNotBlank()) {
-                Text(message.body, color = c.text2, fontSize = 13.sp)
+                Text(mentionText(message.body, members, meId), color = c.text2, fontSize = 13.sp)
             }
             message.attachments.forEach { attachment ->
                 AttachmentRow(attachment, onClick = { onDownload(attachment) })
@@ -458,7 +472,7 @@ private fun Composer(
         TTextField(
             value = state.draft,
             onValueChange = onDraft,
-            placeholder = stringResource(R.string.conf_chat_placeholder),
+            placeholder = stringResource(R.string.conf_chat_hint),
             singleLine = false,
             modifier = Modifier.weight(1f),
             fieldTag = TestTags.CONFERENCE_CHAT_INPUT,
@@ -480,7 +494,13 @@ private fun Composer(
 @Composable
 private fun refusalText(refusal: ConfPickRefusal, name: String): String = when (refusal) {
     ConfPickRefusal.TOO_BIG -> stringResource(R.string.conf_chat_file_too_big, name)
+
+    // The batch refusal names no file on purpose: nothing in particular is at
+    // fault, the message as a whole is, and the way out is to send it in two.
+    ConfPickRefusal.TOO_BIG_TOTAL -> stringResource(R.string.conf_chat_files_too_big)
+
     ConfPickRefusal.TOO_MANY -> stringResource(R.string.conf_chat_too_many_files, CONF_CHAT_MAX_FILES)
+
     ConfPickRefusal.NONE -> ""
 }
 
@@ -488,7 +508,10 @@ private fun refusalText(refusal: ConfPickRefusal, name: String): String = when (
  *  «КБ» is a translation, `1,4` is not. */
 @Composable
 private fun fileSizeLabel(bytes: Long): String {
-    val size = confFileSize(bytes)
+    // The locale is the profile's (`AppLocale` substitutes the resources the unit
+    // comes from), not the device's — otherwise a Russian profile on an English
+    // phone gets «1.4 МБ» again, which is the split this pair fixed (#2932).
+    val size = confFileSize(bytes, LocalConfiguration.current.locales[0])
     return stringResource(
         when (size.unit) {
             ConfSizeUnit.MB -> R.string.conf_chat_size_mb

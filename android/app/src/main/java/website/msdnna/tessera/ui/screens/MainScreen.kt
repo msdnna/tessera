@@ -63,6 +63,7 @@ import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.ui.components.IonIconButton
 import website.msdnna.tessera.ui.components.Sidebar
 import website.msdnna.tessera.ui.components.TDropdown
+import website.msdnna.tessera.ui.components.TMenuDivider
 import website.msdnna.tessera.ui.components.TMenuItem
 import website.msdnna.tessera.ui.components.UpdateDialog
 import website.msdnna.tessera.ui.components.clickableNoRipple
@@ -89,6 +90,7 @@ import website.msdnna.tessera.ui.viewmodels.UpdateViewModel
 import website.msdnna.tessera.ui.viewmodels.WorkspaceUiState
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.NotificationRoute
 import website.msdnna.tessera.util.TourContext
 import website.msdnna.tessera.util.TourKeys
 import website.msdnna.tessera.util.TourSnapshot
@@ -125,6 +127,8 @@ fun MainScreen(
     accentKey: String,
     openTaskId: String?,
     onOpenTaskHandled: () -> Unit,
+    openConferenceId: String?,
+    onOpenConferenceHandled: () -> Unit,
     onAccentChange: (String) -> Unit,
     onToggleDark: () -> Unit,
     onLogout: () -> Unit,
@@ -280,6 +284,15 @@ fun MainScreen(
         if (boardId != null) openTask(boardId, id)
     }
 
+    // Приглашение в звонок задачи не имеет — открываем сам список конференций и
+    // просим его развернуть лобби нужного звонка (тот же приём, что у мини-бара).
+    LaunchedEffect(openConferenceId) {
+        val id = openConferenceId ?: return@LaunchedEffect
+        onOpenConferenceHandled()
+        conferencePreselectId = id
+        navTo(MainDest.Conferences)
+    }
+
     // Re-check for updates whenever the app returns to the foreground — the
     // initial check runs in UpdateViewModel.init, but a release published while
     // the app was merely backgrounded would otherwise be missed until a cold
@@ -293,7 +306,7 @@ fun MainScreen(
     // Restore the last-open destination once on launch (a reminder deep-link wins).
     var restoreDone by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
-        if (openTaskId == null) {
+        if (openTaskId == null && openConferenceId == null) {
             val saved = AppContainer.prefs.lastDest.first()
             when {
                 saved == "notes" -> dest = MainDest.Notes
@@ -512,12 +525,23 @@ fun MainScreen(
                             onNotification = { n ->
                                 notifVm.markRead(n)
                                 bellOpen = false
-                                if (n.opensTask) openTask(n.taskBoardId!!, n.taskId!!)
+                                when (val route = NotificationRoute.of(n)) {
+                                    is NotificationRoute.Conference -> {
+                                        conferencePreselectId = route.conferenceId
+                                        navTo(MainDest.Conferences)
+                                    }
+
+                                    is NotificationRoute.Task -> openTask(route.boardId, route.taskId)
+
+                                    NotificationRoute.None -> Unit
+                                }
                             },
                             onMarkAll = { notifVm.markAllRead() },
                             onArchive = { boardArchiveOpen = true },
                             onTags = { boardTagsOpen = true },
                             onCommands = { boardCommandsOpen = true },
+                            isFavorite = state.isFavorite((dest as? MainDest.BoardView)?.board?.id),
+                            onToggleFavorite = { (dest as? MainDest.BoardView)?.board?.let { wsVm.toggleFavorite(it) } },
                         )
                         HorizontalDivider(color = c.border)
 
@@ -629,6 +653,11 @@ fun MainScreen(
                             onOpenNote = { noteId ->
                                 notesPreselectId = noteId
                                 navTo(MainDest.Notes)
+                                searchOpen = false
+                            },
+                            onOpenDocument = { documentId ->
+                                documentsPreselectId = documentId
+                                navTo(MainDest.Documents)
                                 searchOpen = false
                             },
                             onOpenHelp = { slug ->
@@ -980,6 +1009,10 @@ private fun TopBar(
     onArchive: () -> Unit,
     onTags: () -> Unit,
     onCommands: () -> Unit,
+    // The open board in / out of favourites (#3115) — the first row of the menu,
+    // as on the web's phone: the header has no room for a star of its own.
+    isFavorite: Boolean = false,
+    onToggleFavorite: () -> Unit = {},
 ) {
     val c = Tessera.colors
     var boardMenu by remember { mutableStateOf(false) }
@@ -1038,6 +1071,16 @@ private fun TopBar(
             Box(Modifier.tourAnchor(TourKeys.BOARD_ACTIONS)) {
                 IonIconButton(Ion.ELLIPSIS_V, onClick = { boardMenu = true }, boxSize = 40.dp)
                 TDropdown(expanded = boardMenu, onDismiss = { boardMenu = false }) {
+                    TMenuItem(
+                        stringResource(if (isFavorite) R.string.main_board_menu_unfavorite else R.string.main_board_menu_favorite),
+                        icon = if (isFavorite) Ion.STAR_FILLED else Ion.STAR,
+                        modifier = Modifier.testTag(TestTags.BOARD_MENU_FAVORITE),
+                        onClick = {
+                            boardMenu = false
+                            onToggleFavorite()
+                        },
+                    )
+                    TMenuDivider()
                     TMenuItem(stringResource(R.string.main_board_menu_archive), icon = Ion.ARCHIVE, onClick = {
                         boardMenu = false
                         onArchive()

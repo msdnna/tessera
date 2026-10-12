@@ -2,6 +2,7 @@ import { ref, computed, nextTick, watch, onBeforeUnmount } from 'vue'
 import {
   DAY_MS,
   startOfDay,
+  dayStartOf,
   parseDate,
   spanOf,
   tierFor,
@@ -9,8 +10,14 @@ import {
   buildDays,
   buildMonthBands,
   buildWeekBands,
+  buildWeekRangeBands,
+  buildYearBands,
+  buildQuarterBands,
   hourTicksInWindow,
   hourStepFor,
+  SCALE_DAYW,
+  scaleOfTier,
+  msAtDayOffset,
 } from '@/utils/timeAxis'
 import { estimateToDays } from '@/utils/estimation'
 import { useFormat } from '@/composables/useFormat'
@@ -30,11 +37,11 @@ import { useFormat } from '@/composables/useFormat'
 //   * container px    — scroll container, offset from axis px by leftW + scrollLeft;
 //   * viewport px     — clientX/clientY, used for the fixed-position date pill.
 
-// px per day. The range spans week-grouping (zoomed out) through hour-precision
-// (zoomed in); stops land inside each tier: weeks ≤18, days 24–112, hours ≥140
-// (≥3 hour ticks fit).
-export const ZOOM = [6, 10, 14, 18, 24, 32, 44, 60, 84, 112, 140, 180, 230]
-export const DEFAULT_ZOOM_IDX = 5 // → 32px/day (days tier)
+// px per day. The range spans quarter-grouping (zoomed out) through hour-precision
+// (zoomed in); stops land inside each tier: quarters ≤3, months 4–6, weeks 10–18,
+// days 24–112, hours ≥140 (≥3 hour ticks fit).
+export const ZOOM = [2, 3, 4, 6, 10, 14, 18, 24, 32, 44, 60, 84, 112, 140, 180, 230]
+export const DEFAULT_ZOOM_IDX = 7 // → 24px/day: the days scale preset (v2, #2959)
 
 export function useChartTimeline({
   scheduled,
@@ -98,8 +105,14 @@ export function useChartTimeline({
 
   // ── viewport tracking ──
   const todayMs = startOfDay(Date.now())
-  // Current axis granularity tier: 'weeks' | 'days' | 'hours'.
+  // Current axis granularity tier: 'months' | 'weeks' | 'days' | 'hours'.
   const tier = computed(() => tierFor(dayW.value))
+  // The toolbar's scale preset the zoom currently sits in, and a jump to one.
+  const scale = computed(() => scaleOfTier(tier.value))
+  function setScale(name) {
+    const i = ZOOM.indexOf(SCALE_DAYW[name])
+    if (i >= 0) applyZoom(i)
+  }
   // Horizontal scroll position + viewport width, rAF-throttled — drives the windowed
   // hour-tick rendering (only paints the visible slice).
   const scrollX = ref(0)
@@ -124,11 +137,17 @@ export function useChartTimeline({
     }
     lo -= 3 * DAY_MS
     hi += 7 * DAY_MS
-    const days = Math.round((hi - lo) / DAY_MS) + 1
+    // The axis reaches the viewport's right edge at any zoom — a short plan on a
+    // wide screen must not end in a bare stretch of canvas (v2, #2959).
+    const fill = Math.ceil(Math.max(0, viewW.value - leftW.value) / dayW.value) + 1
+    const days = Math.max(Math.round((hi - lo) / DAY_MS) + 1, fill)
     return { start: startOfDay(lo), days }
   })
   const axisW = computed(() => range.value.days * dayW.value)
-  const dayIndex = (ms) => Math.round((startOfDay(ms) - range.value.start) / DAY_MS)
+  // `dayStartOf`, not `startOfDay`: callers pass stored dates (milestone due
+  // dates), and an all-day one names a calendar date that has to be read in UTC.
+  // Local midnights — todayMs — come out identical either way.
+  const dayIndex = (ms) => Math.round((dayStartOf(ms) - range.value.start) / DAY_MS)
 
   // Axis header bands. Months always show; the second band is per-day (days/hours
   // tiers) or per-week (weeks tier); the hours tier adds an hour-tick row.
@@ -137,15 +156,34 @@ export function useChartTimeline({
   const days = computed(() =>
     buildDays(range.value.start, range.value.days, todayMs, formatters.value),
   )
-  const monthBands = computed(() => buildMonthBands(days.value, formatters.value))
-  const weekBands = computed(() => (tier.value === 'weeks' ? buildWeekBands(days.value) : []))
+  const monthBands = computed(() =>
+    buildMonthBands(days.value, formatters.value, {
+      short: tier.value === 'months' || tier.value === 'quarters',
+    }),
+  )
+  const quarterBands = computed(() =>
+    tier.value === 'quarters' ? buildQuarterBands(days.value) : [],
+  )
+  const weekBands = computed(() =>
+    tier.value === 'weeks' ? buildWeekBands(days.value, formatters.value) : [],
+  )
+  // v2 header (#2959): the days tier reads week ranges over day numbers, the
+  // months tier years over months.
+  const weekRangeBands = computed(() =>
+    tier.value === 'days' ? buildWeekRangeBands(days.value, formatters.value) : [],
+  )
+  const yearBands = computed(() => (tier.value === 'months' ? buildYearBands(days.value) : []))
+  // Weekend columns behind the bars (days/hours tiers): the offset of the first
+  // Saturday from the range start, for a 7-day repeating backdrop.
+  const weekendOffset = computed(() => (6 - new Date(range.value.start).getDay() + 7) % 7)
+  const todayIndex = computed(() => dayIndex(todayMs))
   // Hour ticks only for the visible viewport slice (+ a margin) — "lazy lines" so a
   // wide board doesn't render thousands of header nodes in the hours tier.
   const hourTicks = computed(() => {
     if (tier.value !== 'hours') return []
     const lo = scrollX.value - leftW.value - 200
     const hi = scrollX.value - leftW.value + viewW.value + 200
-    return hourTicksInWindow(range.value.days, dayW.value, lo, hi)
+    return hourTicksInWindow(range.value.days, dayW.value, lo, hi, formatters.value)
   })
   // Minor-gridline period (px): the hour-tick step in the hours tier, else one day.
   const subW = computed(() => {
@@ -196,6 +234,12 @@ export function useChartTimeline({
     }
     scrollRaf = requestAnimationFrame(step)
   }
+  // ←/→ on the chart: a week of the current scale at a time.
+  function scrollByDays(n) {
+    const el = scrollEl.value
+    if (!el) return
+    animateScrollLeft(Math.max(0, el.scrollLeft + n * dayW.value))
+  }
   function centerToday(smooth = true) {
     const el = scrollEl.value
     if (!el) return
@@ -206,15 +250,22 @@ export function useChartTimeline({
   // Centre on the ref appearing rather than on onMounted: the scroll container is
   // the component's template ref, so watching it is what guarantees the element
   // exists (and has a width) when we compute the initial scrollLeft.
-  watch(
-    scrollEl,
-    (el) =>
-      el &&
-      nextTick(() => {
-        centerToday(false)
-        syncScroll()
-      }),
-  )
+  // The viewport's width feeds the axis range (it fills the screen), so a resize
+  // re-reads it — a scroll event alone would miss a window that only got wider.
+  let viewRO = null
+  watch(scrollEl, (el) => {
+    viewRO?.disconnect()
+    viewRO = null
+    if (!el) return
+    if (typeof ResizeObserver !== 'undefined') {
+      viewRO = new ResizeObserver(() => syncScroll())
+      viewRO.observe(el)
+    }
+    nextTick(() => {
+      syncScroll()
+      nextTick(() => centerToday(false))
+    })
+  })
 
   // rAF-throttled scroll/resize sync for the windowed hour ticks + row windowing.
   let scrollRaf2 = 0
@@ -295,7 +346,10 @@ export function useChartTimeline({
       return
     }
     const axisX = Math.max(0, Math.min(axisW.value, el.scrollLeft + xv - leftW.value))
-    cursor.value = { axisX, ms: range.value.start + (axisX / dayW.value) * DAY_MS }
+    // Day offset → instant through the calendar, like the header cells: past a
+    // clock change plain ms arithmetic would label the hovered column with its
+    // neighbour's date.
+    cursor.value = { axisX, ms: msAtDayOffset(range.value.start, axisX / dayW.value) }
     cursorPill.value = { x: e.clientX, top: rect.top }
   }
   function onHoverLeave() {
@@ -306,7 +360,7 @@ export function useChartTimeline({
     if (!cursor.value) return ''
     const dt = new Date(cursor.value.ms)
     // The timeline is laid out on local calendar days, so its cursor label reads
-    // in the browser timezone (timeZone: null) — see DueEditor for the same rule.
+    // in the browser timezone (timeZone: null) — a browser-day grid.
     const o = { day: '2-digit', month: 'short', timeZone: null }
     if (dt.getFullYear() !== new Date().getFullYear()) o.year = 'numeric'
     let s = formatDate(dt, o)
@@ -315,6 +369,7 @@ export function useChartTimeline({
   })
 
   onBeforeUnmount(() => {
+    viewRO?.disconnect()
     cancelAnimationFrame(scrollRaf)
     cancelAnimationFrame(scrollRaf2)
     clearTimeout(zoomSettle)
@@ -334,6 +389,8 @@ export function useChartTimeline({
     applyZoom,
     zoomIn,
     zoomOut,
+    scale,
+    setScale,
     // axis
     todayMs,
     tier,
@@ -343,6 +400,11 @@ export function useChartTimeline({
     days,
     monthBands,
     weekBands,
+    weekRangeBands,
+    yearBands,
+    quarterBands,
+    weekendOffset,
+    todayIndex,
     hourTicks,
     subW,
     todayLeft,
@@ -356,6 +418,7 @@ export function useChartTimeline({
     syncScroll,
     onScroll,
     centerToday,
+    scrollByDays,
     animateScrollLeft,
     // gestures
     pan,

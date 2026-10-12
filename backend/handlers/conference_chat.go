@@ -50,6 +50,20 @@ const (
 	maxChatPage     = 200
 )
 
+// MaxChatTotalBytes caps one message's attachments *together*, which is the
+// number the route's transport budget is sized from (see routeConfMessages).
+//
+// maxChatFiles alone does not bound the request: five files of maxAttachmentBytes
+// each is 125 MiB of multipart buffered for one line of chat, and the comment on
+// maxChatFiles says plainly that this is what it was meant to prevent. A single
+// file keeps the whole 25 MiB — the cap the composers quote and the common case
+// by far — so this only ever refuses a batch, and refuses it here, before a byte
+// is written to disk.
+//
+// Exported because router.go derives the route's body limit from it; they have to
+// agree or the transport answers for a batch the handler would have explained.
+const MaxChatTotalBytes int64 = maxAttachmentBytes
+
 // chatAttachment is one file on a message, as clients see it. is_image is
 // computed from the *sniffed* content type — not from the filename, and not
 // from the extension on disk either. Both of those are downstream of what the
@@ -67,13 +81,41 @@ type chatAttachment struct {
 
 // chatMessage is one line of the conversation with its files already attached,
 // so the rail never has to fetch per message.
+//
+// Kind is "text" for what someone typed and "task" for the line a «/» command
+// leaves (#3055) — «создал(а) задачу #N». Task is that line's link, or nil once
+// the task is gone or out of the call's reach; Body still reads «#N title» for a
+// client that knows neither field.
 type chatMessage struct {
 	ID          uuid.UUID        `json:"id"`
 	UserID      *uuid.UUID       `json:"user_id"`
 	UserName    *string          `json:"user_name"`
 	Body        string           `json:"body"`
+	Kind        string           `json:"kind"`
+	Task        *chatTaskRef     `json:"task"`
 	CreatedAt   time.Time        `json:"created_at"`
 	Attachments []chatAttachment `json:"attachments"`
+}
+
+// chatTaskRef is what a task line needs to link to the task.
+type chatTaskRef struct {
+	ID          uuid.UUID `json:"id"`
+	Number      *int64    `json:"number"`
+	Title       string    `json:"title"`
+	BoardSlug   string    `json:"board_slug"`
+	ProjectSlug string    `json:"project_slug"`
+}
+
+// taskRefOf builds the link of a listed row, or nil when the join found nothing
+// the call may show.
+func taskRefOf(r db.ListConferenceMessagesRow) *chatTaskRef {
+	if r.TaskID == nil || r.TaskTitle == nil || r.TaskBoardSlug == nil || r.TaskProjectSlug == nil {
+		return nil
+	}
+	return &chatTaskRef{
+		ID: *r.TaskID, Number: r.TaskNumber, Title: *r.TaskTitle,
+		BoardSlug: *r.TaskBoardSlug, ProjectSlug: *r.TaskProjectSlug,
+	}
 }
 
 func viewChatAttachment(a db.ConferenceMessageAttachment) chatAttachment {
@@ -151,7 +193,8 @@ func (h *API) hydrateChatPage(c *gin.Context, rows []db.ListConferenceMessagesRo
 		ids = append(ids, r.ID)
 		msgs = append(msgs, chatMessage{
 			ID: r.ID, UserID: r.UserID, UserName: r.UserName,
-			Body: r.Body, CreatedAt: r.CreatedAt, Attachments: []chatAttachment{},
+			Body: r.Body, Kind: r.Kind, Task: taskRefOf(r),
+			CreatedAt: r.CreatedAt, Attachments: []chatAttachment{},
 		})
 	}
 	if len(ids) == 0 {
@@ -190,11 +233,20 @@ func (h *API) PostConferenceMessage(c *gin.Context) {
 		c.JSON(http.StatusConflict, gin.H{"error": "conference has ended"})
 		return
 	}
-	body, files, ok := h.readChatSubmission(c)
+	uid := middleware.CurrentUser(c)
+	// A kick has to reach this rail too (#2932). Posting is broadcast live into
+	// the call by the nudge below, so without this the person a host just threw
+	// out keeps talking to everyone in it — in text instead of audio, and for the
+	// full cooldown. See refuseKicked for why the other two entrances alone were
+	// not enough. Checked before readChatSubmission so a refused message costs no
+	// multipart parse and no disk.
+	if h.refuseKicked(c, conf.ID, uid) {
+		return
+	}
+	body, files, mentions, ok := h.readChatSubmission(c)
 	if !ok {
 		return
 	}
-	uid := middleware.CurrentUser(c)
 
 	// Files land on disk before the transaction so their paths can go into it,
 	// and are swept back up if it fails: a row without its bytes is a broken
@@ -241,7 +293,7 @@ func (h *API) PostConferenceMessage(c *gin.Context) {
 	}
 
 	out := chatMessage{
-		ID: msg.ID, UserID: msg.UserID, Body: msg.Body, CreatedAt: msg.CreatedAt,
+		ID: msg.ID, UserID: msg.UserID, Body: msg.Body, Kind: msg.Kind, CreatedAt: msg.CreatedAt,
 		Attachments: make([]chatAttachment, 0, len(atts)),
 	}
 	if name := h.userName(c, uid); name != "" {
@@ -252,6 +304,7 @@ func (h *API) PostConferenceMessage(c *gin.Context) {
 	}
 	// The nudge carries no payload — see the note at the top of this file.
 	h.notifyConfRoom(conf.ID, confroom.TypeChat)
+	h.notifyMentionsOf(c, conf.WorkspaceID, mentions, msgConfMention(h.actorName(c), conf, body))
 	c.JSON(http.StatusCreated, out)
 }
 
@@ -263,47 +316,111 @@ type storedChatFile struct {
 	size        int64
 }
 
-// readChatSubmission pulls the body and any files out of either encoding,
-// writing the response and returning false when the submission is not usable.
-func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeader, bool) {
+// maxChatMentions caps the people one line may ring: a pasted roster must not
+// turn one message into a notification storm.
+const maxChatMentions = 50
+
+// readChatSubmission pulls the body, any files and the @-mentioned user ids
+// (#3055) out of either encoding, writing the response and returning false when
+// the submission is not usable.
+func (h *API) readChatSubmission(c *gin.Context) (string, []*multipart.FileHeader, []uuid.UUID, bool) {
 	var body string
 	var files []*multipart.FileHeader
+	var mentions []uuid.UUID
 	if strings.HasPrefix(c.ContentType(), "multipart/form-data") {
 		form, err := c.MultipartForm()
 		if err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid form"})
-			return "", nil, false
+			return "", nil, nil, false
 		}
 		if v := form.Value["body"]; len(v) > 0 {
 			body = v[0]
 		}
+		for _, raw := range form.Value["mentions"] {
+			id, err := uuid.Parse(raw)
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mention"})
+				return "", nil, nil, false
+			}
+			mentions = append(mentions, id)
+		}
 		files = form.File["files"]
+		for _, s := range form.Value["mentions"] {
+			id, perr := uuid.Parse(s)
+			if perr != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "invalid mention"})
+				return "", nil, nil, false
+			}
+			mentions = append(mentions, id)
+		}
 	} else {
 		var req struct {
-			Body string `json:"body"`
+			Body     string      `json:"body"`
+			Mentions []uuid.UUID `json:"mentions"`
 		}
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-			return "", nil, false
+			return "", nil, nil, false
 		}
 		body = req.Body
+		mentions = req.Mentions
+	}
+	if len(mentions) > maxChatMentions {
+		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("at most %d mentions per message", maxChatMentions)})
+		return "", nil, nil, false
 	}
 	body = strings.TrimSpace(body)
 	// An empty message with no files is not a message. Allowing it would put
 	// blank rows in the rail every time somebody leans on Enter.
 	if body == "" && len(files) == 0 {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "message must have text or a file"})
-		return "", nil, false
+		return "", nil, nil, false
 	}
 	if utf8.RuneCountInString(body) > maxChatBody {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("message is longer than %d characters", maxChatBody)})
-		return "", nil, false
+		return "", nil, nil, false
 	}
 	if len(files) > maxChatFiles {
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("at most %d files per message", maxChatFiles)})
-		return "", nil, false
+		return "", nil, nil, false
 	}
-	return body, files, true
+	// The aggregate ceiling, checked before storeChatFiles so an over-full batch
+	// costs no disk. Phrased with the number so the clients can format it in the
+	// reader's own units, the way the document validator's sentence is —
+	// the per-file refusal below it still predates that and says "25 МБ" in
+	// Russian to everyone.
+	var total int64
+	for _, f := range files {
+		total += f.Size
+	}
+	if total > MaxChatTotalBytes {
+		c.JSON(http.StatusRequestEntityTooLarge,
+			gin.H{"error": fmt.Sprintf("attachments exceed %d bytes", MaxChatTotalBytes)})
+		return "", nil, nil, false
+	}
+	return body, files, mentions, true
+}
+
+// chatDir is where one conference's chat uploads live. Per conference and used
+// by nothing else, which is what lets the whole directory go when the conference
+// does.
+func (h *API) chatDir(confID uuid.UUID) string {
+	return filepath.Join(h.uploadDir, "conf", confID.String())
+}
+
+// purgeChatDir clears the uploads of a conference that has just been deleted.
+//
+// Deleting a single message reads its paths before the row goes, because after
+// the cascade nothing remembers where the bytes are; deleting the conference owes
+// the same to every message at once, and the row-by-row version would be a page
+// of statements to arrive at a directory that is already exactly the set of files
+// to remove. Unlike rec/ there is nothing to wait for — a chat upload is written
+// inside the request that posted it, so no writer can be in flight.
+//
+// Best-effort: the rows are gone either way, and a delete that reported a 500
+// because a file was already missing would be worse than a file left behind.
+func (h *API) purgeChatDir(confID uuid.UUID) {
+	_ = os.RemoveAll(h.chatDir(confID))
 }
 
 // storeChatFiles writes the uploads under UPLOAD_DIR/conf/<conference>/ and
@@ -313,8 +430,10 @@ func (h *API) storeChatFiles(c *gin.Context, confID uuid.UUID, files []*multipar
 	if len(files) == 0 {
 		return nil, true
 	}
-	dir := filepath.Join(h.uploadDir, "conf", confID.String())
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	dir := h.chatDir(confID)
+	// 0750: conf/ is written and read by this process alone — unlike rec/ next to
+	// it, which is shared with the egress worker (see recordingDirMode).
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return nil, false
 	}
@@ -395,7 +514,7 @@ func (h *API) DownloadConferenceMessageAttachment(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "файл недоступен"})
 		return
 	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", att.Filename))
+	c.Header("Content-Disposition", contentDisposition(att.Filename))
 	c.Header("X-Content-Type-Options", "nosniff")
 	// The type is the sniffed one, so a client that renders the bytes from a blob
 	// gets a picture rather than a download prompt.
@@ -465,4 +584,3 @@ func (h *API) userName(c *gin.Context, uid uuid.UUID) string {
 	}
 	return u.Name
 }
-

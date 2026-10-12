@@ -5,7 +5,6 @@ import (
 	"crypto/hmac"
 	"encoding/base64"
 	"fmt"
-	"log"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -16,6 +15,7 @@ import (
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
+	"tessera/internal/logsafe"
 )
 
 // Outbound asset mirroring (task #2713).
@@ -215,7 +215,7 @@ func (h *API) pushAssets(ctx context.Context, client *gitlab.Client, integ db.Gi
 	for _, ref := range outboundRefs(body) {
 		glURL, err := h.mirrorAsset(ctx, client, integ, ref)
 		if err != nil {
-			log.Printf("gitlab push assets: integration %s could not mirror %s: %v", integ.ID, ref, err)
+			logsafe.Printf("gitlab push assets: integration %s could not mirror %s: %v", integ.ID, ref, err)
 			resolved[ref] = ""
 			st.Skipped++
 			continue
@@ -296,15 +296,22 @@ func (h *API) mirrorAsset(ctx context.Context, client *gitlab.Client, integ db.G
 		return "", fmt.Errorf("proxy link failed signature check")
 	}
 
+	// The same gate ServeUpload puts on the public route. assetURLPat already
+	// limits a ref to this shape, but that regex lives far from the open below;
+	// checking here keeps the file name a plain media name whoever calls this.
+	name := strings.TrimPrefix(ref, "/api/uploads/")
+	if !mediaNameRe.MatchString(name) {
+		return "", fmt.Errorf("not a media upload name: %q", name)
+	}
+
 	if row, err := h.q.GetGitlabUpload(ctx, db.GetGitlabUploadParams{
 		IntegrationID: integ.ID, SourceKey: ref,
 	}); err == nil && row.GlUrl != "" {
 		return row.GlUrl, nil
 	}
 
-	name := strings.TrimPrefix(ref, "/api/uploads/")
-	path := filepath.Join(h.uploadDir, "media", filepath.Base(name))
-	f, err := os.Open(path) //nolint:gosec // name is regex-constrained and Base'd
+	path := filepath.Join(h.uploadDir, "media", name)
+	f, err := os.Open(path) // #nosec G304 -- name matched mediaNameRe: no separator, no dot-dot
 	if err != nil {
 		return "", err
 	}
@@ -319,7 +326,7 @@ func (h *API) mirrorAsset(ctx context.Context, client *gitlab.Client, integ db.G
 	}); err != nil {
 		// The bytes are in GitLab; losing the map row only costs a duplicate upload
 		// next time, so don't fail the push over it.
-		log.Printf("gitlab push assets: record upload %s: %v", ref, err)
+		logsafe.Printf("gitlab push assets: record upload %s: %v", ref, err)
 	}
 	return up.URL, nil
 }
@@ -371,7 +378,7 @@ func (h *API) pushTaskAttachmentsNote(ctx context.Context, client *gitlab.Client
 		key := "att:" + att.ID.String()
 		glURL, merr := h.mirrorAttachment(ctx, client, integ, key, att)
 		if merr != nil {
-			log.Printf("gitlab push attachments: task %s file %s: %v", taskID, att.Filename, merr)
+			logsafe.Printf("gitlab push attachments: task %s file %s: %v", taskID, att.Filename, merr)
 			lines = append(lines, "- "+att.Filename+" — файл доступен в Tessera")
 			st.Skipped++
 			continue
@@ -384,7 +391,7 @@ func (h *API) pushTaskAttachmentsNote(ctx context.Context, client *gitlab.Client
 	}
 	body := "**Вложения задачи Tessera**\n\n" + strings.Join(lines, "\n") + tesseraCommentMarker
 	if _, cerr := client.CreateIssueNote(ctx, integ.ProjectPath, iid, body); cerr != nil {
-		log.Printf("gitlab push attachments: post note for task %s: %v", taskID, cerr)
+		logsafe.Printf("gitlab push attachments: post note for task %s: %v", taskID, cerr)
 	}
 	return st
 }
@@ -397,7 +404,7 @@ func (h *API) mirrorAttachment(ctx context.Context, client *gitlab.Client, integ
 	}); err == nil && row.GlUrl != "" {
 		return row.GlUrl, nil
 	}
-	f, err := os.Open(att.StoragePath) //nolint:gosec // path comes from our own attachments row
+	f, err := os.Open(att.StoragePath) // #nosec G304 -- path comes from our own attachments row
 	if err != nil {
 		return "", err
 	}
@@ -409,7 +416,7 @@ func (h *API) mirrorAttachment(ctx context.Context, client *gitlab.Client, integ
 	if _, err := h.q.UpsertGitlabUpload(ctx, db.UpsertGitlabUploadParams{
 		IntegrationID: integ.ID, SourceKey: key, GlUrl: up.URL, GlMarkdown: up.Markdown,
 	}); err != nil {
-		log.Printf("gitlab push attachments: record upload %s: %v", key, err)
+		logsafe.Printf("gitlab push attachments: record upload %s: %v", key, err)
 	}
 	return up.URL, nil
 }

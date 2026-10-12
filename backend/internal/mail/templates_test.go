@@ -9,12 +9,27 @@ import (
 
 // allKinds is every letter the server sends. Adding a Kind without adding it
 // here is the one way this file stops covering the catalog — keep them together.
-var allKinds = []Kind{KindVerify, KindReset, KindAdminReset, KindInvitation}
+var allKinds = []Kind{
+	KindVerify, KindReset, KindAdminReset, KindInvitation,
+	KindEmailChange, KindEmailChanged, KindEmailInUse,
+}
+
+// codeKinds are the letters whose whole point is a one-time code (#3035).
+var codeKinds = map[Kind]bool{KindVerify: true, KindEmailChange: true}
 
 func TestComposeCoversEveryKindInEveryLanguage(t *testing.T) {
 	for _, lang := range i18n.Supported {
 		for _, kind := range allKinds {
-			subject, body := Compose(kind, lang, Vars{Link: "https://tessera.example/x?token=abc", TTLHours: 48})
+			subject, body := Compose(kind, lang, Vars{
+				Link: "https://tessera.example/x?token=abc", TTLHours: 48,
+				Code: "482913", CodeMinutes: 15, Email: "new@example.com",
+			})
+			if codeKinds[kind] && !strings.Contains(body, "482913") {
+				t.Errorf("%s/%s: body drops the code:\n%s", lang, kind, body)
+			}
+			if kind == KindEmailChanged && !strings.Contains(body, "new@example.com") {
+				t.Errorf("%s/%s: notice must name the new address:\n%s", lang, kind, body)
+			}
 			if subject == "" || body == "" {
 				t.Errorf("%s/%s: empty letter", lang, kind)
 				continue
@@ -22,7 +37,7 @@ func TestComposeCoversEveryKindInEveryLanguage(t *testing.T) {
 			if !strings.Contains(body, "https://tessera.example/x?token=abc") {
 				t.Errorf("%s/%s: body drops the link:\n%s", lang, kind, body)
 			}
-			for _, ph := range []string{"{link}", "{ttl}"} {
+			for _, ph := range []string{"{link}", "{ttl}", "{code}", "{codettl}", "{email}"} {
 				if strings.Contains(subject+body, ph) {
 					t.Errorf("%s/%s: placeholder %s left unrendered:\n%s", lang, kind, ph, body)
 				}
@@ -82,6 +97,26 @@ func TestTTLPhrase(t *testing.T) {
 	for _, c := range cases {
 		if got := ttlPhrase(c.hours, c.lang); got != c.want {
 			t.Errorf("ttlPhrase(%d, %q) = %q, want %q", c.hours, c.lang, got, c.want)
+		}
+	}
+}
+
+func TestMinutesPhrase(t *testing.T) {
+	cases := []struct {
+		m    int
+		lang string
+		want string
+	}{
+		{15, "ru", "15 минут"},
+		{1, "ru", "1 минуту"},
+		{2, "ru", "2 минуты"},
+		{15, "en", "15 minutes"},
+		{1, "en", "1 minute"},
+		{0, "en", "1 minute"},
+	}
+	for _, c := range cases {
+		if got := minutesPhrase(c.m, c.lang); got != c.want {
+			t.Errorf("minutesPhrase(%d, %q) = %q, want %q", c.m, c.lang, got, c.want)
 		}
 	}
 }

@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<sc-if value="{{ isAdd }}" hint-placeholder-val="{{ false }}">
+<div style="width:200px;height:44px;box-sizing:border-box;border-radius:var(--v-r-col);display:flex;align-items:center;justify-content:center;gap:6px;background:var(--v-add-bg, var(--v-col));color:var(--t-text3);font-size:13px;font-weight:500;cursor:pointer" style-hover="color:var(--t-text1)"><x-import component-from-global-scope="Tessera.Icon" name="AddOutline" size="16" hint-size="16px,16px"></x-import><span>Колонка</span></div>
+</sc-if>
+<sc-if value="{{ isCollapsed }}" hint-placeholder-val="{{ false }}">
+<div style="position:relative;isolation:isolate;width:44px;box-sizing:border-box;border-radius:var(--v-r-col);min-height:250px;padding:8px 0 14px;display:flex;flex-direction:column;align-items:center;gap:10px">
+<div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;display:var(--v-colA-d, none);background:linear-gradient(180deg, color-mix(in srgb, var(--k) var(--v-wash), var(--v-col)) 0, var(--v-col) 150px)"></div>
+<div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;display:var(--v-capB-d, none);background:linear-gradient(to top right, color-mix(in srgb, var(--k) var(--v-cap-a), var(--v-board)), color-mix(in srgb, var(--k) var(--v-cap-b), var(--v-board)))"></div>
+<div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;display:var(--v-colC-d, none);background:color-mix(in srgb, var(--k) var(--v-tint), var(--v-col))"></div>
+<div style="width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:8px;color:var(--t-text3)" style-hover="background:var(--v-hover);color:var(--t-text1)"><x-import component-from-global-scope="Tessera.Icon" name="ChevronForwardOutline" size="15" hint-size="15px,15px"></x-import></div>
+<span style="display:flex;color:var(--k)"><x-import component-from-global-scope="Tessera.TesseraIcon" name="{{ col.icon }}" variant="{{ col.variant }}" size="16" hint-size="16px,16px"></x-import></span>
+<span style="writing-mode:vertical-rl;font-size:13.5px;font-weight:600;color:var(--t-text1);white-space:nowrap">{{ col.name }}</span>
+<span style="font-size:12px;color:var(--t-text3);font-variant-numeric:tabular-nums">{{ col.countLabel }}</span>
+</div>
+</sc-if>
+<sc-if value="{{ isFull }}" hint-placeholder-val="{{ true }}">
+<div style="position:relative;isolation:isolate;width:var(--cw, 256px);flex:0 0 auto;box-sizing:border-box;border-radius:var(--v-r-col);padding:var(--v-col-pad, 8px);display:flex;flex-direction:column;gap:8px" onMouseEnter="{{ enter }}" onMouseLeave="{{ leave }}">
+<div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;display:var(--v-colA-d, none);background:linear-gradient(180deg, color-mix(in srgb, var(--k) var(--v-wash), var(--v-col)) 0, var(--v-col) 150px)"></div>
+<div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;display:var(--v-colC-d, none);background:color-mix(in srgb, var(--k) var(--v-tint), var(--v-col))"></div>
+<sc-if value="{{ showHeader }}" hint-placeholder-val="{{ true }}">
+<div style="position:relative;isolation:isolate;display:flex;align-items:center;gap:5px;height:var(--v-head-h, 30px);padding:var(--v-head-pad, 0 0 0 6px);margin-bottom:var(--v-head-mb, 0px);border-radius:var(--v-r-col)">
+<div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;pointer-events:none;display:var(--v-capB-d, none);background:linear-gradient(to top right, color-mix(in srgb, var(--k) var(--v-cap-a), var(--v-board)), color-mix(in srgb, var(--k) var(--v-cap-b), var(--v-board)))"></div>
+<sc-if value="{{ isStatus }}" hint-placeholder-val="{{ true }}"><span style="display:flex;flex:0 0 auto;color:var(--k)"><x-import component-from-global-scope="Tessera.TesseraIcon" name="{{ col.icon }}" variant="{{ col.variant }}" size="16" hint-size="16px,16px"></x-import></span></sc-if>
+<sc-if value="{{ isTag }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TagPill" tag="{{ col.tag }}" prefix-names="{{ prefixNames }}" hint-size="90px,20px"></x-import></sc-if>
+<sc-if value="{{ isStatus }}" hint-placeholder-val="{{ true }}"><span style="flex:0 1 auto;min-width:0;font-size:13px;font-weight:600;color:var(--t-text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ col.name }}</span></sc-if>
+<sc-if value="{{ isNone }}" hint-placeholder-val="{{ false }}"><span style="flex:0 1 auto;min-width:0;font-size:13px;font-weight:600;color:var(--t-text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ col.name }}</span></sc-if>
+<span style="flex:0 0 auto;font-size:12.5px;color:var(--t-text3);font-variant-numeric:tabular-nums;white-space:nowrap">{{ col.countLabel }}</span>
+<sc-if value="{{ col.est }}" hint-placeholder-val="{{ false }}"><span style="flex:0 0 auto;font-size:12.5px;color:var(--t-text3);white-space:nowrap;font-variant-numeric:tabular-nums">Σ {{ col.est }}</span></sc-if>
+<span style="flex:1 1 0;min-width:0"></span>
+<div title="Свернуть" style="flex:0 0 22px;width:22px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:7px;color:var(--t-text3)" style-hover="background:var(--v-hover);color:var(--t-text1)"><x-import component-from-global-scope="Tessera.Icon" name="ChevronBackOutline" size="14" hint-size="14px,14px"></x-import></div>
+<sc-if value="{{ isStatus }}" hint-placeholder-val="{{ true }}"><div title="Меню колонки" style="flex:0 0 22px;width:22px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:7px;color:var(--t-text3)" style-hover="background:var(--v-hover);color:var(--t-text1)"><x-import component-from-global-scope="Tessera.Icon" name="EllipsisHorizontalOutline" size="15" hint-size="15px,15px"></x-import></div></sc-if>
+</div>
+</sc-if>
+<sc-for list="{{ cards }}" as="s" hint-placeholder-count="2">
+<sc-if value="{{ s.isDrop }}" hint-placeholder-val="{{ false }}"><div style="height:74px;flex:0 0 auto;border-radius:var(--v-r-card);background:var(--v-drop);box-shadow:var(--v-sh-drop)"></div></sc-if>
+<sc-if value="{{ s.isCompact }}" hint-placeholder-val="{{ false }}"><div style="position:relative;--cpad:8px 12px;--cpx:12px;--v-lead-d:var(--v-lead-c)" style-hover="z-index:10"><dc-import name="Card" s="{{ s }}" dir="{{ dir }}" hint-size="100%,92px"></dc-import></div></sc-if>
+<sc-if value="{{ s.isMedium }}" hint-placeholder-val="{{ true }}"><div style="position:relative;--cpad:10px 12px;--cpx:12px" style-hover="z-index:10"><dc-import name="Card" s="{{ s }}" dir="{{ dir }}" hint-size="100%,92px"></dc-import></div></sc-if>
+<sc-if value="{{ s.isLarge }}" hint-placeholder-val="{{ false }}"><div style="position:relative;--cpad:13px 14px;--cpx:14px;--v-lbl:inline;--v-lbl-short:none;--v-ph:24px" style-hover="z-index:10"><dc-import name="Card" s="{{ s }}" dir="{{ dir }}" hint-size="100%,92px"></dc-import></div></sc-if>
+<sc-if value="{{ s.isTip }}" hint-placeholder-val="{{ false }}"><div style="position:relative;z-index:10;--cpad:10px 12px;--cpx:12px"><dc-import name="Card" s="{{ s }}" dir="{{ dir }}" hint-size="100%,92px"></dc-import></div></sc-if>
+<sc-if value="{{ s.isDrag }}" hint-placeholder-val="{{ false }}"><div style="position:relative;z-index:5;margin-top:-40px;transform:translateX(10px) rotate(2.5deg);--cpad:10px 12px;--cpx:12px"><dc-import name="Card" s="{{ s }}" dir="{{ dir }}" hint-size="100%,92px"></dc-import></div></sc-if>
+</sc-for>
+<sc-if value="{{ showAdd }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px;height:34px;padding:0 7px 0 10px;border-radius:var(--v-r-card);color:var(--t-text2);font-size:13px;font-weight:500;background:color-mix(in srgb, var(--k) 12%, transparent);cursor:pointer" style-hover="color:var(--t-text1);background:color-mix(in srgb, var(--k) 20%, transparent)"><x-import component-from-global-scope="Tessera.Icon" name="AddOutline" size="15" hint-size="15px,15px"></x-import><span style="flex:1">Создать задачу</span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">C</span></div></sc-if>
+</div>
+</sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = { h: false };
+  renderVals() {
+    const c = this.props.c || { col: { name: '', kind: 'status' }, cards: [] };
+    const col = c.col || {};
+    const kind = col.kind || 'status';
+    const cards = (c.cards || []).map((s) => {
+      if (s.isDrop) return { ...s, isDrop: true };
+      const drag = s.state === 'drag';
+      return { ...s, isCompact: !drag && s.size === 'compact', isLarge: !drag && s.size === 'large', isMedium: !drag && !s.tip && s.size !== 'compact' && s.size !== 'large', isTip: !drag && !!s.tip, isDrag: drag };
+    });
+    return {
+      col, dir: this.props.dir || 'A', cards,
+      isAdd: kind === 'add', isCollapsed: kind !== 'add' && !!col.collapsed, isFull: kind !== 'add' && !col.collapsed,
+      showHeader: !c.hideHeader, isStatus: kind === 'status', isTag: kind === 'tag', isNone: kind === 'none',
+      prefixNames: { 'app::': 'App' },
+      showAdd: kind !== 'add' && !col.collapsed && col.id !== 'done' && (!!col.showAdd || this.state.h),
+      enter: () => this.setState({ h: true }), leave: () => this.setState({ h: false }),
+    };
+  }
+}
+</script>
+</body>
+</html>

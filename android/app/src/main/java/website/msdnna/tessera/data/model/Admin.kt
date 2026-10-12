@@ -31,10 +31,17 @@ data class OAuthConfig(
     @SerializedName("org_map") val orgMap: JsonElement? = null,
     @SerializedName("has_secret") val hasSecret: Boolean = false,
     @SerializedName("has_service_token") val hasServiceToken: Boolean = false,
+    @SerializedName("sudo_writeback") val sudoWriteback: Boolean = false,
 )
 
 /** PUT /admin/oauth/gitlab. Empty `client_secret`/`service_token` keep the stored
- *  values (so they needn't be re-entered on every edit). */
+ *  values (so they needn't be re-entered on every edit).
+ *
+ *  Всё остальное здесь — полная замена: сервер собирает ряд провайдера из полей
+ *  тела, и ключ, которого нет, приезжает нулевым значением своего типа. Поэтому
+ *  `sudo_writeback` обязан ехать в КАЖДОМ сохранении, даже когда карточка его не
+ *  трогала: без него сохранение с телефона тихо выключало запись от имени
+ *  действующего пользователя, включённую из веба (#2932). */
 data class OAuthConfigRequest(
     @SerializedName("client_id") val clientId: String,
     @SerializedName("client_secret") val clientSecret: String,
@@ -42,4 +49,5 @@ data class OAuthConfigRequest(
     @SerializedName("enabled") val enabled: Boolean,
     @SerializedName("org_map") val orgMap: JsonElement,
     @SerializedName("service_token") val serviceToken: String,
+    @SerializedName("sudo_writeback") val sudoWriteback: Boolean,
 )

@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach, beforeEach } from 'vitest'
 import { setActivePinia, createPinia } from 'pinia'
-import { mount } from '@vue/test-utils'
+import { flushPromises, mount } from '@vue/test-utils'
 
 // useMessage() throws without an <n-message-provider>; keep the rest of naive-ui
 // intact and stub only that, as the other component specs do.
@@ -22,6 +22,7 @@ vi.mock('@/api', () => ({
   },
 }))
 
+const { workspaces: wsApi } = await import('@/api')
 const { default: DocLinks } = await import('@/components/documents/DocLinks.vue')
 
 const link = (over = {}) => ({
@@ -86,6 +87,34 @@ describe('DocLinks panel', () => {
   it('offers to link the selected block when one is armed', () => {
     wrapper = mount(DocLinks, { props: { anchorBlockId: 'b-7', anchorQuote: 'пункт 4.2' } })
     expect(wrapper.get('[data-testid="doc-link-add"]').text()).toContain('Связать блок')
+  })
+
+  // A link's key is (документ, задача, блок): the task linked to the whole
+  // document is still a candidate for the clause that implements it, and the one
+  // already pinned to that clause is not. The picker itself lives in a popover
+  // teleported to the body, so the candidates are read off the component.
+  const pickTask = async (props) => {
+    wsApi.tasks.mockResolvedValueOnce({
+      data: [{ id: 't1', number: 12, title: 'Согласовать смету' }],
+    })
+    wrapper = mount(DocLinks, { props: { wsId: 'w1', ...props } })
+    await wrapper.get('[data-testid="doc-link-add"]').trigger('click')
+    await flushPromises()
+    return wrapper.vm.candidates.map((task) => task.id)
+  }
+
+  it('offers a task already linked to the whole document when a block is armed', async () => {
+    expect(await pickTask({ links: [link({ block_id: '' })], anchorBlockId: 'b-7' })).toEqual([
+      't1',
+    ])
+  })
+
+  it('drops a task already linked to the very block that is armed', async () => {
+    expect(await pickTask({ links: [link({ block_id: 'b-7' })], anchorBlockId: 'b-7' })).toEqual([])
+  })
+
+  it('drops a task already linked to the document when no block is armed', async () => {
+    expect(await pickTask({ links: [link({ block_id: '' })] })).toEqual([])
   })
 
   it('renders a route with its revision and progress', () => {

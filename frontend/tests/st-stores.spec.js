@@ -43,6 +43,7 @@ vi.mock('@/composables/useTreeExpand', () => ({
 import { useAuthStore } from '@/stores/auth'
 import { useThemeStore } from '@/stores/theme'
 import { useWorkspacesStore } from '@/stores/workspaces'
+import { formatEstimate } from '@/utils/estimation'
 import { useBoardViewStore } from '@/stores/boardView'
 import { useConflictsStore } from '@/stores/conflicts'
 import { useGitlabStore } from '@/stores/gitlab'
@@ -339,6 +340,254 @@ describe('workspaces store', () => {
     await s.selectWorkspace('w9')
     s.setCustomCommands([{ key: 'hold', description: 'Отложить' }])
     expect(s.commands.map((c) => c.key)).toEqual(['close', 'hold'])
+  })
+
+  // #2932: board.created/updated/deleted are workspace events, but the sidebar
+  // tree used to hear none of them — refresh() deliberately leaves expanded
+  // boards alone, and the open board ignores board CRUD. So only the client that
+  // pressed the button ever re-read boardsByProject: a colleague's new board
+  // stayed invisible, their rename stayed stale, and a board they deleted kept
+  // sitting in everybody's sidebar, handing out «Не найдено» to whoever clicked.
+  describe('onBoardEvent keeps the sidebar tree in sync with other clients', () => {
+    const loaded = () => {
+      const s = useWorkspacesStore()
+      s.boardsByProject = {
+        p1: [
+          { id: 'b1', project_id: 'p1', name: 'Спринт', position: 1 },
+          { id: 'b3', project_id: 'p1', name: 'Хотелки', position: 3 },
+        ],
+        p2: [{ id: 'b9', project_id: 'p2', name: 'Чужая', position: 1 }],
+      }
+      return s
+    }
+
+    it('вставляет созданную доску на её место по position', () => {
+      const s = loaded()
+      s.onBoardEvent({
+        type: 'board.created',
+        data: { id: 'b2', project_id: 'p1', name: 'Багфиксы', position: 2 },
+      })
+      expect(s.boardsByProject.p1.map((b) => b.id)).toEqual(['b1', 'b2', 'b3'])
+    })
+
+    it('не дублирует доску, которую создавший уже подгрузил сам', () => {
+      const s = loaded()
+      s.onBoardEvent({ type: 'board.created', data: { id: 'b1', project_id: 'p1', position: 1 } })
+      expect(s.boardsByProject.p1).toHaveLength(2)
+    })
+
+    it('не трогает проект, чьи доски ещё не раскрыты — он подтянет правду сам', () => {
+      const s = loaded()
+      s.onBoardEvent({ type: 'board.created', data: { id: 'b7', project_id: 'p7', position: 1 } })
+      expect(s.boardsByProject.p7).toBeUndefined()
+    })
+
+    it('подхватывает чужое переименование', () => {
+      const s = loaded()
+      s.onBoardEvent({ type: 'board.updated', data: { id: 'b1', project_id: 'p1', name: 'Релиз' } })
+      expect(s.boardsByProject.p1[0].name).toBe('Релиз')
+      // Переименование не переставляет доски.
+      expect(s.boardsByProject.p1.map((b) => b.id)).toEqual(['b1', 'b3'])
+    })
+
+    // board.deleted несёт голый {id} — без project_id, так что доску приходится
+    // искать по всем загруженным спискам.
+    it('убирает удалённую доску, хотя событие не называет проект', () => {
+      const s = loaded()
+      s.onBoardEvent({ type: 'board.deleted', data: { id: 'b3' } })
+      expect(s.boardsByProject.p1.map((b) => b.id)).toEqual(['b1'])
+      expect(s.boardsByProject.p2).toHaveLength(1)
+    })
+
+    it('событие о незагруженной доске ничего не ломает', () => {
+      const s = loaded()
+      const before = s.boardsByProject
+      s.onBoardEvent({ type: 'board.deleted', data: { id: 'b404' } })
+      s.onBoardEvent({ type: 'board.deleted', data: {} })
+      s.onBoardEvent({ type: 'task.deleted', data: { id: 'b1' } })
+      expect(s.boardsByProject).toBe(before)
+    })
+  })
+
+  // #2932: узлы спринтов рисует ProjectRow, а сокет открыт один на приложение —
+  // поэтому событие доезжает до строки проекта ревизией, которую она watch'ит.
+  describe('onMilestoneEvent помечает список спринтов протухшим', () => {
+    const ws = 'w1'
+    const ready = () => {
+      const s = useWorkspacesStore()
+      s.currentId = ws
+      return s
+    }
+
+    it('двигает ревизию только того проекта, который назвало событие', () => {
+      const s = ready()
+      const p1 = s.milestoneRevFor('p1')
+      const p2 = s.milestoneRevFor('p2')
+      s.onMilestoneEvent({
+        type: 'milestone.created',
+        scope: ws,
+        data: { id: 'm1', project_id: 'p1' },
+      })
+      expect(s.milestoneRevFor('p1')).toBe(p1 + 1)
+      expect(s.milestoneRevFor('p2')).toBe(p2)
+    })
+
+    // milestone.deleted — голый {id}: проект неизвестен, значит протухли все.
+    it('двигает ревизию всем, когда событие не называет проект', () => {
+      const s = ready()
+      const p1 = s.milestoneRevFor('p1')
+      const p2 = s.milestoneRevFor('p2')
+      s.onMilestoneEvent({ type: 'milestone.deleted', scope: ws, data: { id: 'm1' } })
+      expect(s.milestoneRevFor('p1')).toBe(p1 + 1)
+      expect(s.milestoneRevFor('p2')).toBe(p2 + 1)
+    })
+
+    it('молчит на чужом пространстве и на не-спринтовых событиях', () => {
+      const s = ready()
+      const p1 = s.milestoneRevFor('p1')
+      s.onMilestoneEvent({ type: 'milestone.created', scope: 'w2', data: { project_id: 'p1' } })
+      s.onMilestoneEvent({ type: 'task.updated', scope: ws, data: { id: 't1' } })
+      s.onMilestoneEvent({ type: 'board.deleted', scope: ws, data: { id: 'b1' } })
+      expect(s.milestoneRevFor('p1')).toBe(p1)
+    })
+  })
+
+  // #2932: a ring in the group edges breaks the sidebar in two ways, and the
+  // tree is built from parent_id in both. Drawing starts at the root, so a ring
+  // is unreachable from it: the groups in it — and every project inside them —
+  // simply stop appearing, with no way left to drag them out. And the
+  // active-rail lookup walks *up* from the open project's group, which in a ring
+  // never reaches a root: that loop sits in a computed, so it takes the tab with
+  // it. The server refuses to make such a cycle now; data from before that guard
+  // still has to render, so the ring is flattened to roots — nothing hidden.
+  it('a cycle in group parents stays visible instead of dropping out of the tree', () => {
+    const s = useWorkspacesStore()
+    // a ↔ b closed on each other, c hangs under a, d is an untouched root
+    s.groups = [
+      { id: 'a', parent_id: 'b', position: 1 },
+      { id: 'b', parent_id: 'a', position: 2 },
+      { id: 'c', parent_id: 'a', position: 3 },
+      { id: 'd', parent_id: null, position: 4 },
+    ]
+
+    // Walk the whole tree the way the components do, from the root down.
+    const visited = []
+    const walk = (parentId, depth) => {
+      if (depth > 12) throw new Error('group tree does not terminate')
+      for (const g of s.childGroups(parentId)) {
+        visited.push(g.id)
+        walk(g.id, depth + 1)
+      }
+    }
+    walk(null, 0)
+
+    // Every group is reachable — without the guard a, b and c are orphaned off
+    // the root and only d is drawn.
+    expect(visited.sort()).toEqual(['a', 'b', 'c', 'd'])
+    expect(s.childGroups(null).map((g) => g.id)).toEqual(['a', 'b', 'd'])
+    expect(s.childGroups('a').map((g) => g.id)).toEqual(['c']) // b broke its own edge
+    expect(s.parentGroupOf('a')).toBeNull()
+    expect(s.parentGroupOf('c').id).toBe('a')
+  })
+
+  it('walking up from a group in a cycle reaches a root instead of looping', () => {
+    const s = useWorkspacesStore()
+    s.groups = [
+      { id: 'a', parent_id: 'b', position: 1 },
+      { id: 'b', parent_id: 'a', position: 2 },
+      { id: 'c', parent_id: 'a', position: 3 },
+    ]
+    // Sidebar's active-rail lookup, verbatim: up from the open project's group.
+    const rootOf = (startId) => {
+      let g = s.groups.find((x) => x.id === startId)
+      let parent = g ? s.parentGroupOf(g.id) : null
+      for (let steps = 0; parent; steps += 1) {
+        if (steps > 24) throw new Error('ancestor walk does not terminate')
+        g = parent
+        parent = s.parentGroupOf(g.id)
+      }
+      return g?.id ?? null
+    }
+    expect(rootOf('c')).toBe('a') // a is a root now, so the walk stops there
+    expect(rootOf('a')).toBe('a')
+    expect(rootOf('b')).toBe('b')
+  })
+
+  it('an ordinary group tree is untouched by the cycle guard', () => {
+    const s = useWorkspacesStore()
+    s.groups = [
+      { id: 'top', parent_id: null, position: 1 },
+      { id: 'mid', parent_id: 'top', position: 2 },
+      { id: 'deep', parent_id: 'mid', position: 3 },
+    ]
+    expect(s.childGroups(null).map((g) => g.id)).toEqual(['top'])
+    expect(s.childGroups('top').map((g) => g.id)).toEqual(['mid'])
+    expect(s.childGroups('mid').map((g) => g.id)).toEqual(['deep'])
+    expect(s.parentGroupOf('deep').id).toBe('mid')
+    expect(s.parentGroupOf('top')).toBeNull()
+  })
+
+  // #2932: the estimation config decides what a task's `estimate` *number*
+  // means, and the backend broadcasts every change to it. Until the event is
+  // applied, a colleague who left the board open keeps both reading and writing
+  // estimates against the config the project no longer uses.
+  it('a project estimation override from the socket reaches an open client', () => {
+    const s = useWorkspacesStore()
+    s.list = [{ id: 'w1', estimation: null }]
+    s.currentId = 'w1'
+    s.projects = [{ id: 'p1', estimation: { unit: 'time', hours_per_day: 8, days_per_week: 5 } }]
+    // 480 minutes is one working day while the day is eight hours long.
+    expect(formatEstimate(480, s.estimationFor('p1'))).toBe('1д')
+
+    s.onEstimationEvent({
+      type: 'project.estimation',
+      scope: 'w1',
+      data: { project_id: 'p1', estimation: { unit: 'time', hours_per_day: 6, days_per_week: 5 } },
+    })
+
+    // The team went to six-hour days: the same stored number is now a day and two hours.
+    expect(s.estimationFor('p1').hours_per_day).toBe(6)
+    expect(formatEstimate(480, s.estimationFor('p1'))).toBe('1д 2ч')
+  })
+
+  it('a workspace estimation default from the socket reaches an open client', () => {
+    const s = useWorkspacesStore()
+    s.list = [{ id: 'w1', estimation: { unit: 'time', hours_per_day: 8, days_per_week: 5 } }]
+    s.currentId = 'w1'
+    s.projects = [{ id: 'p1', estimation: null }] // inherits the workspace default
+
+    s.onEstimationEvent({
+      type: 'workspace.estimation',
+      scope: 'w1',
+      data: { workspace_id: 'w1', estimation: { unit: 'points', points_scale: 'fibonacci' } },
+    })
+
+    expect(s.estimationFor('p1').unit).toBe('points')
+    expect(formatEstimate(5, s.estimationFor('p1'))).toBe('5 SP')
+  })
+
+  it('clearing a project override on the socket falls back to the workspace default', () => {
+    const s = useWorkspacesStore()
+    s.list = [{ id: 'w1', estimation: { unit: 'custom', custom_label: 'сеанс' } }]
+    s.currentId = 'w1'
+    s.projects = [{ id: 'p1', estimation: { unit: 'points', points_scale: 'linear' } }]
+
+    s.onEstimationEvent({
+      type: 'project.estimation',
+      scope: 'w1',
+      data: { project_id: 'p1', estimation: null },
+    })
+
+    expect(s.estimationFor('p1').unit).toBe('custom')
+  })
+
+  it('an unrelated event leaves the estimation config alone', () => {
+    const s = useWorkspacesStore()
+    s.list = [{ id: 'w1', estimation: null }]
+    s.currentId = 'w1'
+    s.projects = [{ id: 'p1', estimation: { unit: 'points', points_scale: 'linear' } }]
+    s.onEstimationEvent({ type: 'project.updated', scope: 'w1', data: { id: 'p1', slug: 'new' } })
+    expect(s.estimationFor('p1').unit).toBe('points')
   })
 
   // #2721: a deep-linked board has to drag the app into its own workspace, or

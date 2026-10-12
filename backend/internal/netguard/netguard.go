@@ -16,11 +16,13 @@
 package netguard
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"net"
 	"net/url"
 	"syscall"
+	"time"
 )
 
 // ErrBlocked is returned by the dial Control hook (and surfaces from any
@@ -102,6 +104,51 @@ func ValidateURL(raw string, allowPrivate bool) (*url.URL, error) {
 		}
 	}
 	return u, nil
+}
+
+// lookupTimeout bounds the name resolution ValidateHost does. A variable rather
+// than a constant so a test can shorten it.
+var lookupTimeout = 3 * time.Second
+
+// ValidateHost enforces the public-address policy for a host that is about to
+// be dialled by a client we cannot attach a Control hook to — a third-party
+// sender that builds its own http.Client (shoutrrr) rather than taking ours. A
+// literal IP is judged directly; a name is resolved and rejected if any address
+// behind it is non-public, which is what catches "localhost" and an internal
+// service name on the compose network.
+//
+// This is strictly weaker than the dial-time hook: a name that resolves
+// differently between this check and the connect (DNS rebinding) still gets
+// through, and a name that does not resolve at all is allowed — there is no
+// internal target to protect, and several service DSLs carry a placeholder host
+// ("telegram") that was never meant to be looked up. Prefer Dialer wherever the
+// client is ours.
+//
+// The lookup is capped by lookupTimeout: a placeholder host is a name no
+// resolver can answer, and a resolver that takes its time saying so must not
+// hold the delivery worker.
+func ValidateHost(ctx context.Context, host string, allowPrivate bool) error {
+	if allowPrivate || host == "" {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil {
+		if !allowedPublic(ip) {
+			return fmt.Errorf("host %s is not a public address", host)
+		}
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(ctx, lookupTimeout)
+	defer cancel()
+	addrs, err := net.DefaultResolver.LookupIPAddr(ctx, host)
+	if err != nil {
+		return nil // unresolvable — the dial cannot reach anything either
+	}
+	for _, a := range addrs {
+		if !allowedPublic(a.IP) {
+			return fmt.Errorf("host %s resolves to %s, which is not a public address", host, a.IP)
+		}
+	}
+	return nil
 }
 
 // allowedPublic reports whether ip is a routable public address: not

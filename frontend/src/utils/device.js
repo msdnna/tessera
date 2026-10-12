@@ -1,18 +1,21 @@
 import { isTauri } from '@/utils/serverBase'
+import { sGet, sSet } from '@/utils/serverStorage'
 import { i18n } from '@/i18n'
 
 // Stable per-browser identity for the "device" notification channel. The id is
 // generated once and kept in localStorage so this browser is a routable device
 // (rules can target it specifically); the label is a friendly name for the list.
+// Per server on desktop (#2930): two servers must not both be handed the same
+// device id, or a rule addressed on one would describe a device of the other.
 const KEY = 'tessera_device_id'
 
 export function getDeviceId() {
-  let id = localStorage.getItem(KEY)
+  let id = sGet(KEY)
   if (!id) {
     id =
       (typeof crypto !== 'undefined' && crypto.randomUUID && crypto.randomUUID()) ||
       `web-${Date.now()}-${Math.random().toString(36).slice(2)}`
-    localStorage.setItem(KEY, id)
+    sSet(KEY, id)
   }
   return id
 }

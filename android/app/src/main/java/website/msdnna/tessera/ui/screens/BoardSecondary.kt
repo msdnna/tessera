@@ -67,6 +67,8 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.buildTagGroups
+import website.msdnna.tessera.util.builtinCommandDescription
+import website.msdnna.tessera.util.builtinCommandKeys
 import website.msdnna.tessera.util.canonCommandKey
 import website.msdnna.tessera.util.isValidCommandKey
 import website.msdnna.tessera.util.parseHexColor
@@ -181,7 +183,9 @@ fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: (
     // Seed from the loaded dictionary each time the modal opens, so an aborted
     // edit doesn't stick.
     var rows by remember { mutableStateOf(state.customCommands.map { it.key to it.description }) }
-    val builtinKeys = remember(state.builtinCommands) { state.builtinCommands.map { it.key }.toSet() }
+    // Keys AND aliases: the backend rejects a custom "/done" exactly like "/close",
+    // and it rejects the whole PUT — so the collision has to be caught per row here.
+    val builtinKeys = remember(state.builtinCommands) { builtinCommandKeys(state.builtinCommands) }
 
     // Per-row validation, shown inline: the backend rejects the whole PUT on the
     // first bad key, so catching it here keeps the user from losing the other rows.
@@ -302,7 +306,10 @@ fun WorkspaceCommandsModal(state: BoardUiState, vm: BoardViewModel, onDismiss: (
                 )
                 Spacer(Modifier.height(4.dp))
                 Column(Modifier.heightIn(max = 200.dp).verticalScroll(rememberScrollState())) {
-                    state.builtinCommands.forEach { cmd -> CommandRefRow("/${cmd.key}", cmd.description) }
+                    val res = LocalResources.current
+                    state.builtinCommands.forEach { cmd ->
+                        CommandRefRow("/${cmd.key}", builtinCommandDescription(res, cmd.key, cmd.description))
+                    }
                 }
             }
 

@@ -1,19 +1,32 @@
 <script setup>
-// Sticky chart header: the month band over a day / week band, plus hour ticks in
-// the hours tier. Every band comes precomputed from useChartTimeline, so this is
-// pure layout — shared verbatim by the Timeline and Gantt views.
+// Sticky chart header (v2, #2959): «ЗАДАЧА N … ЛЮДИ» over the task column, and
+// two bands over the axis — what the second band counts, grouped by the first:
+//   days   — week ranges («28 сент. – 4 окт.») over day numbers;
+//   hours  — months over day numbers, hour ticks under them;
+//   weeks  — months over week ranges («29–4»);
+//   months — years over months;
+//   quarters — quarters over months (#3021).
+// Every band comes precomputed from useChartTimeline, so this is pure layout —
+// shared verbatim by the Timeline and Gantt views.
 import { useI18n } from 'vue-i18n'
 
 const { t } = useI18n()
+const ROMAN = ['I', 'II', 'III', 'IV']
+const quarterLabel = (b) => t('board.chart.quarter', { q: b.q, qr: ROMAN[b.q - 1], year: b.year })
 
 defineProps({
   leftW: { type: Number, required: true },
   dayW: { type: Number, required: true },
-  // 'hours' | 'days' | 'weeks' — picks which band row renders under the months.
+  // 'hours' | 'days' | 'weeks' | 'months' | 'quarters'
   tier: { type: String, required: true },
   collapsed: { type: Boolean, default: false },
+  // How many tasks the chart shows — next to «Задача».
+  count: { type: Number, default: 0 },
   monthBands: { type: Array, default: () => [] },
   weekBands: { type: Array, default: () => [] },
+  weekRangeBands: { type: Array, default: () => [] },
+  yearBands: { type: Array, default: () => [] },
+  quarterBands: { type: Array, default: () => [] },
   days: { type: Array, default: () => [] },
   hourTicks: { type: Array, default: () => [] },
 })
@@ -21,39 +34,87 @@ defineProps({
 
 <template>
   <div class="tl-head chart-part" :class="{ collapsed }">
-    <div class="tl-corner" :style="{ width: `${leftW}px` }">{{ t('board.chart.taskColumn') }}</div>
+    <div class="tl-corner" :style="{ width: `${leftW}px` }">
+      <span class="tc-cap">{{ t('board.chart.taskColumn') }}</span>
+      <span class="tc-count">{{ count }}</span>
+      <span v-if="leftW >= 220" class="tc-cap tc-people">{{ t('board.chart.people') }}</span>
+    </div>
     <div class="tl-axis">
-      <div class="tl-months">
-        <div
-          v-for="(m, i) in monthBands"
-          :key="i"
-          class="tl-month"
-          :style="{ width: `${m.span * dayW}px` }"
-        >
-          {{ m.label }}
-        </div>
+      <!-- first band -->
+      <div class="tl-band tl-band1">
+        <template v-if="tier === 'days'">
+          <div
+            v-for="w in weekRangeBands"
+            :key="w.key"
+            class="tl-b1"
+            :style="{ width: `${w.span * dayW}px` }"
+          >
+            {{ w.label }}
+          </div>
+        </template>
+        <template v-else-if="tier === 'quarters'">
+          <div
+            v-for="b in quarterBands"
+            :key="b.key"
+            class="tl-b1"
+            :style="{ width: `${b.span * dayW}px` }"
+          >
+            {{ b.span * dayW > 56 ? quarterLabel(b) : '' }}
+          </div>
+        </template>
+        <template v-else-if="tier === 'months'">
+          <div
+            v-for="y in yearBands"
+            :key="y.key"
+            class="tl-b1"
+            :style="{ width: `${y.span * dayW}px` }"
+          >
+            {{ y.label }}
+          </div>
+        </template>
+        <template v-else>
+          <div
+            v-for="(m, i) in monthBands"
+            :key="i"
+            class="tl-b1 tl-month"
+            :style="{ width: `${m.span * dayW}px` }"
+          >
+            {{ m.label }}
+          </div>
+        </template>
       </div>
-      <div v-if="tier === 'weeks'" class="tl-weeksrow">
+      <!-- second band -->
+      <div v-if="tier === 'weeks'" class="tl-band tl-band2">
         <div
           v-for="w in weekBands"
           :key="w.key"
-          class="tl-weekh"
+          class="tl-b2 tl-weekh"
           :style="{ width: `${w.span * dayW}px` }"
         >
           {{ w.label }}
         </div>
       </div>
+      <div v-else-if="tier === 'months' || tier === 'quarters'" class="tl-band tl-band2">
+        <div
+          v-for="(m, i) in monthBands"
+          :key="i"
+          class="tl-b2 tl-weekh tl-month"
+          :style="{ width: `${m.span * dayW}px` }"
+        >
+          {{ m.label }}
+        </div>
+      </div>
       <template v-else>
-        <div class="tl-daysrow">
+        <div class="tl-band tl-band2 tl-daysrow">
           <div
             v-for="(d, i) in days"
             :key="i"
             class="tl-dayh"
             :class="{ weekend: d.weekend, today: d.isToday }"
             :style="{ width: `${dayW}px` }"
+            :title="d.dow"
           >
             <span class="dh-num">{{ d.day }}</span>
-            <span class="dh-wd">{{ d.dow }}</span>
           </div>
         </div>
         <div v-if="tier === 'hours'" class="tl-hoursrow">
@@ -77,111 +138,108 @@ defineProps({
   top: 0;
   z-index: 6;
 }
+/* The task column's head: on the canvas, no box — the caption, the count and
+   «Люди» pinned right. */
 .tl-corner {
   box-sizing: border-box;
   position: sticky;
   left: 0;
   z-index: 7;
   flex: 0 0 auto;
-  background: var(--t-surface-alt, var(--t-hover));
-  border-right: 1px solid var(--t-border);
-  border-bottom: 1px solid var(--t-border);
   display: flex;
   align-items: flex-end;
-  padding: 6px 12px;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--t-text3);
-  /* clip the caption as the column collapses (the toggle is instant) */
+  gap: 6px;
+  padding: 0 12px 9px 10px;
+  background: var(--t-bg);
   overflow: hidden;
 }
-/* collapsed: zero the padding + right border so the column reaches a TRUE 0 width */
+.tc-cap {
+  font-size: 11.5px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--t-text3);
+  white-space: nowrap;
+}
+.tc-count {
+  font-size: 12px;
+  color: var(--t-text3);
+  font-variant-numeric: tabular-nums;
+}
+.tc-people {
+  margin-left: auto;
+}
+/* collapsed: zero the padding so the column reaches a TRUE 0 width */
 .tl-head.collapsed .tl-corner {
   padding-left: 0;
   padding-right: 0;
-  border-right-width: 0;
 }
 .tl-axis {
   flex: 0 0 auto;
+  /* the track backdrop (--t-col) starts here; the header shares it */
+  background: var(--t-col);
+  border-top-left-radius: 14px;
 }
-.tl-months {
+.tl-band {
   display: flex;
-  height: 22px;
-  border-bottom: 1px solid var(--t-border);
+  height: 26px;
 }
-.tl-month {
+.tl-b1 {
   box-sizing: border-box;
   flex: 0 0 auto;
+  padding: 7px 8px 0;
   font-size: 12px;
   font-weight: 600;
   color: var(--t-text2);
-  padding: 3px 8px;
   white-space: nowrap;
   overflow: hidden;
-  border-right: 1px solid var(--t-border);
-  background: var(--t-surface-alt, var(--t-hover));
+  text-overflow: ellipsis;
+}
+.tl-month {
   text-transform: capitalize;
 }
-.tl-daysrow {
-  display: flex;
-  background: var(--t-surface);
-  border-bottom: 1px solid var(--t-border);
+.tl-b2 {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  padding: 4px 8px 0;
+  font-size: 11.5px;
+  color: var(--t-text3);
+  white-space: nowrap;
+  overflow: hidden;
 }
 .tl-dayh {
   /* border-box so a cell's total width == the inline `dayW`, keeping the day
-     headers aligned with the bar/gridline/today-line geometry (which use dayW). */
+     headers aligned with the bar / backdrop / today-line geometry. */
   box-sizing: border-box;
   flex: 0 0 auto;
   display: flex;
-  flex-direction: column;
   align-items: center;
-  padding: 3px 0;
-  font-size: 11px;
+  justify-content: center;
+  font-size: 11.5px;
+  line-height: 22px;
   color: var(--t-text3);
-  border-right: 1px solid color-mix(in srgb, var(--t-border) 55%, transparent);
+  font-variant-numeric: tabular-nums;
 }
 .tl-dayh.weekend {
-  background: var(--t-hover);
-}
-.tl-dayh.today .dh-num {
-  background: var(--t-accent-grad);
-  color: #fff;
-  border-radius: 50%;
-  width: 18px;
-  height: 18px;
-  line-height: 18px;
-  text-align: center;
+  color: var(--t-placeholder);
 }
 .dh-num {
-  font-size: 12px;
-  color: var(--t-text1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 22px;
 }
-.dh-wd {
-  font-size: 9px;
-}
-
-/* weeks tier: one cell per week, labelled by its first date */
-.tl-weeksrow {
-  display: flex;
-  background: var(--t-surface);
-  border-bottom: 1px solid var(--t-border);
-}
-.tl-weekh {
-  box-sizing: border-box;
-  flex: 0 0 auto;
-  padding: 4px 6px;
-  font-size: 11px;
-  color: var(--t-text2);
-  white-space: nowrap;
-  overflow: hidden;
-  border-right: 1px solid color-mix(in srgb, var(--t-border) 55%, transparent);
+.tl-dayh.today .dh-num {
+  border-radius: 50%;
+  background: var(--t-accent-grad);
+  color: #fff;
+  font-weight: 700;
 }
 /* hours tier: thin row of hour labels positioned at their fraction of the day */
 .tl-hoursrow {
   position: relative;
   height: 14px;
-  background: var(--t-surface);
-  border-bottom: 1px solid var(--t-border);
 }
 .tl-hourtick {
   position: absolute;

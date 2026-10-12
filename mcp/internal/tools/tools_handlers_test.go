@@ -88,6 +88,9 @@ func boardRoutes(tasks []model.Task) map[string]any {
 		"/api/projects/p1":       model.Project{ID: "p1", Slug: "proj"},
 		"/api/projects/p1/tags":  []model.Tag{{ID: "tg1", Name: "backend"}},
 		"/api/boards/b1/tasks":   tasks,
+		// Top-level cards and subtasks are two endpoints; next_task reads both to
+		// settle who is done, so the fake board has to serve both too.
+		"/api/boards/b1/subtasks": []model.Task{},
 	}
 }
 

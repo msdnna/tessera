@@ -93,6 +93,30 @@ func TestParse(t *testing.T) {
 			body:     "```\n/close\n```\n/archive",
 			wantCmds: []string{"archive"}, wantRest: "```\n/close\n```",
 		},
+		// A fence is closed by its own marker, not by any marker. The three cases
+		// below are the ordinary ways of quoting markdown that contains markdown —
+		// and each one used to hand the block's contents to the executor while
+		// deleting the line from the text the author wrote.
+		{
+			name:     "tilde line does not close a backtick fence",
+			body:     "```\n~~~\n/archive\n```\nвот так",
+			wantRest: "```\n~~~\n/archive\n```\nвот так",
+		},
+		{
+			name:     "inner fence does not close a longer outer one",
+			body:     "````\n```\n/close\n```\n````",
+			wantRest: "````\n```\n/close\n```\n````",
+		},
+		{
+			name:     "a marker with an info string opens, never closes",
+			body:     "```md\n```go\n/title Новый заголовок\n```\nпояснение",
+			wantRest: "```md\n```go\n/title Новый заголовок\n```\nпояснение",
+		},
+		{
+			name:     "longer marker closes a shorter fence",
+			body:     "```\n/close\n`````\n/archive",
+			wantCmds: []string{"archive"}, wantRest: "```\n/close\n`````",
+		},
 		{
 			name: "indented four spaces is a code block, not a command",
 			body: "    /close", wantRest: "/close",
@@ -196,6 +220,39 @@ func TestParseDate(t *testing.T) {
 	}
 }
 
+// A month step written on the 29th-31st must clamp to the end of the target
+// month, not roll over into the next one: "+1м" on 31 января means February, and
+// "-1м" on 31 марта must actually leave March.
+func TestParseDateMonthClamp(t *testing.T) {
+	day := func(y int, m time.Month, d int) time.Time {
+		return time.Date(y, m, d, 0, 0, 0, 0, time.UTC)
+	}
+	cases := []struct {
+		in   string
+		now  time.Time
+		want time.Time
+	}{
+		{in: "+1m", now: day(2026, 1, 31), want: day(2026, 2, 28)},
+		{in: "+1м", now: day(2028, 1, 30), want: day(2028, 2, 29)}, // leap February
+		{in: "-1m", now: day(2026, 3, 31), want: day(2026, 2, 28)},
+		{in: "+1m", now: day(2026, 5, 31), want: day(2026, 6, 30)},
+		// Whole-month steps across a year boundary keep the day when it fits.
+		{in: "+2m", now: day(2026, 11, 30), want: day(2027, 1, 30)},
+		{in: "-2m", now: day(2026, 1, 15), want: day(2025, 11, 15)},
+		{in: "-14m", now: day(2026, 1, 31), want: day(2024, 11, 30)},
+	}
+	for _, tc := range cases {
+		got, err := ParseDate(tc.in, tc.now)
+		if err != nil {
+			t.Errorf("ParseDate(%q, %v): %v", tc.in, tc.now, err)
+			continue
+		}
+		if !got.Equal(tc.want) {
+			t.Errorf("ParseDate(%q, %v) = %v, want %v", tc.in, tc.now.Format("2006-01-02"), got, tc.want)
+		}
+	}
+}
+
 func TestParsePriority(t *testing.T) {
 	cases := []struct {
 		in      string
@@ -225,12 +282,15 @@ func TestParsePriority(t *testing.T) {
 }
 
 func TestParseEstimate(t *testing.T) {
+	timeCfg := Estimation{Unit: "time", HoursPerDay: 8, DaysPerWeek: 5}
 	cases := []struct {
 		in      string
 		want    float64
 		wantErr bool
 	}{
-		{in: "90", want: 90}, // bare number passes through (points too)
+		// A bare number is HOURS, like the estimate field in both clients
+		// (frontend utils/estimation.js, android util/Estimation.kt).
+		{in: "90", want: 5400},
 		{in: "90m", want: 90},
 		{in: "2h", want: 120},
 		{in: "1h30m", want: 90},
@@ -239,14 +299,39 @@ func TestParseEstimate(t *testing.T) {
 		{in: "1d", want: 480},  // 8h day
 		{in: "1w", want: 2400}, // 5d week
 		{in: "1d 4h", want: 720},
+		// A number with no suffix takes the unit below the one in front of it —
+		// "1d 4" is a day and four hours, "1ч 30" an hour and a half. Reading
+		// every bare number as hours made the second one 31 hours, in all three
+		// parsers at once (the clients' estimate field does the same arithmetic).
+		{in: "1d 4", want: 720},
+		{in: "1ч 30", want: 90},
+		{in: "1h 30", want: 90},
+		{in: "2ч30", want: 150},
+		{in: "1н 2", want: 2400 + 960},
+		{in: "30м 15", want: 45},
+		// A unit spelled out as a word, read by its first letter — the estimate
+		// field on both clients matches `[a-zа-яё]*` there, and the UI language
+		// here is Russian, so "3 дня" is the ordinary way to type it.
+		{in: "3 дня", want: 1440},
+		{in: "30 мин", want: 30},
+		{in: "2 hours", want: 120},
+		{in: "1 неделя", want: 2400},
+		{in: "2 часа 30 минут", want: 150},
+		{in: "1 день 4 часа", want: 720},
 		{in: "0", wantErr: true},
 		{in: "", wantErr: true},
 		{in: "скоро", wantErr: true},
 		{in: "2h кое-что", wantErr: true},
 		{in: "2 3", wantErr: true},
+		// A word that starts with no unit letter stays an error rather than
+		// silently becoming hours the way the clients' field would read it: a
+		// command that stored "5 попугаев" as five hours would be worse than one
+		// that says it did not understand.
+		{in: "5 попугаев", wantErr: true},
+		{in: "2 часа кое-что", wantErr: true},
 	}
 	for _, tc := range cases {
-		got, err := ParseEstimate(tc.in, 8, 5)
+		got, err := ParseEstimate(tc.in, timeCfg)
 		if tc.wantErr != (err != nil) {
 			t.Errorf("ParseEstimate(%q) = %v, err = %v, wantErr %v", tc.in, got, err, tc.wantErr)
 			continue
@@ -256,8 +341,51 @@ func TestParseEstimate(t *testing.T) {
 		}
 	}
 	// Workspace settings drive day/week arithmetic.
-	if got, err := ParseEstimate("1d", 6, 4); err != nil || got != 360 {
+	if got, err := ParseEstimate("1d", Estimation{Unit: "time", HoursPerDay: 6, DaysPerWeek: 4}); err != nil || got != 360 {
 		t.Errorf("ParseEstimate(1d, 6h/day) = %v, %v; want 360", got, err)
+	}
+	// An absent unit inherits the built-in default: time, 8h/day, 5d/week.
+	if got, err := ParseEstimate("1w", Estimation{}); err != nil || got != 2400 {
+		t.Errorf("ParseEstimate(1w, zero cfg) = %v, %v; want 2400", got, err)
+	}
+}
+
+// A points / custom workspace counts dimensionless numbers, so the argument is
+// read the way the clients read their estimate field: a plain number (or a
+// T-shirt size), and nothing that looks like a duration.
+func TestParseEstimateNonTimeUnits(t *testing.T) {
+	points := Estimation{Unit: "points", PointsScale: "fibonacci"}
+	tshirt := Estimation{Unit: "points", PointsScale: "tshirt"}
+	custom := Estimation{Unit: "custom"}
+
+	cases := []struct {
+		name    string
+		cfg     Estimation
+		in      string
+		want    float64
+		wantErr bool
+	}{
+		{name: "points number", cfg: points, in: "5", want: 5},
+		{name: "points decimal comma", cfg: points, in: "2,5", want: 2.5},
+		{name: "points reject duration", cfg: points, in: "2h", wantErr: true},
+		{name: "points reject word", cfg: points, in: "много", wantErr: true},
+		{name: "points reject zero", cfg: points, in: "0", wantErr: true},
+		{name: "tshirt size", cfg: tshirt, in: "M", want: 3},
+		{name: "tshirt size lowercase", cfg: tshirt, in: "xxl", want: 13},
+		{name: "tshirt number still works", cfg: tshirt, in: "8", want: 8},
+		{name: "tshirt unknown size", cfg: tshirt, in: "XXXL", wantErr: true},
+		{name: "custom number", cfg: custom, in: "12", want: 12},
+		{name: "custom reject duration", cfg: custom, in: "1d", wantErr: true},
+	}
+	for _, tc := range cases {
+		got, err := ParseEstimate(tc.in, tc.cfg)
+		if tc.wantErr != (err != nil) {
+			t.Errorf("%s: ParseEstimate(%q) = %v, err = %v, wantErr %v", tc.name, tc.in, got, err, tc.wantErr)
+			continue
+		}
+		if err == nil && got != tc.want {
+			t.Errorf("%s: ParseEstimate(%q) = %v, want %v", tc.name, tc.in, got, tc.want)
+		}
 	}
 }
 

@@ -377,9 +377,12 @@ defineExpose({ cardAnchors })
   width: 300px;
   flex: none;
   min-height: 0;
-  border-left: 1px solid var(--t-border);
-  padding-left: 12px;
-  gap: 8px;
+  /* v2 (задача 3106): a --t-col card on the canvas, no rule beside the text. */
+  padding: 12px;
+  box-sizing: border-box;
+  border-radius: var(--t-r-pop);
+  background: var(--t-col);
+  gap: 10px;
 }
 /* Phone layout: a sheet over the working area, not a block appended under the
    text. Stacked, the discussion pushed the document off the top of the screen
@@ -391,13 +394,11 @@ defineExpose({ cardAnchors })
   inset: 0;
   width: auto;
   max-height: none;
-  border-left: none;
-  padding: 10px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
-  /* Opaque over live content, same edge treatment as the sidebar sheet. */
-  box-shadow: 0 0 20px var(--t-border);
+  padding: 12px;
+  border-radius: var(--t-r-pop);
+  background: var(--t-pop);
+  /* Opaque over live content: the popover shadow is its edge. */
+  box-shadow: var(--t-sh-pop);
   z-index: 2;
 }
 .panel-head {
@@ -407,8 +408,11 @@ defineExpose({ cardAnchors })
   color: var(--t-text2);
 }
 .panel-title {
-  font-size: 13px;
-  font-weight: 600;
+  font-size: 11.5px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .panel-body {
   flex: 1;
@@ -428,21 +432,23 @@ defineExpose({ cardAnchors })
   text-transform: uppercase;
   letter-spacing: 0.04em;
 }
-/* Threads are neutral surfaces; only the selected one takes the accent, so the
-   panel has exactly one thing drawing the eye at a time. */
+/* Threads are neutral card surfaces; only the selected one takes the accent —
+   a 3px strip down its left edge (mockup DocsPage: the margin comment's strip),
+   painted through a transparent border so it follows the radius — so the panel
+   has exactly one thing drawing the eye at a time. */
 .thread {
-  padding: 8px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  padding: 10px 10px 10px 12px;
+  border: 0;
+  border-left: 3px solid transparent;
+  border-radius: 12px;
+  background: var(--t-card);
+  box-shadow: var(--t-sh-card);
   cursor: pointer;
 }
 .thread.active {
-  border-color: transparent;
   background:
-    linear-gradient(var(--t-surface), var(--t-surface)) padding-box,
-    var(--t-accent-grad) border-box;
-  border: 1px solid transparent;
+    linear-gradient(var(--t-card), var(--t-card)) padding-box,
+    var(--t-accent-grad-vert) border-box;
 }
 /* A settled thread steps back rather than disappearing: the decision is part of
    the document's history. */
@@ -451,8 +457,9 @@ defineExpose({ cardAnchors })
 }
 .quote {
   margin: 0 0 6px;
-  padding-left: 6px;
-  border-left: 2px solid var(--t-border);
+  padding: 4px 8px;
+  border-radius: 7px;
+  background: var(--t-ctl);
   color: var(--t-text3);
   font-size: 11px;
   line-height: 1.4;
@@ -464,8 +471,7 @@ defineExpose({ cardAnchors })
 }
 .comment.reply {
   margin-top: 8px;
-  padding-left: 8px;
-  border-left: 1px solid var(--t-border);
+  padding-left: 12px;
 }
 .meta {
   display: flex;
@@ -516,8 +522,9 @@ defineExpose({ cardAnchors })
   display: flex;
   align-items: center;
   gap: 6px;
-  padding-left: 6px;
-  border-left: 2px solid var(--t-primary);
+  padding: 2px 4px 2px 8px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--t-primary) 14%, transparent);
 }
 .anchor-text {
   flex: 1;

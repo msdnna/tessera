@@ -5,12 +5,14 @@ import website.msdnna.tessera.data.model.Board
 import website.msdnna.tessera.data.model.BoardColumn
 import website.msdnna.tessera.data.model.CreateGroupRequest
 import website.msdnna.tessera.data.model.CreateProjectRequest
+import website.msdnna.tessera.data.model.DeleteCounts
 import website.msdnna.tessera.data.model.NameRequest
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.UpdateGroupRequest
 import website.msdnna.tessera.data.model.UpdateProjectRequest
 import website.msdnna.tessera.data.model.Workspace
+import website.msdnna.tessera.data.model.orInherit
 
 /** Reads/writes the workspace → group → project → board hierarchy. */
 class WorkspaceRepository {
@@ -21,6 +23,10 @@ class WorkspaceRepository {
         api.createWorkspace(website.msdnna.tessera.data.model.NameRequest(name))
 
     suspend fun deleteWorkspace(id: String) = api.deleteWorkspace(id)
+
+    suspend fun workspaceCounts(id: String): DeleteCounts = api.workspaceCounts(id)
+
+    suspend fun projectCounts(projectId: String): DeleteCounts = api.projectCounts(projectId)
 
     suspend fun groups(workspaceId: String): List<ProjectGroup> = api.groups(workspaceId).orEmpty()
     suspend fun projects(workspaceId: String): List<Project> = api.projects(workspaceId).orEmpty()
@@ -70,16 +76,16 @@ class WorkspaceRepository {
             website.msdnna.tessera.data.model.TransferProjectRequest(workspaceId),
         ).strippedAssignees
 
-    /** Two-level estimation config; null clears it (inherit). */
+    /** Two-level estimation config; null clears it (inherit) — see [orInherit]. */
     suspend fun setProjectEstimation(
         projectId: String,
         config: website.msdnna.tessera.data.model.EstimationConfig?,
-    ): Project = api.setProjectEstimation(projectId, config)
+    ): Project = api.setProjectEstimation(projectId, config.orInherit())
 
     suspend fun setWorkspaceEstimation(
         workspaceId: String,
         config: website.msdnna.tessera.data.model.EstimationConfig?,
-    ): website.msdnna.tessera.data.model.Workspace = api.setWorkspaceEstimation(workspaceId, config)
+    ): website.msdnna.tessera.data.model.Workspace = api.setWorkspaceEstimation(workspaceId, config.orInherit())
 
     suspend fun boards(projectId: String): List<Board> = api.boards(projectId).orEmpty()
     suspend fun createBoard(projectId: String, name: String): Board = api.createBoard(projectId, NameRequest(name))
@@ -91,6 +97,15 @@ class WorkspaceRepository {
         api.updateBoard(boardId, website.msdnna.tessera.data.model.UpdateBoardRequest(name, icon, color, iconMode))
 
     suspend fun deleteBoard(boardId: String) = api.deleteBoard(boardId)
+
+    // ── favourite boards (#3115) ────────────────────────────────────────────
+    suspend fun favorites(workspaceId: String): List<website.msdnna.tessera.data.model.BoardFavorite> =
+        api.favorites(workspaceId).orEmpty()
+
+    suspend fun addFavorite(boardId: String) = api.addFavorite(boardId)
+    suspend fun removeFavorite(boardId: String) = api.removeFavorite(boardId)
+    suspend fun moveFavorite(boardId: String, beforeId: String?, afterId: String?) =
+        api.moveFavorite(boardId, website.msdnna.tessera.data.model.FavoriteMoveRequest(beforeId, afterId))
 
     suspend fun columns(boardId: String): List<BoardColumn> = api.columns(boardId).orEmpty()
 
@@ -108,4 +123,16 @@ class WorkspaceRepository {
     suspend fun createInvitation(workspaceId: String, email: String, role: String) =
         api.createInvitation(workspaceId, website.msdnna.tessera.data.model.InviteRequest(email.trim(), role))
     suspend fun deleteInvitation(workspaceId: String, invId: String) = api.deleteInvitation(workspaceId, invId)
+
+    // Members v2 (#3063).
+    suspend fun workspace(workspaceId: String): website.msdnna.tessera.data.model.Workspace? =
+        api.workspaces().orEmpty().firstOrNull { it.id == workspaceId }
+    suspend fun transferOwner(workspaceId: String, userId: String) =
+        api.transferOwner(workspaceId, website.msdnna.tessera.data.model.TransferOwnerRequest(userId))
+    suspend fun leave(workspaceId: String) = api.leaveWorkspace(workspaceId)
+    suspend fun accessRequests(workspaceId: String): List<website.msdnna.tessera.data.model.AccessRequest> =
+        api.accessRequests(workspaceId).orEmpty()
+    suspend fun approveAccess(workspaceId: String, reqId: String) =
+        api.approveAccess(workspaceId, reqId, website.msdnna.tessera.data.model.RoleUpdate("member"))
+    suspend fun declineAccess(workspaceId: String, reqId: String) = api.declineAccess(workspaceId, reqId)
 }

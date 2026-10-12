@@ -3,7 +3,7 @@ title: The board archive
 category: Boards
 order: 26
 keywords: archive, archived, restore, read-only, delete, subtasks, app
-updated: 2026-08-28
+updated: 2026-10-10
 ---
 
 The archive is where tasks go that are no longer wanted on the board but would be a shame to lose. It isn't a bin with delayed deletion: nothing disappears from the archive on its own.
@@ -46,7 +46,8 @@ An archived card has its own menu — the same three dots, a different set:
 The difference matters and is easy to miss:
 
 - **Archive** — the task is kept with all of its history, comments and attachments, it stays visible in the archive and can be brought back.
-- **Delete** (in a live card's menu) and **Delete forever** (in the archive) — the task is gone for good.
-- **Deleting a column** — the column disappears **along with its tasks, bypassing the archive**. Before deleting a column, move the tasks you need into another one or send them to the archive.
+- **Delete** (in a live card's menu) — the task goes to the [board's trash](/help/trash): for a few seconds the Restore button in the message brings it back, and for 30 days the trash in the web version does.
+- **Delete forever** (in the archive) — the task is gone for good.
+- **Deleting a column** — the column goes, and its tasks **move to the neighbouring column**.
 
 When in doubt, archive. It exists precisely so you don't have to choose between “it's in the way” and “I'd hate to lose it”.

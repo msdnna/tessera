@@ -37,7 +37,7 @@ describe('HelpHint.vue', () => {
   })
 
   it('явный slug важнее маршрута', () => {
-    route.path = '/notes'
+    route.path = '/documents'
     const w = mountHint({ slug: 'faq' })
     expect(w.find('button').attributes('data-help')).toBe('faq')
   })
@@ -61,8 +61,8 @@ describe('HelpHint.vue', () => {
   })
 
   it('подпись кнопки называет статью — иначе «?» ни о чём', () => {
-    route.path = '/reminders'
+    route.path = '/documents'
     const label = mountHint().find('button').attributes('aria-label')
-    expect(label).toContain(useHelpStore().bySlug('reminders').title)
+    expect(label).toContain(useHelpStore().bySlug('documents').title)
   })
 })

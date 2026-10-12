@@ -1,0 +1,700 @@
+// Public API of the Tessera design system (React side). Hand-written: the
+// components are Vue SFCs bridged through runtime/island.js, so there is no TSX
+// source to derive these from — keep them in step with the Vue `defineProps`.
+// Object shapes are written inline in every prop (not as shared named types): the
+// Claude Design converter copies each <Name>Props body verbatim, and a named type
+// would dangle in the emitted per-component .d.ts.
+import type { CSSProperties, ReactElement, ReactNode } from 'react'
+
+/** Props every island component accepts on its React host element. */
+export interface IslandHostProps {
+  /** Extra class on the island's host element — layout only, never restyle internals. */
+  className?: string
+  /** Inline style on the island's host element — layout only (margin, width, flex). */
+  style?: CSSProperties
+}
+
+// ── Foundation ──────────────────────────────────────────────────────────────
+
+export interface TesseraProviderProps {
+  /** Colour mode. */
+  mode?: 'light' | 'dark'
+  /** Accent scheme; drives --t-primary and every accent gradient. Default purple #7c5cff. */
+  accent?: 'purple' | 'blue' | 'teal' | 'green' | 'orange' | 'red' | 'pink'
+  /** Language of the built-in UI strings. Russian is the product default. */
+  language?: 'ru' | 'en'
+  children?: ReactNode
+}
+export declare function TesseraProvider(props: TesseraProviderProps): ReactElement
+
+/** Current theme of the nearest TesseraProvider. */
+export declare function useTesseraTheme(): {
+  mode: 'light' | 'dark'
+  accent: 'purple' | 'blue' | 'teal' | 'green' | 'orange' | 'red' | 'pink'
+  language: 'ru' | 'en'
+}
+
+export interface IconProps extends IslandHostProps {
+  /** ionicons5 export name, outline style as in the app: 'AddOutline', 'CalendarClearOutline'. */
+  name: string
+  /** Size in px (default 16). */
+  size?: number | string
+  /** Flat colour (any CSS colour / var). Ignored when `gradient`. */
+  color?: string
+  /** Paint with the accent gradient (accent/active icons). */
+  gradient?: boolean
+}
+export declare function Icon(props: IconProps): ReactElement
+
+export interface TesseraIconProps extends IslandHostProps {
+  /** Glyph: layout-kanban|list|calendar|timeline|gantt|matrix, status-todo|progress|review|done, task-modal|sidebar|fullscreen, align-*. */
+  name: string
+  variant?: 'outline' | 'sharp' | 'filled'
+  /** Size in px; omit to inherit font-size. */
+  size?: number | string
+}
+export declare function TesseraIcon(props: TesseraIconProps): ReactElement
+
+export interface BrandLogoProps extends IslandHostProps {
+  /** Box height in px (default 22). */
+  height?: number
+  /** Show the "t" tile mark. */
+  mark?: boolean
+  /** Show the "tessera" wordmark. */
+  wordmark?: boolean
+}
+export declare function BrandLogo(props: BrandLogoProps): ReactElement
+
+// ── Primitives (Naive UI under the Tessera theme) ───────────────────────────
+
+export interface ButtonProps extends IslandHostProps {
+  /** Visual role. `primary` = the accent action. */
+  type?: 'default' | 'tertiary' | 'primary' | 'info' | 'success' | 'warning' | 'error'
+  size?: 'tiny' | 'small' | 'medium' | 'large'
+  /** Quiet toolbar button: no border, hover tint only. */
+  quaternary?: boolean
+  /** Quiet button with a faint resting tint. */
+  tertiary?: boolean
+  /** Text-only, link-style. */
+  text?: boolean
+  /** Transparent body, coloured border + text. */
+  ghost?: boolean
+  /** Dashed border (add-column / add-item affordances). */
+  dashed?: boolean
+  secondary?: boolean
+  /** Round icon button. */
+  circle?: boolean
+  round?: boolean
+  block?: boolean
+  strong?: boolean
+  disabled?: boolean
+  loading?: boolean
+  /** Leading icon, usually <Icon name="…Outline" />. */
+  icon?: ReactNode
+  children?: ReactNode
+  onClick?: (e: MouseEvent) => void
+}
+export declare function Button(props: ButtonProps): ReactElement
+
+export interface InputProps extends IslandHostProps {
+  /** Controlled value. */
+  value?: string
+  /** Initial value when uncontrolled. */
+  defaultValue?: string
+  onChange?: (value: string) => void
+  placeholder?: string
+  type?: 'text' | 'password' | 'textarea'
+  size?: 'tiny' | 'small' | 'medium' | 'large'
+  /** Textarea auto-height, e.g. { minRows: 2, maxRows: 6 }. */
+  autosize?: boolean | { minRows?: number; maxRows?: number }
+  clearable?: boolean
+  round?: boolean
+  disabled?: boolean
+  /** Leading content (an <Icon />). */
+  prefix?: ReactNode
+  /** Trailing content. */
+  suffix?: ReactNode
+  onFocus?: (e: FocusEvent) => void
+  onBlur?: (e: FocusEvent) => void
+  onKeyup?: (e: KeyboardEvent) => void
+}
+export declare function Input(props: InputProps): ReactElement
+
+export interface SelectProps extends IslandHostProps {
+  options: { label: string; value: string | number; disabled?: boolean }[]
+  /** Controlled value (array when `multiple`). */
+  value?: string | number | (string | number)[] | null
+  defaultValue?: string | number | (string | number)[] | null
+  onChange?: (value: string | number | (string | number)[] | null) => void
+  placeholder?: string
+  multiple?: boolean
+  filterable?: boolean
+  clearable?: boolean
+  size?: 'tiny' | 'small' | 'medium' | 'large'
+  disabled?: boolean
+}
+export declare function Select(props: SelectProps): ReactElement
+
+export interface SwitchProps extends IslandHostProps {
+  value?: boolean
+  defaultValue?: boolean
+  onChange?: (value: boolean) => void
+  size?: 'small' | 'medium' | 'large'
+  disabled?: boolean
+}
+export declare function Switch(props: SwitchProps): ReactElement
+
+export interface CheckboxProps extends IslandHostProps {
+  checked?: boolean
+  defaultChecked?: boolean
+  onChange?: (checked: boolean) => void
+  size?: 'small' | 'medium' | 'large'
+  disabled?: boolean
+  indeterminate?: boolean
+  /** Label. */
+  children?: ReactNode
+}
+export declare function Checkbox(props: CheckboxProps): ReactElement
+
+export interface TabsProps extends IslandHostProps {
+  tabs: { name: string; label: string; disabled?: boolean }[]
+  /** Active tab name (controlled). Defaults to the first tab. */
+  value?: string
+  defaultValue?: string
+  onChange?: (name: string) => void
+  /** `line` = accent underline (app default); `segment` = raised pill in a track. */
+  type?: 'line' | 'bar' | 'card' | 'segment'
+  size?: 'small' | 'medium' | 'large'
+  justifyContent?: 'start' | 'center' | 'end' | 'space-between' | 'space-around' | 'space-evenly'
+}
+export declare function Tabs(props: TabsProps): ReactElement
+
+export interface TooltipProps extends IslandHostProps {
+  /** The hint (text or nodes). */
+  content: ReactNode
+  /** The trigger element. */
+  children: ReactNode
+  placement?:
+    | 'top'
+    | 'bottom'
+    | 'left'
+    | 'right'
+    | 'top-start'
+    | 'top-end'
+    | 'bottom-start'
+    | 'bottom-end'
+  /** Pin open (true) / closed (false); omit for hover. */
+  show?: boolean
+  trigger?: 'hover' | 'click' | 'focus' | 'manual'
+}
+export declare function Tooltip(props: TooltipProps): ReactElement
+
+export interface CardProps extends IslandHostProps {
+  title?: string
+  /** Right side of the title row. */
+  headerExtra?: ReactNode
+  children?: ReactNode
+  footer?: ReactNode
+  /** Bottom action strip (on the raised surface colour). */
+  action?: ReactNode
+  size?: 'small' | 'medium' | 'large' | 'huge'
+  bordered?: boolean
+  hoverable?: boolean
+  /** Divide header/content/footer — avoid: Tessera separates by surface, not lines. */
+  segmented?: boolean | { content?: boolean; footer?: boolean }
+}
+export declare function Card(props: CardProps): ReactElement
+
+export interface ModalProps extends IslandHostProps {
+  /** Open state (controlled). */
+  show?: boolean
+  /** Initial open state when uncontrolled. */
+  defaultShow?: boolean
+  /** Called with `false` when the user closes it (✕, Esc, backdrop). */
+  onClose?: (show: boolean) => void
+  title?: string
+  /** Dialog width (px number or CSS length). Default 560. */
+  width?: number | string
+  children?: ReactNode
+  footer?: ReactNode
+  headerExtra?: ReactNode
+  closable?: boolean
+  maskClosable?: boolean
+  bordered?: boolean
+  size?: 'small' | 'medium' | 'large' | 'huge'
+}
+export declare function Modal(props: ModalProps): ReactElement
+
+// ── Interaction model v2 ──────────────────────────────────────────────────────
+
+export interface InlineEditProps extends IslandHostProps {
+  /** The text (controlled). */
+  value?: string
+  /** Initial text when uncontrolled. */
+  defaultValue?: string
+  onChange?: (value: string) => void
+  placeholder?: string
+  /** 'row' — a sidebar tree row (28px field in a 32px row); 'header' — a column header (26px, semibold). */
+  variant?: 'row' | 'header'
+  /** A reason the value can't be saved: red ring, alert icon, the text in the hint. */
+  error?: string
+  /** Saving: a spinner replaces the ↵ cap. */
+  busy?: boolean
+  /** Which keys the hint under the field explains: rename, new row, new board (+ Tab for its kind), column (+ Tab to the next). */
+  hint?: 'save' | 'create' | 'createView' | 'column'
+  /** Horizontal offset of the hint tooltip, px. */
+  hintLeft?: number
+  showHint?: boolean
+  /** Focus and select on mount (the app always does). Default false here. */
+  autofocus?: boolean
+  /** Fired on ↵ / ⇧↵ / Tab / click away. */
+  onCommit?: (value: string, how: { via: 'enter' | 'tab' | 'blur'; shift: boolean }) => void
+  /** Fired on Esc. */
+  onCancel?: () => void
+  /** Extra content before the ↵ cap (e.g. a new board's kind chip). */
+  trailing?: ReactNode
+}
+export declare function InlineEdit(props: InlineEditProps): ReactElement
+
+export interface PopoverFormProps extends IslandHostProps {
+  /** The question in the header: «Новый проект», «Адрес проекта». */
+  title?: string
+  /** Under the title, text3: «в группе «Продукт»». */
+  subtitle?: string
+  /** Label of the primary button: «Создать», «Сохранить», «Удалить навсегда». */
+  primary?: string
+  /** Primary label while busy: «Создаём…». */
+  busyLabel?: string
+  busy?: boolean
+  /** Primary greyed out (empty required field, an error). */
+  disabled?: boolean
+  /** Red primary — the type-the-name delete. */
+  danger?: boolean
+  /** Footer hint on the left: 'tab' («Tab поле»), 'list' («↑↓ выбрать»), 'suggest' («⌥↵ подставить свободный») or free text. */
+  hint?: string
+  /** 320–380 in the app. Default 340. */
+  width?: number
+  /** The fields — FormField elements. */
+  children?: ReactNode
+  /** Replaces the footer hint (a secondary action like «Удалить сервер»). */
+  foot?: ReactNode
+  onSubmit?: (how: { open: boolean }) => void
+  onCancel?: () => void
+  onSuggest?: () => void
+}
+export declare function PopoverForm(props: PopoverFormProps): ReactElement
+
+export interface FormFieldProps extends IslandHostProps {
+  label?: string
+  /** Right side of the label row: «из названия», the picked colour's name. */
+  aside?: string
+  /** Shows «…/project/<preview>» under the control (empty string → «…»). */
+  preview?: string | null
+  /** Red-iconed reason under the control. */
+  error?: string
+  /** With an error: «Свободно: <suggestion> или ⌥↵». */
+  suggestion?: string
+  /** Quiet note under the control (hidden while there is an error). */
+  message?: string
+  /** The control: an <input className="kf-input"/>, a ColorIconPicker… */
+  children?: ReactNode
+  onSuggest?: (suggestion: string) => void
+}
+export declare function FormField(props: FormFieldProps): ReactElement
+
+export interface ColorIconPickerProps extends IslandHostProps {
+  /** One of the seven: '#7c5cff' '#2f80ed' '#0eb0a9' '#18a058' '#f0a020' '#e0533d' '#eb2f96'. */
+  color?: string
+  /** '' = initials of `name`; project set: 'briefcase' 'code' 'rocket' 'flask' 'star' 'book' 'bulb'; space set: 'briefcase' 'home' 'code' 'rocket' 'school' 'heart' 'game'. */
+  icon?: string
+  /** The name typed above — its initials are the first icon. */
+  name?: string
+  set?: 'project' | 'space'
+  onColorChange?: (color: string) => void
+  onIconChange?: (icon: string) => void
+}
+export declare function ColorIconPicker(props: ColorIconPickerProps): ReactElement
+
+export interface ActionMenuProps extends IslandHostProps {
+  /** Caps header (11.5/600): the row's name. */
+  header?: string
+  /** Right side of the header: the project's group, «3 задачи». */
+  headerAside?: string
+  /** 300 for a project row, 284 for a column. */
+  width?: number
+  /** Key of a two-step item to show armed (red, «Точно удалить?»). */
+  armed?: string
+  /** Key of a row with `children` to show its submenu open. */
+  openSub?: string
+  items: Array<{
+    key?: string
+    label?: string
+    /** ionicons5 export name: 'CreateOutline', 'TrashOutline'. */
+    icon?: string
+    /** Key caps on the right: ['F2'], ['⌘', '⌫']. */
+    caps?: string[]
+    /** Red icon, soft red hover. */
+    danger?: boolean
+    /** Two-step: the first press arms the row with this title and cost. */
+    confirm?: { title: string; sub?: string }
+    /** Colour row: the picked colour (seven dots). */
+    swatch?: string
+    /** Switch row: its state. */
+    toggle?: boolean
+    /** No rights: lock instead of the keys, `disabledTitle` as the tooltip. */
+    disabled?: boolean
+    disabledTitle?: string
+    /** Not built yet: «скоро», tooltip «Скоро · #N». */
+    stub?: number
+    busy?: boolean
+    busyLabel?: string
+    failed?: { title: string; sub: string }
+    /** A 6px group gap instead of a row. */
+    gap?: boolean
+    /** Check mark on the right (the current priority, the open archive). */
+    checked?: boolean
+    /** A colour dot instead of the icon (#RRGGBB) — priorities, stages. */
+    dot?: string
+    /** A person's face instead of the icon. */
+    avatar?: { name: string; src?: string }
+    /** A section title row ('Интеграции') with an optional count on the right. */
+    heading?: string
+    aside?: string
+    /** Grey second line under the label; `noteWarn` paints it orange. */
+    note?: string
+    noteWarn?: boolean
+    /** A submenu: the row gets a chevron and opens these rows beside the menu (one level). */
+    children?: Array<{
+      key: string
+      label: string
+      icon?: string
+      caps?: string[]
+      checked?: boolean
+      dot?: string
+      avatar?: { name: string; src?: string }
+      danger?: boolean
+      confirm?: { title: string; sub?: string }
+      disabled?: boolean
+      stub?: number
+      gap?: boolean
+    }>
+    /** Submenu width in px (default 240). */
+    subWidth?: number
+  }>
+  onSelect?: (key: string, value?: unknown) => void
+}
+export declare function ActionMenu(props: ActionMenuProps): ReactElement
+
+export interface UndoToastProps extends IslandHostProps {
+  /** «Колонка «Бэклог» удалена · 14 задач в «К работе»». */
+  caption?: string
+  /** check — completed, moon — snoozed («Входящие», #2997). */
+  icon?: 'trash' | 'archive' | 'check' | 'moon'
+  status?: 'live' | 'busy' | 'done' | 'error'
+  /** Time left, 0..1 (the bottom bar). */
+  progress?: number
+  /** Under the pointer: the bar turns grey and stops. */
+  paused?: boolean
+  /** prefers-reduced-motion: «7 с» text instead of the bar. */
+  reduced?: boolean
+  secondsLeft?: number
+  /** An older toast in the stack: scaled to 96%, 90% opacity. */
+  older?: boolean
+  onUndo?: () => void
+  onRetry?: () => void
+  onClose?: () => void
+}
+export declare function UndoToast(props: UndoToastProps): ReactElement
+
+export interface ArmButtonProps extends IslandHostProps {
+  /** Tooltip and accessible name of the idle button («Удалить комментарий»). */
+  title?: string
+  /** What the armed button says (default «Удалить?»). */
+  confirm?: string
+  /** ionicons5 export name (default TrashOutline). */
+  icon?: string
+  /** Show the armed state (red, the `confirm` text and ↵). */
+  armed?: boolean
+  /** The second press. */
+  onConfirm?: () => void
+}
+export declare function ArmButton(props: ArmButtonProps): ReactElement
+
+// ── Board ───────────────────────────────────────────────────────────────────
+
+export interface TaskCardProps extends IslandHostProps {
+  /** The task. Ids in tag_ids / assignee_ids / column_id / milestone_id resolve against the board props. */
+  task: {
+    id: string
+    number?: number
+    title: string
+    /** 0 none · 1 low · 2 normal · 3 high · 4 urgent (left bar + flag colour). */
+    priority?: 0 | 1 | 2 | 3 | 4
+    /** ISO date or datetime. */
+    due_date?: string | null
+    start_date?: string | null
+    completed_at?: string | null
+    column_id?: string
+    tag_ids?: string[]
+    assignee_ids?: string[]
+    created_by?: string
+    milestone_id?: string | null
+    /** Hours. */
+    estimate?: number | null
+    has_description?: boolean
+    parent_id?: string | null
+  }
+  /** Child tasks (same shape), listed under the card. */
+  subtasks?: {
+    id: string
+    title: string
+    priority?: number
+    column_id?: string
+    completed_at?: string | null
+    due_date?: string | null
+    assignee_ids?: string[]
+  }[]
+  /** Real subtask count when `subtasks` is filtered ("2 из 5"). */
+  subtasksTotal?: number
+  /** Subtasks as full property cards instead of compact rows. */
+  subtasksExpanded?: boolean
+  /** This card is a subtask shown under its parent (darker, no cascade). */
+  nested?: boolean
+  /** Archive view: display-only with a Restore action. */
+  readonly?: boolean
+  /** Picked from the keyboard (the board's arrow-key selection): an accent wash and
+   * a 2px accent ring inside the edge. The board shows it only while the keyboard
+   * is in use — never set it for a pointer click or on a phone. */
+  selected?: boolean
+  /** Board tags (TagPill shape) resolved from task.tag_ids. */
+  tags?: { id: string; name: string; color?: string }[]
+  /** Workspace members resolved from task.assignee_ids / created_by. */
+  members?: { user_id: string; name: string; email?: string; avatar?: string }[]
+  /** Board columns { id, name, color }. */
+  columns?: { id: string; name: string; color?: string }[]
+  /** Project milestones («Этап»). */
+  milestones?: { id: string; title: string; due_date?: string | null }[]
+  /** Tag scope prefix → friendly label, keyed with the separator: { 'app::': 'Приложение' }. */
+  prefixNames?: Record<string, string>
+  /** Card density preset (board "Customize view"). */
+  cardSize?: 'compact' | 'medium' | 'large'
+  /** Hide individual card fields. */
+  fields?: {
+    priority?: boolean
+    due?: boolean
+    assignee?: boolean
+    tags?: boolean
+    estimate?: boolean
+    milestone?: boolean
+    description?: boolean
+    number?: boolean
+    gitlab?: boolean
+  }
+  /** Show placeholder pills for unset fields (default true). */
+  showEmpty?: boolean
+  /** Stack pills vertically instead of wrapping. */
+  stackFields?: boolean
+  /** Card clicked — open the task. */
+  onOpen?: (task: { id: string }) => void
+  onChanged?: (...args: unknown[]) => void
+  onRestore?: (...args: unknown[]) => void
+}
+export declare function TaskCard(props: TaskCardProps): ReactElement
+
+export interface TaskMiniCardProps extends IslandHostProps {
+  task: {
+    id: string
+    number?: number
+    title: string
+    priority?: 0 | 1 | 2 | 3 | 4
+    due_date?: string | null
+    completed_at?: string | null
+    tag_ids?: string[]
+    assignee_ids?: string[]
+  }
+  tags?: { id: string; name: string; color?: string }[]
+  members?: { user_id: string; name: string; avatar?: string }[]
+  prefixNames?: Record<string, string>
+  /** The task's column, when a status chip should be explained. */
+  column?: { id: string; name: string; color?: string } | null
+}
+export declare function TaskMiniCard(props: TaskMiniCardProps): ReactElement
+
+export interface ColumnHeaderProps extends IslandHostProps {
+  /** The column: name + colour (tints the status glyph and the lane). A tag column
+   * (board grouped by tag) passes `tag` and is titled with that tag's pill. */
+  column: { id: string; name: string; color?: string; tag?: { name: string; color?: string } }
+  /** Cards in the column. */
+  count?: number
+  /** Cards incl. subtasks — shown as "5 (12)" when larger than count. */
+  total?: number
+  /** Σ estimate label, e.g. "12 ч"; empty hides it. */
+  estimate?: string
+  /** Status column (every real board column): status glyph + rename/colour/delete menu. */
+  editable?: boolean
+  /** The board's done column (filled check glyph). */
+  isDone?: boolean
+  /** Leftmost column (empty-circle "to do" glyph). */
+  first?: boolean
+  /** The column is collapsed (the board then draws the narrow strip itself). */
+  collapsed?: boolean
+  /** Friendly scope names for a tag column's pill, keyed WITH the separator: `{ 'app::': 'App' }`. */
+  prefixNames?: Record<string, string>
+  onSetDone?: (columnId: string | null) => void
+  onToggleCollapse?: () => void
+  onChanged?: () => void
+}
+export declare function ColumnHeader(props: ColumnHeaderProps): ReactElement
+
+// ── Tags, people, navigation ────────────────────────────────────────────────
+
+export interface TagPillProps extends IslandHostProps {
+  /** Tag `{ name, color }` (name may be `scope::name`), or a bare name + `color`. */
+  tag: { id?: string; name: string; color?: string } | string
+  /** Colour (#RRGGBB) when `tag` is a string. */
+  color?: string
+  /** outline (default, cards) · solid (selected chip) · soft (unselected chip) · ghost · grad-text · plain · inherit. */
+  variant?: 'outline' | 'solid' | 'soft' | 'ghost' | 'grad-text' | 'plain' | 'inherit'
+  /** 'hide' drops the `scope::` segment (inside a list already grouped by scope). */
+  scopeMode?: 'auto' | 'hide'
+  /** Scope → friendly label, keyed with the separator: { 'app::': 'Приложение' }. */
+  prefixNames?: Record<string, string>
+}
+export declare function TagPill(props: TagPillProps): ReactElement
+
+export interface TagPickerProps extends IslandHostProps {
+  /** Every tag of the task's project; `task_count` is the number on the right. */
+  tags: Array<{ id: string; name: string; color?: string; task_count?: number }>
+  /** Ids of the tags on the task («Теги задачи»). */
+  selected?: string[]
+  /** Scope → friendly label, keyed with the separator: { 'app::': 'Приложение' }. */
+  prefixNames?: Record<string, string>
+  /** Scopes owned by a GitLab label rule ('app::'): never offered; on the task they show a lock. */
+  lockedPrefixes?: string[]
+  /** Open with this search typed («Найдено», or «Создать тег «…»» when nothing matches). */
+  query?: string
+  /** Show «Управлять тегами…» (owner/admin). Default true. */
+  canManage?: boolean
+  /** A create is in flight: the create row spins. */
+  creating?: boolean
+  onToggle?: (tagId: string) => void
+  onCreate?: (name: string) => void
+  onManage?: (query: string) => void
+}
+export declare function TagPicker(props: TagPickerProps): ReactElement
+
+export interface UserAvatarProps extends IslandHostProps {
+  /** Full name — initials are drawn from it when there is no photo. */
+  name: string
+  /** Photo URL. */
+  src?: string
+  /** Diameter in px (default 22, the board card size). */
+  size?: number
+  /** Part of an overlapping stack: surface-coloured ring + negative margin. */
+  stacked?: boolean
+}
+export declare function UserAvatar(props: UserAvatarProps): ReactElement
+
+export interface ProjectIconProps extends IslandHostProps {
+  /** Curated key (briefcase, home, code, rocket, school, cart, heart, star, flag, construct, book, flask, bulb, game, airplane, wallet), SVG markup or data: image. */
+  icon?: string
+  /** Fallback text when there is no icon. */
+  initials?: string
+  /** Glyph size in px (sidebar: 13). */
+  size?: number
+  /** Tint the glyph itself (icon colour mode); omit inside a coloured badge. */
+  color?: string
+}
+export declare function ProjectIcon(props: ProjectIconProps): ReactElement
+
+// ── Editor, feedback ────────────────────────────────────────────────────────
+
+export interface MarkdownEditorProps extends IslandHostProps {
+  /** Markdown (controlled). */
+  value?: string
+  defaultValue?: string
+  onChange?: (markdown: string) => void
+  placeholder?: string
+  /**
+   * `v2` = the task description / comment edit block: one bar with Написать · Просмотр
+   * and the tools, the field with a primary ring, a footer «# задача · @ человек ·
+   * Отмена Esc · Сохранить ⌘↵». `composer` = the 46px comment row: avatar, field,
+   * «Aa» (the v2 bar above the row), «Прикрепить», «Отправить ⌘↵». `default` = bare
+   * editor with a slim top bar (documents); `boxed` = framed composer (notes).
+   */
+  variant?: 'default' | 'boxed' | 'v2' | 'composer'
+  /** composer: whose avatar leads the row. */
+  avatar?: { id?: string; name: string; src?: string }
+  /** v2: the footer's primary button (default «Сохранить»); composer: the send caption via `sendLabel`. */
+  saveLabel?: string
+  sendLabel?: string
+  /** v2: show the footer (default true). */
+  footer?: boolean
+  /** Boxed: show the send button (fires onSubmit, also Ctrl+Enter). */
+  send?: boolean
+  /** Boxed + send: posting in progress. */
+  sending?: boolean
+  onSubmit?: () => void
+  /** Open on the rendered preview instead of the textarea. */
+  initialMode?: 'write' | 'preview'
+  minRows?: number
+  /** Default variant: show the formatting toolbar (default true). */
+  toolbar?: boolean
+  /** Text and live preview side by side. */
+  split?: boolean
+  /** @-mention candidates. */
+  mentionItems?: { id: string; label: string; display?: string }[]
+}
+export declare function MarkdownEditor(props: MarkdownEditorProps): ReactElement
+
+export interface EmptyStateProps extends IslandHostProps {
+  /** ionicons5 export name (default FileTrayOutline). */
+  icon?: string
+  /** Bold line over the text (17/700; 14/650 when small). */
+  title?: string
+  text?: string
+  size?: 'small' | 'medium'
+  /** The tile's hue — a hex or CSS colour; the accent when omitted. */
+  tone?: string
+}
+export declare function EmptyState(props: EmptyStateProps): ReactElement
+
+export interface TesseraSpinnerProps extends IslandHostProps {
+  /** Size in px (default 32). */
+  size?: number
+  /** Caption under the loader. */
+  label?: string
+  /** `accent` follows --t-primary; `white` for coloured backdrops. */
+  variant?: 'accent' | 'white'
+}
+export declare function TesseraSpinner(props: TesseraSpinnerProps): ReactElement
+
+// ── Tokens and accent-gradient helpers ──────────────────────────────────────
+
+/** Neutral palette per mode (bg, surface, surfaceAlt, cardSurface, inputBg, hover, border, text1-3, placeholder). */
+export declare const DARK: Record<string, string>
+export declare const LIGHT: Record<string, string>
+/** Priority colours, index = priority 0..4 (none, low, normal, high, urgent). */
+export declare const PRIORITY_COLORS: string[]
+/** The seven accent schemes: { key, primary, hover, pressed, suppl }. */
+export declare const COLOR_THEMES: {
+  key: string
+  primary: string
+  hover: string
+  pressed: string
+  suppl: string
+}[]
+/** Soft same-hue diagonal gradient of a colour (dark bottom-left → base centre → light top-right). */
+export declare function hueGrad(color: string): string
+/** Vertical variant (dark bottom → light top) for tall narrow accents. */
+export declare function hueGradVert(color: string): string
+/** Faint same-hue wash for tinted backgrounds. */
+export declare function softFill(color: string): string
+/** Background of an outline tag pill. */
+export declare function tagPillBg(color: string, filled?: boolean): string
+/** A hue clamped to a legible lightness as text on the given mode. */
+export declare function readableHue(hex: string, isDark: boolean): string
+/** Readable text colour (#fff / dark) on a fill of `hex`. */
+export declare function onColor(hex: string): string
+/** Background of a colour swatch. */
+export declare function swatchBg(color: string): string

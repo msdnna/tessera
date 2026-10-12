@@ -133,10 +133,9 @@ const grpBare = computed(() => iconMode.value || !colored.value)
   color: var(--t-text2);
 }
 .rail-pop {
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
+  background: var(--t-pop);
   border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.18);
+  box-shadow: var(--t-sh-pop);
   padding: 6px;
   max-height: 70vh;
   overflow-y: auto;

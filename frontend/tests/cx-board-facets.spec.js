@@ -81,7 +81,9 @@ describe('useBoardFacets — chips', () => {
     allTasks.value = [{ gitlab_author: 'outsider', gitlab_author_name: 'Внешний А.' }]
     filters.authors.push('gl:outsider')
     expect(chipText(api, 'author')).toEqual(['Внешний А.'])
-    // The assignee facet has no such source: an assignee is always a roster row.
+    // An assignee's chip has no such source — the task carries their login and no
+    // display name — so it stays the bare login. (The MENU does offer board-seen
+    // assignee logins; see ut-assignee-board-gl-login.spec.js.)
     filters.assignees.push('gl:outsider')
     expect(chipText(api, 'assignee')).toEqual(['outsider'])
   })
@@ -200,12 +202,12 @@ describe('useBoardFacets — mutations', () => {
     expect(clearMilestoneScope).toHaveBeenCalledTimes(1)
   })
 
-  it('toggles grouping and sort direction from a chip click', () => {
+  it('steps grouping and toggles sort direction from a chip click', () => {
+    // The grouping chip cycles (see cx-group-chip-cycle.spec.js for the modes it
+    // walks and why); here only that a click moves it on and a sort chip flips.
     const { api, groupMode } = facets()
     api.onChipClick({ kind: 'group' })
     expect(groupMode.value).toBe('tag')
-    api.onChipClick({ kind: 'group' })
-    expect(groupMode.value).toBe('status')
 
     api.onAddFacet('s.due')
     api.onChipClick({ kind: 'sort', i: 0 })

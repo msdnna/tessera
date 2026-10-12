@@ -26,6 +26,8 @@ import website.msdnna.tessera.R
  * [DateFormatPrefs] (#2857): это преф профиля, а не язык, и подменой [Resources]
  * его не передать. В композиции значение берут из `LocalDateFormat`.
  */
+private const val DAYS_IN_WEEK = 7
+
 private fun months(res: Resources): Array<String> = res.getStringArray(R.array.dates_months_short)
 
 private fun monthsFull(res: Resources): Array<String> = res.getStringArray(R.array.dates_months_full)
@@ -55,16 +57,22 @@ private fun presetDate(res: Resources, y: Int, mo0: Int, d: Int, preset: String)
 
 /**
  * A relative day label for near-future/near-past dues, mirroring the web
- * `formatDue`: «Сегодня»/«Завтра»/«Вчера», or a capitalised weekday when the date
- * is elsewhere in the current (Monday-anchored) week. Returns "" to fall back to an
- * absolute date. [y]/[mo0]/[d] are the due's calendar components (mo0 zero-based).
+ * `formatDue`: «Сегодня»/«Завтра»/«Вчера», or a weekday when the date is elsewhere
+ * in the current week. Returns "" to fall back to an absolute date. [y]/[mo0]/[d]
+ * are the due's calendar components (mo0 zero-based).
+ *
+ * Где эта неделя рвётся — преф `week_start` из [fmt], а не понедельник: тот же преф
+ * уже задаёт порядок колонок в обоих пикерах (DueDateTimePicker, ReminderDateTimePicker),
+ * и подпись под календарём не может считать неделю иначе, чем сам календарь.
  */
-private fun relativeDue(res: Resources, y: Int, mo0: Int, d: Int): String {
-    val due = Calendar.getInstance().apply {
+private fun relativeDue(res: Resources, y: Int, mo0: Int, d: Int, fmt: DateFormatPrefs): String {
+    // Обе стороны сравнения — в календаре пользователя: «сегодня» у подписи не может
+    // быть другим днём, чем «сегодня» у бакета (см. [dueDayKey]).
+    val due = Calendar.getInstance(fmt.zone).apply {
         clear()
         set(y, mo0, d)
     }
-    val today = Calendar.getInstance().apply {
+    val today = Calendar.getInstance(fmt.zone).apply {
         set(Calendar.HOUR_OF_DAY, 0)
         set(Calendar.MINUTE, 0)
         set(Calendar.SECOND, 0)
@@ -76,7 +84,7 @@ private fun relativeDue(res: Resources, y: Int, mo0: Int, d: Int): String {
         1 -> return res.getString(R.string.dates_tomorrow)
         -1 -> return res.getString(R.string.dates_yesterday)
     }
-    if (Math.abs(diff) <= 6 && sameWeek(due, today)) {
+    if (Math.abs(diff) <= 6 && sameWeek(due, today, fmt.weekStart)) {
         // Массив идёт с понедельника, Calendar.DAY_OF_WEEK — с воскресенья (1).
         // Подписи в ru намеренно строчные («пн»), как на вебе.
         val idx = (due.get(Calendar.DAY_OF_WEEK) + 5) % 7
@@ -85,12 +93,30 @@ private fun relativeDue(res: Resources, y: Int, mo0: Int, d: Int): String {
     return ""
 }
 
-/** True when two dates fall in the same Monday-anchored calendar week. */
-private fun sameWeek(a: Calendar, b: Calendar): Boolean {
-    val ca = (a.clone() as Calendar).apply { firstDayOfWeek = Calendar.MONDAY }
-    val cb = (b.clone() as Calendar).apply { firstDayOfWeek = Calendar.MONDAY }
-    return ca.get(Calendar.YEAR) == cb.get(Calendar.YEAR) &&
-        ca.get(Calendar.WEEK_OF_YEAR) == cb.get(Calendar.WEEK_OF_YEAR)
+/**
+ * True when two dates fall in the same calendar week, broken at [weekStart]
+ * ([WEEK_START_SUNDAY] or [WEEK_START_MONDAY]).
+ *
+ * Сравниваются дни начала их недель, а не `WEEK_OF_YEAR`: у номера недели два
+ * изъяна, и оба тихие. На стыке годов `YEAR` у четверга 31.12 и пятницы 01.01 разный,
+ * хотя неделя одна, — подпись «пт» пропадала ровно в новогоднюю неделю. А сам номер
+ * зависит ещё и от `minimalDaysInFirstWeek`, которое Calendar берёт из локали
+ * устройства, то есть граница первой недели года ехала вслед за настройкой телефона.
+ * Веб считает ровно так же — через день начала недели (`weekOf` в utils/format.js).
+ */
+internal fun sameWeek(a: Calendar, b: Calendar, weekStart: Int): Boolean =
+    weekAnchorKey(a, weekStart) == weekAnchorKey(b, weekStart)
+
+/** `yyyyMMdd` дня, которым открывается неделя [cal] при разрыве на [weekStart]. */
+private fun weekAnchorKey(cal: Calendar, weekStart: Int): Int {
+    // Calendar.SUNDAY == 1, поэтому сдвиг даёт 0 = воскресенье — ту же нумерацию,
+    // в которой хранится сам преф.
+    val dow = cal.get(Calendar.DAY_OF_WEEK) - Calendar.SUNDAY
+    val back = ((dow - normalizeWeekStart(weekStart)) + DAYS_IN_WEEK) % DAYS_IN_WEEK
+    val start = (cal.clone() as Calendar).apply { add(Calendar.DAY_OF_MONTH, -back) }
+    return start.get(Calendar.YEAR) * 10_000 +
+        (start.get(Calendar.MONTH) + 1) * 100 +
+        start.get(Calendar.DAY_OF_MONTH)
 }
 
 /**
@@ -118,23 +144,69 @@ fun shortDate(res: Resources, iso: String?): String {
 
 private fun currentYear(): Int = Calendar.getInstance().get(Calendar.YEAR)
 
-/** Today's `yyyy-MM-dd` in the device zone. */
-private fun todayKey(): String {
-    val cal = Calendar.getInstance()
+/** Today's `yyyy-MM-dd` in the user's calendar ([DateFormatPrefs.zone]). */
+fun todayKey(fmt: DateFormatPrefs = DateFormatPrefs.Default): String = dayKeyIn(fmt.zone, 0)
+
+/**
+ * The `yyyy-MM-dd` of today + [days], read in [zone]. Shared by [todayKey], the
+ * board filter's week boundary and the matrix's urgency window, so every end of
+ * every window comes from one calendar.
+ *
+ * A calendar step, not `+ days * 86_400_000L`: a day with a clock change is not
+ * 24 hours long, and the boundary would land an hour into the neighbouring day.
+ *
+ * [nowMillis] is injectable for the same reason web's predicates take a `now`:
+ * a window that reads the clock itself cannot be pinned by a test.
+ */
+internal fun dayKeyIn(zone: TimeZone, days: Int, nowMillis: Long = System.currentTimeMillis()): String {
+    val cal = Calendar.getInstance(zone).apply {
+        timeInMillis = nowMillis
+        add(Calendar.DAY_OF_MONTH, days)
+    }
     return "%04d-%02d-%02d".format(
         cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH),
     )
 }
 
-/** True when a date-only due is before today (a task overdue if not completed). */
-fun isOverdue(iso: String?): Boolean {
-    val key = isoDateKey(iso)
-    return key.isNotEmpty() && key < todayKey()
+/** True when a due date is before today (a task overdue if not completed). */
+fun isOverdue(iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): Boolean {
+    val key = dueDayKey(iso, fmt)
+    return key.isNotEmpty() && key < todayKey(fmt)
 }
 
 /** The `yyyy-MM-dd` date portion of an ISO timestamp, or "" for the undated. */
 fun isoDateKey(iso: String?): String =
     if (iso.isNullOrBlank() || iso.length < 10) "" else iso.substring(0, 10)
+
+/**
+ * The calendar day a due date belongs to, as `yyyy-MM-dd` — the day [dueLabel] and
+ * [dueShort] print on the card, so a filter built on this key can never disagree
+ * with the label right next to it.
+ *
+ * Which calendar that is follows the same rule the labels use: a pure UTC-midnight
+ * instant is a date-only due (GitLab/legacy) and keeps its UTC day, everything else
+ * is a real instant and is read in the user's zone ([DateFormatPrefs.zone] — the
+ * `timezone` preference, falling back to the device's). That is the same zone the
+ * client hands the server as `?tz=` on the day-counting endpoints, so the home
+ * tiles and the list under them cannot land on different days.
+ * [isoDateKey] — the date portion
+ * of the raw string — is neither: it is the day in whatever zone the *server*
+ * serialised with. The two part company exactly where it hurts, because the clients
+ * store a due date as the local midnight the user picked: with a server writing UTC,
+ * «15 сентября» arrives as `…-14T21:00:00Z`, and a task due today then sat in
+ * «Просрочено» while its own pill read «Сегодня».
+ *
+ * A value that is not a parseable instant (a bare `2026-06-15`) is already a
+ * calendar day — there is nothing to convert, so the raw portion stands.
+ */
+fun dueDayKey(iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
+    val millis = parseInstantMillis(iso) ?: return isoDateKey(iso)
+    val zone = if (isUtcMidnight(millis)) TimeZone.getTimeZone("UTC") else fmt.zone
+    val cal = Calendar.getInstance(zone).apply { timeInMillis = millis }
+    return "%04d-%02d-%02d".format(
+        cal.get(Calendar.YEAR), cal.get(Calendar.MONTH) + 1, cal.get(Calendar.DAY_OF_MONTH),
+    )
+}
 
 /**
  * A full date label for the task modal's due-date row — its shape follows the
@@ -177,7 +249,7 @@ fun dueLabel(
     // UTC calendar date, no time, so a server that serialises with a +03:00 offset
     // (e.g. `…T03:00:00+03:00`) doesn't surface a phantom "03:00". Mirrors web.
     if (isUtcMidnight(millis)) return utcLongDate(res, millis, fmt)
-    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val cal = Calendar.getInstance(fmt.zone).apply { timeInMillis = millis }
     val date = presetDate(
         res,
         cal.get(Calendar.YEAR),
@@ -211,7 +283,7 @@ fun dueShort(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPref
     // calendar date in UTC so a +03:00 server offset doesn't push it to "03:00".
     // A real timed/local-midnight due falls through to local rendering.
     val utcMid = isUtcMidnight(millis)
-    val cal = Calendar.getInstance(if (utcMid) TimeZone.getTimeZone("UTC") else TimeZone.getDefault())
+    val cal = Calendar.getInstance(if (utcMid) TimeZone.getTimeZone("UTC") else fmt.zone)
         .apply { timeInMillis = millis }
     val day = cal.get(Calendar.DAY_OF_MONTH)
     val mo0 = cal.get(Calendar.MONTH)
@@ -223,7 +295,7 @@ fun dueShort(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPref
     } else {
         ""
     }
-    val rel = relativeDue(res, year, mo0, day)
+    val rel = relativeDue(res, year, mo0, day, fmt)
     val date = if (rel.isNotEmpty()) {
         rel
     } else if (year == currentYear()) {
@@ -310,10 +382,10 @@ fun millisToUtcIso(millis: Long): String =
         .apply { timeZone = TimeZone.getTimeZone("UTC") }
         .format(Date(millis))
 
-/** A local-zone `31.12.2026, 14:30` label (date in the user's preset) for a full instant. */
+/** A `31.12.2026, 14:30` label in the user's zone (date in their preset) for a full instant. */
 fun localDateTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     val millis = parseInstantMillis(iso) ?: return ""
-    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val cal = Calendar.getInstance(fmt.zone).apply { timeInMillis = millis }
     val date = presetDate(
         res,
         cal.get(Calendar.YEAR),
@@ -329,13 +401,43 @@ fun localDateTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = Date
 }
 
 /**
- * Just the time of day, in the user's `time_format` preset.
+ * Just the day of an instant, in the user's calendar and `date_format` preset —
+ * the app's [formatDate][localDateTimeLabel] without the clock.
+ *
+ * For values whose hour carries no meaning to the reader: an invitation expires
+ * at whatever minute it was issued a week earlier, and «до 23.09.2026» is the
+ * whole of what a manager needs from it. Веб подписывает такие сроки тем же
+ * `formatDate`, то есть датой в зоне профиля, — [longDate] здесь не годится: она
+ * режет сырую строку и на восточной зоне назвала бы вчерашний день.
+ */
+fun localDateLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
+    val millis = parseInstantMillis(iso) ?: return ""
+    val cal = Calendar.getInstance(fmt.zone).apply { timeInMillis = millis }
+    return presetDate(
+        res,
+        cal.get(Calendar.YEAR),
+        cal.get(Calendar.MONTH),
+        cal.get(Calendar.DAY_OF_MONTH),
+        fmt.datePreset,
+    )
+}
+
+/**
+ * Just the time of day, in the user's calendar and `time_format` preset.
  *
  * Without the date on purpose: the caller is the in-call chat, where every line
  * was said during the same meeting and the date would repeat on all of them.
+ *
+ * Часы читаются в [DateFormatPrefs.zone], как и у соседнего [localDateTimeLabel]:
+ * «local» во всём этом разделе — календарь профиля, а не зона телефона. Пока
+ * здесь стоял безаргументный `Calendar.getInstance()`, у человека с разошедшимся
+ * префом (поездка, зона выставлена руками) одно и то же событие было подписано
+ * двумя разными часами на соседних экранах: строка чата в звонке — зоной
+ * устройства, а лобби и список тех же конференций — зоной профиля. Веб таким не
+ * болеет — его чат идёт через общий `formatDateTime`.
  */
 fun localTimeLabel(res: Resources, iso: String?, fmt: DateFormatPrefs = DateFormatPrefs.Default): String {
     val millis = parseInstantMillis(iso) ?: return ""
-    val cal = Calendar.getInstance().apply { timeInMillis = millis }
+    val cal = Calendar.getInstance(fmt.zone).apply { timeInMillis = millis }
     return clock(res, cal.get(Calendar.HOUR_OF_DAY), cal.get(Calendar.MINUTE), fmt)
 }

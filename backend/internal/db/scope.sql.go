@@ -12,7 +12,7 @@ import (
 )
 
 const projectIDForBoard = `-- name: ProjectIDForBoard :one
-SELECT project_id FROM boards WHERE id = $1
+SELECT project_id FROM boards WHERE id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) ProjectIDForBoard(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
@@ -25,7 +25,7 @@ func (q *Queries) ProjectIDForBoard(ctx context.Context, id uuid.UUID) (uuid.UUI
 const workspaceIDForBoard = `-- name: WorkspaceIDForBoard :one
 SELECT p.workspace_id
 FROM boards b JOIN projects p ON p.id = b.project_id
-WHERE b.id = $1
+WHERE b.id = $1 AND b.deleted_at IS NULL
 `
 
 func (q *Queries) WorkspaceIDForBoard(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
@@ -40,11 +40,41 @@ SELECT p.workspace_id
 FROM board_columns c
 JOIN boards b ON b.id = c.board_id
 JOIN projects p ON p.id = b.project_id
-WHERE c.id = $1
+WHERE c.id = $1 AND c.deleted_at IS NULL AND b.deleted_at IS NULL
 `
 
 func (q *Queries) WorkspaceIDForColumn(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
 	row := q.db.QueryRow(ctx, workspaceIDForColumn, id)
+	var workspace_id uuid.UUID
+	err := row.Scan(&workspace_id)
+	return workspace_id, err
+}
+
+const workspaceIDForDeletedBoard = `-- name: WorkspaceIDForDeletedBoard :one
+SELECT p.workspace_id
+FROM boards b JOIN projects p ON p.id = b.project_id
+WHERE b.id = $1 AND b.deleted_at IS NOT NULL
+`
+
+// WorkspaceIDForDeletedBoard / ForDeletedColumn authorize a restore: the plain
+// resolvers above treat a soft-deleted row as missing (0078).
+func (q *Queries) WorkspaceIDForDeletedBoard(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, workspaceIDForDeletedBoard, id)
+	var workspace_id uuid.UUID
+	err := row.Scan(&workspace_id)
+	return workspace_id, err
+}
+
+const workspaceIDForDeletedColumn = `-- name: WorkspaceIDForDeletedColumn :one
+SELECT p.workspace_id
+FROM board_columns c
+JOIN boards b ON b.id = c.board_id
+JOIN projects p ON p.id = b.project_id
+WHERE c.id = $1 AND c.deleted_at IS NOT NULL AND b.deleted_at IS NULL
+`
+
+func (q *Queries) WorkspaceIDForDeletedColumn(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {
+	row := q.db.QueryRow(ctx, workspaceIDForDeletedColumn, id)
 	var workspace_id uuid.UUID
 	err := row.Scan(&workspace_id)
 	return workspace_id, err
@@ -69,7 +99,7 @@ SELECT p.workspace_id
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
-WHERE t.id = $1
+WHERE t.id = $1 AND b.deleted_at IS NULL AND t.deleted_at IS NULL
 `
 
 func (q *Queries) WorkspaceIDForTask(ctx context.Context, id uuid.UUID) (uuid.UUID, error) {

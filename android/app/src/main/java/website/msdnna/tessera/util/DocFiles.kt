@@ -173,10 +173,27 @@ private fun JsonElement.asStringOrNull(): String? =
  * live in the string resources — a skeleton is text the app writes for the
  * reader, so an English document must not open with Russian headings.
  */
-enum class DocBuiltinTemplate(val key: String, val icon: String) {
-    MEETING("meeting", "📋"),
-    SPEC("spec", "📐"),
-    RETRO("retro", "🔄"),
+enum class DocBuiltinTemplate(val key: String, val icon: String, val category: String) {
+    MEETING("meeting", "📋", "meetings"),
+    SPEC("spec", "📐", "product"),
+    RETRO("retro", "🔄", "sprint"),
+    SPRINT_PLAN("sprintPlan", "🎯", "sprint"),
+    POSTMORTEM("postmortem", "🩺", "engineering"),
+    ADR("adr", "🧭", "engineering"),
+}
+
+/**
+ * The gallery's sources (#3045, web `DocTemplates.vue`): all, the four
+ * categories of document_templates.category, and «Мои шаблоны» — the reader's
+ * own saved templates (author_id), which is not a category.
+ */
+val DOC_TEMPLATE_SOURCES = listOf("all", "sprint", "product", "engineering", "meetings", "mine")
+
+/** Whether [card] belongs to [source] for the reader [userId]. */
+fun inDocTemplateSource(card: DocTemplateCard, source: String, userId: String): Boolean = when (source) {
+    "all" -> true
+    "mine" -> !card.builtin && userId.isNotEmpty() && card.authorId == userId
+    else -> card.category == source
 }
 
 /** One tile of the gallery — a saved template or a built-in, told apart only by
@@ -191,6 +208,10 @@ data class DocTemplateCard(
     val builtin: Boolean = false,
     /** The built-in's key — what [DocBuiltinTemplate] the tile stands for. */
     val builtinKey: String = "",
+    /** Gallery category (#3045); "" — none. */
+    val category: String = "",
+    /** Who saved it — «Мои шаблоны». Empty for a built-in. */
+    val authorId: String = "",
 )
 
 /** Gallery card for a template saved in the workspace. */
@@ -200,6 +221,8 @@ fun templateCard(template: DocumentTemplate): DocTemplateCard = DocTemplateCard(
     description = template.description.ifBlank { template.preview.replace("\n", " ").trim() },
     icon = template.icon,
     authorName = template.authorName.orEmpty(),
+    category = template.category,
+    authorId = template.authorId.orEmpty(),
 )
 
 /** Gallery card for a built-in, with its localized text handed in. */
@@ -214,6 +237,7 @@ fun builtinTemplateCard(
     icon = template.icon,
     builtin = true,
     builtinKey = template.key,
+    category = template.category,
 )
 
 /**
@@ -228,9 +252,17 @@ fun docTemplateGallery(
     builtins: List<DocTemplateCard>,
 ): List<DocTemplateCard> = saved.map(::templateCard) + builtins
 
-/** Filters the gallery by the search box — title and description, as the web. */
-fun filterDocTemplates(cards: List<DocTemplateCard>, query: String): List<DocTemplateCard> {
+/** Filters the gallery by the search box — title and description, as the web —
+ *  and by the source chip (#3045). */
+fun filterDocTemplates(
+    cards: List<DocTemplateCard>,
+    query: String,
+    source: String = "all",
+    userId: String = "",
+): List<DocTemplateCard> {
     val q = query.trim().lowercase()
-    if (q.isEmpty()) return cards
-    return cards.filter { "${it.title} ${it.description}".lowercase().contains(q) }
+    return cards.filter {
+        inDocTemplateSource(it, source, userId) &&
+            (q.isEmpty() || "${it.title} ${it.description}".lowercase().contains(q))
+    }
 }

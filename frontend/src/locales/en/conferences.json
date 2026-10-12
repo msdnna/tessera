@@ -5,7 +5,7 @@
   "filter": {
     "all": "All",
     "scheduled": "Scheduled",
-    "live": "Live now",
+    "live": "Live",
     "ended": "Finished"
   },
   "status": {
@@ -47,7 +47,9 @@
     "submit": "Schedule",
     "cancel": "Cancel",
     "required": "Enter a title",
-    "created": "Conference scheduled"
+    "created": "Conference scheduled",
+    "subtitle": "The link is ready at once; invite people from the room",
+    "stage": "To a stage"
   },
   "invite": {
     "button": "Invite",
@@ -90,7 +92,9 @@
     "denoise": "Noise suppression"
   },
   "mini": {
-    "expand": "Expand"
+    "expand": "Expand",
+    "minimize": "Fold into the mini window",
+    "more": "+{count} participant | +{count} participants"
   },
   "role": {
     "host": "Host",
@@ -118,15 +122,29 @@
   "chat": {
     "tab": "Chat",
     "empty": "No messages yet",
-    "placeholder": "Write to the chat…",
+    "placeholder": "Message · / task · {'@'} person",
     "attach": "Attach a file",
     "download": "Download",
     "delete": "Delete message",
+    "confirmDelete": "Delete this message? It disappears for everyone.",
     "loadOlder": "Show earlier messages",
     "unknownAuthor": "Unknown author",
     "closed": "The conference has ended — the chat is read-only",
     "fileTooBig": "“{name}” is larger than 25 MB",
-    "tooManyFiles": "At most {count} files per message"
+    "filesTooBig": "The attachments add up to more than {limit} — send them in several messages",
+    "tooManyFiles": "At most {count} files per message",
+    "tooLong": "The message is longer than {count} characters",
+    "cmd": {
+      "head": "Commands",
+      "task": "task",
+      "taskHint": "Create a task from the meeting"
+    },
+    "mentionHead": "Workspace members",
+    "taskCreated": "created a task",
+    "taskGone": "The task was deleted or is no longer in this workspace",
+    "taskIn": "Task in",
+    "pickBoard": "Board",
+    "taskTitle": "— type a title"
   },
   "panel": {
     "title": "In the room: {count}",
@@ -164,7 +182,9 @@
     "delete": "Delete",
     "confirmDelete": "Delete this recording? The file is erased for good.",
     "failed": "Recording failed",
-    "expires": "deleted {when}"
+    "expires": "deleted {when}",
+    "transcript": "Transcript",
+    "summary": "Summary"
   },
   "screen": {
     "share": "Share screen",
@@ -177,5 +197,77 @@
     "yourTurn": "Your turn to share the screen",
     "queued": "You are number {n} in the queue",
     "waiting": "Waiting in the queue: {count}"
+  },
+  "list": {
+    "live": "live",
+    "join": "Join",
+    "enter": "Join",
+    "copyLink": "Copy link",
+    "linkCopied": "Link copied",
+    "more": "More",
+    "confirmDelete": "Delete for sure?",
+    "untimed": "No time set",
+    "ended": "Finished",
+    "runningMin": "{n} min",
+    "runningH": "{h} h {m} min",
+    "emptyTitle": "No meetings yet",
+    "past": "Past, never started"
+  },
+  "instant": {
+    "title": "Meeting {time}",
+    "button": "Instant",
+    "hint": "Start a call now and join it"
+  },
+  "call": {
+    "count": "{count} participant | {count} participants",
+    "layout": "Layout",
+    "grid": "Grid",
+    "speaker": "Speaker"
+  },
+  "agenda": {
+    "open": "Open the agenda",
+    "create": "Create an agenda"
+  },
+  "rsvp": {
+    "pending": "Awaiting reply",
+    "accepted": "Going",
+    "declined": "Not going",
+    "accept": "Accept",
+    "decline": "Decline",
+    "acceptItem": "Accept the invitation",
+    "declineItem": "Decline the invitation",
+    "title": "Your reply",
+    "declinedBy": "declined"
+  },
+  "plan": {
+    "repeat": {
+      "none": "Does not repeat",
+      "daily": "Every day",
+      "weekdays": "Every weekday",
+      "weekly": "Every week",
+      "biweekly": "Every 2 weeks",
+      "monthly": "Every month"
+    },
+    "min": "{n} min",
+    "h": "{h} h",
+    "hm": "{h} h {m} min",
+    "duration": "Duration",
+    "stage": "Stage",
+    "noStage": "No stage",
+    "noStages": "There are no open stages in this workspace",
+    "linked": "linked to",
+    "stageTitle": "Meeting stage",
+    "repeatTitle": "Repeat"
+  },
+  "edit": {
+    "action": "Edit",
+    "title": "Edit meeting",
+    "subtitle": "Everyone in the meeting will see the changes",
+    "submit": "Save",
+    "saved": "Meeting saved"
+  },
+  "reactions": {
+    "button": "Reactions",
+    "title": "Send a reaction"
   }
 }

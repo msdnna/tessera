@@ -12,13 +12,148 @@ import (
 	"github.com/google/uuid"
 )
 
+const inboxTaskChips = `-- name: InboxTaskChips :many
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, p.id AS project_id,
+       t.number, t.title, t.completed_at, t.due_date, t.column_id, b.name AS board_name,
+       bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color
+FROM tasks t
+JOIN boards b ON b.id = t.board_id
+JOIN projects p ON p.id = b.project_id
+JOIN board_columns bc ON bc.id = t.column_id
+WHERE t.id = ANY($1::uuid[])
+  AND p.workspace_id = $2
+  AND b.deleted_at IS NULL
+  AND t.deleted_at IS NULL
+`
+
+type InboxTaskChipsParams struct {
+	Ids         []uuid.UUID `json:"ids"`
+	WorkspaceID uuid.UUID   `json:"workspace_id"`
+}
+
+type InboxTaskChipsRow struct {
+	ID            uuid.UUID  `json:"id"`
+	BoardID       uuid.UUID  `json:"board_id"`
+	BoardSlug     string     `json:"board_slug"`
+	ProjectSlug   string     `json:"project_slug"`
+	ProjectID     uuid.UUID  `json:"project_id"`
+	Number        *int64     `json:"number"`
+	Title         string     `json:"title"`
+	CompletedAt   *time.Time `json:"completed_at"`
+	DueDate       *time.Time `json:"due_date"`
+	ColumnID      uuid.UUID  `json:"column_id"`
+	BoardName     string     `json:"board_name"`
+	ColumnName    string     `json:"column_name"`
+	ColumnNameKey *string    `json:"column_name_key"`
+	ColumnColor   string     `json:"column_color"`
+}
+
+// InboxTaskChips reads what a «Входящие» record shows of its task (#2972): the
+// same line the palette prints. Only tasks still in the record's workspace and
+// on a live board come back — a record keeps its task_id after the task moves
+// away, and the chip must not carry the stranger's title with it.
+func (q *Queries) InboxTaskChips(ctx context.Context, arg InboxTaskChipsParams) ([]InboxTaskChipsRow, error) {
+	rows, err := q.db.Query(ctx, inboxTaskChips, arg.Ids, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []InboxTaskChipsRow
+	for rows.Next() {
+		var i InboxTaskChipsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.BoardID,
+			&i.BoardSlug,
+			&i.ProjectSlug,
+			&i.ProjectID,
+			&i.Number,
+			&i.Title,
+			&i.CompletedAt,
+			&i.DueDate,
+			&i.ColumnID,
+			&i.BoardName,
+			&i.ColumnName,
+			&i.ColumnNameKey,
+			&i.ColumnColor,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const searchBoards = `-- name: SearchBoards :many
+SELECT b.id, b.name, b.slug, b.icon, b.color, b.icon_mode, p.slug AS project_slug, p.name AS project_name
+FROM boards b
+JOIN projects p ON p.id = b.project_id
+WHERE p.workspace_id = $1
+  AND b.deleted_at IS NULL
+  AND p.archived_at IS NULL
+  AND (b.name ILIKE '%' || $2 || '%' OR p.name ILIKE '%' || $2 || '%')
+ORDER BY (b.name ILIKE '%' || $2 || '%') DESC, p.name, b.position
+LIMIT 10
+`
+
+type SearchBoardsParams struct {
+	WorkspaceID uuid.UUID `json:"workspace_id"`
+	Term        *string   `json:"term"`
+}
+
+type SearchBoardsRow struct {
+	ID          uuid.UUID `json:"id"`
+	Name        string    `json:"name"`
+	Slug        string    `json:"slug"`
+	Icon        string    `json:"icon"`
+	Color       string    `json:"color"`
+	IconMode    string    `json:"icon_mode"`
+	ProjectSlug string    `json:"project_slug"`
+	ProjectName string    `json:"project_name"`
+}
+
+// SearchBoards finds boards by their own name or their project's — «Маркетинг»
+// should surface every board of that project.
+func (q *Queries) SearchBoards(ctx context.Context, arg SearchBoardsParams) ([]SearchBoardsRow, error) {
+	rows, err := q.db.Query(ctx, searchBoards, arg.WorkspaceID, arg.Term)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []SearchBoardsRow
+	for rows.Next() {
+		var i SearchBoardsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Name,
+			&i.Slug,
+			&i.Icon,
+			&i.Color,
+			&i.IconMode,
+			&i.ProjectSlug,
+			&i.ProjectName,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const searchDocuments = `-- name: SearchDocuments :many
 SELECT id, title, slug
 FROM documents
 WHERE workspace_id = $1
+  AND deleted_at IS NULL
   AND title ILIKE '%' || $2 || '%'
 ORDER BY updated_at DESC
-LIMIT 25
+LIMIT 26
 `
 
 type SearchDocumentsParams struct {
@@ -58,14 +193,16 @@ const searchNotes = `-- name: SearchNotes :many
 SELECT id, title, slug
 FROM notes
 WHERE workspace_id = $1
+  AND (visibility = 'workspace' OR author_id = $3::uuid)
   AND (title ILIKE '%' || $2 || '%' OR body ILIKE '%' || $2 || '%')
 ORDER BY updated_at DESC
-LIMIT 25
+LIMIT 26
 `
 
 type SearchNotesParams struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
 	Column2     *string   `json:"column_2"`
+	Viewer      uuid.UUID `json:"viewer"`
 }
 
 type SearchNotesRow struct {
@@ -74,8 +211,9 @@ type SearchNotesRow struct {
 	Slug  string    `json:"slug"`
 }
 
+// A private note (0081) is found only by its author.
 func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]SearchNotesRow, error) {
-	rows, err := q.db.Query(ctx, searchNotes, arg.WorkspaceID, arg.Column2)
+	rows, err := q.db.Query(ctx, searchNotes, arg.WorkspaceID, arg.Column2, arg.Viewer)
 	if err != nil {
 		return nil, err
 	}
@@ -95,35 +233,80 @@ func (q *Queries) SearchNotes(ctx context.Context, arg SearchNotesParams) ([]Sea
 }
 
 const searchTasks = `-- name: SearchTasks :many
-SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, t.number, t.title, t.parent_id, t.completed_at
+
+
+SELECT t.id, t.board_id, b.slug AS board_slug, p.slug AS project_slug, p.id AS project_id,
+       t.number, t.title, t.parent_id, t.completed_at, t.priority, t.column_id, b.name AS board_name, p.name AS project_name,
+       bc.name AS column_name, bc.name_key AS column_name_key, bc.color AS column_color,
+       m.title AS milestone_title
 FROM tasks t
 JOIN boards b ON b.id = t.board_id
 JOIN projects p ON p.id = b.project_id
+JOIN board_columns bc ON bc.id = t.column_id
+LEFT JOIN milestones m ON m.id = t.milestone_id
 WHERE p.workspace_id = $1
+  AND b.deleted_at IS NULL
+  AND p.archived_at IS NULL
   AND t.archived_at IS NULL
-  AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%')
-ORDER BY t.number DESC
-LIMIT 25
+  AND t.deleted_at IS NULL
+  AND (t.title ILIKE '%' || $2 || '%' OR t.description ILIKE '%' || $2 || '%'
+       OR t.number = $3::bigint)
+ORDER BY (t.number = $3::bigint) DESC, t.number DESC
+LIMIT 26
 `
 
 type SearchTasksParams struct {
 	WorkspaceID uuid.UUID `json:"workspace_id"`
-	Column2     *string   `json:"column_2"`
+	Term        *string   `json:"term"`
+	Number      int64     `json:"number"`
 }
 
 type SearchTasksRow struct {
-	ID          uuid.UUID  `json:"id"`
-	BoardID     uuid.UUID  `json:"board_id"`
-	BoardSlug   string     `json:"board_slug"`
-	ProjectSlug string     `json:"project_slug"`
-	Number      *int64     `json:"number"`
-	Title       string     `json:"title"`
-	ParentID    *uuid.UUID `json:"parent_id"`
-	CompletedAt *time.Time `json:"completed_at"`
+	ID             uuid.UUID  `json:"id"`
+	BoardID        uuid.UUID  `json:"board_id"`
+	BoardSlug      string     `json:"board_slug"`
+	ProjectSlug    string     `json:"project_slug"`
+	ProjectID      uuid.UUID  `json:"project_id"`
+	Number         *int64     `json:"number"`
+	Title          string     `json:"title"`
+	ParentID       *uuid.UUID `json:"parent_id"`
+	CompletedAt    *time.Time `json:"completed_at"`
+	Priority       int32      `json:"priority"`
+	ColumnID       uuid.UUID  `json:"column_id"`
+	BoardName      string     `json:"board_name"`
+	ProjectName    string     `json:"project_name"`
+	ColumnName     string     `json:"column_name"`
+	ColumnNameKey  *string    `json:"column_name_key"`
+	ColumnColor    string     `json:"column_color"`
+	MilestoneTitle *string    `json:"milestone_title"`
 }
 
+// The search term arrives already escaped for LIKE (handlers.likeEscaper): it is
+// spliced into the pattern, so a `%`, `_` or `\` the user typed would otherwise
+// act as an operator instead of as text. Do not pass a raw query string here.
+// Each LIMIT below is handlers.searchLimit + 1, and the extra row is never shown:
+// the handler trims it off and reports its presence as has_more. Asking for
+// exactly the page size cannot distinguish "this is everything" from "this is the
+// first 25 of four hundred", and the dropdown then presents an arbitrary slice as
+// the whole answer (#2932). Counting instead — a second COUNT(*) per kind — would
+// pay for a full scan to render a number nobody reads. If the constant moves,
+// these three have to move with it; the truncation test pins the pair.
+// A task is also addressable by its number, the way it is written everywhere else
+// in the product (`#2932` on a card, `?task=2932` in a URL, the board's own search
+// box). @number carries the digits the handler read out of the query, or 0 when
+// there were none — 0 is not a task number (they start at 1), so the branch costs
+// a comparison and never widens a text search by accident.
+//
+// The exact number wins the ordering. A search for `2932` also matches every task
+// whose description mentions it, and those are the rows with the higher numbers:
+// by `number DESC` alone the task actually named #2932 sorts below its own
+// mentions, and past the page cut it is not in the answer at all (#2932).
+//
+// SearchTasks matches a substring of the title or description, or the task's
+// number («2950» / «#2950»), which then sorts first. The row carries what the
+// ⌘K palette prints under the title: status column, board, project, milestone.
 func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]SearchTasksRow, error) {
-	rows, err := q.db.Query(ctx, searchTasks, arg.WorkspaceID, arg.Column2)
+	rows, err := q.db.Query(ctx, searchTasks, arg.WorkspaceID, arg.Term, arg.Number)
 	if err != nil {
 		return nil, err
 	}
@@ -136,10 +319,19 @@ func (q *Queries) SearchTasks(ctx context.Context, arg SearchTasksParams) ([]Sea
 			&i.BoardID,
 			&i.BoardSlug,
 			&i.ProjectSlug,
+			&i.ProjectID,
 			&i.Number,
 			&i.Title,
 			&i.ParentID,
 			&i.CompletedAt,
+			&i.Priority,
+			&i.ColumnID,
+			&i.BoardName,
+			&i.ProjectName,
+			&i.ColumnName,
+			&i.ColumnNameKey,
+			&i.ColumnColor,
+			&i.MilestoneTitle,
 		); err != nil {
 			return nil, err
 		}

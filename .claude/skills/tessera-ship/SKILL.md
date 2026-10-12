@@ -100,10 +100,25 @@ git diff                          # проверить вставку и бам�
 git add -A && git commit -m "chore(release): api <ver> / web <ver>"
 ```
 
+## C. Продуктовый релиз («Tessera 2.x», `docs/versioning.md`)
+
+Когда поезд фич готов к выпуску (обычно сразу после шага B):
+
+```bash
+make release-product DRY=1        # план: продукт, версии компонентов, записи «Что нового»
+make release-product              # BUMP=minor (по умолчанию) | patch | major, или SET=X.Y.Z
+git add -A && git commit -m "chore(release): Tessera <short>"
+```
+
+Пишет `release.json` (продукт + снимок `VERSION` компонентов), `docs/releases/v<ver>.md`
+(заметки GitHub Release) и помечает записи `whatsNew.js` поезда `product: '<ver>'`. Версии
+компонентов **не трогает**. Теги — пользователь: компонентные `api/v…`/`web/v…` и продуктовый
+`v<ver>` (его публикует `release-product.yml`).
+
 ## Чеклист
 - Фича-ветка: [ ] quality-gate зелёный · [ ] фрагмент в `changelog.d/<comp>/` · [ ]
   conventional-commit · [ ] VERSION/CHANGELOG.md НЕ тронуты · [ ] без push/tag ·
   [ ] миграция (если есть) — номер занят перед merge
-- develop: [ ] `make changelog-release` · [ ] diff проверен · [ ] если бампнулась web —
+- develop: [ ] `make changelog-release` · [ ] при выпуске поезда — `make release-product` · [ ] diff проверен · [ ] если бампнулась web —
   запись в `whatsNew.js` (user-facing; крупная фича → `spotlight`) · [ ] `chore(release)`-коммит
   без push/tag

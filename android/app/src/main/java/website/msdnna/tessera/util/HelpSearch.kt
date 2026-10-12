@@ -146,13 +146,17 @@ private const val EXCERPT_LEN = 160
  * Lifts the neighbourhood of the first matching term out of the flattened body,
  * so a result row shows *why* it matched. Returns the opening of the article
  * when the match is only in the title or keywords.
+ *
+ * The terms arrive lower-cased ([tokenizeHelp] folds them) and the body does not
+ * — the index keeps the manual's own capitals, because this same field is what
+ * the result row quotes. So the lookup folds case itself.
  */
 fun helpExcerpt(text: String?, terms: List<String>): String {
     val body = text ?: ""
     if (body.isEmpty()) return ""
     var at = -1
     for (term in terms) {
-        val found = body.indexOf(term)
+        val found = body.indexOf(term, ignoreCase = true)
         if (found >= 0 && (at < 0 || found < at)) at = found
     }
     if (at < 0) {

@@ -4,7 +4,7 @@
 -- A version stores the whole content tree rather than a delta. Deltas would be
 -- smaller, but every read (compare, restore, preview) would then have to replay
 -- the chain from a base, and a single corrupt link would take the tail of the
--- history with it. A document is capped at maxDocContentSize, so a snapshot has
+-- history with it. A document is capped at MaxDocContentBytes, so a snapshot has
 -- a known upper bound.
 --
 -- The snapshots are *coalesced*, and that is the part worth understanding before

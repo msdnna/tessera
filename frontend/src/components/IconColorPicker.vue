@@ -1,7 +1,8 @@
 <script setup>
 import { ref, computed, h, render } from 'vue'
 import { useI18n } from 'vue-i18n'
-import { NIcon, NDropdown, NModal, NCard, NInput, useMessage } from 'naive-ui'
+import { NIcon, NDropdown, NModal, NCard, NInput } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { FolderOutline } from '@vicons/ionicons5'
 import { PROJECT_ICONS, sanitizeIconSvg } from '@/utils/projectIcons'
 import { formatFileSize } from '@/utils/docPdf'
@@ -16,6 +17,7 @@ const props = defineProps({
   fallbackFolder: { type: Boolean, default: false }, // groups: "no icon" = folder
   fallbackKanban: { type: Boolean, default: false }, // boards: "no icon" = kanban glyph
   transparentDefault: { type: Boolean, default: false }, // groups: empty ≡ transparent
+  showMode: { type: Boolean, default: true }, // servers: colour is always the badge box
 })
 const emit = defineEmits(['update:icon', 'update:color', 'update:mode'])
 const { t } = useI18n()
@@ -174,7 +176,7 @@ function onIconFile(e) {
     </div>
 
     <!-- Where the colour lands: the badge box (default) or the glyph itself. -->
-    <div class="mode-toggle" role="group" :aria-label="t('project.icon.paintWhat')">
+    <div v-if="showMode" class="mode-toggle" role="group" :aria-label="t('project.icon.paintWhat')">
       <button
         class="mt-opt"
         :class="{ active: mode !== 'icon' }"

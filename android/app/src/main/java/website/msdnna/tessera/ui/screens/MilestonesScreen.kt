@@ -31,6 +31,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.platform.LocalResources
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringArrayResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +49,7 @@ import website.msdnna.tessera.data.model.Milestone
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.Workspace
 import website.msdnna.tessera.data.model.WorkspaceMilestone
+import website.msdnna.tessera.ui.TestTags
 import website.msdnna.tessera.ui.components.ErrorState
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.IonIconButton
@@ -69,6 +71,7 @@ import website.msdnna.tessera.ui.viewmodels.MilestoneViewModel
 import website.msdnna.tessera.util.Estimation
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.Milestones
+import website.msdnna.tessera.util.WeekGrid
 import website.msdnna.tessera.util.longDate
 import website.msdnna.tessera.util.millisToUtcIso
 
@@ -403,9 +406,37 @@ private fun ManagerRow(vm: MilestoneViewModel, m: Milestone, glCapable: Boolean)
                     if (range.isNotEmpty()) {
                         Text(range, color = c.text3, fontSize = 12.sp)
                     }
+                    // «Не синхронизировано с GitLab · Повторить» (#3010).
+                    if (m.unsynced || (m.isLinked && m.glConflict)) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.testTag(TestTags.MILESTONE_UNSYNCED),
+                        ) {
+                            Text(
+                                stringResource(
+                                    if (m.glConflict) R.string.milestones_gitlab_conflict_mark else R.string.milestones_gitlab_unsynced,
+                                ),
+                                color = website.msdnna.tessera.ui.theme.TesseraDanger,
+                                fontSize = 12.sp,
+                            )
+                            if (!m.glConflict) {
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    stringResource(R.string.milestones_gitlab_retry),
+                                    color = c.primary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    modifier = Modifier
+                                        .testTag(TestTags.MILESTONE_RETRY)
+                                        .clickableNoRipple { vm.retryGitlab(m.id) },
+                                )
+                            }
+                        }
+                    }
                 }
-                // GitLab-sourced milestones are read-only locally (managed by the sync).
-                if (!m.isLinked) {
+                // A GitLab stage is edited and closed here only while its binding
+                // writes to GitLab (#3010); otherwise it stays read-only.
+                if (m.canEdit) {
                     IonIconButton(
                         if (m.isClosed) Ion.REFRESH else Ion.CHECK_CIRCLE,
                         onClick = { vm.toggleState(m) },
@@ -414,6 +445,8 @@ private fun ManagerRow(vm: MilestoneViewModel, m: Milestone, glCapable: Boolean)
                         tint = c.text3,
                     )
                     IonIconButton(Ion.PENCIL, onClick = { editing = true }, boxSize = 30.dp, iconSize = 15.dp, tint = c.text3)
+                }
+                if (!m.isLinked) {
                     if (glCapable) {
                         IonIconButton(Ion.GITLAB, onClick = { vm.pushToGitlab(m.id) }, boxSize = 30.dp, iconSize = 16.dp, tint = c.text3)
                     }
@@ -547,10 +580,17 @@ private fun DateChip(label: String, iso: String?, onPick: (String?) -> Unit, mod
     }
 }
 
-/** A compact UTC month-grid date picker (date-only → UTC-midnight ISO). */
+/**
+ * A compact UTC month-grid date picker (date-only → UTC-midnight ISO).
+ *
+ * Сетка открывается на префе `week_start` — как пикеры срока и напоминания и как
+ * `first-day-of-week` у веб-пикеров вехи (#2932). День остаётся UTC-шным: дата вехи
+ * date-only, а преф двигает только колонки.
+ */
 @Composable
 private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
     val c = Tessera.colors
+    val weekStart = LocalDateFormat.current.weekStart
     val initialCal = remember {
         Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
             val key = if (initialIso != null && initialIso.length >= 10) initialIso.substring(0, 10) else null
@@ -571,7 +611,7 @@ private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
     // Те же массивы, что у календарного вида доски: подписи читаются на рекомпозицию,
     // поэтому смена языка перерисовывает попап, а не оставляет его на прежнем.
     val monthNames = stringArrayResource(R.array.calendar_months)
-    val weekdayHeaders = stringArrayResource(R.array.calendar_weekdays_short)
+    val weekdayHeaders = WeekGrid.labels(stringArrayResource(R.array.calendar_weekdays_short).toList(), weekStart)
 
     Column(Modifier.width(260.dp).padding(10.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
@@ -605,12 +645,12 @@ private fun DatePopover(initialIso: String?, onPick: (String?) -> Unit) {
             }
         }
         Spacer(Modifier.height(2.dp))
-        // First weekday of the month (Mon=0..Sun=6).
+        // Пустые ячейки перед первым числом — до дня, которым открывается неделя.
         val first = Calendar.getInstance(TimeZone.getTimeZone("UTC")).apply {
             set(year, month, 1, 0, 0, 0)
             set(Calendar.MILLISECOND, 0)
         }
-        val lead = (first.get(Calendar.DAY_OF_WEEK) + 5) % 7 // Mon-based offset
+        val lead = WeekGrid.lead(first.get(Calendar.DAY_OF_WEEK), weekStart)
         val days = daysInMonthUtc(year, month)
         val cells = lead + days
         val rows = (cells + 6) / 7

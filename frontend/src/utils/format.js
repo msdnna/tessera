@@ -50,6 +50,24 @@ export function normalizeDatePreset(value) {
   return LEGACY_PATTERNS[value] || DEFAULT_PREFS.dateFormat
 }
 
+// The zone times are actually shown in: the profile timezone when the user picked
+// one, otherwise the browser's own — the fallback every formatter here already
+// makes (zonedParts passes `undefined` to Intl, which means local).
+//
+// Worth naming because the empty string does NOT mean the same thing on both
+// sides: for rendering it means "local", but a preference the *server* evaluates
+// against a clock (quiet hours) reads an empty zone as UTC. Anything sent to the
+// backend has to carry the resolved zone, not the blank.
+export function resolvedTimezone(profileTz) {
+  const tz = String(profileTz || '').trim()
+  if (tz) return tz
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || ''
+  } catch {
+    return '' // exotic environment with no Intl data — let the server keep UTC
+  }
+}
+
 // BCP-47 tag for a UI language. en-GB (not en-US) keeps day-before-month, which
 // matches every other locale we ship and the shape users already see.
 export function localeTag(language) {
@@ -135,7 +153,9 @@ function zonedParts(date, timeZone) {
 
 // Days since the epoch for a set of calendar fields — the unit relative labels
 // compare in, so a comparison never depends on the offset of either instant.
-function epochDay(parts) {
+// Exported because the due-date filters compare days too (utils/taskFilter), and
+// they have to land on the same integer this module's labels do.
+export function epochDay(parts) {
   return Math.round(Date.UTC(parts.year, parts.month, parts.day) / 86400000)
 }
 
@@ -202,12 +222,10 @@ export function createFormatters(rawPrefs) {
 
   const timeOptions = (o) => {
     const rest = intlFields(o)
-    return {
-      hour: '2-digit',
-      minute: '2-digit',
-      hour12: prefs.timeFormat === '12h',
-      ...rest,
-    }
+    // Intl throws (TypeError "Invalid option") when a style shortcut meets an
+    // explicit field, so `timeStyle` replaces the hour/minute defaults.
+    const fields = 'timeStyle' in rest ? {} : { hour: '2-digit', minute: '2-digit' }
+    return { ...fields, hour12: prefs.timeFormat === '12h', ...rest }
   }
 
   function formatDate(value, override = {}) {
@@ -240,6 +258,11 @@ export function createFormatters(rawPrefs) {
       // Same zone for both halves — otherwise a date-only value would print its
       // UTC day next to a clock read in the user's timezone.
       return `${isoDate(zonedParts(d, zone))} ${formatTime(d, { ...timeOnly, timeZone: zone || null })}`
+    }
+    // Style shortcuts cannot be mixed with the preset's day/month/year fields.
+    if ('dateStyle' in override || 'timeStyle' in override) {
+      const styled = { hour12: prefs.timeFormat === '12h', ...intlFields(override) }
+      return cached('date', locale, { ...styled, timeZone: zone }).format(d)
     }
     const dateOpts = dateOptions(override)
     const timeOpts = hasTimeField(override) ? timeOptions(override) : timeOptions({})

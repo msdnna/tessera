@@ -108,8 +108,10 @@ test('панель фоновых задач: имена воркеров и т�
   test.skip(!me.user?.is_admin, 'фоновые задачи видны только глобальному админу')
 
   await page.goto('/')
-  // The button carries a localised aria-label, hence the testid: reading it by
-  // label would be the very kind of русский selector this pass hunts for.
+  // The jobs live in the footer's «⋯» menu (v2); both carry testids, since
+  // reading them by label would be the very kind of русский selector this pass
+  // hunts for.
+  await page.getByTestId('user-menu').click()
   await page.getByTestId('jobs-button').click()
   const modal = page.locator('.bj-modal')
   await expect(modal).toBeVisible()

@@ -13,7 +13,10 @@
     2. Build the frontend in WSL (fast, that's where the toolchain lives) and
        copy the result into the Windows checkout (frontend\dist is gitignored,
        so `git pull` won't bring it):
-         # in WSL:      corepack yarn --cwd frontend build
+         # in WSL:      corepack yarn --cwd frontend build:desktop
+         #              (build:desktop, NOT build — it disables the PWA service
+         #               worker, which otherwise pins a stale app shell inside the
+         #               desktop webview across updates)
          # then (PowerShell), mirror it over:
          robocopy \\wsl.localhost\<distro>\home\msdnna\GolandProjects\tessera\frontend\dist C:\src\tessera\frontend\dist /MIR
 
@@ -60,6 +63,11 @@ if ($desktopDir -like '\\*') {
 if (-not (Get-Command cargo -ErrorAction SilentlyContinue)) {
   throw "cargo not found on PATH. Install Rust (MSVC toolchain) via rustup."
 }
+
+# The frontend build (here or in WSL) must skip the PWA service worker for desktop
+# — a SW pins a stale app shell in the persistent webview profile across updates.
+# vite.config.js reads this; beforeBuildCommand's `yarn build` inherits it.
+$env:TESSERA_DESKTOP = '1'
 
 Push-Location $srcTauri
 try {

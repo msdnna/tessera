@@ -1,5 +1,6 @@
 import * as Sentry from '@sentry/vue'
 import { apiBaseURL, absolutizeApiUrl } from './serverBase'
+import { scrubEvent, scrubBreadcrumb } from './scrubSecrets'
 
 // Browser error + performance telemetry (#2787), driven entirely by the
 // backend's runtime config (GET /api/client-config) — nothing is baked into the
@@ -67,6 +68,14 @@ export async function initSentry(app, router) {
       'ResizeObserver loop limit exceeded',
       'ResizeObserver loop completed with undelivered notifications.',
     ],
+    // The SDK records the full location on errors, on every navigation
+    // breadcrumb and on every pageload/navigation transaction. Our own mailed
+    // links put an account-takeover-grade token in that query string
+    // (/recover?token=…), so scrub before anything is handed to the transport —
+    // all three hooks, because a transaction never passes through beforeSend.
+    beforeSend: scrubEvent,
+    beforeSendTransaction: scrubEvent,
+    beforeBreadcrumb: scrubBreadcrumb,
   })
   return true
 }

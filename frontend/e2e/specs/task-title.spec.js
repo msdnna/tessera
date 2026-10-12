@@ -13,6 +13,8 @@ test('Enter в середине заголовка не оставляет пе�
   await openBoard(page, board.id)
 
   const col = page.getByTestId('column').first()
+  // «Создать задачу» unfolds while the pointer is over the lane (v2, #2954).
+  await col.hover()
   await col.getByTestId('add-task-button').click()
   const input = col.getByTestId('add-task-input').locator('textarea')
   await input.fill('Окно Что нового')

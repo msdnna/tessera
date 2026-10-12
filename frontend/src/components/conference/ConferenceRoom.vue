@@ -23,7 +23,7 @@
 // *pixels*. This file is what keeps them honest — a capture that turns out not
 // to hold the stage is stopped rather than published alongside someone else's.
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
-import { NBadge, NButton, NIcon, NInput, NPopover, NSpin, NTooltip } from 'naive-ui'
+import { NIcon, NInput, NPopover, NSpin, NTooltip } from 'naive-ui'
 import {
   Mic,
   MicOutline,
@@ -41,8 +41,14 @@ import {
   ContractOutline,
   RadioButtonOnOutline,
   SquareOutline,
+  PeopleOutline,
+  ChatbubbleOutline,
+  HappyOutline,
+  GridOutline,
+  PersonOutline,
+  ContractOutline as MinimizeOutline,
   ChevronForwardOutline,
-  ChevronBackOutline,
+  TrailSignOutline,
 } from '@vicons/ionicons5'
 import { conferences as confApi } from '@/api'
 import { mediaSupported, CONNECTING, ERROR, UNAVAILABLE } from '@/composables/useConfTransport'
@@ -52,6 +58,10 @@ import ParticipantsPanel from './ParticipantsPanel.vue'
 import ConferenceChat from './ConferenceChat.vue'
 import DeviceMenu from './DeviceMenu.vue'
 import UserAvatar from '@/components/UserAvatar.vue'
+import ShortcutKeys from '@/components/ShortcutKeys.vue'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { REACTIONS } from '@/utils/confReactions'
+import '@/components/kit/kit.css'
 
 const props = defineProps({
   conferenceId: { type: String, required: true },
@@ -71,13 +81,22 @@ const props = defineProps({
   // now lives only in this rail, so without listing them here an invitation would
   // show nowhere. [{ user_id, user_name, role }]
   invited: { type: Array, default: () => [] },
+  // The stage the meeting is tied to (#3053): { title, href } — the bar says
+  // «привязано к [Спринт 42]», a link to the stage page.
+  stage: { type: Object, default: null },
+  // For the chat's «@» and «/задача» (#3055): the workspace's members and the
+  // board a task goes to by default.
+  members: { type: Array, default: () => [] },
+  defaultBoardId: { type: String, default: '' },
 })
 // `hangup` asks the parent to leave the roster too; the parent flipping `active`
 // is what actually drops the media session, through the watcher below. One
 // direction of control, so the two halves cannot disagree. `invite` carries the
 // user id of the person to invite — the popover is here, the API call is the
 // parent's (#2891).
-const emit = defineEmits(['hangup', 'invite'])
+// `minimize` asks the parent to fold the call into the mini-window (v2, #3107):
+// leaving the room's route is what does it — the session lives in the store.
+const emit = defineEmits(['hangup', 'invite', 'minimize'])
 
 // The session lives in the store now (#2888): one long-lived transport + room
 // pair the whole app shares, so leaving this view for another section no longer
@@ -112,6 +131,8 @@ const {
   togglePeerMute,
   selectDevice,
   unblockAudio,
+  reactions,
+  sendReaction,
 } = session.transport
 
 const room = session.room
@@ -294,7 +315,7 @@ async function toggleRecording() {
     else await confApi.startRecording(props.conferenceId)
     // The dot is not set here on purpose — it arrives in the next snapshot.
   } catch (e) {
-    recError.value = e.response?.data?.error || e.message
+    recError.value = e.message
   } finally {
     recBusy.value = false
   }
@@ -365,6 +386,89 @@ function toggleRail() {
   railOpen.value = !railOpen.value
 }
 
+// ── v2 layout (#3107 — PackageE «Звонок») ───────────────────────────────
+// Grid: every participant an equal tile — the mockup's default. Speaker: the
+// stage plus the strip, as before. A shared screen always takes the stage.
+// Remembered per browser (non-critical UX state → localStorage).
+const LAYOUT_KEY = 'tessera_conf_layout'
+const layout = ref(
+  (typeof localStorage !== 'undefined' ? localStorage.getItem(LAYOUT_KEY) : null) === 'speaker'
+    ? 'speaker'
+    : 'grid',
+)
+function setLayout(v) {
+  layout.value = v
+  try {
+    localStorage.setItem(LAYOUT_KEY, v)
+  } catch {
+    // storage disabled — the choice still holds for this visit
+  }
+}
+const gridMode = computed(() => layout.value === 'grid' && !screenPeer.value)
+const gridStyle = computed(() => {
+  const n = peers.value.length || 1
+  const cols = n <= 1 ? 1 : n <= 4 ? 2 : n <= 9 ? 3 : 4
+  return { gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }
+})
+
+// Raised hands come from the room socket, keyed by the user id the SFU uses as
+// the participant's identity.
+const handUps = computed(() => {
+  const out = new Set()
+  for (const p of room.participants.value) if (p.hand_at) out.add(p.user_id)
+  return out
+})
+
+// The recording's own clock for the bar («Запись · 24:12»).
+const now = ref(Date.now())
+let clock = null
+watch(
+  () => !!room.recording.value,
+  (on) => {
+    clearInterval(clock)
+    clock = on ? setInterval(() => (now.value = Date.now()), 1000) : null
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => clearInterval(clock))
+const recClock = computed(() => {
+  const at = Date.parse(room.recording.value?.started_at || '')
+  if (!at) return ''
+  const sec = Math.max(0, Math.floor((now.value - at) / 1000))
+  const h = Math.floor(sec / 3600)
+  const m = Math.floor((sec % 3600) / 60)
+  const ss = String(sec % 60).padStart(2, '0')
+  return h ? `${h}:${String(m).padStart(2, '0')}:${ss}` : `${m}:${ss}`
+})
+
+// The toolbar's «Участники» and «Чат» open the rail on that tab, and close it
+// when it is already showing it.
+function railTab(tab) {
+  if (railOpen.value && rail.value === tab && !roomNarrow.value) railOpen.value = false
+  else {
+    railOpen.value = true
+    rail.value = tab
+  }
+}
+
+// Reactions (#3054): a picker on the dock, bubbles over the stage. Sent over the
+// SFU's data channel by the transport; nothing is stored.
+const reactOpen = ref(false)
+function react(emoji) {
+  sendReaction(emoji)
+  reactOpen.value = false
+}
+
+// ⌘D microphone, ⌘E camera, ⌘⇧H leave — while this call is on screen.
+useShortcuts(
+  {
+    'meet.mic': () => connected.value && !room.forceMuted.value && toggleMic(),
+    'meet.cam': () => connected.value && toggleCam(),
+    'meet.leave': () => emit('hangup'),
+  },
+  { when: () => props.active && !props.ended },
+)
+
 // ── invite popover (#2891) ───────────────────────────────────────────────
 // A click-popover in the rail, like the assignee picker: search over the
 // workspace members the parent says are still invitable, one click invites that
@@ -409,9 +513,9 @@ function onInviteShow(show) {
       <div v-if="status === ERROR" class="notice err" data-testid="conference-media-error">
         <n-icon :component="WarningOutline" :size="16" />
         <span>{{ error || $t('conferences.media.failed') }}</span>
-        <n-button size="tiny" quaternary @click="join(conferenceId)">
+        <button type="button" class="kit-btn small" @click="join(conferenceId)">
           {{ $t('conferences.media.retry') }}
-        </n-button>
+        </button>
       </div>
 
       <!-- A refused command, answered by the server rather than guessed at by
@@ -430,38 +534,144 @@ function onInviteShow(show) {
         <span>{{ recError }}</span>
       </div>
 
+      <!-- The call's bar: who is in it, the layout, folding the rail, the
+           mini-window. -->
+      <div class="bar">
+        <span class="bar-count">
+          <n-icon :component="PeopleOutline" :size="14" />
+          {{
+            $t('conferences.call.count', room.participants.value.length, {
+              named: { count: room.participants.value.length },
+            })
+          }}
+          <template v-if="stage">
+            · {{ $t('conferences.plan.linked') }}
+            <router-link
+              v-if="stage.href"
+              class="bar-stage"
+              :to="stage.href"
+              data-testid="conference-bar-stage"
+            >
+              <n-icon :component="TrailSignOutline" :size="12" />{{ stage.title }}
+            </router-link>
+            <span v-else class="bar-stage">
+              <n-icon :component="TrailSignOutline" :size="12" />{{ stage.title }}
+            </span>
+          </template>
+        </span>
+        <span class="bar-spacer" />
+        <div class="seg" role="group" :aria-label="$t('conferences.call.layout')">
+          <n-tooltip :delay="400">
+            <template #trigger>
+              <button
+                type="button"
+                class="seg-btn"
+                :class="{ on: layout === 'grid' }"
+                :aria-pressed="layout === 'grid'"
+                data-testid="conference-layout-grid"
+                @click="setLayout('grid')"
+              >
+                <n-icon :component="GridOutline" :size="15" />
+              </button>
+            </template>
+            {{ $t('conferences.call.grid') }}
+          </n-tooltip>
+          <n-tooltip :delay="400">
+            <template #trigger>
+              <button
+                type="button"
+                class="seg-btn"
+                :class="{ on: layout === 'speaker' }"
+                :aria-pressed="layout === 'speaker'"
+                data-testid="conference-layout-speaker"
+                @click="setLayout('speaker')"
+              >
+                <n-icon :component="PersonOutline" :size="15" />
+              </button>
+            </template>
+            {{ $t('conferences.call.speaker') }}
+          </n-tooltip>
+        </div>
+        <!-- Fold the rail away like the app sidebar (#2891). Hidden on a narrow
+             layout, where the rail stacks under the stage. -->
+        <n-tooltip v-if="!roomNarrow" :delay="400">
+          <template #trigger>
+            <button
+              type="button"
+              class="icon-btn rail-toggle"
+              data-testid="conference-rail-toggle"
+              :aria-label="
+                railOpen ? $t('conferences.panel.hideRail') : $t('conferences.panel.showRail')
+              "
+              @click="toggleRail"
+            >
+              <n-icon
+                :component="railOpen ? ChevronForwardOutline : ChatbubbleOutline"
+                :size="15"
+              />
+            </button>
+          </template>
+          {{ railOpen ? $t('conferences.panel.hideRail') : $t('conferences.panel.showRail') }}
+        </n-tooltip>
+        <n-tooltip :delay="400">
+          <template #trigger>
+            <button
+              type="button"
+              class="icon-btn"
+              data-testid="conference-minimize"
+              :aria-label="$t('conferences.mini.minimize')"
+              @click="emit('minimize')"
+            >
+              <n-icon :component="MinimizeOutline" :size="15" />
+            </button>
+          </template>
+          <span class="tip">
+            {{ $t('conferences.mini.minimize') }} <ShortcutKeys id="meet.minimize" />
+          </span>
+        </n-tooltip>
+      </div>
+
       <div class="body">
         <n-spin :show="busy" class="stage-col">
-          <div ref="stageWrapEl" class="stage-wrap">
+          <div ref="stageWrapEl" class="stage-wrap" :class="{ grid: gridMode }">
+            <!-- Reactions (#3054): bubbles rising from the stage's bottom edge,
+                 one lane each so a burst spreads out. Inside the stage, so they
+                 survive fullscreen too. Transform/opacity only (no blur). -->
+            <div class="reactions" aria-live="polite" data-testid="conference-reactions-feed">
+              <span
+                v-for="r in reactions"
+                :key="r.id"
+                class="reaction"
+                :style="{ left: `${6 + r.lane * 18}%` }"
+                data-testid="conference-reaction-bubble"
+              >
+                <span class="reaction-e">{{ r.emoji }}</span>
+                <span v-if="r.name" class="reaction-n">{{ r.name }}</span>
+              </span>
+            </div>
             <!-- «Идёт запись», for everyone in the call and not only for whoever
-                 may stop it (#2877). Overlaid on the stage rather than placed in
-                 the notice strip above it so it survives fullscreen — that is
-                 where a shared screen is watched, and it is exactly where a
-                 recording notice must not disappear. The name answers the
-                 question people actually ask, which is by whom. -->
+                 may stop it (#2877). Overlaid on the stage so it survives
+                 fullscreen — where a shared screen is watched. -->
             <div v-if="recording" class="rec-badge" data-testid="conference-recording-dot">
               <span class="rec-dot" />
               <span>{{ $t('conferences.rec.live') }}</span>
+              <span v-if="recClock" class="rec-clock">{{ recClock }}</span>
               <span v-if="recording.started_by" class="rec-by">
                 {{ $t('conferences.rec.by', { name: recording.started_by }) }}
               </span>
             </div>
-            <!-- Fullscreen lives on the stage itself (#2882), most useful while a
-                 screen is shared. It fullscreens this column, not one <video>.
-                 v-if on the tooltip, not the button: an empty trigger slot (when
-                 fullscreen is unsupported) makes naive throw. -->
-            <n-tooltip v-if="fullscreenSupported && stagePeer">
+            <!-- Fullscreen lives on the stage itself (#2882). v-if on the
+                 tooltip, not the button: an empty trigger slot makes naive throw. -->
+            <n-tooltip v-if="fullscreenSupported && (stagePeer || gridMode)">
               <template #trigger>
-                <n-button
-                  class="fs-btn"
-                  circle
-                  size="small"
-                  secondary
+                <button
+                  type="button"
+                  class="icon-btn fs-btn"
                   data-testid="conference-fullscreen"
                   @click="toggleFullscreen"
                 >
-                  <n-icon :component="isFullscreen ? ContractOutline : ExpandOutline" />
-                </n-button>
+                  <n-icon :component="isFullscreen ? ContractOutline : ExpandOutline" :size="15" />
+                </button>
               </template>
               {{
                 isFullscreen
@@ -469,30 +679,38 @@ function onInviteShow(show) {
                   : $t('conferences.media.fullscreen')
               }}
             </n-tooltip>
-            <participant-tile
-              v-if="stagePeer"
-              :key="screenPeer ? `screen-${stagePeer.id}` : stagePeer.sid || stagePeer.id"
-              :peer="stagePeer"
-              stage
-              :screen="!!screenPeer"
-            />
-            <div v-else class="notice idle">{{ $t('conferences.media.connecting') }}</div>
+
+            <!-- Grid: everybody an equal tile. -->
+            <div v-if="gridMode && peers.length" class="grid-tiles" :style="gridStyle">
+              <participant-tile
+                v-for="p in peers"
+                :key="p.sid || p.id"
+                :peer="p"
+                :hand="handUps.has(p.id)"
+                cell
+              />
+            </div>
+
+            <template v-else>
+              <participant-tile
+                v-if="stagePeer"
+                :key="screenPeer ? `screen-${stagePeer.id}` : stagePeer.sid || stagePeer.id"
+                :peer="stagePeer"
+                stage
+                :screen="!!screenPeer"
+                :hand="!screenPeer && handUps.has(stagePeer.id)"
+              />
+              <div v-else class="notice idle">{{ $t('conferences.media.connecting') }}</div>
+            </template>
 
             <!-- Who holds the stage and who is behind them. The queue is the
-                 server's, not a local guess: a member who asked while a host was
-                 presenting has to see that they are waiting, not that their
-                 click did nothing. -->
+                 server's, not a local guess. -->
             <div
               v-if="room.stage.value || room.queuePos.value"
               class="stage-note"
               data-testid="conference-stage-note"
             >
               <n-icon :component="DesktopOutline" :size="14" />
-              <!-- Holding the stage is not the same as filling it. Between the
-                   queue reaching us and the picker being answered the stage is
-                   already ours while nothing is captured, and saying "you are
-                   presenting" there contradicts the "start sharing" prompt
-                   printed directly underneath. -->
               <span v-if="room.presenting.value && screenOn">
                 {{ $t('conferences.screen.youPresent') }}
               </span>
@@ -518,65 +736,53 @@ function onInviteShow(show) {
                  the picker inside a click, so this has to be a button. -->
             <div v-if="myTurn" class="notice turn" data-testid="conference-screen-turn">
               <span>{{ $t('conferences.screen.yourTurn') }}</span>
-              <n-button size="tiny" type="primary" @click="startScreen()">
+              <button type="button" class="kit-btn small primary" @click="startScreen()">
                 {{ $t('conferences.screen.start') }}
-              </n-button>
+              </button>
             </div>
 
-            <div v-if="stripPeers.length" class="strip" data-testid="conference-strip">
-              <participant-tile v-for="p in stripPeers" :key="p.sid || p.id" :peer="p" />
+            <div v-if="!gridMode && stripPeers.length" class="strip" data-testid="conference-strip">
+              <participant-tile
+                v-for="p in stripPeers"
+                :key="p.sid || p.id"
+                :peer="p"
+                :hand="handUps.has(p.id)"
+              />
             </div>
           </div>
         </n-spin>
 
-        <!-- Fold the rail away like the app sidebar (#2891). Hidden on a narrow
-             layout, where the rail stacks under the stage and there is nothing to
-             fold. Sits in the seam between stage and rail. -->
-        <button
-          v-if="!roomNarrow"
-          type="button"
-          class="rail-toggle"
-          data-testid="conference-rail-toggle"
-          :aria-label="
-            railOpen ? $t('conferences.panel.hideRail') : $t('conferences.panel.showRail')
-          "
-          @click="toggleRail"
-        >
-          <n-icon :component="railOpen ? ChevronForwardOutline : ChevronBackOutline" :size="16" />
-        </button>
-
         <aside v-show="railVisible" class="rail">
           <div class="rail-tabs">
-            <!-- `ngrad` opts these out of the accent-gradient rule in main.css:
-                 it paints any primary button that is not ghost/dashed/secondary
-                 with a solid gradient, and on a *quaternary* primary that lands
-                 accent text on an accent block — the active tab loses its label
-                 entirely. -->
-            <n-button
-              size="tiny"
-              :type="rail === 'people' ? 'primary' : 'default'"
-              quaternary
-              class="ngrad"
-              data-testid="conference-rail-people"
-              @click="rail = 'people'"
-            >
-              {{ $t('conferences.panel.title', { count: room.participants.value.length }) }}
-            </n-button>
-            <n-badge :value="unread" :max="9" :show="rail !== 'chat' && unread > 0" dot>
-              <n-button
-                size="tiny"
-                :type="rail === 'chat' ? 'primary' : 'default'"
-                quaternary
-                class="ngrad"
+            <div class="seg wide" role="tablist">
+              <button
+                type="button"
+                role="tab"
+                class="seg-btn"
+                :class="{ on: rail === 'people' }"
+                :aria-selected="rail === 'people'"
+                data-testid="conference-rail-people"
+                @click="rail = 'people'"
+              >
+                {{ $t('conferences.panel.title', { count: room.participants.value.length }) }}
+              </button>
+              <button
+                type="button"
+                role="tab"
+                class="seg-btn"
+                :class="{ on: rail === 'chat' }"
+                :aria-selected="rail === 'chat'"
                 data-testid="conference-rail-chat"
                 @click="rail = 'chat'"
               >
                 {{ $t('conferences.chat.tab') }}
-              </n-button>
-            </n-badge>
-            <!-- Invite lives here now (#2881), pushed to the far end of the tab
-                 row so it reads as an action rather than a third tab. The picker
-                 is a click-popover (#2891), like the assignee picker. -->
+                <span v-if="rail !== 'chat' && unread > 0" class="seg-n">{{
+                  unread > 9 ? '9+' : unread
+                }}</span>
+              </button>
+            </div>
+            <!-- Invite lives here (#2881), a click-popover (#2891), like the
+                 assignee picker. -->
             <n-popover
               v-if="canInvite"
               trigger="click"
@@ -585,10 +791,15 @@ function onInviteShow(show) {
               @update:show="onInviteShow"
             >
               <template #trigger>
-                <n-button size="tiny" quaternary class="invite" data-testid="conference-invite">
-                  <template #icon><n-icon :component="PersonAddOutline" /></template>
-                  {{ $t('conferences.invite.button') }}
-                </n-button>
+                <button
+                  type="button"
+                  class="icon-btn invite"
+                  :aria-label="$t('conferences.invite.button')"
+                  :title="$t('conferences.invite.button')"
+                  data-testid="conference-invite"
+                >
+                  <n-icon :component="PersonAddOutline" :size="15" />
+                </button>
               </template>
               <div class="invite-body">
                 <n-input
@@ -637,10 +848,22 @@ function onInviteShow(show) {
                  roster above so «в комнате» stays an honest count. -->
             <div v-if="invited.length" class="invited" data-testid="conference-invited">
               <div class="invited-h">{{ $t('conferences.panel.invitedTitle') }}</div>
-              <div v-for="p in invited" :key="p.user_id" class="invited-row">
+              <div
+                v-for="p in invited"
+                :key="p.user_id"
+                class="invited-row"
+                :class="{ declined: p.rsvp === 'declined' }"
+                :data-rsvp="p.rsvp || 'pending'"
+              >
                 <user-avatar :user-id="p.user_id" :name="p.user_name" class="iav" />
                 <span class="iname">{{ p.user_name }}</span>
-                <span class="itag">{{ $t('conferences.presence.invited') }}</span>
+                <!-- The answer to the invitation (#3051): «иду» / «не иду», or
+                     still «приглашён» while there is none. -->
+                <span class="itag">{{
+                  p.rsvp === 'accepted' || p.rsvp === 'declined'
+                    ? $t(`conferences.rsvp.${p.rsvp}`)
+                    : $t('conferences.presence.invited')
+                }}</span>
               </div>
             </div>
           </div>
@@ -653,6 +876,8 @@ function onInviteShow(show) {
             :readonly="ended"
             :can-moderate="room.canModerate.value"
             :visible="rail === 'chat'"
+            :members="members"
+            :default-board-id="defaultBoardId"
           />
         </aside>
       </div>
@@ -662,20 +887,22 @@ function onInviteShow(show) {
       <div v-if="audioBlocked" class="notice" data-testid="conference-audio-blocked">
         <n-icon :component="VolumeHighOutline" :size="16" />
         <span>{{ $t('conferences.media.audioBlocked') }}</span>
-        <n-button size="tiny" type="primary" @click="unblockAudio()">
+        <button type="button" class="kit-btn small primary" @click="unblockAudio()">
           {{ $t('conferences.media.enableAudio') }}
-        </n-button>
+        </button>
       </div>
 
+      <!-- The controls: 46px buttons, radius 15, on a floating dock. -->
       <div class="toolbar">
         <n-tooltip>
           <template #trigger>
             <!-- Disabled under a force-mute rather than hidden: the server will
                  refuse the publish anyway, and a button that silently does
                  nothing reads as a broken microphone. -->
-            <n-button
-              circle
-              :type="micOn ? 'primary' : 'default'"
+            <button
+              type="button"
+              class="cb"
+              :class="{ off: !micOn }"
               :disabled="!connected || room.forceMuted.value"
               data-testid="conference-mic"
               @click="toggleMic()"
@@ -693,61 +920,53 @@ function onInviteShow(show) {
                 </span>
               </span>
               <n-icon v-else :component="micOn ? MicOutline : MicOffOutline" />
-            </n-button>
+            </button>
           </template>
-          {{
-            room.forceMuted.value
-              ? $t('conferences.panel.youAreForceMuted')
-              : micOn
-                ? $t('conferences.media.muteMic')
-                : $t('conferences.media.unmuteMic')
-          }}
+          <span class="tip">
+            {{
+              room.forceMuted.value
+                ? $t('conferences.panel.youAreForceMuted')
+                : micOn
+                  ? $t('conferences.media.muteMic')
+                  : $t('conferences.media.unmuteMic')
+            }}
+            <ShortcutKeys id="meet.mic" />
+          </span>
         </n-tooltip>
 
         <n-tooltip>
           <template #trigger>
-            <n-button
-              circle
-              :type="handUp ? 'warning' : 'default'"
-              :disabled="!room.connected.value"
-              data-testid="conference-hand"
-              @click="room.raiseHand(!handUp)"
-            >
-              <n-icon :component="HandRightOutline" />
-            </n-button>
-          </template>
-          {{ handUp ? $t('conferences.panel.lowerHand') : $t('conferences.panel.raiseHand') }}
-        </n-tooltip>
-
-        <n-tooltip>
-          <template #trigger>
-            <n-button
-              circle
-              :type="camOn ? 'primary' : 'default'"
+            <button
+              type="button"
+              class="cb"
+              :class="{ off: !camOn }"
               :disabled="!connected"
               data-testid="conference-cam"
               @click="toggleCam()"
             >
               <n-icon :component="camOn ? VideocamOutline : VideocamOffOutline" />
-            </n-button>
+            </button>
           </template>
-          {{ camOn ? $t('conferences.media.camOff') : $t('conferences.media.camOn') }}
+          <span class="tip">
+            {{ camOn ? $t('conferences.media.camOff') : $t('conferences.media.camOn') }}
+            <ShortcutKeys id="meet.cam" />
+          </span>
         </n-tooltip>
 
         <n-tooltip>
           <template #trigger>
             <!-- Enabled even while someone else presents: pressing it is how you
-                 get into the queue, and a disabled button would read as "screen
-                 share is broken" rather than "wait your turn". -->
-            <n-button
-              circle
-              :type="screenOn ? 'primary' : wantScreen ? 'warning' : 'default'"
+                 get into the queue. -->
+            <button
+              type="button"
+              class="cb wide-only"
+              :class="{ on: screenOn, wait: wantScreen && !screenOn }"
               :disabled="!connected"
               data-testid="conference-screen"
               @click="toggleScreen()"
             >
               <n-icon :component="screenOn ? StopCircleOutline : DesktopOutline" />
-            </n-button>
+            </button>
           </template>
           {{
             screenOn
@@ -759,24 +978,82 @@ function onInviteShow(show) {
         </n-tooltip>
 
         <!-- Recording (#2877) — moderators only, because only they may press it.
-             Hidden rather than disabled: unlike the microphone, an ordinary
-             participant has nothing to learn from a control they can never use,
-             and the red dot already tells them the thing that concerns them. -->
+             A soft red while it runs. -->
         <n-tooltip v-if="room.canModerate.value">
           <template #trigger>
-            <n-button
-              circle
-              :type="recording ? 'error' : 'default'"
-              :loading="recBusy"
+            <button
+              type="button"
+              class="cb rec"
+              :class="{ live: !!recording }"
               :disabled="!room.connected.value || recBusy"
               data-testid="conference-record"
               @click="toggleRecording()"
             >
               <n-icon :component="recording ? SquareOutline : RadioButtonOnOutline" />
-            </n-button>
+            </button>
           </template>
           {{ recording ? $t('conferences.rec.stop') : $t('conferences.rec.start') }}
         </n-tooltip>
+
+        <!-- Reactions (#3054): a row of emoji above the button. -->
+        <n-popover
+          v-model:show="reactOpen"
+          trigger="click"
+          placement="top"
+          :show-arrow="false"
+          raw
+          :disabled="!connected"
+        >
+          <template #trigger>
+            <button
+              type="button"
+              class="cb wide-only"
+              :class="{ on: reactOpen }"
+              :disabled="!connected"
+              :title="$t('conferences.reactions.button')"
+              :aria-label="$t('conferences.reactions.button')"
+              data-testid="conference-reactions"
+            >
+              <n-icon :component="HappyOutline" />
+            </button>
+          </template>
+          <div
+            class="react-pop"
+            role="menu"
+            :aria-label="$t('conferences.reactions.title')"
+            data-testid="conference-reactions-pop"
+          >
+            <button
+              v-for="e in REACTIONS"
+              :key="e"
+              type="button"
+              class="react-btn"
+              role="menuitem"
+              data-testid="conference-reaction"
+              @click="react(e)"
+            >
+              {{ e }}
+            </button>
+          </div>
+        </n-popover>
+
+        <n-tooltip>
+          <template #trigger>
+            <button
+              type="button"
+              class="cb"
+              :class="{ hand: handUp }"
+              :disabled="!room.connected.value"
+              data-testid="conference-hand"
+              @click="room.raiseHand(!handUp)"
+            >
+              <n-icon :component="HandRightOutline" />
+            </button>
+          </template>
+          {{ handUp ? $t('conferences.panel.lowerHand') : $t('conferences.panel.raiseHand') }}
+        </n-tooltip>
+
+        <span class="cb-gap" />
 
         <device-menu
           :devices="devices"
@@ -787,35 +1064,73 @@ function onInviteShow(show) {
           @select="selectDevice"
           @toggle-denoise="toggleDenoise"
         />
-
         <n-tooltip>
           <template #trigger>
-            <n-button circle type="error" data-testid="conference-hangup" @click="emit('hangup')">
-              <n-icon :component="CallOutline" />
-            </n-button>
+            <button
+              type="button"
+              class="cb"
+              :class="{ on: railVisible && rail === 'people' && !roomNarrow }"
+              data-testid="conference-people"
+              @click="railTab('people')"
+            >
+              <n-icon :component="PeopleOutline" />
+            </button>
           </template>
-          {{ $t('conferences.media.hangup') }}
+          {{ $t('conferences.detail.participants') }}
         </n-tooltip>
+        <n-tooltip>
+          <template #trigger>
+            <button
+              type="button"
+              class="cb"
+              :class="{ on: railVisible && rail === 'chat' && !roomNarrow }"
+              data-testid="conference-chat-toggle"
+              @click="railTab('chat')"
+            >
+              <n-icon :component="ChatbubbleOutline" />
+              <span v-if="rail !== 'chat' && unread > 0" class="cb-dot" />
+            </button>
+          </template>
+          {{ $t('conferences.chat.tab') }}
+        </n-tooltip>
+
+        <span class="cb-gap" />
+
+        <button
+          type="button"
+          class="cb leave"
+          data-testid="conference-leave"
+          @click="emit('hangup')"
+        >
+          <n-icon :component="CallOutline" />
+          <span class="leave-l">{{ $t('conferences.actions.leave') }}</span>
+          <ShortcutKeys id="meet.leave" joined />
+        </button>
       </div>
     </template>
   </div>
 </template>
 
 <style scoped>
+/* v2 (#3107 — PackageE «Звонок»): the call fills the page — a bar, the tiles
+   and the rail side by side, the controls on a dock at the bottom. No lines:
+   the rail is a --t-col surface, the bar and the dock are spacing and levels. */
 .room {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  height: 100%;
+  min-height: 0;
 }
 .notice {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  font-size: 12px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  font-size: 12.5px;
   color: var(--t-text2);
-  background: var(--t-hover);
+  background: var(--t-col);
 }
 .notice.idle {
   justify-content: center;
@@ -823,70 +1138,179 @@ function onInviteShow(show) {
   min-height: 120px;
 }
 .notice.err {
-  color: #d03050;
+  color: color-mix(in srgb, #e0533d 82%, var(--t-text1));
+  background: color-mix(in srgb, #e0533d 12%, transparent);
 }
-/* Stage and roster side by side on a desktop, stacked below it. The rail is
-   given a fixed basis rather than a fraction: the participant rows have a fixed
-   ideal width (avatar + name + slider), and letting them grow with the viewport
-   would stretch the slider across half the screen. */
-.body {
+.notice.turn {
+  justify-content: center;
+}
+
+/* ── the bar ── */
+.bar {
+  flex: none;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+}
+.bar-count {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font-size: 12.5px;
+  color: var(--t-text2);
+  white-space: nowrap;
+}
+/* «привязано к [Спринт 42]» (#3053): the mockup's pill with the trail sign. */
+.bar-stage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  min-width: 0;
+  padding: 0 8px;
+  border-radius: 999px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  text-decoration: none;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+a.bar-stage:hover {
+  color: var(--t-text1);
+}
+.bar-spacer {
+  flex: 1;
+}
+/* A segmented control on the sunken level. */
+.seg {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: var(--t-sub);
+}
+.seg.wide {
+  flex: 1;
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr;
+}
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-width: 30px;
+  height: 26px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.seg-btn:hover {
+  color: var(--t-text1);
+}
+.seg-btn.on {
+  background: var(--t-pop);
+  color: var(--t-text1);
+  font-weight: 600;
+  box-shadow: var(--t-sh-card);
+}
+.seg-n {
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  box-sizing: border-box;
+  border-radius: 999px;
+  background: var(--t-accent-grad);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+}
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--t-text2);
+  cursor: pointer;
+}
+.icon-btn:hover {
+  background: var(--t-hover);
+  color: var(--t-text1);
+}
+.icon-btn:focus-visible,
+.seg-btn:focus-visible,
+.cb:focus-visible {
+  outline: 2px solid var(--t-primary);
+  outline-offset: 2px;
+}
+.tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* ── stage and rail ── */
+.body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: stretch;
   gap: 12px;
 }
 .stage-col {
   flex: 1;
   min-width: 0;
+  min-height: 0;
 }
-/* A column, not a plain block: the chat inside brings its own scroller for the
-   log and has to keep its composer pinned under it. overflow-y stays for the
-   roster, which is a flat list and does want to scroll as a whole. */
-/* Wider now that it is the only side panel (#2881): the participants column that
-   used to sit beside it is gone, so the roster and chat get its room. */
+.stage-col :deep(.n-spin-content) {
+  height: 100%;
+}
+.stage-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  height: 100%;
+  min-height: 0;
+}
+.grid-tiles {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-auto-rows: minmax(0, 1fr);
+  gap: 10px;
+}
 .rail {
   flex: none;
   display: flex;
   flex-direction: column;
-  width: 320px;
-  max-height: 60vh;
+  width: 316px;
+  min-height: 0;
   overflow-y: auto;
-  padding: 8px;
-  border: 1px solid var(--t-border);
-  border-radius: 10px;
+  padding: 10px;
+  box-sizing: border-box;
+  border-radius: 18px;
+  background: var(--t-col);
 }
 .rail-tabs {
   display: flex;
   align-items: center;
-  gap: 4px;
-  padding: 0 4px 6px;
-}
-/* The invite action sits at the far end of the tab row, away from the two tabs. */
-.rail-tabs .invite {
-  margin-left: auto;
-}
-/* Split-pane divider that folds the rail away (#2891), styled like the app
-   sidebar's resizer: a slim full-height bar in the seam between stage and rail. */
-.rail-toggle {
-  flex: none;
-  align-self: stretch;
-  width: 18px;
-  min-height: 44px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
-  color: var(--t-text3);
-  cursor: pointer;
-  transition:
-    background 0.15s,
-    color 0.15s;
-}
-.rail-toggle:hover {
-  background: var(--t-hover);
-  color: var(--t-text1);
+  gap: 6px;
+  margin-bottom: 8px;
 }
 /* Invite popover (#2891): search + a scrollable list of avatar rows. */
 .invite-body {
@@ -909,7 +1333,7 @@ function onInviteShow(show) {
   width: 100%;
   padding: 6px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
   color: var(--t-text1);
   text-align: left;
@@ -945,16 +1369,24 @@ function onInviteShow(show) {
   display: flex;
   flex-direction: column;
 }
-/* Invited-but-absent list (#2875), set off from the live roster by a divider so
-   «в комнате» stays a count of who is actually present. */
+/* The chat fills the rail: its log scrolls, its composer stays at the foot. */
+.rail :deep(.chat) {
+  flex: 1;
+  min-height: 0;
+}
+.rail :deep(.chat .log) {
+  max-height: none;
+}
+/* Invited-but-absent list (#2875), set apart from the live roster by space. */
 .invited {
-  margin-top: 6px;
-  padding-top: 8px;
-  border-top: 1px solid var(--t-border);
+  margin-top: 12px;
 }
 .invited-h {
   padding: 0 8px 4px;
   font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
   color: var(--t-text3);
 }
 .invited-row {
@@ -962,6 +1394,10 @@ function onInviteShow(show) {
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
+}
+/* Declined (#3051): still listed, so the host sees who said no — dimmed. */
+.invited-row.declined {
+  opacity: 0.55;
 }
 .iav {
   flex: none;
@@ -987,16 +1423,13 @@ function onInviteShow(show) {
   font-size: 11px;
   color: var(--t-text3);
 }
-/* Stacked layout (#2893, round 2). Two things had to change together.
-   `align-items: flex-start` is right for the row — it keeps the rail from
-   stretching to the stage's height — but in a column it makes both children
-   shrink to their content, so the stage ended up 126px wide next to a rail that
-   asked for the full width. And that width was `100%`: nothing in this app sets
-   a global `box-sizing`, so the rail's own 8px padding and 1px border land
-   OUTSIDE the 100%, pushing its right edge to 399px in a 393px viewport — the
-   panel «slightly out to the right» from the report. `stretch` gives both the
-   pane's width with no percentage to overflow past. */
+/* Stacked layout (#2893, round 2): `stretch` gives both the pane's width with
+   no percentage to overflow past. */
 @media (max-width: 900px) {
+  .room {
+    height: auto;
+    padding-bottom: 84px;
+  }
   .body {
     flex-direction: column;
     align-items: stretch;
@@ -1005,23 +1438,31 @@ function onInviteShow(show) {
     width: auto;
     max-height: none;
   }
+  .rail :deep(.chat .log) {
+    max-height: 46vh;
+  }
+  .grid-tiles {
+    grid-auto-rows: minmax(140px, auto);
+  }
 }
-.stage-wrap {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-/* Overlaid on the stage tile's top-right corner (#2882). z-index clears the
-   video, and the tile's own rounded corners sit under it. */
+/* Overlaid on the stage's top-right corner (#2882). */
 .fs-btn {
   position: absolute;
-  top: 8px;
-  right: 8px;
+  top: 10px;
+  right: 10px;
   z-index: 2;
+  background: rgb(0 0 0 / 40%);
+  color: #fff;
 }
-/* In fullscreen the column owns the whole screen, so the stage tile is let off
-   its viewport cap and the padding keeps it clear of the edges. */
+.fs-btn:hover {
+  background: rgb(0 0 0 / 60%);
+  color: #fff;
+}
+.stage-wrap.grid .fs-btn,
+.stage-wrap.grid .rec-badge {
+  top: 12px;
+}
+/* In fullscreen the column owns the whole screen. */
 .stage-wrap:fullscreen {
   justify-content: center;
   padding: 16px;
@@ -1030,38 +1471,40 @@ function onInviteShow(show) {
 .stage-wrap:fullscreen :deep(.tile.stage) {
   max-height: 92vh;
 }
-/* «Идёт запись» over the stage's top-left corner (#2877), opposite the
-   fullscreen button. Its own dark scrim rather than a theme surface: it sits on
-   video, which is dark in both themes, and a light pill there would vanish
-   against a bright slide. */
+/* «Идёт запись» over the stage's top-left corner (#2877): a soft red pill on a
+   dark scrim — it sits on video, which is dark in both themes. */
 .rec-badge {
   position: absolute;
-  top: 8px;
-  left: 8px;
+  top: 10px;
+  left: 10px;
   z-index: 2;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 3px 10px;
+  height: 26px;
+  padding: 0 10px;
   border-radius: 999px;
   font-size: 12px;
+  font-weight: 600;
   color: #fff;
-  background: rgba(0, 0, 0, 0.55);
+  background: color-mix(in srgb, #e0533d 55%, rgb(0 0 0 / 60%));
   pointer-events: none;
 }
+.rec-clock {
+  font-variant-numeric: tabular-nums;
+}
 .rec-by {
-  opacity: 0.75;
+  font-weight: 400;
+  opacity: 0.8;
 }
 .rec-dot {
   flex: none;
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: #d03050;
+  background: #fff;
   animation: rec-pulse 1.6s ease-in-out infinite;
 }
-/* Held still under prefers-reduced-motion: a blinking dot is exactly the kind of
-   thing that setting exists for, and the badge reads without the animation. */
 @media (prefers-reduced-motion: reduce) {
   .rec-dot {
     animation: none;
@@ -1069,12 +1512,9 @@ function onInviteShow(show) {
 }
 @keyframes rec-pulse {
   50% {
-    opacity: 0.25;
+    opacity: 0.3;
   }
 }
-/* The stage caption: who is presenting and who is behind them. Wraps rather
-   than truncates — the Russian strings are long, and "вы в очереди: 2" is the
-   half that must not be the half that disappears. */
 .stage-note {
   display: flex;
   flex-wrap: wrap;
@@ -1086,51 +1526,224 @@ function onInviteShow(show) {
 .qpos {
   color: var(--t-text3);
 }
-.notice.turn {
-  justify-content: center;
+/* Speaker layout on a desktop: the stage takes the height the strip leaves. */
+@media (min-width: 901px) {
+  .stage-wrap:not(.grid) > :deep(.tile.stage) {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    aspect-ratio: auto;
+  }
 }
-/* Small fixed-size tiles, centred and wrapping (#2881). NOT 1fr: stretching the
-   tracks to fill made each tile grow, and with the tile's 16:9 aspect-ratio a
-   wide tile also grew tall, swallowing the gap — the strip read as one solid
-   block. A bounded width keeps the tiles compact (like the mockup) and the gap
-   visible. The stage tile is separate, so a shared screen still fills its own. */
+/* Small fixed-size tiles under the stage, left-aligned (#2881). */
 .strip {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 176px));
-  /* Left-aligned, not centred: with a couple of tiles a centred row drifts off
-     the left edge and reads as misaligned against the stage above it. */
   justify-content: start;
-  gap: 14px;
+  gap: 10px;
 }
-/* The call controls sit in a bar pinned to the bottom of the window (#2891),
-   spanning the content area — everything right of the app sidebar — so they stay
-   reachable however far the page is scrolled instead of floating directly under
-   the tiles. `left` is fed by the app shell: --app-content-left is the sidebar's
-   current width, 0 on mobile. */
+
+/* ── the dock ── */
 .toolbar {
-  position: fixed;
-  left: var(--app-content-left, 0);
-  right: 0;
-  bottom: 0;
-  z-index: 5;
+  flex: none;
+  align-self: center;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 14px;
-  padding: 10px 14px;
-  background: var(--t-surface);
-  border-top: 1px solid var(--t-border);
+  gap: 8px;
+  padding: 8px;
+  border-radius: 20px;
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
 }
-/* Toolbar controls ~1.25× the default (#2886): larger than stock so the mic
-   meter inside the button reads, but not the oversized 1.5× first tried. The
-   icons have no explicit size, so they follow the button's font-size. */
-.toolbar :deep(.n-button) {
-  width: 42px;
-  height: 42px;
+@media (max-width: 900px) {
+  /* On a phone the dock stays in reach at the bottom of the screen. */
+  .toolbar {
+    position: fixed;
+    left: 50%;
+    bottom: 12px;
+    z-index: 5;
+    transform: translateX(-50%);
+    max-width: calc(100vw - 16px);
+    overflow-x: auto;
+    gap: 6px;
+  }
+}
+.cb {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 46px;
+  height: 46px;
+  padding: 0;
+  border: 0;
+  border-radius: 15px;
+  background: var(--t-ctl);
+  color: var(--t-text1);
+  font: inherit;
   font-size: 20px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.cb:hover:not(:disabled) {
+  background: var(--t-hover);
+}
+.cb:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+/* Off: the device is off — the glyph dimmed, the surface stays neutral. */
+.cb.off {
+  color: var(--t-text3);
+}
+/* On: an active toggle (sharing, the open rail tab) on the soft accent. */
+.cb.on {
+  background: color-mix(in srgb, var(--t-primary) 22%, var(--t-ctl));
+  color: var(--t-primary);
+}
+.cb.wait {
+  background: color-mix(in srgb, #f0a020 22%, var(--t-ctl));
+  color: #f0a020;
+}
+.cb.hand {
+  background: color-mix(in srgb, #f0a020 26%, var(--t-ctl));
+  color: #f0a020;
+}
+/* Recording: a soft red; a live recording is a stronger one. */
+.cb.rec {
+  color: #e0533d;
+}
+.cb.rec.live {
+  background: color-mix(in srgb, #e0533d 26%, var(--t-ctl));
+}
+/* Reactions (#3054): the picker above the dock button… */
+.react-pop {
+  display: flex;
+  gap: 2px;
+  padding: 5px;
+  border-radius: 14px;
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
+}
+.react-btn {
+  width: 38px;
+  height: 38px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
+  transition: transform 0.12s;
+}
+.react-btn:hover,
+.react-btn:focus-visible {
+  background: var(--t-hover);
+  transform: scale(1.12);
+  outline: none;
+}
+/* …and the bubbles over the stage: rise and fade, transform/opacity only. */
+.reactions {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+.reaction {
+  position: absolute;
+  bottom: 12px;
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  animation: reaction-rise 4s ease-out forwards;
+}
+.reaction-e {
+  font-size: 34px;
+  line-height: 1;
+}
+.reaction-n {
+  max-width: 120px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.45);
+  color: #fff;
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+@keyframes reaction-rise {
+  0% {
+    transform: translateY(12px) scale(0.6);
+    opacity: 0;
+  }
+  12% {
+    transform: translateY(0) scale(1);
+    opacity: 1;
+  }
+  75% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(-180px) scale(1);
+    opacity: 0;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .reaction {
+    animation: none;
+  }
+}
+.cb-gap {
+  width: 6px;
+}
+.cb-dot {
+  position: absolute;
+  top: 9px;
+  right: 9px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--t-primary);
+}
+/* «Выйти»: the red action with its key. */
+.cb.leave {
+  width: auto;
+  padding: 0 10px 0 14px;
+  font-size: 18px;
+  color: #fff;
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #e0533d 86%, #000),
+    #e0533d 50%,
+    color-mix(in srgb, #e0533d 86%, #fff)
+  );
+}
+.cb.leave:hover {
+  background: linear-gradient(
+    to top right,
+    color-mix(in srgb, #e0533d 80%, #000),
+    #e0533d 50%,
+    color-mix(in srgb, #e0533d 92%, #fff)
+  );
+  box-shadow: 0 4px 14px color-mix(in srgb, #e0533d 40%, transparent);
+}
+.leave-l {
+  font-size: 14px;
+  font-weight: 650;
+}
+.cb.leave :deep(.kbd) {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  box-shadow: none;
 }
 /* Own-mic meter (#2883 round 2): a ghosted outline under a solid copy that fills
-   from the bottom as clip-path uncovers it. Sized to the button's icon em. */
+   from the bottom as clip-path uncovers it. */
 .mic-meter {
   position: relative;
   display: inline-flex;
@@ -1147,5 +1760,33 @@ function onInviteShow(show) {
   inset: 0;
   display: inline-flex;
   transition: clip-path 60ms linear;
+}
+@media (max-width: 900px) {
+  .cb {
+    width: 42px;
+    height: 42px;
+    border-radius: 13px;
+    flex: none;
+  }
+  .cb-gap {
+    width: 0;
+  }
+}
+/* A phone: no screen share in a mobile browser, no reactions picker — the dock
+   keeps what fits one thumb-row. */
+@media (max-width: 600px) {
+  .wide-only {
+    display: none !important;
+  }
+  .cb {
+    width: 40px;
+    height: 40px;
+  }
+}
+@media (max-width: 900px) {
+  .leave-l,
+  .cb.leave :deep(.sk) {
+    display: none;
+  }
 }
 </style>

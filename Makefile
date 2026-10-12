@@ -1,4 +1,4 @@
-GO ?= go1.25.9
+GO ?= go1.26.9
 COMPOSE ?= docker compose
 
 .PHONY: help
@@ -53,8 +53,12 @@ tidy: ## go mod tidy
 	cd backend && $(GO) mod tidy
 
 .PHONY: lint-backend
-lint-backend: ## Run golangci-lint
+lint-backend: ## Run golangci-lint (includes the gofmt gate)
 	cd backend && golangci-lint run ./...
+
+.PHONY: format-backend
+format-backend: ## Auto-format Go sources via gofmt
+	cd backend && $(GO) fmt ./...
 
 # show_skips runs a go test command and then surfaces any tier that skipped
 # itself for want of a database (#2736). The indirection is not decoration:
@@ -89,7 +93,7 @@ test-backend-strict: ## Like test-backend, but a missing database fails instead 
 test-backend-cover: ## Backend tests with coverage (backend/coverage.out + cover.html); needs tessera_test DB
 	@# -count=1: without it, cached package results contribute nothing to the
 	@# merged -coverpkg profile, undercounting total coverage.
-	cd backend && $(GO) test -count=1 -race -covermode=atomic -coverpkg=./... -coverprofile=coverage.out.raw ./...
+	cd backend && $(GO) test -count=1 -race -timeout 20m -covermode=atomic -coverpkg=./... -coverprofile=coverage.out.raw ./...
 	@# Denominator excludes generated sqlc code, CLI wiring and the embed stub —
 	@# see task #2579: those are e2e/codegen territory, not unit-testable logic.
 	@cd backend && grep -v -E '^tessera/(internal/db/|cmd/|main\.go|migrations/)' coverage.out.raw > coverage.out
@@ -151,6 +155,14 @@ lint-frontend: ## Lint + format-check frontend
 .PHONY: test-frontend
 test-frontend: ## Run frontend tests
 	cd frontend && corepack yarn test
+
+# The conversion sidecar is not a versioned component and has no dependencies of
+# its own, so its tests are plain stdlib unittest and run without a toolchain.
+# Not part of the `test` aggregate for the same reason android and desktop are
+# not: it is a deploy-time service, tested when it is touched.
+.PHONY: test-converter
+test-converter: ## Run conversion sidecar tests (soffice stubbed; no LibreOffice needed)
+	cd converter && python3 -m unittest server_test -v
 
 .PHONY: test-frontend-cover
 test-frontend-cover: ## Frontend tests with coverage (frontend/coverage/{index.html,lcov.info})
@@ -372,9 +384,60 @@ lint: lint-backend lint-frontend lint-mcp ## Lint everything
 .PHONY: test
 test: test-backend test-frontend test-mcp ## Test everything
 
+# ── Security scanning (SAST/SCA, #2936) ────────────────────
+# Separate from `lint`: these reach the network (vulnerability databases) and
+# take far longer than a linter, so they must not sit in the pre-commit gate.
+# Reports land in reports/security/ as SARIF — gitignored like reports/coverage.
+# Scanners come from pinned GitHub releases verified against their published
+# checksums, into tools/bin/ — see tools/install-scanners.sh for why that beats
+# `go install @latest` here (sum.golang.org is unreachable on this host, and
+# @latest drifts between a developer's machine and CI). Bump a version with:
+#   make scan-tools-force GOSEC_VERSION=2.30.0
+.PHONY: scan-tools
+scan-tools: ## Install the SAST/SCA scanners into tools/bin (TOOLS=osv-scanner for a subset)
+	./tools/install-scanners.sh $(TOOLS)
+
+.PHONY: scan-tools-force
+scan-tools-force: ## Reinstall the scanners even if already present
+	./tools/install-scanners.sh --force
+
+.PHONY: scan-backend
+scan-backend: ## SAST/SCA for the backend (govulncheck + gosec)
+	./tools/security-scan.sh backend
+
+.PHONY: scan-frontend
+scan-frontend: ## SCA for the frontend (osv-scanner over yarn.lock)
+	./tools/security-scan.sh frontend
+
+.PHONY: scan-secrets
+scan-secrets: ## Secret scan of the working tree (gitleaks)
+	./tools/security-scan.sh secrets
+
+.PHONY: scan-android
+scan-android: ## SAST/SCA for Android (detekt SARIF + osv-scanner over Gradle deps)
+	./tools/security-scan.sh android
+
+.PHONY: scan-desktop
+scan-desktop: ## SCA for the desktop app (osv-scanner over Cargo.lock)
+	./tools/security-scan.sh desktop
+
+.PHONY: scan
+scan: ## Run every security scan (backend + frontend + secrets + android + desktop)
+	./tools/security-scan.sh all
+
+# Every scan above ends by comparing itself against tools/security-baseline.json
+# (#2939): the frozen list of findings may shrink, never grow. After fixing
+# something — or after accepting a new finding with your eyes open — rerun the
+# same scan through this target to rewrite the baseline, and commit the diff.
+# SCAN_TARGET picks which scan regenerates its own entries; the others keep theirs.
+.PHONY: scan-baseline-update
+scan-baseline-update: ## Rewrite the scan baseline from a fresh run (SCAN_TARGET=backend|frontend|secrets|android|desktop|all)
+	SCAN_RATCHET_UPDATE=1 ./tools/security-scan.sh $(or $(SCAN_TARGET),all)
+
 # ── Versioning ─────────────────────────────────────────────
 .PHONY: version
-version: ## Show service versions
+version: ## Show the product release and component versions
+	@python3 tools/product-release.py --show 2>/dev/null || echo "product:  — (no release.json)"
 	@echo "backend:  $$(cat backend/VERSION)"
 	@echo "frontend: $$(cat frontend/VERSION)"
 	@echo "android:  $$(cat android/VERSION)"
@@ -400,6 +463,15 @@ bump-desktop: ## Bump desktop version (BUMP=patch|minor|major)
 .PHONY: bump-mcp
 bump-mcp: ## Bump MCP server version (BUMP=patch|minor|major)
 	@./tools/bump-version.sh mcp $(or $(BUMP),patch)
+
+# ── Product release (Tessera 2.x over the components' semver) ──
+# docs/versioning.md. On develop, after `make changelog-release`: bumps release.json
+# (BUMP=minor by default; SET=X.Y.Z to set; SINCE_WEB=X.Y.Z for the first train),
+# snapshots the component versions, writes docs/releases/v<version>.md and marks
+# the train's «Что нового». The tag v<version> (set by hand) publishes it.
+.PHONY: release-product
+release-product: ## Cut a product release (BUMP=major|minor|patch SET=X.Y.Z DRY=1)
+	@python3 tools/product-release.py $(if $(SET),--set $(SET),--bump $(or $(BUMP),minor)) $(if $(SINCE_WEB),--since-web $(SINCE_WEB),) $(if $(DRY),--dry-run,)
 
 # ── Changelog fragments (feature branch → develop) ─────────
 .PHONY: changelog-add
@@ -437,9 +509,16 @@ lint-android: ## Run ktlint + detekt on the Android app
 format-android: ## Auto-format Kotlin sources via ktlint
 	@$(ANDROID_GRADLE) :app:ktlintFormat
 
+# Narrows the unit tier the same way E2E_ANDROID_TESTS narrows the e2e one, e.g.
+#   make test-android ANDROID_TESTS='*RecurrenceTest,*DuePickerCustomDatesTest'
+# Same comma rule: Gradle takes one pattern per `--tests`, and a comma inside a
+# single pattern matches nothing and fails with «No tests found». Empty = all.
+ANDROID_TESTS ?=
+android_test_filters = $(foreach t,$(subst $(comma),$(space),$(ANDROID_TESTS)),--tests '$(t)')
+
 .PHONY: test-android
-test-android: ## Run Android unit tests
-	@$(ANDROID_GRADLE) :app:testDebugUnitTest
+test-android: ## Run Android unit tests (ANDROID_TESTS='<pattern>[,<pattern>]' narrows)
+	@$(ANDROID_GRADLE) :app:testDebugUnitTest $(android_test_filters)
 
 # Narrows the e2e tier to one class or method, e.g.
 #   make test-e2e-android E2E_ANDROID_TESTS='website.msdnna.tessera.e2e.TaskModalE2eTest'
@@ -591,6 +670,11 @@ test-android-cover: ## Android unit tests + JaCoCo coverage report
 
 # ── Desktop (Tauri) ────────────────────────────────────────
 DESKTOP_DIR := desktop/src-tauri
+# make runs recipes through /bin/sh, whose PATH does not include the rustup shims —
+# plain `cargo` here fails with "cargo: not found" even though the toolchain is fine.
+# Calling the absolute path also makes `cargo tauri` resolve, since cargo looks for
+# subcommands next to its own binary.
+CARGO := $(if $(wildcard $(HOME)/.cargo/bin/cargo),$(HOME)/.cargo/bin/cargo,cargo)
 # Updater signing key (kept outside the repo, like the Android keystore). When
 # present it's passed to bundling builds so updater artifacts get signed.
 DESKTOP_KEY := $(HOME)/.tessera/tessera-desktop-updater.key
@@ -598,16 +682,56 @@ DESKTOP_SIGN := $(if $(wildcard $(DESKTOP_KEY)),TAURI_SIGNING_PRIVATE_KEY="$(DES
 
 .PHONY: dev-desktop
 dev-desktop: ## Run the desktop app in dev (Vite :5174 + Tauri window)
-	cd $(DESKTOP_DIR) && cargo tauri dev
+	cd $(DESKTOP_DIR) && $(CARGO) tauri dev
 
 .PHONY: desktop
 desktop: ## Build desktop bundles for this OS (Linux: AppImage + .deb)
-	cd $(DESKTOP_DIR) && $(DESKTOP_SIGN) cargo tauri build
+	cd $(DESKTOP_DIR) && $(DESKTOP_SIGN) $(CARGO) tauri build
 
 .PHONY: desktop-release
 desktop-release: ## Build + sign desktop bundles and assemble the updater manifest
 	./tools/build-desktop-release.sh
 
+.PHONY: desktop-release-linux
+desktop-release-linux: ## Same, but build the Linux bundles in an old-glibc (Ubuntu 22.04) container for broad distro compat (Astra 1.8 etc.)
+	DESKTOP_LINUX_DOCKER=1 ./tools/build-desktop-release.sh
+
 .PHONY: lint-desktop
 lint-desktop: ## cargo fmt --check + clippy on the desktop crate
-	cd $(DESKTOP_DIR) && cargo fmt --check && cargo clippy -- -D warnings
+	cd $(DESKTOP_DIR) && $(CARGO) fmt --check && $(CARGO) clippy -- -D warnings
+
+.PHONY: test-desktop
+test-desktop: ## cargo test on the desktop crate
+	cd $(DESKTOP_DIR) && $(CARGO) test
+
+# ── SonarQube (стенд по требованию, #2937) ─────────────────
+# Отдельный compose-проект: `make up` стенд не поднимает, `make down` не гасит.
+SONAR_HOME ?= $(HOME)/sonarqube
+# 9000 занят self-hosted Sentry (его контейнер уже держит порт), поэтому 9001.
+# Проверить свободен ли порт на этой машине нельзя ни `ss` (не видит
+# опубликованные docker-порты), ни curl'ом (закрытый порт тут не отвечает
+# refused, а висит до таймаута) — единственный честный ответ даёт сам bind.
+SONAR_PORT ?= 9001
+SONAR_COMPOSE := $(COMPOSE) -p tessera-sonar -f deploy/sonarqube/docker-compose.yml
+
+.PHONY: sonar-up
+sonar-up: ## Поднять стенд SonarQube на localhost:$(SONAR_PORT) и дождаться готовности
+	@mkdir -p $(SONAR_HOME)/db $(SONAR_HOME)/data $(SONAR_HOME)/extensions $(SONAR_HOME)/logs
+	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) up -d
+	@bash ./tools/sonar-wait.sh $(SONAR_PORT)
+
+.PHONY: sonar-down
+sonar-down: ## Погасить стенд (данные в $(SONAR_HOME) остаются)
+	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) down
+
+.PHONY: sonar-logs
+sonar-logs: ## Хвост логов стенда
+	SONAR_HOME=$(SONAR_HOME) SONAR_PORT=$(SONAR_PORT) $(SONAR_COMPOSE) logs -f --tail=100
+
+.PHONY: sonar-token
+sonar-token: ## Сменить дефолтный пароль admin и выпустить токен анализа (идемпотентно)
+	@SONAR_PORT=$(SONAR_PORT) bash ./tools/sonar-token.sh
+
+.PHONY: sonar-scan
+sonar-scan: sonar-token ## Проанализировать рабочее дерево (PROJECT_KEY=tessera-scratch для веток)
+	bash ./tools/sonar-scan.sh

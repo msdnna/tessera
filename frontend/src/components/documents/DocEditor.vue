@@ -1,7 +1,8 @@
 <script setup>
 import { computed, onBeforeUnmount, reactive, ref, shallowRef, watch } from 'vue'
 import { EditorContent, Editor } from '@tiptap/vue-3'
-import { NButton, NIcon, NInput, NSelect, useMessage } from 'naive-ui'
+import { NButton, NIcon, NInput, NSelect } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
 import { useI18n } from 'vue-i18n'
 import {
   AddOutline,
@@ -31,6 +32,7 @@ import { quoteFromBlock } from '@/utils/docComments'
 import { scrollToBlockId } from '@/utils/docExtensions/internalLink'
 import { docOutline, headingLabel, internalHref, internalTargetId } from '@/utils/docToc'
 import { MAX_PDF_BYTES, formatFileSize } from '@/utils/docPdf'
+import { mediaPickMessage } from '@/utils/upload'
 import DocToolbar from './DocToolbar.vue'
 
 const props = defineProps({
@@ -102,7 +104,7 @@ function build() {
     editable: props.editable,
     extensions: docExtensions({
       placeholder: props.placeholder,
-      uploadImage: (file) => props.uploadImage?.(file),
+      uploadImage: (file) => uploadImageChecked(file),
       onUploadError: (err) => message.error(err?.message || t('documents.editor.error.image')),
       // The "Изображение" entry of the slash menu opens the picker below; the
       // menu itself has no business knowing about file inputs.
@@ -227,6 +229,33 @@ function syncSlash(e) {
   }
 }
 
+// The undo plugin's state field is named after its key (prosemirror-history
+// builds it from `new PluginKey('history')`).
+const HISTORY_KEY = 'history'
+
+/**
+ * Empties the undo stack.
+ *
+ * prosemirror-history keeps its stack in the plugin's own state field and
+ * exposes no way to clear it, so the stack is dropped the only way the library
+ * allows: take the plugin out of the configuration, which takes its field with
+ * it, and put the same plugin back — the field is missing from the new
+ * configuration, so it is initialised empty. Done through the editor's own
+ * register/unregister rather than by reconfiguring the view directly, which
+ * leaves the editor holding a state the view no longer has.
+ *
+ * Every other plugin keeps both its instance and its state, which is what keeps
+ * the lock and comment decorations on screen across the swap.
+ *
+ * @param {import('@tiptap/core').Editor} e the editor
+ */
+function forgetHistory(e) {
+  const hist = e?.state?.plugins?.find((p) => String(p.key).startsWith(`${HISTORY_KEY}$`))
+  if (!hist) return
+  e.unregisterPlugin(HISTORY_KEY)
+  e.registerPlugin(hist)
+}
+
 watch(
   () => props.modelValue,
   (next) => {
@@ -236,6 +265,14 @@ watch(
     // emitUpdate: false — loading a document is not an edit and must not start
     // an autosave cycle (which would then race the load it came from).
     editor.value.commands.setContent(ensureBlockIds(editableDoc(next)), { emitUpdate: false })
+    // The component is not remounted between documents (DocumentsView keeps one
+    // editor for the whole section, #2727), so without this the undo stack
+    // outlives the document it was recorded against: the first Ctrl+Z in the
+    // document just opened puts the previous one back — and an undo *is* a local
+    // edit, so the autosave then writes the wrong document over this one. Steps
+    // older than the swap are no better: remapped through it, the undo of a
+    // deletion becomes an insertion of the other document's text.
+    forgetHistory(editor.value)
   },
 )
 
@@ -279,13 +316,29 @@ async function onPdfFile(e) {
   }
 }
 
+// The asset route's rules (utils/upload.js), applied before the request rather
+// than after it. Every way an image reaches a page — the picker below, a drop,
+// a paste — goes through this one function, which is the point: the PDF beside
+// it has had a rule since #2733, while an 12 MB photo travelled the wire in full
+// only to come back as `document_assets.go`'s hardcoded Russian "файл слишком
+// большой", in whatever language the reader had chosen (#2932).
+//
+// It throws rather than returning a code because both callers already have a
+// catch that shows `err.message`: the picker below, and the drop/paste plugin
+// via onUploadError.
+function uploadImageChecked(file) {
+  const bad = mediaPickMessage(file)
+  if (bad) throw new Error(bad)
+  return props.uploadImage?.(file)
+}
+
 async function onFile(e) {
   const file = e.target.files && e.target.files[0]
   e.target.value = ''
   if (!file || !props.uploadImage) return
   uploading.value = true
   try {
-    const url = await props.uploadImage(file)
+    const url = await uploadImageChecked(file)
     if (url) editor.value?.chain().focus().setImage({ src: url, alt: file.name }).run()
   } catch (err) {
     message.error(err.message || t('documents.editor.error.image'))
@@ -730,9 +783,8 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
 .doc-content {
   flex: 1;
   overflow-y: auto;
-  padding: 16px 12px 28px;
-  background: var(--t-surface-alt);
-  border-radius: 8px;
+  padding: 8px 4px 28px;
+  border-radius: var(--t-r-col);
   min-height: 0;
 }
 .hidden-file {
@@ -800,17 +852,16 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   width: 300px;
   max-height: 320px;
   overflow-y: auto;
-  padding: 4px;
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  padding: 6px;
+  border-radius: var(--t-r-pop);
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
 }
 /* A rule between groups rather than around them: the first group sits right
    under the menu's own border and a second line there would read as a gap. */
 .slash-group + .slash-group {
-  margin-top: 4px;
-  padding-top: 4px;
-  border-top: 1px solid var(--t-border);
+  margin-top: 6px;
+  padding-top: 2px;
 }
 .slash-group-title {
   padding: 2px 8px 4px;
@@ -828,7 +879,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   min-height: 32px;
   padding: 4px 8px;
   border: none;
-  border-radius: 6px;
+  border-radius: 7px;
   background: transparent;
   color: var(--t-text1);
   font-size: 13px;
@@ -888,12 +939,12 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   margin: 0 auto;
   padding: var(--doc-sheet-pt, 40px) var(--doc-sheet-pr, 40px) var(--doc-sheet-pb, 56px)
     var(--doc-sheet-pl, 88px);
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
-  background: var(--t-surface);
+  border-radius: var(--t-r-col);
+  background: var(--t-col);
   min-height: 480px;
   color: var(--t-text1);
-  line-height: 1.6;
+  font-size: 15px;
+  line-height: 1.65;
 }
 /* Sectioned rendering (задача 2827). A document with a section break has more
    than one page geometry, and one element cannot be two sheets — so the paper
@@ -920,9 +971,7 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
   box-sizing: border-box;
   margin: 0 auto;
   padding-top: 8px;
-  border-left: 1px solid var(--t-border);
-  border-right: 1px solid var(--t-border);
-  background: var(--t-surface);
+  background: var(--t-col);
 }
 .doc-content.sectioned :deep(.ProseMirror > h1),
 .doc-content.sectioned :deep(.ProseMirror > h2),
@@ -932,12 +981,10 @@ defineExpose({ editor, goToBlock, applyRemote, blockAnchors })
 /* The sheet's own top and bottom edges. Mid-document the bands meet, so only the
    first and last block close the paper. */
 .doc-content.sectioned :deep(.ProseMirror > *:first-child) {
-  border-top: 1px solid var(--t-border);
-  border-radius: 8px 8px 0 0;
+  border-radius: var(--t-r-col) var(--t-r-col) 0 0;
 }
 .doc-content.sectioned :deep(.ProseMirror > *:last-child) {
-  border-bottom: 1px solid var(--t-border);
-  border-radius: 0 0 8px 8px;
+  border-radius: 0 0 var(--t-r-col) var(--t-r-col);
 }
 /* The break itself: a labelled rule that says what the section after it is. It
    is a band like any other block, so the caption sits inside the new section's

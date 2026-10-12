@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -135,17 +136,23 @@ func triggerFromKind(kind string, payload map[string]any) gitlab.BindTrigger {
 		t.ColumnName, _ = payload["column_name"].(string)
 	case gitlab.TrigPriority:
 		// The payload is an in-memory map, not decoded JSON, so priority may
-		// arrive as any integer type (handlers enqueue int32).
+		// arrive as any integer type (handlers enqueue int32). Rows replayed
+		// from the JSONB column come back as float64, so range-check before
+		// narrowing to the int32 the DB column holds.
 		switch v := payload["priority"].(type) {
 		case float64:
-			p := int32(v)
-			t.Priority = &p
+			if v >= math.MinInt32 && v <= math.MaxInt32 {
+				p := int32(v)
+				t.Priority = &p
+			}
 		case int32:
 			p := v
 			t.Priority = &p
 		case int:
-			p := int32(v)
-			t.Priority = &p
+			if v >= math.MinInt32 && v <= math.MaxInt32 {
+				p := int32(v)
+				t.Priority = &p
+			}
 		}
 	case gitlab.TrigCompletion:
 		if b, ok := payload["completed"].(bool); ok {
@@ -172,19 +179,27 @@ func (h *API) RunGitlabWriteBackWorker(ctx context.Context) {
 	ticker := time.NewTicker(writebackWorkerTick)
 	defer ticker.Stop()
 	h.tick(jobGitlabWriteback, opWriteback)
-	h.withAdvisoryLock(ctx, "gitlab_writeback", func() { h.drainWritebacks(ctx) }) // drain backlog at startup
+	h.withAdvisoryLock(ctx, gitlabWritebackLock, func() { h.drainWritebacks(ctx) }) // drain backlog at startup
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-ticker.C:
 			h.tick(jobGitlabWriteback, opWriteback)
-			h.withAdvisoryLock(ctx, "gitlab_writeback", func() { h.drainWritebacks(ctx) })
+			h.withAdvisoryLock(ctx, gitlabWritebackLock, func() { h.drainWritebacks(ctx) })
 		}
 	}
 }
 
 func (h *API) drainWritebacks(ctx context.Context) {
+	// Recover rows a previous drain claimed but never settled (see
+	// RequeueStaleWritebacks). Safe because we hold the write-back worker lock: no
+	// other instance is draining, so nothing in 'sending' is in flight.
+	if n, err := h.q.RequeueStaleWritebacks(ctx); err != nil {
+		soft(ctx, "RequeueStaleWritebacks", err)
+	} else if n > 0 {
+		log.Printf("gitlab writeback: requeued %d row(s) left mid-push by a previous run", n)
+	}
 	rows, err := h.q.ClaimPendingWritebacks(ctx, writebackBatchSize)
 	if err != nil || len(rows) == 0 {
 		return
@@ -192,7 +207,16 @@ func (h *API) drainWritebacks(ctx context.Context) {
 	// One push run per integration touched in this drain cycle, recording every
 	// delivery attempt (and its outcome) so failures are visible in the journal.
 	journals := map[uuid.UUID]*syncJournal{}
-	for _, w := range rows {
+	for i, w := range rows {
+		// Shutting down (a deploy, or a test respawning the worker): put the rows
+		// still claimed back as they were — pushing them on a dead ctx would only
+		// manufacture failures (#3103).
+		if ctx.Err() != nil {
+			for _, rest := range rows[i:] {
+				h.settleWriteback(ctx, rest, ctx.Err())
+			}
+			break
+		}
 		j := journals[w.IntegrationID]
 		if j == nil {
 			j = h.newJournal(w.IntegrationID, "push", "auto", nil)
@@ -206,10 +230,17 @@ func (h *API) drainWritebacks(ctx context.Context) {
 				h.broadcast(res.wsID, "gitlab.conflict", map[string]any{
 					"task_id": w.TaskID, "change_kind": w.ChangeKind, "fields": res.fields,
 				})
+				// The person whose change is parked is told it waits for them (#3048).
+				h.notifyWritebackConflict(ctx, w, res.wsID, res.fields)
 			}
 			continue
 		}
 		h.settleWriteback(ctx, w, perr)
+		// A push cut short by the worker's own cancellation is re-armed above, not
+		// failed — so it gets no «ошибка» line in the push journal either (#3103).
+		if ctx.Err() != nil && errors.Is(perr, context.Canceled) {
+			continue
+		}
 		h.recordWritebackAction(j, w, res, perr)
 	}
 	for _, j := range journals {
@@ -305,9 +336,26 @@ func pushSummary(kind string, payload map[string]any, iidPtr *int64) string {
 
 // settleWriteback marks a row sent, retried (quadratic backoff) or failed. Claim
 // already bumped attempts, so w.Attempts is this attempt's number.
+//
+// Settles on a ctx that outlives cancellation, for the reason flushJournal below
+// already does: on SIGTERM mid-drain the push fails with the ctx, and settling on
+// that same ctx would fail too, leaving the row 'sending' to be requeued and
+// pushed a second time.
 func (h *API) settleWriteback(ctx context.Context, w db.GitlabWriteback, err error) {
+	shuttingDown := ctx.Err() != nil
+	ctx = context.WithoutCancel(ctx)
 	if err == nil {
 		soft(ctx, "MarkWritebackSent", h.q.MarkWritebackSent(ctx, w.ID))
+		return
+	}
+	// The push died with the worker's context (a deploy mid-drain), not on
+	// anything GitLab said — re-arm it. isPermanentWriteback would otherwise
+	// read the wrapped "integration gone: context canceled" as permanent and
+	// bury the change for good. Timeouts keep their backoff (see settleDelivery).
+	if shuttingDown && errors.Is(err, context.Canceled) {
+		soft(ctx, "MarkWritebackRetry", h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{
+			ID: w.ID, LastError: truncErr(err), NextAttemptAt: time.Now(),
+		}))
 		return
 	}
 	if isPermanentWriteback(err) || int(w.Attempts) >= maxWritebackAttempts {
@@ -317,6 +365,19 @@ func (h *API) settleWriteback(ctx context.Context, w db.GitlabWriteback, err err
 	}
 	next := time.Now().Add(time.Duration(w.Attempts*w.Attempts) * time.Minute) // 1, 4, 9, 16 min
 	soft(ctx, "MarkWritebackRetry", h.q.MarkWritebackRetry(ctx, db.MarkWritebackRetryParams{ID: w.ID, LastError: truncErr(err), NextAttemptAt: next}))
+}
+
+// permanentLookup wraps a failed lookup of what a push needs (the task's link, the
+// integration) as permanent — the row can never succeed once those are gone —
+// unless the lookup failed only because the ctx ended: a cancelled or timed-out
+// query says nothing about the row, and burying it as "integration gone" lost
+// the change and logged a false failure (#3103).
+func permanentLookup(what string, err error) error {
+	wrapped := fmt.Errorf("%s: %w", what, err)
+	if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+		return wrapped
+	}
+	return notify.Permanent(wrapped)
 }
 
 // isPermanentWriteback classifies a push error as non-retryable: an explicitly
@@ -346,12 +407,26 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	}
 	link, err := h.q.GetGitlabLinkByTask(ctx, w.TaskID)
 	if err != nil {
-		return res, notify.Permanent(fmt.Errorf("task no longer linked: %w", err))
+		return res, permanentLookup("task no longer linked", err)
 	}
 	res.glIid = link.GlIid
+	// The task's board is soft-deleted (0078): hold the push — a retry, not a
+	// refusal. A restore lets it through on the next attempt; the purge takes the
+	// link, and the next attempt then gives up on "task no longer linked".
+	// The same hold for a task in the trash (0086): its link survives the soft
+	// delete, and a push from the trash would reach GitLab for a task nobody
+	// can see. A restore lets it through; the purge takes the link.
+	if t, terr := h.q.GetTaskAny(ctx, w.TaskID); terr == nil {
+		if t.DeletedAt != nil {
+			return res, errors.New("task is deleted")
+		}
+		if b, berr := h.q.GetBoardAny(ctx, t.BoardID); berr == nil && b.DeletedAt != nil {
+			return res, errors.New("task board is deleted")
+		}
+	}
 	integ, err := h.q.GetGitlabIntegrationByID(ctx, w.IntegrationID)
 	if err != nil {
-		return res, notify.Permanent(fmt.Errorf("integration gone: %w", err))
+		return res, permanentLookup("integration gone", err)
 	}
 	wb := parseWriteback(integ.Writeback)
 	// Resolve the write connection attributed to the acting user (task #2690): the
@@ -387,7 +462,7 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 	// Conflict gate: for three-way-checked triggers, fetch the current issue and decide
 	// whether to push (baseline clean), no-op (already in sync), or park as a conflict.
 	if conflictCheckedKind(w.ChangeKind) {
-		issues, ferr := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+		issues, ferr := client.IssuesByIIDsLight(ctx, path, []string{strconv.FormatInt(iid, 10)})
 		if ferr != nil {
 			return res, ferr
 		}
@@ -403,12 +478,23 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 			res.result = "уже синхронно с GitLab"
 			return res, nil
 		case conflictParked:
-			if perr := h.parkConflict(ctx, w, fields); perr != nil {
-				return res, perr
+			// The binding's conflict policy (#3088) may settle it without asking.
+			switch wb.EffectiveConflictPolicy() {
+			case gitlab.ConflictTessera:
+				h.acknowledgeTheirs(ctx, link, fields, rules)
+				res.result = "конфликт — Tessera важнее; "
+			case gitlab.ConflictGitlab:
+				h.takeTheirs(ctx, w.TaskID, link, fields, integ.WorkspaceID, rules)
+				res.result = "конфликт — GitLab важнее, значение взято из GitLab"
+				return res, nil
+			default:
+				if perr := h.parkConflict(ctx, w, fields); perr != nil {
+					return res, perr
+				}
+				res.conflict, res.fields = true, fields
+				res.result = "конфликт — ожидает решения"
+				return res, nil
 			}
-			res.conflict, res.fields = true, fields
-			res.result = "конфликт — ожидает решения"
-			return res, nil
 		}
 		// conflictProceed: fall through to the push.
 	}
@@ -425,8 +511,34 @@ func (h *API) performWriteback(ctx context.Context, w db.GitlabWriteback) (write
 			results = append(results, out)
 		}
 	}
-	res.result = strings.Join(results, "; ")
+	res.result += strings.Join(results, "; ")
 	return res, nil
+}
+
+// acknowledgeTheirs is «Tessera важнее» (#3088) before the push goes out: GitLab's
+// diverged values become the baseline, so the push that follows overwrites them
+// as a clean change — the same bookkeeping an interactive «ours» does.
+func (h *API) acknowledgeTheirs(ctx context.Context, link db.GitlabLink, fields []conflictField, rules gitlab.Rules) {
+	snap, _ := snapshotPresence(link.GlSnapshot)
+	for _, f := range fields {
+		setSnapshotField(&snap, f.Field, f.Theirs, rules)
+	}
+	soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: link.TaskID, GlSnapshot: marshalSnapshot(snap)}))
+}
+
+// takeTheirs is «GitLab важнее» (#3088): GitLab's diverged values go into the
+// task and become the baseline, and nothing is pushed — an interactive «theirs»,
+// decided by the binding instead of a person.
+func (h *API) takeTheirs(ctx context.Context, taskID uuid.UUID, link db.GitlabLink, fields []conflictField, wsID uuid.UUID, rules gitlab.Rules) {
+	snap, _ := snapshotPresence(link.GlSnapshot)
+	for _, f := range fields {
+		h.applyConflictValue(ctx, taskID, f.Field, f.Theirs)
+		setSnapshotField(&snap, f.Field, f.Theirs, rules)
+	}
+	soft(ctx, "SetGitlabLinkSnapshot", h.q.SetGitlabLinkSnapshot(ctx, db.SetGitlabLinkSnapshotParams{TaskID: taskID, GlSnapshot: marshalSnapshot(snap)}))
+	if t, err := h.q.GetTask(ctx, taskID); err == nil {
+		h.broadcast(wsID, "task.updated", t)
+	}
 }
 
 // tesseraCommentMarker is the optional footer appended to a pushed comment when the
@@ -488,7 +600,7 @@ func (h *API) performAction(ctx context.Context, client *gitlab.Client, integ db
 	case gitlab.ActReconcileLabels:
 		return h.performReconcileLabels(ctx, client, integ, w.TaskID, path, iid, rules)
 	case gitlab.ActSetDue:
-		return h.performSetDue(ctx, client, integ, w.TaskID, path, iid)
+		return h.performSetDue(ctx, client, integ, w.TaskID, w.ActorUserID, path, iid)
 	case gitlab.ActSetAssignees:
 		return h.performSetAssignees(ctx, client, integ, w.TaskID, path, iid)
 	case gitlab.ActSetEstimate:
@@ -560,7 +672,7 @@ func (h *API) performReconcileLabels(ctx context.Context, client *gitlab.Client,
 	if !rules.TagsInvertible() {
 		return "", notify.Permanent(errors.New("tag labels are not invertible (prefix stripped)"))
 	}
-	issues, err := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+	issues, err := client.IssuesByIIDsLight(ctx, path, []string{strconv.FormatInt(iid, 10)})
 	if err != nil {
 		return "", err
 	}
@@ -671,16 +783,16 @@ func (h *API) performSetEstimate(ctx context.Context, client *gitlab.Client, int
 	return fmt.Sprintf("оценка → %dм", minutes), nil
 }
 
-// performSetDue pushes the task's due date (empty clears it).
-func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) (string, error) {
+// performSetDue pushes the task's due date (empty clears it). actor names the
+// user whose edit is being pushed: the due date is an instant and GitLab wants a
+// calendar day, and the only honest answer to "which day is this" is the one the
+// person who picked it sees (taskDateStr).
+func (h *API) performSetDue(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, actor *uuid.UUID, path string, iid int64) (string, error) {
 	task, err := h.q.GetTask(ctx, taskID)
 	if err != nil {
 		return "", notify.Permanent(fmt.Errorf("task gone: %w", err))
 	}
-	date := ""
-	if task.DueDate != nil {
-		date = task.DueDate.UTC().Format("2006-01-02")
-	}
+	date := taskDateStr(task.DueDate, h.actorLocation(ctx, actor))
 	if err := client.UpdateIssueDueDate(ctx, path, iid, date); err != nil {
 		return "", err
 	}
@@ -798,7 +910,6 @@ func (h *API) replyThread(ctx context.Context, payload map[string]any) (string, 
 	return parseDiscussionGID(target.GlDiscussionID), true
 }
 
-
 // parseDiscussionGID reduces a stored discussion global id
 // ("gid://gitlab/Discussion/<sha>") to the sha-style id the REST API expects. A
 // value that is already bare is returned unchanged — the REST create path stores
@@ -879,7 +990,7 @@ func (h *API) performSetTitleDesc(ctx context.Context, client *gitlab.Client, in
 // sees nothing remote-changed and doesn't echo our own change back. Best-effort:
 // the push already succeeded, so a refresh failure isn't fatal.
 func (h *API) refreshLinkSnapshot(ctx context.Context, client *gitlab.Client, integ db.GitlabIntegration, taskID uuid.UUID, path string, iid int64) {
-	issues, err := client.IssuesByIIDs(ctx, path, []string{strconv.FormatInt(iid, 10)})
+	issues, err := client.IssuesByIIDsLight(ctx, path, []string{strconv.FormatInt(iid, 10)})
 	if err != nil || len(issues) == 0 {
 		return
 	}

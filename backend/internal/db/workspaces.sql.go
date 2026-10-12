@@ -16,8 +16,9 @@ import (
 const createMembership = `-- name: CreateMembership :one
 INSERT INTO memberships (workspace_id, user_id, role)
 VALUES ($1, $2, $3)
-ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role
-RETURNING id, workspace_id, user_id, role, created_at
+ON CONFLICT (workspace_id, user_id) DO UPDATE
+SET role = CASE WHEN memberships.role = 'owner' THEN memberships.role ELSE EXCLUDED.role END
+RETURNING id, workspace_id, user_id, role, created_at, last_active_at
 `
 
 type CreateMembershipParams struct {
@@ -26,6 +27,12 @@ type CreateMembershipParams struct {
 	Role        string    `json:"role"`
 }
 
+// Upsert, so re-adding a member is how a manager changes their role — except for
+// the owner, whose role the handlers treat as immutable (UpdateMemberRole and
+// RemoveMember both answer 403 on it). That rule has to hold at the write too:
+// the other callers here are the invitation-accept paths, where the role comes
+// from an invitation a mere admin composed, and nothing upstream asks whether the
+// address belongs to the workspace owner.
 func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipParams) (Membership, error) {
 	row := q.db.QueryRow(ctx, createMembership, arg.WorkspaceID, arg.UserID, arg.Role)
 	var i Membership
@@ -35,6 +42,7 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 		&i.UserID,
 		&i.Role,
 		&i.CreatedAt,
+		&i.LastActiveAt,
 	)
 	return i, err
 }
@@ -42,7 +50,7 @@ func (q *Queries) CreateMembership(ctx context.Context, arg CreateMembershipPara
 const createWorkspace = `-- name: CreateWorkspace :one
 INSERT INTO workspaces (name, name_key, owner_id)
 VALUES ($1, $2, $3)
-RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode
 `
 
 type CreateWorkspaceParams struct {
@@ -67,6 +75,9 @@ func (q *Queries) CreateWorkspace(ctx context.Context, arg CreateWorkspaceParams
 		&i.TaskCounter,
 		&i.Estimation,
 		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
 	)
 	return i, err
 }
@@ -95,7 +106,7 @@ func (q *Queries) DeleteWorkspace(ctx context.Context, id uuid.UUID) error {
 }
 
 const getMembership = `-- name: GetMembership :one
-SELECT id, workspace_id, user_id, role, created_at FROM memberships WHERE workspace_id = $1 AND user_id = $2
+SELECT id, workspace_id, user_id, role, created_at, last_active_at FROM memberships WHERE workspace_id = $1 AND user_id = $2
 `
 
 type GetMembershipParams struct {
@@ -112,6 +123,7 @@ func (q *Queries) GetMembership(ctx context.Context, arg GetMembershipParams) (M
 		&i.UserID,
 		&i.Role,
 		&i.CreatedAt,
+		&i.LastActiveAt,
 	)
 	return i, err
 }
@@ -133,7 +145,7 @@ func (q *Queries) GetMembershipRole(ctx context.Context, arg GetMembershipRolePa
 }
 
 const getWorkspace = `-- name: GetWorkspace :one
-SELECT id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key FROM workspaces WHERE id = $1
+SELECT id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode FROM workspaces WHERE id = $1
 `
 
 func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, error) {
@@ -148,12 +160,15 @@ func (q *Queries) GetWorkspace(ctx context.Context, id uuid.UUID) (Workspace, er
 		&i.TaskCounter,
 		&i.Estimation,
 		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
 	)
 	return i, err
 }
 
 const listMembers = `-- name: ListMembers :many
-SELECT m.user_id, m.role, u.email, u.name,
+SELECT m.user_id, m.role, u.email, u.name, u.last_seen_at, m.last_active_at,
   COALESCE((
     SELECT oi.provider_username FROM oauth_identities oi
     WHERE oi.user_id = u.id AND oi.provider = 'gitlab'
@@ -166,11 +181,13 @@ ORDER BY u.name
 `
 
 type ListMembersRow struct {
-	UserID     uuid.UUID `json:"user_id"`
-	Role       string    `json:"role"`
-	Email      string    `json:"email"`
-	Name       string    `json:"name"`
-	GlUsername string    `json:"gl_username"`
+	UserID       uuid.UUID  `json:"user_id"`
+	Role         string     `json:"role"`
+	Email        string     `json:"email"`
+	Name         string     `json:"name"`
+	LastSeenAt   *time.Time `json:"last_seen_at"`
+	LastActiveAt *time.Time `json:"last_active_at"`
+	GlUsername   string     `json:"gl_username"`
 }
 
 // gl_username is the member's GitLab login, so @-mentions can insert `@login`
@@ -178,6 +195,8 @@ type ListMembersRow struct {
 // comment is pushed to GitLab). Scalar subquery rather than a LEFT JOIN:
 // oauth_identities is unique by (provider, provider_user_id), not by user_id, so
 // a user linked to two GitLab instances would otherwise be listed twice.
+// last_seen_at / last_active_at (#3073): when the person was last in the app
+// and when they last changed something in this workspace.
 func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]ListMembersRow, error) {
 	rows, err := q.db.Query(ctx, listMembers, workspaceID)
 	if err != nil {
@@ -192,6 +211,8 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 			&i.Role,
 			&i.Email,
 			&i.Name,
+			&i.LastSeenAt,
+			&i.LastActiveAt,
 			&i.GlUsername,
 		); err != nil {
 			return nil, err
@@ -205,7 +226,7 @@ func (q *Queries) ListMembers(ctx context.Context, workspaceID uuid.UUID) ([]Lis
 }
 
 const listWorkspacesForUser = `-- name: ListWorkspacesForUser :many
-SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter, w.estimation, w.name_key, m.role AS my_role
+SELECT w.id, w.name, w.owner_id, w.created_at, w.updated_at, w.task_counter, w.estimation, w.name_key, w.color, w.icon, w.icon_mode, m.role AS my_role
 FROM workspaces w
 JOIN memberships m ON m.workspace_id = w.id
 WHERE m.user_id = $1
@@ -221,6 +242,9 @@ type ListWorkspacesForUserRow struct {
 	TaskCounter int64            `json:"task_counter"`
 	Estimation  *json.RawMessage `json:"estimation"`
 	NameKey     *string          `json:"name_key"`
+	Color       string           `json:"color"`
+	Icon        string           `json:"icon"`
+	IconMode    string           `json:"icon_mode"`
 	MyRole      string           `json:"my_role"`
 }
 
@@ -242,6 +266,9 @@ func (q *Queries) ListWorkspacesForUser(ctx context.Context, userID uuid.UUID) (
 			&i.TaskCounter,
 			&i.Estimation,
 			&i.NameKey,
+			&i.Color,
+			&i.Icon,
+			&i.IconMode,
 			&i.MyRole,
 		); err != nil {
 			return nil, err
@@ -265,11 +292,72 @@ func (q *Queries) NextWorkspaceTaskNumber(ctx context.Context, id uuid.UUID) (in
 	return task_counter, err
 }
 
+const reserveWorkspaceTaskNumbers = `-- name: ReserveWorkspaceTaskNumbers :one
+UPDATE workspaces SET task_counter = task_counter + $1::bigint WHERE id = $2 RETURNING task_counter
+`
+
+type ReserveWorkspaceTaskNumbersParams struct {
+	Count int64     `json:"count"`
+	ID    uuid.UUID `json:"id"`
+}
+
+// ReserveWorkspaceTaskNumbers claims a whole block of numbers at once and returns
+// the last one in it, so a project arriving from another workspace can be
+// renumbered without racing the ordinary one-at-a-time allocation above. The
+// claim is the same single UPDATE … RETURNING, so a concurrent task creation
+// either sees the counter before the block or after it — never inside.
+func (q *Queries) ReserveWorkspaceTaskNumbers(ctx context.Context, arg ReserveWorkspaceTaskNumbersParams) (int64, error) {
+	row := q.db.QueryRow(ctx, reserveWorkspaceTaskNumbers, arg.Count, arg.ID)
+	var task_counter int64
+	err := row.Scan(&task_counter)
+	return task_counter, err
+}
+
+const setWorkspaceAppearance = `-- name: SetWorkspaceAppearance :one
+UPDATE workspaces
+SET color = $2, icon = $3, icon_mode = $4, updated_at = now()
+WHERE id = $1
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode
+`
+
+type SetWorkspaceAppearanceParams struct {
+	ID       uuid.UUID `json:"id"`
+	Color    string    `json:"color"`
+	Icon     string    `json:"icon"`
+	IconMode string    `json:"icon_mode"`
+}
+
+// SetWorkspaceAppearance stores the rail tile's colour and icon (#2955). Its
+// own endpoint, like the estimation config, so a rename never clobbers them.
+func (q *Queries) SetWorkspaceAppearance(ctx context.Context, arg SetWorkspaceAppearanceParams) (Workspace, error) {
+	row := q.db.QueryRow(ctx, setWorkspaceAppearance,
+		arg.ID,
+		arg.Color,
+		arg.Icon,
+		arg.IconMode,
+	)
+	var i Workspace
+	err := row.Scan(
+		&i.ID,
+		&i.Name,
+		&i.OwnerID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.TaskCounter,
+		&i.Estimation,
+		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
+	)
+	return i, err
+}
+
 const setWorkspaceEstimation = `-- name: SetWorkspaceEstimation :one
 UPDATE workspaces
 SET estimation = $2, updated_at = now()
 WHERE id = $1
-RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode
 `
 
 type SetWorkspaceEstimationParams struct {
@@ -292,6 +380,9 @@ func (q *Queries) SetWorkspaceEstimation(ctx context.Context, arg SetWorkspaceEs
 		&i.TaskCounter,
 		&i.Estimation,
 		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
 	)
 	return i, err
 }
@@ -299,7 +390,7 @@ func (q *Queries) SetWorkspaceEstimation(ctx context.Context, arg SetWorkspaceEs
 const updateMembershipRole = `-- name: UpdateMembershipRole :one
 UPDATE memberships SET role = $3
 WHERE workspace_id = $1 AND user_id = $2
-RETURNING id, workspace_id, user_id, role, created_at
+RETURNING id, workspace_id, user_id, role, created_at, last_active_at
 `
 
 type UpdateMembershipRoleParams struct {
@@ -317,6 +408,7 @@ func (q *Queries) UpdateMembershipRole(ctx context.Context, arg UpdateMembership
 		&i.UserID,
 		&i.Role,
 		&i.CreatedAt,
+		&i.LastActiveAt,
 	)
 	return i, err
 }
@@ -327,7 +419,7 @@ SET name = $2,
     name_key = CASE WHEN name = $2 THEN name_key ELSE NULL END,
     updated_at = now()
 WHERE id = $1
-RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key
+RETURNING id, name, owner_id, created_at, updated_at, task_counter, estimation, name_key, color, icon, icon_mode
 `
 
 type UpdateWorkspaceParams struct {
@@ -352,6 +444,9 @@ func (q *Queries) UpdateWorkspace(ctx context.Context, arg UpdateWorkspaceParams
 		&i.TaskCounter,
 		&i.Estimation,
 		&i.NameKey,
+		&i.Color,
+		&i.Icon,
+		&i.IconMode,
 	)
 	return i, err
 }

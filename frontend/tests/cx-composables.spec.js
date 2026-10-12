@@ -310,10 +310,48 @@ describe('useOverlayBack', () => {
     await nextTick()
     expect(pushSpy).toHaveBeenCalled()
 
-    // Simulate the browser Back button while the overlay is open.
+    // Simulate the browser Back button while the overlay is open: the browser
+    // has already left our entry when popstate fires.
+    window.history.replaceState(null, '')
     window.dispatchEvent(new PopStateEvent('popstate'))
     expect(close).toHaveBeenCalled()
     pushSpy.mockRestore()
+  })
+
+  // #2975: the conflicts window over the GitLab window. Closing the top one from
+  // the UI unwinds its entry with back(); the one under it must stay open.
+  it('a popstate that lands on our own entry is not ours to handle', async () => {
+    const { useOverlayBack } = await import('@/composables/useOverlayBack')
+    const lower = ref(false)
+    const upper = ref(false)
+    const closeLower = vi.fn(() => (lower.value = false))
+    const closeUpper = vi.fn(() => (upper.value = false))
+    mount(
+      defineComponent({
+        setup() {
+          useOverlayBack(lower, closeLower)
+          useOverlayBack(upper, closeUpper)
+          return () => null
+        },
+      }),
+    )
+    lower.value = true
+    await nextTick()
+    const lowerState = window.history.state
+    upper.value = true
+    await nextTick()
+    // The upper closes from the UI: it calls back(); the browser lands on the
+    // lower's entry and fires popstate.
+    const back = vi.spyOn(window.history, 'back').mockImplementation(() => {
+      window.history.replaceState(lowerState, '')
+      window.dispatchEvent(new PopStateEvent('popstate'))
+    })
+    upper.value = false
+    await nextTick()
+    expect(back).toHaveBeenCalledTimes(1)
+    expect(closeLower).not.toHaveBeenCalled()
+    expect(lower.value).toBe(true)
+    back.mockRestore()
   })
 })
 
@@ -340,11 +378,15 @@ describe('useTaskMenu', () => {
     expect(keys).toContain('open')
     expect(keys).toContain('toggle')
     expect(keys).toContain('prio')
-    // The move submenu excludes the task's current column (c1).
+    // The move submenu lists every column and ticks the task's own (c1) (#3112).
     const move = options.value.find((o) => o.key === 'move')
     expect(move).toBeTruthy()
-    const colKeys = move.children.map((c) => c.key)
-    expect(colKeys).toEqual(['col:c2'])
+    expect(move.children.map((c) => c.key)).toEqual(['col:c1', 'col:c2'])
+    expect(move.children.map((c) => !!c.checked)).toEqual([true, false])
+    // The priority submenu: a row per level with its digit, the current one ticked.
+    const prio = options.value.find((o) => o.key === 'prio')
+    expect(prio.children.map((c) => c.caps[0])).toEqual(['0', '1', '2', '3', '4'])
+    expect(prio.children[0].checked).toBe(true)
   })
 
   it('omits the move submenu when no other columns exist', () => {
@@ -362,19 +404,28 @@ describe('useTaskMenu', () => {
     expect(onChanged).toHaveBeenCalled()
   })
 
-  it('delete select defers to a confirm flag, then confirmDelete calls the api', async () => {
+  // «Удалить» is a two-step row (#3112): the menu arms it, the second press is
+  // the select that reaches here.
+  // The delete is reversible since the trash (#3004): one press, no arming —
+  // the undo is in the toast.
+  it('delete is one press; its select calls the api', async () => {
     const onChanged = vi.fn()
-    const { open, select, deleteConfirmShow, confirmDelete } = useTaskMenu({ onChanged })
+    const { open, select, options } = useTaskMenu({ onChanged })
     open({ clientX: 0, clientY: 0 }, { id: 't5', title: 'Y' })
+    const del = options.value.find((o) => o.key === 'delete')
+    expect(del.danger).toBe(true)
+    expect(del.confirm).toBeUndefined()
     await select('delete')
-    expect(deleteConfirmShow.value).toBe(true)
-    await confirmDelete()
     expect(tasksApi.remove).toHaveBeenCalledWith('t5')
+    expect(onChanged).toHaveBeenCalled()
   })
 
   it('col: select moves the task to the chosen column', async () => {
     const { open, select } = useTaskMenu({})
     open({ clientX: 0, clientY: 0 }, { id: 't2', title: 'Z', column_id: 'c1' })
+    // The task's own column is a no-op.
+    await select('col:c1')
+    expect(tasksApi.move).not.toHaveBeenCalled()
     await select('col:c9')
     expect(tasksApi.move).toHaveBeenCalledWith('t2', {
       column_id: 'c9',

@@ -28,6 +28,8 @@ export const PANEL_SEL = [
   '.n-base-select-menu',
   '.n-color-picker-panel',
   '.n-cascader-menu',
+  // The v2 interaction kit (#2969): the row menu.
+  '.kit-menu',
 ].join(',')
 
 // Larger overlay surfaces the user may open mid-tour — a create-workspace modal,
@@ -35,16 +37,31 @@ export const PANEL_SEL = [
 // never darkens something the user just opened (#2753 rework), but unlike the
 // small pickers they are NOT fed to popover placement: the tour popover has to be
 // free to sit *inside* a modal (naming a project, filling a task field).
-export const SURFACE_SEL = ['.n-modal', '.n-drawer'].join(',')
+// The kit's popover form and bottom sheet (#2969) took over from the small
+// create modals, so they are surfaces the same way: the guide names a project
+// inside one.
+// The tour's own sheet on a phone (#3000) is not a surface the user opened.
+export const SURFACE_SEL = [
+  '.n-modal',
+  '.n-drawer',
+  '.kit-form',
+  '.kit-sheet:not([data-testid="tour-sheet"])',
+].join(',')
 
 // The container an advanceOn.moved spec's element currently sits in, read as a
 // plain string so the store can compare "before" with "now" without holding on
 // to DOM nodes — the board re-renders its card list after every drop, so a node
 // reference would go stale exactly when it matters.
+//
+// `undefined` — the element is not on screen at all (the board has not drawn its
+// cards yet): no address, not even a baseline (#3104 — the first card to appear
+// was taken for a card that moved). `null` — it is there, outside any container
+// (a project at the root of the tree).
 export function placeOf(spec) {
-  if (!spec?.el || !spec.within || !spec.by) return null
+  if (!spec?.el || !spec.within || !spec.by) return undefined
   const el = document.querySelector(anchorSelector(spec.el))
-  const box = el?.closest(anchorSelector(spec.within))
+  if (!el) return undefined
+  const box = el.closest(anchorSelector(spec.within))
   return box?.getAttribute(spec.by) ?? null
 }
 
@@ -95,7 +112,7 @@ export function useTourAnchor(keysFn, { timeout = 8000, onMissing, countFn, plac
   const rects = ref([])
   const els = ref([])
   const count = ref(0)
-  const place = ref(null)
+  const place = ref(undefined)
   const panels = ref([])
   const surfaces = ref([])
   let frame = 0

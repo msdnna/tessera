@@ -44,6 +44,13 @@ type Command struct {
 // Registry is the single source of truth for built-in commands: the API hands
 // it to clients verbatim, so adding a command here makes it show up in the
 // editor popup without any frontend change. Order is the popup order.
+//
+// Description and Example below are the Russian *fallback*, not the displayed
+// text: the popup is part of the interface, so each client translates a built-in
+// row by its Key — frontend `src/locales/<lang>/commands.json`, android
+// `cmd_<key>_desc` (#2932). Adding a command here therefore means adding it
+// there too; `tests/ut-command-labels.spec.js` and `i18n/CommandLabelsTest` read
+// this very file and fail on a key they do not cover.
 var Registry = []Command{
 	// Assignees
 	{Key: "assign", Aliases: []string{"assignee"}, Arg: ArgUser, Repeatable: true,
@@ -60,6 +67,8 @@ var Registry = []Command{
 	{Key: "remove_start", Arg: ArgNone, Description: "Убрать дату начала", Example: "/remove_start"},
 	{Key: "estimate", Arg: ArgEstimate, Description: "Установить оценку", Example: "/estimate 2h30m"},
 	{Key: "remove_estimate", Arg: ArgNone, Description: "Убрать оценку", Example: "/remove_estimate"},
+	{Key: "spend", Aliases: []string{"spent"}, Arg: ArgEstimate,
+		Description: "Записать потраченное время", Example: "/spend 1h30m"},
 
 	// Plain fields
 	{Key: "priority", Arg: ArgPriority, Description: "Установить приоритет", Example: "/priority высокий"},

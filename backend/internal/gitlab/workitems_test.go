@@ -47,8 +47,8 @@ func TestWorkItemByIID_TopLevelHasNoParent(t *testing.T) {
 // nothing to attach, and the caller degrades instead of retrying forever.
 func TestWorkItemByIID_MissingIsUnsupportedNotError(t *testing.T) {
 	for name, body := range map[string]string{
-		"no project":   `{"data":{"project":null}}`,
-		"no such iid":  `{"data":{"project":{"workItems":{"nodes":[]}}}}`,
+		"no project":      `{"data":{"project":null}}`,
+		"no such iid":     `{"data":{"project":{"workItems":{"nodes":[]}}}}`,
 		"node with no id": `{"data":{"project":{"workItems":{"nodes":[{"id":"","widgets":[]}]}}}}`,
 	} {
 		t.Run(name, func(t *testing.T) {

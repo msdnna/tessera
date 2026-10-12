@@ -8,10 +8,10 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
-import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.LatestRelease
 import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.update.UpdateRepository
+import website.msdnna.tessera.util.errorMessage
 
 /** Drives the in-app update *dialog*. [release] rides along so the dialog keeps
  *  its title/notes through every phase. Whether an update merely *exists* is
@@ -73,8 +73,10 @@ class UpdateViewModel(app: Application) : AndroidViewModel(app) {
             }.onSuccess {
                 _state.value = UpdateState.Ready(it, release)
             }.onFailure {
-                val why = it.message?.let(UiText::Raw) ?: UiText.Res(R.string.update_download_failed)
-                _state.value = UpdateState.Failed(why, release)
+                // Через errorMessage, а не сырым `it.message`: обрыв связи с сервером
+                // обновлений — самый частый исход этой загрузки, и OkHttp называет его
+                // по-английски («Unable to resolve host …») посреди русского диалога.
+                _state.value = UpdateState.Failed(errorMessage(it), release)
             }
         }
     }

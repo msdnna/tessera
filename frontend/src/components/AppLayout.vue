@@ -1,7 +1,8 @@
 <script setup>
-import { ref, onMounted, onBeforeUnmount, watch } from 'vue'
+import { ref, computed, onMounted, onBeforeUnmount, watch, watchEffect } from 'vue'
 import { useI18n } from 'vue-i18n'
 import { useRoute, useRouter } from 'vue-router'
+import { withProjectSlug } from '@/utils/projectRoute'
 import {
   NLayout,
   NLayoutSider,
@@ -9,74 +10,165 @@ import {
   NLayoutContent,
   NDrawer,
   NDrawerContent,
-  useMessage,
+  NTooltip,
+  NIcon,
 } from 'naive-ui'
+import { useMessage } from '@/composables/useMessage'
+import { ChevronBackOutline, ChevronForwardOutline } from '@vicons/ionicons5'
+import ShortcutKeys from './ShortcutKeys.vue'
+import ShortcutPending from './ShortcutPending.vue'
+import CommandPalette from './palette/CommandPalette.vue'
+import ToastLanes from '@/components/toast/ToastLanes.vue'
+import QuickActionsFab from './QuickActionsFab.vue'
+import QuickCreateModal from './QuickCreateModal.vue'
+import InboxPanel from './inbox/InboxPanel.vue'
+import ShortcutsModal from './ShortcutsModal.vue'
+import WorkspaceDialogsHost from './WorkspaceDialogsHost.vue'
+import ProjectWindow from './project/ProjectWindow.vue'
+import { useProjectWindowStore } from '@/stores/projectWindow'
+import { useBoardViewStore } from '@/stores/boardView'
 import Sidebar from './Sidebar.vue'
+import AppRail from './rail/AppRail.vue'
 import Topbar from './Topbar.vue'
+import MobileTopbar from './mobile/MobileTopbar.vue'
+import MobileTabBar from './mobile/MobileTabBar.vue'
 import ConflictResolverModal from './ConflictResolverModal.vue'
-import WhatsNewModal from './WhatsNewModal.vue'
-import SidebarSpotlight from './SidebarSpotlight.vue'
+import WhatsNewV2 from './tour/WhatsNewV2.vue'
+import SpotlightHint from './tour/SpotlightHint.vue'
 import TourOverlay from './TourOverlay.vue'
 import HelpDrawer from './help/HelpDrawer.vue'
 import HelpCenterModal from './help/HelpCenterModal.vue'
-import VersionBadge from './VersionBadge.vue'
-import { notificationChannels } from '@/api'
+import { notificationChannels, gitlab as gitlabApi } from '@/api'
 import { getDeviceId, deviceLabel } from '@/utils/device'
 import { isTauri } from '@/utils/serverBase'
 import { useWorkspacesStore } from '@/stores/workspaces'
 import { useAuthStore } from '@/stores/auth'
 import { useNotificationsStore } from '@/stores/notifications'
+import { useInboxStore } from '@/stores/inbox'
+import { useFavoritesStore } from '@/stores/favorites'
+import { useMacrosStore } from '@/stores/macros'
+import { useMembersStore } from '@/stores/members'
+import { useToastsStore } from '@/stores/toasts'
 import { useConflictsStore } from '@/stores/conflicts'
+import { useCodeLinksStore } from '@/stores/codeLinks'
+import { useJobsStore } from '@/stores/jobs'
 import { useWhatsNewStore } from '@/stores/whatsNew'
 import { useTourStore } from '@/stores/tour'
+import { useOnboardingStore } from '@/stores/onboarding'
+import { useWsDialogsStore } from '@/stores/wsDialogs'
+import { useQuickStore } from '@/stores/quick'
+import { useTourLauncher } from '@/composables/useTourLauncher'
+import { setTourEventSink } from '@/utils/tourEvents'
 import { useResponsive } from '@/composables/useResponsive'
+import { useVisualViewport } from '@/composables/useVisualViewport'
+import { useEdgeSwipe } from '@/composables/useEdgeSwipe'
 import { useRealtime } from '@/composables/useRealtime'
 import { useSidebarSize } from '@/composables/useSidebarSize'
 import { useOverlayBack } from '@/composables/useOverlayBack'
 import { useDesktopDeepLink } from '@/composables/useDesktopDeepLink'
+import { useShortcuts } from '@/composables/useShortcuts'
+import { install as installShortcuts } from '@/shortcuts/dispatcher'
+import { useThemeStore } from '@/stores/theme'
+import { usePaletteStore } from '@/stores/palette'
+import { useHelpStore } from '@/stores/help'
+import { sGet } from '@/utils/serverStorage'
+import { unwindOverlay } from '@/utils/overlayNav'
+import { helpSlugForPath } from '@/utils/helpContext'
+import { treeEventNeedsRefresh } from '@/utils/treeEvents'
+import { resyncShell } from '@/utils/shellResync'
 
 const { t } = useI18n()
 const ws = useWorkspacesStore()
 const authStore = useAuthStore()
 const notes = useNotificationsStore()
+const inbox = useInboxStore()
+const favorites = useFavoritesStore()
+const macrosStore = useMacrosStore()
+const membersStore = useMembersStore()
+const toasts = useToastsStore()
 const conflicts = useConflictsStore()
+const codeLinks = useCodeLinksStore()
+const jobsStore = useJobsStore()
 const whatsNew = useWhatsNewStore()
 const tour = useTourStore()
+const onboarding = useOnboardingStore()
 const { isMobile } = useResponsive()
-const { collapsed, narrow, layoutWidth, applyDragWidth, toggle } = useSidebarSize()
+const { collapsed, layoutWidth, toggle } = useSidebarSize()
+// ≤1024px the «Входящие» panel lies over the content instead of squeezing it.
+const narrow = ref(typeof window !== 'undefined' && window.innerWidth <= 1024)
+const onResize = () => (narrow.value = window.innerWidth <= 1024)
+onMounted(() => window.addEventListener('resize', onResize))
+onBeforeUnmount(() => window.removeEventListener('resize', onResize))
+const inboxOver = computed(() => narrow.value && inbox.panelOpen)
+
+// The rail (#2955). On desktop it is docked at the app root (App.vue), so it also
+// covers the login/offline screens (#2930); on the web it has nothing to offer
+// there and lives here, with the signed-in shell. Either way this layout
+// reserves its gutter via the global `--app-rail-w` custom property. On a phone
+// the rail moves into the sidebar drawer.
+const webRail = computed(() => !isTauri() && !isMobile.value)
+watchEffect(() => {
+  if (!isTauri())
+    document.documentElement.style.setProperty('--app-rail-w', webRail.value ? '56px' : '0px')
+})
+onBeforeUnmount(() => {
+  if (!isTauri()) document.documentElement.style.setProperty('--app-rail-w', '0px')
+})
 const route = useRoute()
+const projectWindow = useProjectWindowStore()
+const boardViewStore = useBoardViewStore()
 const router = useRouter()
+// The start screen's header is translucent and lies over the page, so the
+// aurora runs under it (v2, #2960).
+const homeGlass = computed(() => route.path === '/')
 const message = useMessage()
 
 // Desktop: native-notification click → focus window + open the task.
 useDesktopDeepLink(router)
 
-// ── draggable sidebar divider ──
-// Drag only engages once the pointer actually moves past a small threshold, so a
-// double-click (to toggle the rail) never flips on the no-transition "resizing"
-// state — the toggle then animates smoothly like the expand.
-const dragging = ref(false)
-let pressX = 0
-function onDragMove(e) {
-  if (!dragging.value && Math.abs(e.clientX - pressX) < 4) return
-  dragging.value = true
-  document.body.style.cursor = 'col-resize'
-  document.body.style.userSelect = 'none'
-  applyDragWidth(e.clientX)
-}
-function stopDrag() {
-  dragging.value = false
-  window.removeEventListener('pointermove', onDragMove)
-  window.removeEventListener('pointerup', stopDrag)
-  document.body.style.cursor = ''
-  document.body.style.userSelect = ''
-}
-function startDrag(e) {
-  pressX = e.clientX
-  window.addEventListener('pointermove', onDragMove)
-  window.addEventListener('pointerup', stopDrag)
-}
-onBeforeUnmount(stopDrag)
+// ── keyboard ──
+// The app-wide shortcut layer (v2, #2956): one window listener for every
+// catalog shortcut, installed for as long as the signed-in shell is up. The
+// shell owns the shortcuts that don't belong to any one screen.
+let uninstallShortcuts = null
+onMounted(() => (uninstallShortcuts = installShortcuts()))
+onBeforeUnmount(() => uninstallShortcuts?.())
+
+const theme = useThemeStore()
+const palette = usePaletteStore()
+const help = useHelpStore()
+useShortcuts({
+  'nav.palette': () => palette.toggle(),
+  // v2 (#2953): no drag-resizing — one width, collapsed to the icon rail by the
+  // edge button or the `[` key. The drawer on mobile has its own button.
+  'nav.sidebar': () => !isMobile.value && toggle(),
+  'nav.goMine': () => router.push('/'),
+  // The board the user last had open (BoardView remembers it); Home if none.
+  'nav.goBoard': () => router.push(sGet('tessera_last_board') || '/'),
+  // «Входящие» (#2997): open with the focus in the list; from inside — close.
+  'nav.goInbox': () => {
+    if (!inbox.panelOpen) return inbox.open({ focus: true })
+    const inside = document.activeElement?.closest?.('[data-testid="inbox-panel"]')
+    if (inside) inbox.close()
+    else inbox.open({ focus: true })
+  },
+  'nav.goNotifications': () => notes.requestFeed(),
+  // F1 (#3112): the help centre on the article about the screen in front of you.
+  'nav.help': () =>
+    help.centerShown ? help.closeCenter() : help.openCenter(helpSlugForPath(route.path)),
+  'go.documents': () => router.push('/documents'),
+  'go.settings': () => router.push('/settings'),
+  'view.theme': () => theme.toggle(),
+  // ⌘, — the «Проект» window of the project in front of you (#2971): the open
+  // board's, or the one in the address (a stage page). Toggles.
+  'project.window': () => {
+    if (projectWindow.projectId) return projectWindow.close()
+    const id =
+      (boardViewStore.active && boardViewStore.projectId) ||
+      ws.projects.find((p) => p.slug === route.params.projectSlug)?.id
+    if (id) projectWindow.open(id, 'general')
+  },
+})
 
 // Live notifications for the bell + native device notifications, addressed to the
 // current user. Not scoped to the current workspace — onEvent filters by user, and
@@ -84,13 +176,58 @@ onBeforeUnmount(stopDrag)
 useRealtime(
   (ev) => {
     notes.onEvent(ev, authStore.user?.id)
+    // …and the same record as a toast «про меня» (#3117).
+    toasts.onSocket(ev, authStore.user?.id)
+    inbox.onEvent(ev)
+    // Favourite boards (#3115): the reader's own `favorites.changed` from another
+    // tab, and the board/project events that rename or drop a starred board.
+    favorites.onEvent(ev)
+    // Palette commands and task templates edited elsewhere (#3069).
+    macrosStore.onEvent(ev)
+    // Roster, access requests and member groups changed elsewhere (#3063).
+    membersStore.onSocket(ev)
+    // The «Начало работы» checklist counts what the user did themselves (#3102).
+    onboarding.onSocket(ev, authStore.user?.id)
     conflicts.onEvent(ev)
+    // A merge request or its pipeline moved in GitLab → the open task window (#2964).
+    codeLinks.onEvent(ev)
+    // Background jobs (#3067): the jobs window, and a member's own export/import.
+    jobsStore.onEvent(ev)
     onProjectGone(ev)
     onProjectSlugChanged(ev)
+    // A renamed or recoloured workspace repaints its rail tile everywhere.
+    if (ev.type === 'workspace.updated') ws.patchWorkspace(ev.data)
+    // Somebody else's project/group CRUD → re-read the tree. Strictly after the
+    // two handlers above: both answer a question about the tree as it was BEFORE
+    // the event (which project the current route points at, what address it used
+    // to have), and a refresh in front of them would erase that answer.
+    if (treeEventNeedsRefresh(ev, ws.currentId)) ws.refresh()
+    // Boards created/renamed/deleted elsewhere in this workspace → keep the
+    // sidebar tree honest. Here at the layout rather than in the sidebar: the
+    // tree is a store, and ProjectRow only mounts for an expanded project.
+    if (ev.scope === ws.currentId) ws.onBoardEvent(ev)
+    // The estimation config is resolved from the store by the board, the task
+    // modal, the charts and the «Этапы» screen alike, so it is patched here at
+    // the layout rather than in any one of them.
+    ws.onEstimationEvent(ev)
+    // Sprints created/renamed/closed/deleted elsewhere → invalidate the sidebar's
+    // milestone rows. Same reason as onBoardEvent above: those rows are drawn by
+    // ProjectRow, which only mounts for an expanded project, so the socket can't
+    // reach them — the store carries a per-project revision they watch. It scopes
+    // the event itself (milestoneTreeTarget).
+    ws.onMilestoneEvent(ev)
   },
-  // Reconnect / resync: rebuild the sidebar tree, which is the layout-level state
-  // that can drift while the socket is down (projects added/removed elsewhere).
-  () => ws.refresh(),
+  // Reconnect / resync: re-read every piece of layout-level state the socket is
+  // the only live source for — the sidebar (tree + the workspace set above it),
+  // the notification feed and the GitLab conflicts. See utils/shellResync.js for
+  // why each one belongs there; all three are loaded once in onMounted below and
+  // would otherwise stay at their pre-outage frame until a page reload (#2932).
+  () => {
+    resyncShell({ workspaces: ws, notifications: notes, conflicts })
+    // The «Входящие» feed is socket-fed as well (#2972).
+    inbox.load()
+    favorites.load()
+  },
 )
 
 // An admin changing a project's address rewrites the URL of every board under
@@ -102,22 +239,22 @@ function onProjectSlugChanged(ev) {
   const known = ws.projects.find((p) => p.id === ev.data?.id)
   if (!known || !ev.data?.slug || known.slug === ev.data.slug) return
   const viewing = route.params.projectSlug === known.slug
-  ws.refresh()
   if (viewing) {
-    router.replace({ ...route, params: { ...route.params, projectSlug: ev.data.slug } })
+    router.replace(withProjectSlug(route, ev.data.slug))
   }
 }
 
 // A project leaving the current workspace (deleted, or transferred elsewhere) fires
-// `project.deleted` in that workspace. Keep every connected client's tree in sync,
-// and — for anyone viewing a board of that project — bail to Home before the board
-// starts 404-ing (the "Не найдено" toast the user reported). The deleter/transferrer
-// already navigates locally; this no-ops for them (they're no longer on that route).
+// `project.deleted` in that workspace. For anyone viewing a board of that project,
+// bail to Home before the board starts 404-ing (the "Не найдено" toast the user
+// reported). The deleter/transferrer already navigates locally; this no-ops for
+// them (they're no longer on that route). Dropping the project from the sidebar
+// tree is treeEventNeedsRefresh's job, one event table over — the id → slug
+// lookup below has to run while the tree still holds the departing project.
 function onProjectGone(ev) {
   if (ev.type !== 'project.deleted' || ev.scope !== ws.currentId) return
   const slug = route.params.projectSlug
   const viewing = slug && ws.projects.find((p) => p.slug === slug)?.id === ev.data?.id
-  ws.refresh() // drop it from the sidebar tree for everyone in this workspace
   if (viewing) {
     message.info(t('shell.layout.projectGone'))
     router.push('/')
@@ -127,6 +264,50 @@ function onProjectGone(ev) {
 const drawerOpen = ref(false)
 // Browser Back closes the mobile sidebar drawer instead of navigating.
 useOverlayBack(drawerOpen, () => (drawerOpen.value = false))
+
+// ── the phone shell (v2, #2976 — package G, navigation model A) ──
+// A header per screen, the page, and the bottom navigation; the project tree is
+// a drawer opened from the board's name, the «Доска» tab or a swipe in from the
+// left edge.
+const { keyboardOpen } = useVisualViewport()
+useEdgeSwipe(() => (drawerOpen.value = true), {
+  enabled: computed(() => isMobile.value && !drawerOpen.value),
+})
+// Screens with their own large title and nothing to go back to carry no header:
+// «Мои задачи», «Ещё», the notification feed. A call has a bar of its own.
+const inConference = computed(() => /^\/conferences\/./.test(route.path))
+const mobileHeader = computed(
+  () => !['/', '/more', '/notifications'].includes(route.path) && !inConference.value,
+)
+// The tab bar steps away while typing (the keyboard takes its place) and for a
+// call, which owns the whole screen.
+const mobileNav = computed(() => isMobile.value && !keyboardOpen.value && !inConference.value)
+watchEffect(() => {
+  const root = document.documentElement.style
+  root.setProperty('--mnav-h', mobileNav.value ? 'calc(64px + var(--safe-bottom))' : '0px')
+  root.setProperty(
+    '--m-head-h',
+    isMobile.value && mobileHeader.value ? 'calc(56px + var(--safe-top))' : '0px',
+  )
+})
+onBeforeUnmount(() => {
+  document.documentElement.style.setProperty('--mnav-h', '0px')
+  document.documentElement.style.removeProperty('--m-head-h')
+})
+// «Найти доску» in the drawer: the palette on «Доски и этапы», once the drawer's
+// history entry has unwound (utils/overlayNav).
+async function findBoard() {
+  await unwindOverlay(() => (drawerOpen.value = false))
+  palette.show()
+  palette.section = 'boards'
+}
+// The page's padding: the feed is edge to edge; the title screens start under
+// the status bar.
+const mobilePad = computed(() => {
+  if (route.path === '/notifications') return 'padding: 0'
+  if (!mobileHeader.value) return 'padding: calc(12px + var(--safe-top)) 12px 12px'
+  return 'padding: 4px 12px 12px'
+})
 
 onMounted(async () => {
   await authStore.verify()
@@ -143,9 +324,18 @@ onMounted(async () => {
   // stays silent for. Only when the acks were actually read (`load()` → true):
   // an empty set from a failed request would re-run the guide for a user who has
   // already been through it.
-  whatsNew
-    .load()
-    .then((ok) => ok && tour.autoStart({ acked: whatsNew.acked, mobile: isMobile.value }))
+  //
+  // An account invited into a space that already has projects gets «Знакомство»
+  // instead of «Основы» — it has nothing to create (#3000).
+  whatsNew.load().then(
+    (ok) =>
+      ok &&
+      tour.autoStart({
+        acked: whatsNew.acked,
+        mobile: isMobile.value,
+        invited: ws.current?.my_role !== 'owner' && ws.projects.length > 0,
+      }),
+  )
   // On desktop, ask for notification permission up front so reminders can fire
   // without waiting for the first event (best-effort).
   if (isTauri()) {
@@ -179,6 +369,128 @@ watch(
   () => ws.currentId,
   (id) => conflicts.load(id),
 )
+// «Входящие» (#2972): the feed of the current workspace, and a clock that slides
+// a reminder into «Сработало» when its minute comes.
+watch(
+  () => ws.currentId,
+  (id) => id && inbox.load(id),
+  { immediate: true },
+)
+// Favourite boards (#3115): the sidebar section, the crumbs' star, the palette.
+watch(
+  () => ws.currentId,
+  (id) => id && favorites.load(id),
+  { immediate: true },
+)
+// Palette commands, their keys and task templates (#3069).
+watch(
+  () => ws.currentId,
+  (id) => id && macrosStore.load(id),
+  { immediate: true },
+)
+const inboxClock = setInterval(() => inbox.tick(), 30000)
+// `?inbox=notes|reminders[&note=<slug|id>]` — where the old /notes and
+// /reminders addresses redirect (#2999), and what a search result names.
+watch(
+  () => [route.query.inbox, route.query.note, inbox.loaded],
+  ([which, note]) => {
+    if (!which) return
+    if (note && !inbox.loaded) return inbox.load()
+    if (note) {
+      const n = inbox.notes.find((x) => x.slug === note || x.id === note)
+      if (n) inbox.reveal('note', n.id)
+      else inbox.open({ filter: 'notes' })
+    } else inbox.open({ filter: which === 'reminders' ? 'reminders' : 'notes' })
+    const query = { ...route.query }
+    delete query.inbox
+    delete query.note
+    router.replace({ ...route, query })
+  },
+  { immediate: true },
+)
+onBeforeUnmount(() => clearInterval(inboxClock))
+
+// ── «Начало работы» (#3000): the checklist's client-side events, the tour from
+// an address, and whether the GitLab chapter is open ──
+setTourEventSink((name) => onboarding.note(name))
+onBeforeUnmount(() => setTourEventSink(null))
+const wsDialogs = useWsDialogsStore()
+const quick = useQuickStore()
+watch(
+  () => route.query.task,
+  (v) => v && onboarding.note('task.opened'),
+)
+watch(
+  () => route.path,
+  (p) => /\/stage\//.test(p) && onboarding.note('stage.page'),
+  { immediate: true },
+)
+watch(
+  () => inbox.panelOpen,
+  (v) => v && onboarding.note('inbox.opened'),
+)
+watch(
+  () => palette.open,
+  (v) => v && onboarding.note('palette.opened'),
+)
+watch(
+  () => quick.sheetOpen,
+  (v) => v && onboarding.note('sheet.opened'),
+)
+watch(
+  () => [projectWindow.projectId, projectWindow.tab],
+  ([id, tab]) => {
+    if (!id) return
+    onboarding.note('project.window')
+    if (tab === 'tags') onboarding.note('tags.opened')
+  },
+)
+watch(
+  () => wsDialogs.current,
+  (v) => v === 'gitlab' && onboarding.note('gitlab.opened'),
+)
+// `?members=<workspace id>` — a members notification (#3063: a transfer, an
+// access request) opens the «Участники» window of that workspace.
+watch(
+  () => route.query.members,
+  async (id) => {
+    if (!id) return
+    const query = { ...route.query }
+    delete query.members
+    await router.replace({ ...route, query })
+    await ws.ensureWorkspace(String(id))
+    wsDialogs.open('members')
+  },
+  { immediate: true },
+)
+// `?tour=<chapter>|start` — ⌘K «Обучение», links from the help articles.
+const { launch: launchTour } = useTourLauncher()
+watch(
+  () => route.query.tour,
+  async (which) => {
+    if (!which) return
+    const query = { ...route.query }
+    delete query.tour
+    await router.replace({ ...route, query })
+    launchTour(String(which))
+  },
+  { immediate: true },
+)
+// The GitLab chapter waits for a GitLab project bound in this space.
+watch(
+  () => ws.currentId,
+  async (id) => {
+    onboarding.gitlabBound = false
+    if (!id) return
+    try {
+      const { data } = await gitlabApi.listIntegrations(id)
+      if (ws.currentId === id) onboarding.gitlabBound = (data || []).length > 0
+    } catch {
+      /* no rights or offline — the chapter stays locked */
+    }
+  },
+  { immediate: true },
+)
 </script>
 
 <template>
@@ -186,72 +498,91 @@ watch(
        a component with one root. A second sibling root (e.g. the conflict modal)
        turns this into a fragment, and the leave callback never fires when AppLayout
        unmounts on logout — leaving a blank screen until a hard refresh. -->
-  <div class="app-shell" :style="{ '--app-content-left': isMobile ? '0px' : layoutWidth + 'px' }">
+  <div
+    class="app-shell"
+    :style="{
+      '--app-content-left': isMobile ? '0px' : `calc(var(--app-rail-w, 0px) + ${layoutWidth}px)`,
+    }"
+  >
+    <!-- Web rail of workspaces (#2955), docked like the desktop one in App.vue. -->
+    <div v-if="webRail" class="app-rail-dock"><AppRail /></div>
+
     <!-- Desktop: fixed sider + content -->
-    <n-layout
-      v-if="!isMobile"
-      has-sider
-      class="app-layout"
-      :class="{ resizing: dragging }"
-      style="height: 100vh"
-    >
+    <n-layout v-if="!isMobile" has-sider class="app-layout" style="height: 100vh">
       <n-layout-sider
-        bordered
         :width="layoutWidth"
         :show-trigger="false"
         content-style="padding: 0; height: 100%"
       >
-        <Sidebar :mobile="false" :collapsed="collapsed" :narrow="narrow" />
+        <Sidebar :mobile="false" :collapsed="collapsed" />
       </n-layout-sider>
 
-      <!-- Drag to resize; double-click to toggle the icon rail. -->
-      <div
-        class="sider-resizer"
-        :class="{ active: dragging }"
-        :style="{ left: layoutWidth + 'px' }"
-        :title="t('shell.layout.resize')"
-        @pointerdown.prevent="startDrag"
-        @dblclick="toggle"
-      >
-        <span class="rz-bar" />
-      </div>
+      <!-- Collapse / expand: a round button on the sidebar's edge, shown while the
+           pointer is over the sidebar (v2, #2953). -->
+      <n-tooltip placement="right" :delay="400">
+        <template #trigger>
+          <button
+            type="button"
+            class="sider-toggle"
+            data-testid="sidebar-toggle"
+            :style="{ left: `calc(var(--app-rail-w, 0px) + ${layoutWidth}px - 12px)` }"
+            :aria-label="t(collapsed ? 'shell.layout.expand' : 'shell.layout.collapse')"
+            @click="toggle"
+          >
+            <n-icon
+              :component="collapsed ? ChevronForwardOutline : ChevronBackOutline"
+              :size="14"
+            />
+          </button>
+        </template>
+        <span class="sider-tip">
+          {{ t(collapsed ? 'shell.layout.expand' : 'shell.layout.collapse') }}
+          <ShortcutKeys id="nav.sidebar" />
+        </span>
+      </n-tooltip>
 
-      <n-layout class="work-pane">
-        <n-layout-header bordered>
-          <Topbar :show-tools="collapsed || narrow" />
+      <n-layout class="work-pane" :class="{ 'home-glass': homeGlass }">
+        <n-layout-header :class="{ 'hdr-glass': homeGlass }">
+          <Topbar />
         </n-layout-header>
-        <n-layout-content
-          class="page-slot page-slot--desktop"
-          content-style="padding: 16px"
-          style="height: calc(100vh - 53px)"
+        <!-- The content and the «Входящие» panel side by side (#2997): the panel
+             docks under the top bar and the page gives up the width. -->
+        <div
+          class="work-row"
+          :class="{ 'inbox-over': inboxOver }"
+          :style="{ height: homeGlass ? '100vh' : 'calc(100vh - 52px)' }"
         >
-          <router-view v-slot="{ Component }">
-            <!-- NOT mode="out-in": leaving a heavy view (BoardView / KanbanBoard,
+          <n-layout-content
+            class="page-slot page-slot--desktop"
+            :content-style="homeGlass ? 'padding: 68px 16px 16px' : 'padding: 16px'"
+            style="height: 100%"
+          >
+            <router-view v-slot="{ Component }">
+              <!-- NOT mode="out-in": leaving a heavy view (BoardView / KanbanBoard,
                  a multi-root component) stalls the out-in enter and blanks the
                  content until reload (#2708). The leaving page is taken out of
                  flow (position:absolute, see .page-leave-active) so the incoming
                  page doesn't jump while the old one fades. -->
-            <transition name="page">
-              <component :is="Component" />
-            </transition>
-          </router-view>
-        </n-layout-content>
-        <!-- Faint build-version line in the working-area footer (#2747). Wrapped
-             in a div because VersionBadge is multi-root (class wouldn't fall
-             through to a positioned element). -->
-        <div class="area-version"><version-badge mode="row" /></div>
+              <transition name="page">
+                <component :is="Component" />
+              </transition>
+            </router-view>
+          </n-layout-content>
+          <InboxPanel class="inbox-slot" :class="{ glass: homeGlass }" />
+        </div>
+        <QuickActionsFab />
       </n-layout>
     </n-layout>
 
-    <!-- Mobile: hamburger opens the sidebar in a drawer -->
-    <n-layout v-else class="work-pane" style="height: 100vh">
-      <n-layout-header bordered>
-        <Topbar :mobile="true" @menu="drawerOpen = true" />
+    <!-- Phone (#2976): header · page · bottom navigation; the tree in a drawer. -->
+    <n-layout v-else class="work-pane m-pane">
+      <n-layout-header v-if="mobileHeader" class="m-head">
+        <MobileTopbar @drawer="drawerOpen = true" />
       </n-layout-header>
       <n-layout-content
         class="page-slot page-slot--mobile"
-        content-style="padding: 12px"
-        style="height: calc(100vh - 53px)"
+        :content-style="mobilePad"
+        style="height: calc(var(--app-vh) - var(--m-head-h, 0px) - var(--mnav-h, 0px))"
       >
         <router-view v-slot="{ Component }">
           <!-- see the desktop branch: no out-in, leaving page goes absolute (#2708) -->
@@ -260,13 +591,28 @@ watch(
           </transition>
         </router-view>
       </n-layout-content>
-      <div class="area-version"><version-badge mode="row" /></div>
-      <n-drawer v-model:show="drawerOpen" :width="280" placement="left">
+      <QuickActionsFab />
+      <InboxPanel />
+      <MobileTabBar v-if="mobileNav" @drawer="drawerOpen = true" />
+      <n-drawer
+        v-model:show="drawerOpen"
+        width="min(340px, 88vw)"
+        placement="left"
+        class="m-drawer"
+      >
         <n-drawer-content body-content-style="padding: 0">
-          <Sidebar :mobile="true" />
+          <!-- The rail rides along in the drawer on a phone (#2955). -->
+          <div class="drawer-split">
+            <AppRail />
+            <Sidebar :mobile="true" class="drawer-sidebar" @find="findBoard" />
+          </div>
         </n-drawer-content>
       </n-drawer>
     </n-layout>
+
+    <!-- The toast lanes (#3117): the answers to my actions and the undo toasts
+         (#2969) at the bottom, what came from outside under the bell. -->
+    <ToastLanes />
 
     <!-- App-level conflict resolver: opened from any surface via the conflicts store
        (e.g. the «Конфликт» pill on a task card). -->
@@ -274,16 +620,18 @@ watch(
       v-model:show="conflicts.resolverOpen"
       :ws-id="ws.currentId"
       :focus-task-id="conflicts.focusTaskId"
+      :focus-milestone-id="conflicts.focusMilestoneId"
       @resolved="conflicts.load()"
     />
 
-    <!-- "Что нового" after an update, then one-at-a-time sidebar spotlight hints
-         with an animated arrow to the new section (#2749). -->
-    <WhatsNewModal />
-    <SidebarSpotlight />
+    <!-- «Что нового» after an update (v2: WhatsNewV2, with the «Что изменилось»
+         mini-tour for v1 users), then one-at-a-time spotlight hints at any
+         element (#2749 → #3000). -->
+    <WhatsNewV2 />
+    <SpotlightHint />
 
-    <!-- Get Started guide (#2753). Inert until the tour store is started — the
-         autostart / «Обучение» entry point is wired up separately. -->
+    <!-- The «Начало работы» tour (#2753, chapters since #3000). Inert until the
+         tour store is started — by the autostart, the checklist, «Обучение». -->
     <TourOverlay />
 
     <!-- Contextual help (#2794): one drawer for the whole app, opened by the «?»
@@ -294,30 +642,103 @@ watch(
          from the sidebar's «Помощь» menu. Not a route — reading the manual must
          not cost the reader the board they had open. -->
     <HelpCenterModal />
+
+    <!-- ⌘K: search, commands and task actions (#2957). -->
+    <CommandPalette />
+    <!-- Quick create from the FAB / «N, then T/R/M», and the `?` cheat sheet (#2956). -->
+    <QuickCreateModal />
+    <ShortcutsModal />
+    <WorkspaceDialogsHost />
+    <!-- The «Проект» window (#2971), opened from any of its doors. -->
+    <ProjectWindow />
+
+    <!-- «G …» while a multi-key shortcut waits for its next key (#2956). -->
+    <ShortcutPending />
   </div>
 </template>
 
 <style scoped>
-/* Single transition-trackable root; the inner n-layouts own the 100vh height. */
+/* v2 start screen (#2960): the header lies over the page, half see-through, and
+   the aurora drifts under it. */
+.home-glass {
+  position: relative;
+}
+.hdr-glass {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 5;
+  background: color-mix(in srgb, var(--t-bg) 52%, transparent) !important;
+  backdrop-filter: saturate(1.4) blur(18px);
+  -webkit-backdrop-filter: saturate(1.4) blur(18px);
+}
+:global([data-theme='light']) .hdr-glass {
+  background: color-mix(in srgb, var(--t-bg) 58%, transparent) !important;
+}
+
+/* Single transition-trackable root; the inner n-layouts own the 100vh height.
+   overflow:hidden pins the shell to the viewport — the scrolling belongs to the
+   n-layout-content inside, never to the page itself (#2930). */
 .app-shell {
-  height: 100vh;
+  height: var(--app-vh, 100vh);
+  overflow: hidden;
+  /* Reserve the gutter for the app-root server rail (#2930); 0 on web/mobile
+     where --app-rail-w is unset/0. border-box so the padding eats into the
+     100vw width instead of overflowing it. */
+  box-sizing: border-box;
+  padding-left: var(--app-rail-w, 0px);
+}
+/* Same dock as App.vue's desktop rail: pinned left, under Naive's overlays. */
+.app-rail-dock {
+  position: fixed;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  z-index: 5;
+}
+.drawer-split {
+  display: flex;
+  height: 100%;
+}
+/* The phone shell (#2976). */
+.m-pane {
+  height: var(--app-vh, 100vh);
+}
+.m-head {
+  padding-top: var(--safe-top);
+}
+.drawer-sidebar {
+  flex: 1;
+  min-width: 0;
+}
+/* The page and the «Входящие» panel (#2997). */
+.work-row {
+  position: relative;
+  display: flex;
+  min-height: 0;
+}
+.work-row > .page-slot {
+  flex: 1;
+  min-width: 0;
+}
+/* On the start screen the header lies over the page: the panel starts under it. */
+.inbox-slot.glass {
+  padding-top: 52px;
+}
+/* ≤1024px: over the content, with the popover shadow it now needs. */
+.work-row.inbox-over .inbox-slot {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 8;
+}
+.work-row.inbox-over .inbox-slot :deep(.dock) {
+  box-shadow: var(--t-sh-pop);
 }
 /* Positioning context for the working-area version footer. */
 .work-pane {
   position: relative;
-}
-/* Faint build-version line pinned to the bottom-right of the working area (#2747).
-   It sits above the content but doesn't scroll with it; only the text itself is
-   interactive (for the tooltip), so it never blocks clicks on the board. */
-.area-version {
-  position: absolute;
-  right: 12px;
-  bottom: 4px;
-  z-index: 3;
-  pointer-events: none;
-}
-.area-version :deep(.ver-row) {
-  pointer-events: auto;
 }
 /* Positioning context for the page transition: the leaving route view is pulled
    out of flow (.page-leave-active in main.css) so the incoming view fills the
@@ -334,47 +755,47 @@ watch(
 .page-slot--mobile :deep(.n-layout-scroll-container) {
   --page-pad: 12px;
 }
-/* Drag handle sitting in the gutter between the sidebar and the content. */
-.sider-resizer {
+/* Collapse / expand button on the sidebar's edge: a small round control on the
+   popover level, revealed while the pointer is over the sidebar or the button. */
+.sider-toggle {
   position: fixed;
-  top: 0;
-  height: 100vh;
-  /* Width matches the content's left padding so the bar centres in the gutter
-     between the sidebar border and the first card. */
-  width: 16px;
+  /* Mid-height on the edge — where the old resize grip sat, clear of the brand
+     tools and the workspace switcher at the top. */
+  top: calc(50% - 12px);
+  z-index: 6;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: col-resize;
-  z-index: 6;
-  /* Follow the sider's width animation on toggle; no lag while dragging. */
-  transition: left 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-}
-.sider-resizer.active {
-  transition: none;
-}
-.rz-bar {
-  width: 4px;
-  height: 44px;
-  border-radius: 4px;
-  background: var(--t-border);
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--t-pop);
+  box-shadow: var(--t-sh-pop);
+  color: var(--t-text2);
+  cursor: pointer;
+  opacity: 0;
   transition:
-    background 0.15s ease,
-    height 0.15s ease;
+    left 0.3s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.15s ease;
 }
-.sider-resizer:hover .rz-bar,
-.sider-resizer.active .rz-bar {
-  background: var(--t-accent-grad-vert);
-  height: 72px;
+.app-layout:has(.n-layout-sider:hover) .sider-toggle,
+.sider-toggle:hover,
+.sider-toggle:focus-visible {
+  opacity: 1;
+}
+.sider-toggle:hover {
+  color: var(--t-text1);
+}
+.sider-tip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
 }
 /* Animate the rail's width on toggle (Naive doesn't transition an externally
    bound :width). */
 .app-layout :deep(.n-layout-sider) {
   transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1) !important;
-}
-/* While dragging, the sider must track the cursor with no width animation. */
-.app-layout.resizing :deep(.n-layout-sider),
-.app-layout.resizing :deep(.n-layout-sider-scroll-container) {
-  transition: none !important;
 }
 </style>

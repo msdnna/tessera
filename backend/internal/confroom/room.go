@@ -88,6 +88,11 @@ const (
 	TypeDenied  = "denied"
 	TypeChat    = "chat"
 	TypeEnded   = "ended"
+	// TypeSeat corrects what the welcome frame said about *this* connection, and
+	// goes only to it. The seat is resolved once at the upgrade, so before this
+	// the only way a workspace role change reached a call in progress was for the
+	// person to leave it and come back (#2932).
+	TypeSeat = "seat"
 
 	TypeMedia         = "media"
 	TypeHand          = "hand"
@@ -188,9 +193,9 @@ type stage struct {
 // so it survives a reconnect, and to the SFU, so it applies to the media stream
 // this package deliberately knows nothing about.
 //
-// Both methods are called *after* the room's lock is released and must not
-// block the caller — they run on a socket's read pump, and a wedged SFU must not
-// be able to freeze a participant's connection. The implementation owns its own
+// Every method is called *after* the room's lock is released and must not block
+// the caller — they run on a socket's read pump, and a wedged SFU must not be
+// able to freeze a participant's connection. The implementation owns its own
 // goroutine and timeout.
 //
 // A nil Enforcer is legal and means "in-memory only": every test that exercises
@@ -198,6 +203,11 @@ type stage struct {
 type Enforcer interface {
 	// Kicked is called once a kick has taken effect in the room.
 	Kicked(confID, userID uuid.UUID)
+	// Evicted is called once a user's access was revoked and their connections
+	// to this conference were dropped. Separate from Kicked because the exit is
+	// already being stamped in the database by the socket's own cleanup — all
+	// that is left is the media stream. See EvictUser.
+	Evicted(confID, userID uuid.UUID)
 	// Muted is called when a user's force-mute flag was flipped either way.
 	Muted(confID, userID uuid.UUID, muted bool)
 }
@@ -297,16 +307,25 @@ type StateMsg struct {
 // this to tell "I am presenting" from "my other tab is presenting", which is
 // the difference between a stop-sharing button and a lie.
 type welcomeMsg struct {
-	Type         string `json:"type"`
-	ConnID       string `json:"conn_id"`
-	UserID       string `json:"user_id"`
-	Role         string `json:"role"`
+	Type   string `json:"type"`
+	ConnID string `json:"conn_id"`
+	UserID string `json:"user_id"`
+	Role   string `json:"role"`
 	// CanModerate travels alongside Role so the client shows the kick/force-mute
 	// controls to a workspace admin who is a plain member of the call (#2878) —
 	// Role alone would hide them.
 	CanModerate  bool   `json:"can_moderate"`
 	ConferenceID string `json:"conference_id"`
 	StageTTLMs   int64  `json:"stage_ttl_ms"`
+}
+
+// seatMsg re-states what the welcome frame told one connection about itself,
+// after something outside the room changed the answer. Only the two fields that
+// can move: the connection id and the conference are what they were.
+type seatMsg struct {
+	Type        string `json:"type"`
+	Role        string `json:"role"`
+	CanModerate bool   `json:"can_moderate"`
 }
 
 // deniedMsg answers a command the room refused. Action names the command so the
@@ -965,6 +984,152 @@ func (rs *Rooms) Drop(confID uuid.UUID, reason string) {
 	room.mu.Unlock()
 }
 
+// EvictUser removes every connection a user holds, in every conference room
+// (#2932). Called when their access is revoked.
+//
+// The seat is resolved once, at the upgrade — role, moderation rights and all —
+// and nothing re-reads it. Without this an ex-member keeps their place in a live
+// call, and one who joined as a host or a workspace admin keeps the moderation
+// controls that came with that seat: they go on kicking and force-muting the
+// people still in the meeting, through the SFU, after losing the workspace.
+//
+// Every room, not only the workspace's: the registry is keyed by conference and
+// does not know which workspace a call belongs to. Evicting wider is safe —
+// ConnectConference re-checks membership, so a call they may still attend
+// re-admits them on the reconnect.
+//
+// Unlike a kick this leaves no cooldown: the room is not punishing them, it is
+// just no longer theirs, and a membership restored a minute later must not run
+// into a ban the room invented.
+//
+// Closing the socket is only half of it. The roster lives here, but the call
+// itself lives in the SFU, which authorises once at the join and never re-reads
+// anything after it — so an eviction that stopped at the socket would take the
+// ex-member off the roster while they went on hearing, seeing and publishing to
+// the meeting, now invisibly. The media half goes out through the Enforcer, the
+// same seam a kick uses (#2932).
+func (rs *Rooms) EvictUser(userID uuid.UUID, reason string) {
+	rs.mu.Lock()
+	snapshot := make(map[uuid.UUID]*Room, len(rs.rooms))
+	for id, room := range rs.rooms {
+		snapshot[id] = room
+	}
+	enforce := rs.enforce
+	rs.mu.Unlock()
+	frame := encode(struct {
+		Type   string `json:"type"`
+		Reason string `json:"reason"`
+	}{TypeEnded, reason})
+	for confID, room := range snapshot {
+		here := room.connectionsOf(userID)
+		for _, p := range here {
+			// Queue the reason before Leave closes the channel: a closed channel
+			// still yields what was buffered, so the write pump delivers it. A
+			// client that merely goes quiet cannot tell this from a network drop
+			// and would reconnect in a loop.
+			room.deliverTo(p, frame)
+			// Leave (rather than a bare Close) releases the stage and the place in
+			// the queue, tells the rest of the room, and forgets an empty one.
+			rs.Leave(confID, p)
+		}
+		// Once per room, not per connection: the same person in three tabs is one
+		// identity at the SFU, and removing it three times is two wasted calls.
+		if len(here) > 0 && enforce != nil {
+			enforce.Evicted(confID, userID)
+		}
+	}
+}
+
+// SetModeration re-resolves a user's moderation right in the named conferences
+// after their workspace role changed (#2932).
+//
+// The companion to EvictUser, for the change that takes away less than all of
+// it. A demotion from admin to member is not a revoked membership: the person
+// may still attend the call, and throwing them out of it would be a punishment
+// the role change never asked for. What it does take away is the right that came
+// with the role — and that right is a boolean copied into the seat at the
+// upgrade, so without this it outlives the demotion for as long as the tab stays
+// open, and the ex-admin goes on kicking and force-muting the room.
+//
+// Scoped to a list of conferences, unlike EvictUser, which sweeps every room it
+// holds. Evicting wider is safe because ConnectConference re-checks membership
+// and re-admits whoever may still attend; *demoting* wider is not — the same
+// person may be an admin of another workspace and in a call there, and the
+// registry is keyed by conference and cannot tell the two apart. The caller,
+// which knows the workspace, supplies its conferences.
+//
+// manager is the workspace half of the seat's rule (conferenceSeat): a manager
+// moderates every call in the workspace, and everyone else moderates only the
+// calls they host — which is what Role already records, the creator included. So
+// the new value is derivable here, and a demotion cannot strip a host of the
+// rights their own meeting gave them.
+func (rs *Rooms) SetModeration(confIDs []uuid.UUID, userID uuid.UUID, manager bool) {
+	if len(confIDs) == 0 {
+		return
+	}
+	rs.mu.Lock()
+	here := make([]*Room, 0, len(confIDs))
+	for _, id := range confIDs {
+		if room, ok := rs.rooms[id]; ok {
+			here = append(here, room)
+		}
+	}
+	rs.mu.Unlock()
+	for _, room := range here {
+		room.setModeration(userID, manager)
+	}
+}
+
+// setModeration applies the new right to every connection this user holds here
+// — a person with the call open in two tabs is two seats, and a revocation that
+// stopped at one of them would leave the other moderating.
+//
+// The one who changed is told, and nobody else: CanModerate is not in the
+// roster, it rides in the welcome frame, so this is the only news the rest of
+// the room would get from a snapshot they already have. The seat frame is what
+// keeps the client from painting a kick button its next click gets "not a
+// moderator" for — the refusal is real either way, which is the half that
+// matters, but a control that refuses is a bug report.
+func (r *Room) setModeration(userID uuid.UUID, manager bool) bool {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	changed := false
+	for p := range r.members {
+		if p.UserID != userID {
+			continue
+		}
+		want := manager || p.Role == RoleHost
+		if p.CanModerate == want {
+			continue
+		}
+		p.CanModerate = want
+		changed = true
+		p.deliver(encode(seatMsg{Type: TypeSeat, Role: p.Role, CanModerate: want}))
+	}
+	return changed
+}
+
+// connectionsOf lists a user's participants in this room — a user may have the
+// same call open in several tabs.
+func (r *Room) connectionsOf(userID uuid.UUID) []*Participant {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([]*Participant, 0, 1)
+	for p := range r.members {
+		if p.UserID == userID {
+			out = append(out, p)
+		}
+	}
+	return out
+}
+
+// deliverTo queues one frame to a single participant under the room lock.
+func (r *Room) deliverTo(p *Participant, frame []byte) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	p.deliver(frame)
+}
+
 // Notify tells everyone currently in a conference that something they are
 // looking at changed outside the socket (a chat message, #2873). A conference
 // nobody has open has no room and the call is a no-op — which is correct: the
@@ -1056,6 +1221,22 @@ func (rs *Rooms) Close() {
 		}
 		r.mu.Unlock()
 	}
+}
+
+// UserMuted reports whether a live room is holding a force-mute against a user.
+//
+// The registry-level twin of Room.Muted, for callers outside a socket: the media
+// token endpoint asks before it decides what a join token may publish. A
+// conference with no live room answers false — the flag is on the participant's
+// row too, and that is what the caller falls back to.
+func (rs *Rooms) UserMuted(confID, userID uuid.UUID) bool {
+	rs.mu.Lock()
+	room, ok := rs.rooms[confID]
+	rs.mu.Unlock()
+	if !ok {
+		return false
+	}
+	return room.Muted(userID)
 }
 
 // UserPresent reports whether a user still has at least one live connection in a

@@ -257,15 +257,52 @@ func TestChangeMyPassword(t *testing.T) {
 		t.Fatalf("wrong current password: status %d, want 403", r.Status)
 	}
 
+	// 200, not 204: the change revokes every session and returns a replacement
+	// one so the caller's own device survives it (password_change_test.go).
 	c.expect(t, c.put("/users/me/password", map[string]any{
 		"current_password": "password-123", "new_password": "changed-password-1",
-	}), http.StatusNoContent)
+	}), http.StatusOK)
 
 	if r := login(t, c.Email, "password-123"); r.Status != http.StatusUnauthorized {
 		t.Fatalf("old password: status %d, want 401", r.Status)
 	}
 	if r := login(t, c.Email, "changed-password-1"); r.Status != http.StatusOK {
 		t.Fatalf("new password: status %d, want 200\n%s", r.Status, r.Body)
+	}
+}
+
+// TestHasPasswordFlag covers the has_password flag on the user DTO (#2932).
+//
+// A GitLab-provisioned account is created with an empty password hash, so
+// ChangeMyPassword can only ever refuse it — the settings form is unwinnable and
+// the refusal ("current password is incorrect") reads like a typo. The clients
+// have to know that before they draw the form, and `provider` is not the answer:
+// a recovery link sets a password without touching it.
+func TestHasPasswordFlag(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+
+	if u := meUser(t, c); u["has_password"] != true {
+		t.Fatalf("fresh account: has_password = %v, want true", u["has_password"])
+	}
+
+	// Blank the hash the way CreateOAuthUser leaves it.
+	if _, err := testPool.Exec(context.Background(),
+		`UPDATE users SET password_hash = '' WHERE id = $1`, c.UserID); err != nil {
+		t.Fatalf("blank password hash: %v", err)
+	}
+
+	if u := meUser(t, c); u["has_password"] != false {
+		t.Fatalf("passwordless account: has_password = %v, want false", u["has_password"])
+	}
+	// And the form really is unwinnable: neither the password the account was
+	// signed up with nor the empty string the hash was blanked to gets through.
+	for _, pw := range []string{"password-123", ""} {
+		if r := c.put("/users/me/password", map[string]any{
+			"current_password": pw, "new_password": "changed-password-1",
+		}); r.Status == http.StatusOK {
+			t.Fatalf("passwordless change with %q: status 200, want a refusal", pw)
+		}
 	}
 }
 

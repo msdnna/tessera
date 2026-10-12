@@ -20,6 +20,7 @@ import (
 	"tessera/internal/docroom"
 	"tessera/internal/livekit"
 	"tessera/internal/mail"
+	"tessera/internal/observability"
 	"tessera/internal/realtime"
 	"tessera/middleware"
 )
@@ -41,12 +42,72 @@ const (
 	// never got to explain. Found while adding the import route (#2733).
 	routeDocAssets = "/api/documents/:id/assets"
 	routeDocImport = "/api/workspaces/:id/documents/import"
+	// A PDF attached to an open page. Third route to repeat the mistake above:
+	// its handler allows maxDocImportBytes (20 MiB), but with no entry in the
+	// table it ran on the blanket 1 MiB — and a PDF under a megabyte is the
+	// exception, not the rule, so the transport refused nearly every real one
+	// with a 413 the handler never got to phrase (#2932).
+	routeDocPdf = "/api/documents/:id/pdf"
+	// The editor's own save. Fourth repeat of the same omission, and the costly
+	// one: validateDocContent allows a 4 MiB document, but on the blanket budget
+	// anything past a megabyte met a transport 413 — so the validator's ceiling
+	// was unreachable and a long page could not be written at all. Nobody retries
+	// this one by hand either (useDocAutosave requeues the rejected content and
+	// keeps saving, silently, while its author goes on typing), and the office
+	// import PATCHes its converted body through here, so a 20 MiB file the import
+	// route deliberately accepts landed as an empty document (#2932).
+	routeDocContent = "/api/documents/:id/content"
+	// A file dropped into the in-call chat. Fifth repeat, and the one where the
+	// three composers were loudest about a rule the transport did not honour: the
+	// handler, utils/confChat.js and util/ConferenceChat.kt all promise 25 MiB per
+	// file, while the blanket budget refused anything past one — so a screenshot
+	// from a phone left the composer and came back "request body too large".
+	//
+	// Unlike the four above, this route takes several files at once, so the budget
+	// is the *aggregate* one (maxChatTotalBytes) rather than the per-file cap:
+	// maxChatFiles × 25 MiB is 125 MiB of buffered multipart for one line of chat,
+	// which is the thing maxChatFiles was written to prevent in the first place
+	// (#2932).
+	routeConfMessages = "/api/conferences/:id/messages"
+	// A template uploaded from a .md or .json file. Sixth repeat, and the one that
+	// reads as nonsense rather than as a limit, because the neighbouring path
+	// works: the same picker and the same parser feed importLocal, which creates
+	// an empty page and PATCHes the body through routeDocContent — so one file was
+	// fine as a document and "request body too large" as a template. The body here
+	// is a whole document (CreateDocumentTemplate takes `content` and hands it to
+	// validateDocContent), so it gets the validator's ceiling, exactly like the
+	// content route. Markdown inflates on the way to a ProseMirror tree, so the
+	// blanket megabyte was reached by source files well under one (#2932).
+	routeDocTemplates = "/api/workspaces/:id/document-templates"
 	// Browser Sentry envelopes. Pinned to the handler's own ceiling rather than
 	// left on the blanket JSON budget so that an operator tightening
 	// MAX_BODY_BYTES doesn't silently start dropping crash reports at the
 	// transport, where nothing would report the loss.
 	routeSentryTunnel = "/api/sentry-tunnel"
+	// A CSV/JSON file of tasks imported onto a board (#3095). Registered with its
+	// budget from the start, so it doesn't become the seventh repeat above: the
+	// handler's own ceiling (MaxBoardImportBytes) plus the framing and the mapping
+	// fields that travel beside the file.
+	routeBoardImport = "/api/boards/:id/import"
 )
+
+// docContentEnvelope is the slack the content route's budget carries on top of
+// the document itself. The envelope proper is tiny — the updated_at the save is
+// based on and the sender's connection id — and a budget sized to just that
+// would still be wrong, because the transport would then answer for every
+// document a byte past the ceiling. The point of giving this route a budget at
+// all is that the *validator* explains the refusal ("content exceeds N bytes"),
+// so the slack is deliberately wide enough to cover an ordinary overshoot and
+// leave only an absurd body to the transport. Same shape as the media budget,
+// which is 8 MiB of file with a megabyte of framing around it.
+const docContentEnvelope int64 = 1 << 20
+
+// chatFilesEnvelope is the same slack for the chat route: the message body
+// (maxChatBody runes, so at most ~16 KiB of UTF-8) plus a multipart part header
+// per file. Sized like the one above rather than to the framing proper so that an
+// ordinary overshoot is explained by readChatSubmission — "attachments exceed N
+// bytes" names what to drop — and only an absurd body meets the transport.
+const chatFilesEnvelope int64 = 1 << 20
 
 // authRateRules throttles the unauthenticated auth surface — the routes where a
 // cheap anonymous request costs the server a bcrypt round, an outgoing email or
@@ -68,10 +129,18 @@ func authRateRules() map[string]middleware.RateRule {
 		"/api/auth/forgot-password": credential,
 		// No email in the body — these carry an opaque token, so IP is the only
 		// key available.
-		"/api/auth/reset-password": token,
-		"/api/auth/verify-email":   token,
-		"/api/auth/refresh":        rotate,
-		"/api/auth/logout":         rotate,
+		"/api/auth/reset-password":       token,
+		"/api/auth/reset-password/check": token,
+		"/api/auth/verify-email":         token,
+		"/api/invitations/lookup":        token,
+		"/api/invitations/decline":       token,
+		// Behind a session, but each one guards something worth guessing at: a
+		// six-digit code (already capped per code) and the password re-check
+		// of an address change.
+		"/api/auth/verify-code":  token,
+		"/api/auth/email-change": token,
+		"/api/auth/refresh":      rotate,
+		"/api/auth/logout":       rotate,
 		// The Sentry tunnel is public and unauthenticated, and forwarding costs
 		// an outbound request. A burst allowance is deliberate: a page that
 		// breaks badly emits a cluster of events at once, and throttling those
@@ -90,6 +159,38 @@ func orDefault(v, def int64) int64 {
 	return v
 }
 
+// bodyLimitRoutes is the per-route transport budget table. Kept out of newRouter
+// so the tests that check it against the registered routes read the same map the
+// middleware is built from, rather than a copy that can drift (#2932).
+func bodyLimitRoutes(cfg *config.Config) map[string]int64 {
+	return map[string]int64{
+		routeAttachments: orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
+		routeUploads:     orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeAvatar:      orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
+		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
+		routeDocPdf:      orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
+		// The validator's ceiling plus the envelope it travels in: the body is the
+		// document *and* the updated_at it is based on *and* the sender's
+		// connection id. Sized from the constant rather than restated, because a
+		// budget equal to it would refuse a document of exactly MaxDocContentBytes
+		// at the transport — the one size the validator promises to accept.
+		routeDocContent: handlers.MaxDocContentBytes + docContentEnvelope,
+		// The same body under a different envelope — the uploaded template carries
+		// title, description and icon beside the document, all of them bounded by
+		// truncateRunes, so the content route's slack covers them too.
+		routeDocTemplates: handlers.MaxDocContentBytes + docContentEnvelope,
+		// The chat's aggregate file ceiling plus its framing, for the same reason:
+		// a budget equal to MaxChatTotalBytes would refuse at the transport the one
+		// batch readChatSubmission promises to take.
+		routeConfMessages: handlers.MaxChatTotalBytes + chatFilesEnvelope,
+		routeWS:           middleware.NoBodyLimit,
+
+		routeSentryTunnel: handlers.MaxEnvelopeBytes,
+		routeBoardImport:  handlers.MaxBoardImportBytes + docContentEnvelope,
+	}
+}
+
 // newRouter wires every route of the API onto a fresh gin engine and returns
 // it together with the resource-handler layer (main() reuses the latter for
 // the background workers and slug backfill).
@@ -99,12 +200,22 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// rather than in main() so the four tests that boot newRouter() get a working
 	// document socket too; its sweeper goroutine ends when rh.CloseDocRooms does.
 	rooms := docroom.New()
-	go rooms.Run()
+	// Under the same guard as the realtime hub's loop (main()): a sweeper panic
+	// has no request and no supervisor around it, so it would end the process
+	// instead of the sweep. Reported and dropped, live documents keep their
+	// sockets — only lock expiry stops, until the next restart.
+	go func() {
+		defer observability.Recover("docroom-sweeper")
+		rooms.Run()
+	}()
 	// Per-conference room state (#2869): presence, the screen-share queue and
 	// moderation. Created here for the same reason as the document rooms; its
 	// sweeper goroutine ends when rh.CloseConfRooms does.
 	confRooms := confroom.New()
-	go confRooms.Run()
+	go func() {
+		defer observability.Recover("confroom-sweeper")
+		confRooms.Run()
+	}()
 	wsHandler := handlers.NewWSHandler(hub, rooms, confRooms, queries, cfg.JWTSecret, append([]string{cfg.CORSOrigin}, cfg.DesktopOrigins...)...)
 	authHandler := handlers.NewAuthHandler(queries, cfg.JWTSecret, cfg.EncryptionKey, mailer, cfg.PublicURL)
 	// Reports itself disabled when no frontend DSN is configured, so the two
@@ -134,6 +245,15 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// LiveKit through here. Set once, before any room exists — rooms copy it as
 	// they are created.
 	confRooms.SetEnforcer(rh.ConfEnforcer())
+	// Both password doors live on authHandler, all three socket registries on rh
+	// (#2932). Wired after WireDocRooms/WireConfRooms above so the revoker closes
+	// over an API that already has them.
+	authHandler.WireSocketRevoker(rh.SocketRevoker())
+	// The mirror image of the revoker: the auth layer also *grants* memberships
+	// (a pending invitation applied on email verification, the OAuth org map),
+	// and a socket that resolved its scopes at the upgrade cannot learn about
+	// them on its own (#2932).
+	authHandler.WireScopeRefresher(rh.ScopeRefresher())
 	metrics := middleware.NewCollector()
 	rh.WireOps(metrics, appVersion)
 
@@ -153,7 +273,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	r.Use(gin.Recovery())
 	trusted := cfg.TrustedProxies
 	if len(trusted) == 0 {
-		trusted = []string{"127.0.0.1", "::1"}
+		trusted = config.DefaultTrustedProxies
 	}
 	if err := r.SetTrustedProxies(trusted); err != nil {
 		log.Printf("Warning: failed to set trusted proxies: %v", err)
@@ -173,16 +293,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 	// Cap request bodies before anything reads one. Ordering matters twice over:
 	// this must precede the rate limiter (whose by-email keying reads the body,
 	// and is only bounded because of this), and both must precede the handlers.
-	r.Use(middleware.BodyLimit(orDefault(cfg.MaxBodyBytes, config.DefaultMaxBodyBytes), map[string]int64{
-		routeAttachments: orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
-		routeUploads:     orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
-		routeAvatar:      orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
-		routeDocAssets:   orDefault(cfg.MaxUploadBytes, config.DefaultMaxUploadBytes),
-		routeDocImport:   orDefault(cfg.MaxAttachmentBytes, config.DefaultMaxAttachmentBytes),
-		routeWS:          middleware.NoBodyLimit,
-
-		routeSentryTunnel: handlers.MaxEnvelopeBytes,
-	}))
+	r.Use(middleware.BodyLimit(orDefault(cfg.MaxBodyBytes, config.DefaultMaxBodyBytes), bodyLimitRoutes(cfg)))
 	if cfg.RateLimitEnabled {
 		r.Use(middleware.RateLimit(authRateRules()))
 	}
@@ -209,10 +320,20 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		api.POST("/auth/verify-email", authHandler.VerifyEmail)
 		api.POST("/auth/forgot-password", authHandler.ForgotPassword)
 		api.POST("/auth/reset-password", authHandler.ResetPassword)
+		// «Ссылка действует ещё N минут» (#3060): checks a recovery link
+		// without spending it.
+		api.POST("/auth/reset-password/check", authHandler.CheckResetToken)
+		// The invitation page before any session exists (#3059): the preview and
+		// «Отклонить». The token is the credential, as for the two above.
+		api.POST("/invitations/lookup", rh.LookupInvitation)
+		api.POST("/invitations/decline", rh.DeclineInvitation)
 		// GitLab OAuth ("Login with GitLab"): public discovery + redirect flow.
 		api.GET("/auth/providers", authHandler.Providers)
 		api.GET("/auth/gitlab/authorize", authHandler.GitlabAuthorize)
 		api.GET("/auth/gitlab/callback", authHandler.GitlabCallback)
+		// Desktop redeems the one-time code from its tessera:// deep link here.
+		// Public like /auth/refresh: the code is the credential.
+		api.POST("/auth/oauth/handoff", authHandler.OAuthHandoff)
 
 		// Live updates. Not in the protected group because the browser
 		// WebSocket API can't send an Authorization header — the handler does
@@ -269,6 +390,12 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 		{
 			protected.GET("/auth/me", authHandler.Me)
 			protected.POST("/auth/resend-verification", authHandler.ResendVerification)
+			// The «Проверьте почту» cells (#3057) and «Изменить email» (#3058):
+			// a six-digit code that proves a mailbox to the account that asked.
+			protected.GET("/auth/verification", authHandler.Verification)
+			protected.POST("/auth/verify-code", authHandler.VerifyCode)
+			protected.POST("/auth/email-change", authHandler.StartEmailChange)
+			protected.DELETE("/auth/email-change", authHandler.CancelEmailChange)
 
 			// Personal access tokens: long-lived, revocable bearer credentials
 			// for headless clients (MCP server, CI). Managed from a live session.
@@ -278,7 +405,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 
 			// Self-service profile / password / preferences / avatar.
 			protected.PATCH("/users/me", rh.UpdateMyProfile)
-			protected.PUT("/users/me/password", rh.ChangeMyPassword)
+			// On AuthHandler, not the resource handler: changing the password
+			// now ends every session and hands back a replacement, so it needs
+			// the signing key and the same delivery modes as login (account.go).
+			protected.PUT("/users/me/password", authHandler.ChangeMyPassword)
 			protected.PUT("/users/me/preferences", rh.UpdateMyPreferences)
 			protected.PUT("/users/me/avatar", rh.UploadMyAvatar)
 			protected.DELETE("/users/me/avatar", rh.DeleteMyAvatar)
@@ -286,29 +416,54 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// future onboarding. Keyed by an opaque client-owned string.
 			protected.GET("/users/me/acknowledgements", rh.ListMyAcknowledgements)
 			protected.POST("/users/me/acknowledgements", rh.AcknowledgeMe)
+			protected.DELETE("/users/me/acknowledgements", rh.ForgetMyAcknowledgements)
 
 			// Workspaces & membership.
 			protected.POST("/workspaces", rh.CreateWorkspace)
 			protected.GET("/workspaces", rh.ListWorkspaces)
 			protected.GET("/workspaces/:id", rh.GetWorkspace)
 			protected.PATCH("/workspaces/:id", rh.UpdateWorkspace)
+			protected.PUT("/workspaces/:id/appearance", rh.SetWorkspaceAppearance)
 			protected.DELETE("/workspaces/:id", rh.DeleteWorkspace)
 			protected.GET("/workspaces/:id/search", rh.Search)
 			protected.GET("/workspaces/:id/tasks", rh.ListWorkspaceTasks)
 			protected.GET("/workspaces/:id/tasks/by-number/:number", rh.GetTaskByNumber)
 			// Resolve a /project/<slug>/board/<slug> pair to its board.
 			protected.GET("/board-by-slug", rh.ResolveBoardBySlug)
+			// A project by its address, a former one included (#3012).
+			protected.GET("/project-by-slug", rh.ResolveProjectBySlug)
+			// What deleting a workspace takes with it (#3014).
+			protected.GET("/workspaces/:id/counts", rh.WorkspaceCounts)
 			protected.GET("/workspaces/:id/summary", rh.WorkspaceSummary)
 			protected.GET("/workspaces/:id/members", rh.ListMembers)
 			protected.POST("/workspaces/:id/members", rh.AddMember)
 			protected.PATCH("/workspaces/:id/members/:userId", rh.UpdateMemberRole)
 			protected.DELETE("/workspaces/:id/members/:userId", rh.RemoveMember)
+			// Members v2 (#3063): ownership transfer (owner only), leaving (all but
+			// the owner), access requests and member groups.
+			protected.POST("/workspaces/:id/owner", rh.TransferOwnership)
+			protected.POST("/workspaces/:id/leave", rh.LeaveWorkspace)
+			protected.POST("/access-requests", rh.RequestAccess)
+			protected.GET("/workspaces/:id/access-requests", rh.ListAccessRequests)
+			protected.POST("/workspaces/:id/access-requests/:reqId/approve", rh.ApproveAccessRequest)
+			protected.POST("/workspaces/:id/access-requests/:reqId/decline", rh.DeclineAccessRequest)
+			protected.GET("/workspaces/:id/member-groups", rh.ListMemberGroups)
+			protected.POST("/workspaces/:id/member-groups", rh.CreateMemberGroup)
+			protected.PATCH("/member-groups/:id", rh.UpdateMemberGroup)
+			protected.DELETE("/member-groups/:id", rh.DeleteMemberGroup)
 
 			// Workspace invitations (invite-by-email; invitee may be unregistered).
 			protected.POST("/workspaces/:id/invitations", rh.CreateInvitation)
 			protected.GET("/workspaces/:id/invitations", rh.ListInvitations)
 			protected.DELETE("/workspaces/:id/invitations/:invId", rh.DeleteInvitation)
+			// «Ещё раз» / «Продлить» (#3061).
+			protected.POST("/workspaces/:id/invitations/:invId/resend", rh.ResendInvitation)
 			protected.POST("/invitations/accept", rh.AcceptInvitation)
+			// The workspace's shared invitation link (#3062): one live at a time,
+			// POST issues (and resets), DELETE switches it off.
+			protected.GET("/workspaces/:id/invite-link", rh.GetInviteLink)
+			protected.POST("/workspaces/:id/invite-link", rh.CreateInviteLink)
+			protected.DELETE("/workspaces/:id/invite-link", rh.RevokeInviteLink)
 
 			// Global admin panel (separate /admin prefix so it doesn't collide
 			// with the /users/me routes). Each handler re-checks is_admin.
@@ -316,15 +471,23 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/admin/users/:id/active", rh.SetUserActive)
 			protected.PATCH("/admin/users/:id/admin", rh.SetUserAdmin)
 			protected.POST("/admin/users/:id/reset-link", rh.CreateUserResetLink)
+			protected.GET("/admin/invitations", rh.AdminListInvitations)
+			protected.DELETE("/admin/invitations/:id", rh.AdminDeleteInvitation)
 			// GitLab OAuth app config (admin-only).
 			protected.GET("/admin/oauth/gitlab", rh.GetOAuthConfig)
 			protected.PUT("/admin/oauth/gitlab", rh.SetOAuthConfig)
 			// Background jobs panel (admin-only): observe/run/cancel background work.
 			protected.GET("/admin/metrics", rh.MetricsHandler)
+			// «Статья помогла?» totals (#3071).
+			protected.GET("/admin/help-feedback", rh.HelpFeedback)
 			protected.GET("/admin/jobs", rh.ListJobs)
 			protected.GET("/admin/jobs/:key", rh.GetJob)
 			protected.POST("/admin/jobs/:key/run", rh.RunJob)
 			protected.POST("/admin/jobs/:key/cancel", rh.CancelJob)
+			// A member's own export/import run: its state, its file, its stop (#3068).
+			protected.GET("/jobs/:id", rh.GetMyJob)
+			protected.GET("/jobs/:id/download", rh.DownloadJobFile)
+			protected.POST("/jobs/:id/cancel", rh.CancelMyJob)
 
 			// Project groups & projects (nested under a workspace).
 			protected.POST("/workspaces/:id/groups", rh.CreateProjectGroup)
@@ -340,12 +503,28 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Tag-prefix display names (provider-neutral; GitLab modal is one editor).
 			protected.GET("/projects/:id/tag-prefixes", rh.ListTagPrefixes)
 			protected.PUT("/projects/:id/tag-prefixes", rh.SetTagPrefixes)
+			// The tag table of the «Проект» window (#2990): one prefix's name,
+			// merging, bulk delete and its undo.
+			protected.PATCH("/projects/:id/tag-prefixes", rh.SetTagPrefix)
+			protected.POST("/projects/:id/tags/merge", rh.MergeTags)
+			protected.POST("/projects/:id/tags/delete", rh.DeleteTags)
+			protected.POST("/projects/:id/tags/restore", rh.RestoreTags)
 			protected.GET("/workspaces/:id/tag-prefixes", rh.ListWorkspaceTagPrefixes)
 
 			// Quick-action registry: built-in commands + the workspace's custom
 			// dictionary, for the markdown editor's "/" autocomplete.
 			protected.GET("/workspaces/:id/commands", rh.ListWorkspaceCommands)
 			protected.PUT("/workspaces/:id/commands", rh.SetWorkspaceCommands)
+			// Команды-макросы палитры и шаблоны задач (#3069).
+			protected.GET("/workspaces/:id/macros", rh.ListMacros)
+			protected.POST("/workspaces/:id/macros", rh.CreateMacro)
+			protected.PATCH("/macros/:id", rh.UpdateMacro)
+			protected.DELETE("/macros/:id", rh.DeleteMacro)
+			protected.GET("/workspaces/:id/task-templates", rh.ListTaskTemplates)
+			protected.POST("/workspaces/:id/task-templates", rh.CreateTaskTemplate)
+			protected.PATCH("/task-templates/:id", rh.UpdateTaskTemplate)
+			protected.DELETE("/task-templates/:id", rh.DeleteTaskTemplate)
+			protected.POST("/boards/:id/ci/run", rh.RunCI)
 
 			// Two-level task-estimation config (workspace default + project override).
 			protected.PUT("/workspaces/:id/estimation", rh.SetWorkspaceEstimation)
@@ -354,22 +533,30 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Notes (workspace-scoped).
 			protected.POST("/workspaces/:id/notes", rh.CreateNote)
 			protected.GET("/workspaces/:id/notes", rh.ListNotes)
+			// «Входящие» (#2972): the caller's reminders + readable notes as one feed.
+			protected.GET("/workspaces/:id/inbox", rh.Inbox)
 
 			// Documents (workspace-scoped, nested via parent_id).
 			protected.POST("/workspaces/:id/documents", rh.CreateDocument)
 			protected.GET("/workspaces/:id/documents", rh.ListDocuments)
 			protected.GET("/workspaces/:id/documents/by-slug/:slug", rh.ResolveDocumentBySlug)
+			// The documents' trash (0086).
+			protected.GET("/workspaces/:id/documents/trash", rh.ListDeletedDocuments)
 
 			protected.PATCH("/groups/:id", rh.UpdateProjectGroup)
 			protected.PATCH("/groups/:id/move", rh.MoveProjectGroup)
 			protected.DELETE("/groups/:id", rh.DeleteProjectGroup)
 
 			protected.GET("/projects/:id", rh.GetProject)
+			protected.GET("/projects/:id/counts", rh.ProjectCounts)
 			protected.PATCH("/projects/:id", rh.UpdateProject)
 			protected.PATCH("/projects/:id/slug", rh.SetProjectSlug)
 			protected.PATCH("/projects/:id/move", rh.MoveProject)
 			protected.POST("/projects/:id/transfer", rh.TransferProject)
 			protected.DELETE("/projects/:id", rh.DeleteProject)
+			// Archive (0086): reversible, no expiry; the list is ?archived=1 above.
+			protected.POST("/projects/:id/archive", rh.ArchiveProject)
+			protected.POST("/projects/:id/restore", rh.UnarchiveProject)
 			protected.POST("/projects/:id/boards", rh.CreateBoard)
 			protected.GET("/projects/:id/boards", rh.ListBoards)
 
@@ -377,23 +564,40 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/boards/:id", rh.UpdateBoard)
 			protected.PATCH("/boards/:id/done-column", rh.SetDoneColumn)
 			protected.DELETE("/boards/:id", rh.DeleteBoard)
+			protected.POST("/boards/:id/restore", rh.RestoreBoard)
 			protected.POST("/boards/:id/columns", rh.CreateColumn)
 			protected.GET("/boards/:id/columns", rh.ListColumns)
 			protected.POST("/boards/:id/tasks", rh.CreateTask)
+			// Export and import of a board's tasks, as background jobs (#3068).
+			protected.POST("/boards/:id/export", rh.ExportBoard)
+			protected.POST("/boards/:id/import", rh.ImportBoard)
 			protected.GET("/boards/:id/tasks", rh.ListBoardTasks)
 			protected.GET("/boards/:id/subtasks", rh.ListBoardSubtasks)
 			protected.GET("/boards/:id/archive", rh.ListBoardArchived)
+			protected.GET("/boards/:id/trash", rh.ListBoardTrash)
 			protected.GET("/boards/:id/dependencies", rh.BoardDependencies)
 			protected.GET("/boards/:id/views", rh.ListBoardViews)
 			protected.POST("/boards/:id/views", rh.SaveBoardView)
+			protected.PATCH("/views/:id", rh.UpdateBoardView)
 			protected.DELETE("/views/:id", rh.DeleteBoardView)
+			// Favourite boards (#3115): the caller's own starred boards, per workspace.
+			protected.GET("/workspaces/:id/favorites", rh.ListBoardFavorites)
+			protected.PUT("/boards/:id/favorite", rh.AddBoardFavorite)
+			protected.DELETE("/boards/:id/favorite", rh.RemoveBoardFavorite)
+			protected.PATCH("/boards/:id/favorite/move", rh.MoveBoardFavorite)
 
 			protected.PATCH("/columns/:id", rh.UpdateColumn)
 			protected.PATCH("/columns/:id/move", rh.MoveColumn)
 			protected.DELETE("/columns/:id", rh.DeleteColumn)
+			protected.POST("/columns/:id/restore", rh.RestoreColumn)
 
 			protected.GET("/tasks/:id", rh.GetTask)
 			protected.GET("/tasks/:id/description", rh.GetTaskDescription)
+			protected.PUT("/tasks/:id/subscription", rh.SetTaskSubscription)
+			// The task modal's «Напоминания и заметки» (#2998): own reminders,
+			// readable notes.
+			protected.GET("/tasks/:id/reminders", rh.ListTaskReminders)
+			protected.GET("/tasks/:id/notes", rh.ListTaskNotes)
 			protected.PATCH("/tasks/:id", rh.UpdateTask)
 			protected.PATCH("/tasks/:id/move", rh.MoveTask)
 			protected.PATCH("/tasks/:id/eisenhower", rh.SetTaskEisenhower)
@@ -402,6 +606,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/tasks/:id/archive", rh.ArchiveTask)
 			protected.PATCH("/tasks/:id/restore", rh.RestoreTask)
 			protected.DELETE("/tasks/:id", rh.DeleteTask)
+			// The trash (0086): POST …/restore is the undo of DELETE — not the
+			// archive's PATCH …/restore above — and …/purge is «Удалить навсегда».
+			protected.POST("/tasks/:id/restore", rh.RestoreDeletedTask)
+			protected.DELETE("/tasks/:id/purge", rh.PurgeDeletedTask)
 			protected.POST("/tasks/:id/tags", rh.AddTaskTag)
 			protected.DELETE("/tasks/:id/tags/:tagId", rh.RemoveTaskTag)
 			protected.POST("/tasks/:id/assignees", rh.AddTaskAssignee)
@@ -427,6 +635,10 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/comments/:id", rh.UpdateComment)
 			protected.DELETE("/comments/:id", rh.DeleteComment)
 			protected.GET("/tasks/:id/relations", rh.ListRelations)
+			// Учёт времени (#2965).
+			protected.GET("/tasks/:id/time", rh.ListTimeEntries)
+			protected.POST("/tasks/:id/time", rh.AddTimeEntry)
+			protected.DELETE("/tasks/:id/time/:entryId", rh.DeleteTimeEntry)
 			protected.POST("/tasks/:id/relations", rh.AddRelation)
 			protected.DELETE("/relations/:id", rh.DeleteRelation)
 			protected.GET("/tasks/:id/attachments", rh.ListAttachments)
@@ -441,6 +653,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// Persistent notifications (#3).
 			protected.GET("/notifications", rh.ListNotifications)
 			protected.GET("/notifications/unread-count", rh.UnreadNotificationCount)
+			protected.GET("/notifications/page", rh.ListNotificationsPage)
 			protected.POST("/notifications/:id/read", rh.MarkNotificationRead)
 			protected.POST("/notifications/read-all", rh.MarkAllNotificationsRead)
 
@@ -456,6 +669,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/notification-template-preview", rh.PreviewNotificationTemplate)
 			protected.GET("/notification-prefs", rh.GetMyNotificationPrefs)
 			protected.PUT("/notification-prefs", rh.UpdateMyNotificationPrefs)
+			protected.PUT("/notification-prefs/dnd", rh.SetMyNotificationDnd)
 			protected.PATCH("/tasks/:id/due-notify", rh.SetTaskDueNotify)
 			protected.GET("/notification-routes", rh.ListNotificationRoutes)
 			protected.POST("/notification-routes", rh.CreateNotificationRoute)
@@ -471,9 +685,14 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/projects/:id/milestones", rh.CreateMilestone)
 			protected.PATCH("/milestones/:id", rh.UpdateMilestone)
 			protected.DELETE("/milestones/:id", rh.DeleteMilestone)
+			// Stage page (#2992): progress, burn-up, scope change, pace in one read.
+			protected.GET("/milestones/:id/metrics", rh.MilestoneMetrics)
 			protected.POST("/tasks/:id/milestone", rh.SetTaskMilestone)
 			protected.DELETE("/tasks/:id/milestone", rh.ClearTaskMilestone)
 			protected.POST("/milestones/:id/gitlab", rh.PushMilestoneToGitlab)
+			// GitLab stage write-back (#3010): retry a failed write, resolve a conflict.
+			protected.POST("/milestones/:id/gitlab/sync", rh.RetryMilestoneGitlab)
+			protected.POST("/milestones/:id/gitlab/conflict/resolve", rh.ResolveMilestoneConflict)
 
 			protected.GET("/notes/:id", rh.GetNote)
 			protected.PATCH("/notes/:id", rh.UpdateNote)
@@ -484,6 +703,11 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.PATCH("/documents/:id/content", rh.UpdateDocumentContent)
 			protected.POST("/documents/:id/assets", rh.UploadDocumentAsset)
 			protected.POST("/documents/:id/pdf", rh.UploadDocumentPdf)
+			// A document's stage and meeting (#3044, #3046) — the head's chips.
+			protected.PUT("/documents/:id/milestone", rh.SetDocumentMilestone)
+			protected.PUT("/documents/:id/conference", rh.SetDocumentConference)
+			protected.GET("/milestones/:id/documents", rh.ListMilestoneDocuments)
+			protected.GET("/workspaces/:id/conference-documents", rh.ListConferenceDocuments)
 			// Office import/export through the LibreOffice sidecar (#2733). The
 			// status route is cheap on purpose: the client asks it once and hides
 			// the import button on an install with no converter, instead of
@@ -498,6 +722,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/workspaces/:id/documents/import", rh.ImportDocument)
 			protected.GET("/documents/:id/export", rh.ExportDocument)
 			protected.DELETE("/documents/:id", rh.DeleteDocument)
+			protected.POST("/documents/:id/restore", rh.RestoreDeletedDocument)
+			protected.DELETE("/documents/:id/purge", rh.PurgeDeletedDocument)
 
 			// Block-anchored annotations and their threads (#2730). The thread
 			// endpoints sit on their own prefix rather than under the document:
@@ -560,6 +786,7 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/conferences/:id/leave", rh.LeaveConference)
 			protected.POST("/conferences/:id/end", rh.EndConference)
 			protected.POST("/conferences/:id/invite", rh.InviteConference)
+			protected.PUT("/conferences/:id/rsvp", rh.RespondConference)
 			protected.GET("/conferences/:id/participants", rh.ListConferenceParticipants)
 			// The one media-adjacent route: it hands out a short-lived LiveKit
 			// warrant after our own checks, and creates the SFU room
@@ -577,6 +804,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/conferences/:id/messages", rh.ListConferenceMessages)
 			protected.POST("/conferences/:id/messages", rh.PostConferenceMessage)
 			protected.DELETE("/conference-messages/:id", rh.DeleteConferenceMessage)
+			// «/» in the chat (#3055): a task plus the chat line that announces it.
+			protected.POST("/conferences/:id/tasks", rh.CreateConferenceTask)
 			protected.GET("/conference-attachments/:id", rh.DownloadConferenceMessageAttachment)
 
 			// Server-side recording (#2877). Start and stop are moderation, the
@@ -594,6 +823,9 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.GET("/gitlab/connection", rh.GetGitlabConnection)
 			protected.POST("/gitlab/connection", rh.ConnectGitlab)
 			protected.DELETE("/gitlab/connection", rh.DisconnectGitlab)
+			// Connect through GitLab OAuth instead of a PAT (#3083): answers the authorize
+			// URL; the grant comes back on /auth/gitlab/callback.
+			protected.POST("/gitlab/connection/oauth", authHandler.GitlabConnectStart)
 			// Multi-binding: a workspace can mirror several GitLab projects, each
 			// into its own board.
 			protected.GET("/workspaces/:id/gitlab/integrations", rh.ListGitlabIntegrations)
@@ -605,6 +837,8 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			// once, delete wipes it. Admin-only, like the other binding mutations.
 			protected.POST("/workspaces/:id/gitlab/integrations/:integrationId/webhook", rh.EnableGitlabWebhook)
 			protected.DELETE("/workspaces/:id/gitlab/integrations/:integrationId/webhook", rh.DisableGitlabWebhook)
+			// Label rules (#3087): counters by rule + «Проверить лейбл», on the edited rules.
+			protected.POST("/workspaces/:id/gitlab/rules/preview", rh.PreviewGitlabRules)
 			protected.GET("/workspaces/:id/gitlab/members", rh.ListGitlabMembers)
 			protected.GET("/workspaces/:id/gitlab/issue-templates", rh.ListGitlabIssueTemplates)
 			// Sync journal: run/action history + retry of failed pushes.
@@ -614,12 +848,15 @@ func newRouter(cfg *config.Config, queries *db.Queries, pool *pgxpool.Pool, hub 
 			protected.POST("/workspaces/:id/gitlab/sync-runs/:runId/actions/:actionId/retry", rh.RetryGitlabWriteback)
 			// Write-back conflicts: inbox + interactive ours/theirs/manual resolution.
 			protected.GET("/workspaces/:id/gitlab/conflicts", rh.ListGitlabConflicts)
+			// Several decisions in one go (#3089): «Применить ⌘↵» over the resolver.
+			protected.POST("/workspaces/:id/gitlab/conflicts/resolve", rh.ResolveGitlabConflicts)
 			protected.POST("/tasks/:id/gitlab/conflicts/:conflictId/resolve", rh.ResolveGitlabConflict)
 
 			// Reminders (personal).
 			protected.POST("/reminders", rh.CreateReminder)
 			protected.GET("/reminders", rh.ListReminders)
 			protected.PATCH("/reminders/:id", rh.UpdateReminder)
+			protected.POST("/reminders/:id/snooze", rh.SnoozeReminder)
 			protected.DELETE("/reminders/:id", rh.DeleteReminder)
 		}
 	}

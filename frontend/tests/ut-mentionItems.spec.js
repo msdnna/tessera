@@ -39,6 +39,30 @@ describe('buildMentionItems', () => {
     expect(items[1].gitlab).toBe(true)
   })
 
+  // The real callers hand the same full roster over twice — as the list and as
+  // the map (TaskModal.vue, TaskCommentsTab.vue). A member linked by PAT carries
+  // the link in `tessera_user_id_pat`, so a fold-in that only reads
+  // `tessera_user_id` listed their roster row a second time, as an outsider.
+  it('folds in a member linked by PAT, rather than listing them twice', () => {
+    const map = {
+      7: { gl_user_id: 7, gl_username: 'b.fox', gl_name: 'B Fox', tessera_user_id_pat: 'u2' },
+    }
+    const items = buildMentionItems([bob], Object.values(map), map)
+    expect(items).toHaveLength(1)
+    expect(items[0].id).toBe('u2') // the member's own row — the one that notifies
+    expect(items[0].label).toBe('b.fox')
+    expect(items[0].display).toBe('Bob Fox')
+  })
+
+  it('still lists a PAT-linked GitLab user who is not a member here', () => {
+    const map = {
+      7: { gl_user_id: 7, gl_username: 'c.wu', gl_name: 'C Wu', tessera_user_id_pat: 'u9' },
+    }
+    const items = buildMentionItems([ann], Object.values(map), map)
+    expect(items.map((i) => i.label)).toEqual(['a.lee', 'c.wu'])
+    expect(items[1].gitlab).toBe(true)
+  })
+
   it('tolerates missing arguments', () => {
     expect(buildMentionItems(null, null, null)).toEqual([])
   })

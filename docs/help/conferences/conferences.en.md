@@ -2,8 +2,8 @@
 title: Conferences
 category: Conferences
 order: 65
-keywords: conferences, call, meeting, standup, video, audio, microphone, camera, screen share, screen sharing, chat, invite, host, kick, mute, connection quality, minimised, floating window
-updated: 2026-09-09
+keywords: conferences, meetings, call, meeting, standup, instant meeting, repeat, recurring meeting, weekdays, duration, stage, sprint, reactions, emoji, mention, task from chat, shortcuts, video, audio, microphone, camera, screen share, screen sharing, chat, invite, host, kick, mute, connection quality, minimised, floating window
+updated: 2026-10-10
 ---
 
 The **Conferences** section is audio and video calling inside Tessera: daily stand-ups, walking through a task, demos. A call does not take you out of the tracker — a conference can be pinned to a task, and the discussion stays in the room's chat next to the work rather than in a separate messenger. The section is available both in the browser and in the mobile app (on a phone some panels — chat and participants — open as bottom sheets).
@@ -12,33 +12,42 @@ The **Conferences** section is audio and video calling inside Tessera: daily sta
 
 ## The list
 
-**Conferences** sits in the sidebar. The list is split by a filter into **Live now**, **Scheduled** and **Finished**, so a call in progress is visible at once and one click joins it.
+**Conferences** sits in the sidebar. At the top of the list is the call that is **on right now**: a card of its own, marked "live · N min", with a **Join** button. Below are the scheduled ones, by day: **Today**, **Tomorrow** and on; the nearest meeting has its time highlighted and a **Join** button. Meetings without a time, those planned for a day that has passed but never started, and finished ones come last, each in a group of its own. The segments above the list are **All · Live · Scheduled · Finished**.
 
-**Schedule** creates a conference: a title, an optional description, a start time and — if it helps — the **task** the call is about. The start time is a hint for the participants, not a lock: a conference can be opened earlier.
+At the right of a row are a link button (copy the meeting's address to drop it into a chat) and a **⋯** menu. When a document is tied to the meeting — its agenda or its minutes — the document's chip sits in the row and opens it; the ⋯ menu has **Open the agenda** or **Create an agenda** (a document from the Meeting agenda template, tied to the meeting at once). Deleting is the menu's last item and takes two presses: the first arms it, the second deletes; it cannot be undone, and the meeting's chat and recordings go with it.
+Under a meeting's time is its **duration**; the row shows its **repeat** ("Every weekday", "Every 2 weeks") and the **stage** it is tied to — the stage pill opens the stage page. A repeating meeting is listed on the day of its **next occurrence**: a "weekdays at 17:30" stand-up already counts as Monday's on a Friday evening.
 
-A conference is **not single-use**. When the last participant leaves it goes back to *Scheduled* and can be entered again — one room is a convenient home for a standing daily meeting. Only deletion is irreversible.
+At the right of a row are a link button (copy the meeting's address to drop it into a chat) and a **⋯** menu. **Edit** in the menu opens the same form as Schedule — that is how the time, duration, repeat or stage are changed (available to the meeting's author and to the workspace owner or admins). Deleting is the menu's last item and takes two presses: the first arms it, the second deletes; it cannot be undone, and the meeting's chat and recordings go with it.
+
+**Schedule** (keys <kbd>N</kbd> then <kbd>V</kbd>) opens a form next to the button: a title, a start time and a **duration** (30 minutes by default), a description and how long recordings are kept. At the bottom of the form are two menu lines: **Stage** (tie the meeting to an open stage of the workspace — sprint planning, a retro) and the **repeat**: does not repeat, every day, every weekday, every week, every 2 weeks, every month. The repeat is available once a start time is picked: it counts from it and keeps the time on your zone's clock — after a daylight-saving switch an "11:00" meeting stays at 11:00. The start time is a hint for the participants, not a lock: a conference can be opened earlier. **Instant** (<kbd>N</kbd> then <kbd>J</kbd>) creates a meeting with no time and takes you straight into it — for when you need to talk right now. On this page <kbd>⇧</kbd> <kbd>J</kbd> takes you into the call that is on, or, if there is none, into the nearest scheduled one.
+
+A conference is **not single-use**. When the last participant leaves it goes back to _Scheduled_ and can be entered again — one room is a convenient home for a standing daily meeting. Only deletion is irreversible.
 
 ## In the room
 
-![A conference room before joining](../assets/conference-room-light.png)
+![A conference before joining: the meeting card with Join](../assets/conference-room-light.png)
 
-An open conference starts at the **lobby**: you can see who is already in the room, and your microphone and camera are still off. **Join** opens the devices and puts you into the call.
+An opened conference first shows the **lobby** — the meeting's card: title, time and duration, repeat, stage, who is invited, the description. In the call itself the line above the tiles says how many are in it and — when the meeting is tied to a stage — **"linked to [stage]"**, a link to its page. **Join** (<kbd>⇧</kbd> <kbd>J</kbd>) turns your devices on and puts you in the call. Meanwhile the app's header holds an arrow back to the list, the meeting's name and, while the call is on, how long it has been running; the host has **End** on the right.
 
-The browser will ask for microphone and camera permission — without it the call cannot happen. Permission is granted to the site once; if you dismissed it by accident, you can restore access in the site settings in the address bar.
+The browser will ask for permission to use the microphone and camera — without it the call cannot happen. The permission is granted to the site once; if you refused it by accident, restore it in the site settings in the browser's address bar.
 
-The main tile **follows whoever is speaking**: the loudest voice takes the stage, and a screen share takes it instead while one is running. In silence the stage keeps the last person who spoke, so the tiles do not jump on every breath. Anyone without a camera is shown as a round avatar, the way they are everywhere in Tessera.
+The call takes the whole working area. The layout switch is above the tiles: **grid** — everyone as equal tiles, or **speaker** — a large tile follows whoever is speaking, the rest in a strip under it; the choice is remembered. During a screen share the stage always shows the share. In silence the stage stays on whoever spoke last — the tiles do not jump at every breath. A tile without video is tinted in the person's own colour, the speaker gets a glowing ring, and a raised hand is a yellow badge in the corner.
 
-**The bottom toolbar:**
+**The controls at the bottom:**
 
-- **microphone** — on and off. The button fills with the level of your own voice: it is a self-check, and it shows that you are audible before anybody has to tell you that you are not;
-- **camera** — video on and off;
-- **screen share** — see below;
-- **raise hand** — a visible mark on your tile, so you do not have to cut in;
-- **devices** — which microphone, which camera, which speakers;
-- **fullscreen** — on the stage tile; you want it most while watching somebody else's screen;
-- **leave**, and for the creator, **end**.
+- **microphone** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>D</kbd>) — on and off. The button fills with the level of your voice: a self-check of your volume, so you can see you are being heard before anyone has to say so;
+- **camera** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>E</kbd>) — video on and off;
+- **screen sharing** — see below;
+- **recording** — for the host and moderators, see "Recording";
+- **reactions** (the smiley) — a row of emoji: 👍 👏 😂 🎉 ❤️ 🤔. A reaction floats up over the stage for everyone in the call with your name and fades after a few seconds; it is not stored anywhere — someone who joins later will not see it;
+- **raise hand** — a visible mark on your tile, so you do not have to talk over the speaker;
+- **devices** — which microphone, which camera, which speaker;
+- **participants** and **chat** — open the right panel on that tab (pressing again hides it);
+- **Leave** (<kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>⇧</kbd> + <kbd>H</kbd>).
 
-A **connection icon** appears on a participant's tile when their link is poor: before anyone asks "are you breaking up?", it is clear whose side the trouble is on.
+**Full screen** is a button in the stage's corner; it is most useful when watching someone else's screen.
+
+A **connection badge** appears on a participant's tile when their link is poor: before asking "you're breaking up?", you can see whose line it is.
 
 ## Screen sharing
 
@@ -48,13 +57,20 @@ The person sharing always sees a sharper picture than everybody else, and that i
 
 ## People, chat and invitations
 
-On the right is a rail with two tabs: **In the room** and **Chat**.
+On the right is a panel with two tabs: **In the room** and **Chat**. A button above the tiles hides it — the stage takes the whole width; the choice is remembered.
 
-**In the room** lists who is in the call right now, and, as a separate list, **Invited** — the people who were asked but have not arrived. The **Invite** button is right there by the tabs: an invitee gets a notification with a link straight into the conference.
+**In the room** lists who is in the call now, and a separate **Invited** list shows people who were asked but have not arrived yet. **Invite** (the person with a plus) is right there by the tabs: the invitee gets a notification with a link straight into the conference.
 
-Each participant's volume is adjusted **on your side** and only there — it does not change how anybody else hears them.
+An invitation is answered with **Accept** or **Decline** — right in the notification, in the meeting's row on the list, or in the lobby (**Your reply: Going · Not going**). The row shows the answer, and its **⋯** menu changes it. The host sees those who declined dimmed in the Invited list, marked "Not going"; joining the call counts as "going". Those who declined get no "meeting in 5 minutes", and a new invitation asks them again.
 
-**Chat** is this conference's conversation: the links people drop mid-call, and attachments. An image can be opened large **without leaving the call**. The chat history stays with the conference, so what was said can be revisited afterwards.
+Each participant's volume is set **on your side** and only there — it does not change how anyone else hears them.
+
+**Chat** is the conference's own conversation: links shared on the go, and attachments. A picture opens large **without leaving the call**. The chat history stays with the conference, so you can come back to what was said.
+
+The chat field knows two hints — "Message · / task · @ person":
+
+- **"/" — a task right from the meeting.** Type <kbd>/</kbd>, pick **/task** and add a title: a line **"Task in [board]"** appears above the field, and <kbd>↵</kbd> creates the task in that board's To-do column. The default board is the one of the task the meeting is pinned to, or the board of its stage's project — you can pick another. When the meeting is tied to a stage and the board is of the same project, the task goes straight into that stage. The chat keeps a line "Maria created a task #2978 …"; it opens the task on its board while the call goes on in the floating window.
+- **"@" — mention someone.** After <kbd>@</kbd> a list of the workspace's members appears (<kbd>↑</kbd> <kbd>↓</kbd> and <kbd>↵</kbd>); the name is highlighted in the message, and the person gets a "mentioned you in a call chat" notification that takes them straight into the call.
 
 ## Host and moderation
 
@@ -66,21 +82,21 @@ Every permission check happens **on the server**, which is what makes "mute for 
 
 ## Minimised mode
 
-You can go off to tasks or documents **without leaving the call**: the room folds into a floating window.
+You can go off to tasks or documents **without leaving the call**: the Minimise button above the tiles or <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>⇧</kbd> + <kbd>M</kbd> takes you back to the screen you came from, and the call carries on in a floating window.
 
-The window shows the current speaker, or a thumbnail of the screen being shared; hovering brings up a small toolbar along the bottom (microphone, camera, raise hand, leave) and an **expand** button in the middle that takes you back to the full room. The window can be dragged with the mouse and resized from any edge; its position and size are remembered.
+The window has three parts. The head — the meeting's name and how long you have been in the call — is what you drag it by; its button (or the same <kbd>Ctrl</kbd>/<kbd>⌘</kbd> + <kbd>⇧</kbd> + <kbd>M</kbd>) brings the call back full size. In the middle are two tiles: the speaker (or the screen share) and the next participant. At the foot: microphone, camera, hand, how many more people are in the call, and **Leave**. Dropped near an edge of the screen, the window sticks to it; it resizes from any edge. Its position and size are remembered. The microphone, camera and leave keys work while minimised too.
 
-A minimised call **survives a page reload**: the active conference is remembered and the client returns to it by itself after a refresh. The connection is rebuilt from scratch in the process, so a second of silence there is normal.
+A minimised call **survives a page reload**: the active conference is remembered, and after a refresh the client walks back into it on its own. The connection itself is rebuilt — a second of silence is normal here.
 
-You leave a call only with **Leave** (in the room or in the mini window) or by closing the tab. Moving to another section does not drop the call — and it does not mislead the others either: if the tab closes, you disappear from the list on your own.
+You only leave a call with **Leave** (in the room or in the mini window) or by closing the tab. Switching to another section does not drop the call — and it does not mislead the others either: if the tab closes, you disappear from the list on your own.
 
 ## Recording
 
 A call can be recorded whole — a single video file with every participant and the screen share in it. The **server** does the recording, not your browser: the quality does not depend on your uplink, and you can close the tab.
 
-Recording is started and stopped by the **host or a moderator**, with a button in the room toolbar. While it runs, **every participant sees a red dot**: a call cannot be recorded unnoticed, and that is deliberate.
+Recording is started and stopped by the **host or a moderator**, with a button on the panel at the bottom of the room. While it runs, **every participant sees a red label with the recording's time** — in the room and in the minimised window: a call cannot be recorded unnoticed, and that is deliberate.
 
-Finished recordings sit in a list **under the room**: download, size and duration. A file appears there a few seconds after you stop — that is how long muxing the video takes.
+Finished recordings sit in a list **under the meeting's card**: download, size and duration. A file appears there a few seconds after you stop — that is how long muxing the video takes.
 
 **Retention is chosen up front**, when the conference is scheduled: by default a recording lives for 30 days and is then deleted by itself. It is decided before the meeting rather than after, so nobody has to rule on a file's fate while watching a countdown. Zero means "keep indefinitely". The setting can be changed later in the conference settings, but it only applies to future recordings: a finished recording gets its deletion date stamped when it completes.
 
@@ -90,4 +106,4 @@ Recording is an **optional instance feature**: the administrator enables it sepa
 
 - Conferences need a **secure connection** (`https://`). Over a plain address the browser will not hand over the microphone and camera at all, and the room says so plainly instead of quietly failing.
 - If your administrator has not configured the media server, joining a call returns an error — that is a question for the instance administrator, not a fault on your side.
-- Recording is **not a substitute for minutes**: there is no transcript or auto-summary yet, so decisions made along the way are still best dropped into the conference chat or into the description of the linked task.
+- Recording is **not a substitute for minutes**: there is no transcript or auto-summary yet (a recording shows them marked "Soon" — they need an external speech-recognition service), so decisions made along the way are still best dropped into the conference chat — say, straight as a task with "/task" — or into the description of the linked task.

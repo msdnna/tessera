@@ -24,9 +24,10 @@ const (
 	pingPeriod = 25 * time.Second
 )
 
-// Client is one authenticated WebSocket connection. Clients are read-only
-// consumers of broadcasts; the read pump exists to process control frames
-// (pong) and detect disconnects.
+// Client is one authenticated WebSocket connection. Clients are consumers of
+// broadcasts; the read pump processes control frames (pong), detects
+// disconnects and takes the one client→server frame there is — presence on a
+// board (#3116, presence.go).
 //
 // scopes is the set of workspace ids the user belonged to at connect time and
 // is immutable for the life of the connection — Hub.DropUser closes the socket
@@ -38,6 +39,10 @@ type Client struct {
 	send   chan Event
 	userID uuid.UUID
 	scopes map[string]struct{}
+	// admin is the user's global-admin flag at connect time; it admits the
+	// instance-level events (Event.Admin). A changed flag drops the user's sockets
+	// (DropUser), so the reconnect picks the new one up.
+	admin bool
 	// needResync is set by the hub when it has to drop an event for this client
 	// (send buffer full). The write pump then emits a single resync marker at the
 	// next opportunity, so a recovered-but-still-connected client refills its view
@@ -67,6 +72,28 @@ func (c *Client) canSee(scope string) bool {
 	return ok
 }
 
+// shouldReceive is the full delivery test: the workspace scope, plus the
+// addressee when the event names one. Events that carry one person's private
+// text (a notification and its reminder message) set Event.User, and then only
+// that person's sockets get the frame — clients filtering a broadcast by a
+// user_id field in the payload would be authorising at the wrong end of the wire.
+func (c *Client) shouldReceive(ev Event) bool {
+	if ev.Admin {
+		return c.admin
+	}
+	if !c.canSee(ev.Scope) {
+		return false
+	}
+	return ev.User == uuid.Nil || ev.User == c.userID
+}
+
+// WithAdmin marks the client as a global administrator's, so it receives the
+// instance-level events too. Call before Start.
+func (c *Client) WithAdmin(admin bool) *Client {
+	c.admin = admin
+	return c
+}
+
 // Start registers the client and launches its read/write pumps. A connection
 // that arrives after the hub has been closed is dropped instead of blocking
 // forever on a channel nobody reads.
@@ -86,6 +113,8 @@ func (c *Client) readPump() {
 	// unregister/close cleanup below still runs on the way out.
 	defer observability.Recover("ws-read")
 	defer func() {
+		// A closed socket is off its board at once, not after a timeout.
+		c.hub.setPresence(c, uuid.Nil)
 		select {
 		case c.hub.unregister <- c:
 		case <-c.hub.done:
@@ -99,8 +128,12 @@ func (c *Client) readPump() {
 		return c.conn.SetReadDeadline(time.Now().Add(pongWait))
 	})
 	for {
-		if _, _, err := c.conn.ReadMessage(); err != nil {
+		kind, msg, err := c.conn.ReadMessage()
+		if err != nil {
 			break
+		}
+		if kind == websocket.TextMessage {
+			c.hub.onFrame(c, msg)
 		}
 	}
 }

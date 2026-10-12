@@ -11,9 +11,18 @@
 // workspace, and the parent already listens to that stream for everything else
 // on this page.
 import { computed, ref, watch } from 'vue'
-import { NButton, NIcon, NPopconfirm, NSpin } from 'naive-ui'
-import { DownloadOutline, TrashOutline, WarningOutline } from '@vicons/ionicons5'
+import { NButton, NIcon, NPopconfirm, NSpin, NTooltip } from 'naive-ui'
+import {
+  DocumentTextOutline,
+  DownloadOutline,
+  SparklesOutline,
+  TrashOutline,
+  WarningOutline,
+} from '@vicons/ionicons5'
+import { stubTask } from '@/utils/featureStubs'
 import { conferences as confApi } from '@/api'
+import { handOffBlob } from '@/utils/blobHandoff'
+import { formatFileSize } from '@/utils/docPdf'
 import { useFormat } from '@/composables/useFormat'
 
 const props = defineProps({
@@ -26,6 +35,7 @@ const props = defineProps({
 })
 
 const { formatDateTime } = useFormat()
+const transcriptTask = stubTask('meet.transcript')
 
 const rows = ref([])
 const loading = ref(false)
@@ -47,7 +57,7 @@ async function load() {
     rows.value = data || []
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || e.message
+    error.value = e.message
   } finally {
     loading.value = false
   }
@@ -66,18 +76,15 @@ async function download(rec) {
   busyId.value = rec.id
   try {
     const { data } = await confApi.recording(rec.id)
-    const url = URL.createObjectURL(data)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = rec.file_name || 'recording.mp4'
-    a.click()
-    // Revoked late, not immediately: revoking before the browser has started the
-    // download cancels it — and these files are large enough for that gap to be
-    // real rather than theoretical.
-    setTimeout(() => URL.revokeObjectURL(url), 60000)
+    // Revoked late, not immediately (handOffBlob): revoking before the browser
+    // has started the download cancels it — and these files are large enough
+    // for that gap to be real rather than theoretical.
+    // Awaited: on the desktop handOffBlob opens a Save-as and writes the file
+    // itself, and a failure there belongs in the catch below.
+    await handOffBlob(data, rec.file_name || 'recording.mp4')
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || e.message
+    error.value = e.message
   } finally {
     busyId.value = ''
   }
@@ -89,15 +96,8 @@ async function remove(rec) {
     rows.value = rows.value.filter((r) => r.id !== rec.id)
     error.value = ''
   } catch (e) {
-    error.value = e.response?.data?.error || e.message
+    error.value = e.message
   }
-}
-
-function humanSize(bytes) {
-  if (!bytes) return ''
-  if (bytes < 1024 * 1024) return `${Math.round(bytes / 1024)} KB`
-  if (bytes < 1024 * 1024 * 1024) return `${Math.round(bytes / 1024 / 1024)} MB`
-  return `${(bytes / 1024 / 1024 / 1024).toFixed(1)} GB`
 }
 
 /** h:mm:ss, dropping the hour when there is none — meetings run both lengths. */
@@ -151,7 +151,7 @@ defineExpose({ load })
               </span>
               <template v-else>
                 <span v-if="r.duration_sec">{{ humanDuration(r.duration_sec) }}</span>
-                <span v-if="r.size_bytes">{{ humanSize(r.size_bytes) }}</span>
+                <span v-if="r.size_bytes">{{ formatFileSize(r.size_bytes) }}</span>
               </template>
               <span v-if="r.started_by_name">
                 {{ $t('conferences.rec.by', { name: r.started_by_name }) }}
@@ -162,6 +162,28 @@ defineExpose({ load })
               <span v-if="r.expires_at" class="rec-exp">
                 {{ $t('conferences.rec.expires', { when: expiryDate(r.expires_at) }) }}
               </span>
+            </div>
+            <!-- «Расшифровка · Итоги» (MeetPage «Последние записи») need an
+                 external speech-to-text service — visible, inactive (#3125). -->
+            <div v-if="r.status === 'completed'" class="rec-extra">
+              <n-tooltip :delay="300">
+                <template #trigger>
+                  <span class="rec-stub" data-testid="conference-recording-transcript">
+                    <n-icon :component="DocumentTextOutline" :size="12" />
+                    {{ $t('conferences.rec.transcript') }}
+                  </span>
+                </template>
+                {{ $t('common.stub.soon', { n: transcriptTask }) }}
+              </n-tooltip>
+              <n-tooltip :delay="300">
+                <template #trigger>
+                  <span class="rec-stub">
+                    <n-icon :component="SparklesOutline" :size="12" />
+                    {{ $t('conferences.rec.summary') }}
+                  </span>
+                </template>
+                {{ $t('common.stub.soon', { n: transcriptTask }) }}
+              </n-tooltip>
             </div>
           </div>
 
@@ -200,13 +222,17 @@ defineExpose({ load })
 </template>
 
 <style scoped>
+/* v2 (#3107): rows are --t-col surfaces, no outlines. */
 .recs {
-  margin-top: 16px;
+  margin-top: 20px;
 }
 .recs-h {
-  margin-bottom: 8px;
-  font-size: 13px;
-  color: var(--t-text2);
+  margin: 0 4px 8px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
 }
 .recs-err {
   display: flex;
@@ -214,28 +240,30 @@ defineExpose({ load })
   gap: 6px;
   margin-bottom: 8px;
   font-size: 12px;
-  color: #d03050;
+  color: #e0533d;
 }
 .rec-rows {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
 }
 .rec-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  min-height: 52px;
   padding: 8px 12px;
-  background: var(--t-surface);
-  border: 1px solid var(--t-border);
-  border-radius: 8px;
+  box-sizing: border-box;
+  background: var(--t-col);
+  border-radius: 12px;
 }
 .rec-main {
   flex: 1;
   min-width: 0;
 }
 .rec-title {
-  font-size: 13px;
+  font-size: 13.5px;
+  font-weight: 600;
   color: var(--t-text1);
 }
 .rec-meta {
@@ -246,10 +274,25 @@ defineExpose({ load })
   color: var(--t-text3);
 }
 .rec-live {
-  color: #d03050;
+  color: #e0533d;
+}
+/* «Расшифровка · Итоги» — not built yet (#3125): quiet and inactive. */
+.rec-extra {
+  display: flex;
+  gap: 10px;
+  margin-top: 3px;
+}
+.rec-stub {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--t-text3);
+  opacity: 0.75;
+  cursor: default;
 }
 .rec-failed {
-  color: #d03050;
+  color: #e0533d;
 }
 .rec-exp {
   font-style: italic;

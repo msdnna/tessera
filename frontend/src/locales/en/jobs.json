@@ -4,14 +4,15 @@
   "empty": "No background jobs",
   "select": "Pick a job",
   "backToList": "Back to jobs",
-  "journal": "journal",
   "started": "Started",
   "cancelling": "Cancelling…",
   "run": "Run now",
   "cancel": "Stop",
-  "nextRunPrefix": "· next run {when}",
   "name": {
-    "gitlab_sync": "GitLab sync · {arg}"
+    "gitlab_sync": "GitLab sync · {arg}",
+    "export_csv": "Board export to CSV · {arg}",
+    "export_json": "Board export to JSON · {arg}",
+    "import": "Task import · {arg}"
   },
   "worker": {
     "gitlab_sync_cron": "GitLab auto-sync",
@@ -19,7 +20,9 @@
     "notify_delivery": "Notification delivery",
     "notify_scanner": "Due dates and reminders scan",
     "recurrence": "Recurring tasks",
-    "conference_recordings": "Conference recordings"
+    "conference_recordings": "Conference recordings",
+    "trash_purge": "Trash purge",
+    "gitlab_webhook_cron": "GitLab sync by webhook"
   },
   "op": {
     "sync_scan": "checking integrations due for a sync",
@@ -28,18 +31,24 @@
     "due_scan": "checking due dates and reminders",
     "recurrence": "advancing recurring tasks",
     "recording_sweep": "checking conference recordings and sweeping expired ones",
+    "trash_purge": "purging boards and columns past the undo window, old project addresses, job history (30 days) and export files (7 days)",
     "sync_full": "full sync",
-    "sync_incremental": "incremental sync"
+    "sync_incremental": "incremental sync",
+    "webhook_scan": "checking GitLab webhook events"
   },
   "status": {
     "running": "running",
     "pending": "queued",
     "done": "done",
-    "failed": "error"
+    "failed": "error",
+    "cancelled": "stopped"
   },
   "kind": {
     "worker": "worker",
-    "sync": "sync"
+    "sync": "sync",
+    "run": "manual run",
+    "export": "export",
+    "import": "import"
   },
   "mode": {
     "incremental": "incremental",
@@ -47,7 +56,8 @@
   },
   "trigger": {
     "manual": "manual",
-    "auto": "scheduled"
+    "auto": "scheduled",
+    "webhook": "by webhook"
   },
   "next": {
     "soon": "any moment",
@@ -65,6 +75,60 @@
     "finishedAt": "Finished",
     "duration": "Duration",
     "createdUpdated": "Created / updated",
-    "error": "Error"
-  }
+    "error": "Error",
+    "startedBy": "Started by",
+    "attempt": "Attempt",
+    "queue": "Queue",
+    "file": "File"
+  },
+  "crumb": "Administration",
+  "nav": {
+    "all": "All",
+    "running": "Running",
+    "pending": "Queued",
+    "failed": "Failed",
+    "done": "Finished",
+    "type": "Type"
+  },
+  "summary": "running: {running} · queued: {pending}",
+  "search": "Find a job",
+  "noMatch": "Nothing matches",
+  "openKey": "open the window",
+  "nextRun": "next {when}",
+  "log": "Log",
+  "follow": "Follow",
+  "copy": "Copy",
+  "type": {
+    "gitlab": "GitLab",
+    "import_export": "Import and export",
+    "notify": "Notifications",
+    "maintenance": "Maintenance"
+  },
+  "step": {
+    "connect": "Connecting to GitLab",
+    "fetch": "Fetching issues",
+    "mirror": "Tasks and comments",
+    "links": "Links and merge requests",
+    "run": "Pass",
+    "collect": "Collecting tasks",
+    "write": "Writing the file",
+    "prepare": "Preparing",
+    "create": "Creating tasks",
+    "refresh": "Refreshing the board"
+  },
+  "attemptOf": "{n} of {max}",
+  "queuePos": "#{n}",
+  "retryIn": "retry {when}",
+  "progress": "{done} of {total} · {pct}%",
+  "progressCount": "{done} of {total}",
+  "eta": "≈ {when} left",
+  "etaMin": "{m} min",
+  "etaSec": "{s} s",
+  "history": "History is kept for 30 days",
+  "logMeta": "{lines} lines · {errors} errors",
+  "logEmpty": "The log is empty",
+  "logTail": "the history keeps the last {n} lines",
+  "copied": "Log copied",
+  "download": "Download",
+  "rows": "tasks: {n}"
 }

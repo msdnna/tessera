@@ -4,13 +4,20 @@
 // context is, next to the clause it is about, and this side is where you find
 // out which documents mention this task and open them.
 import { useI18n } from 'vue-i18n'
-import { NIcon, NPopconfirm } from 'naive-ui'
+import { NIcon } from 'naive-ui'
 import { CloseOutline, DocumentTextOutline } from '@vicons/ionicons5'
 import { documents as docsApi } from '@/api'
 import EmptyState from '../EmptyState.vue'
+import ArmButton from '../kit/ArmButton.vue'
 
 const props = defineProps({
   links: { type: Array, default: () => [] },
+  // Which task the shown links belong to. Carried only to tell a reply apart
+  // from the task it was asked for — see unlink below.
+  taskId: { type: String, default: null },
+  // The modal opened from the archive is read-only. Opening the document stays
+  // — this tab is read-mostly anyway — but unlinking it does not (#2932).
+  readonly: { type: Boolean, default: false },
 })
 const emit = defineEmits(['update:links', 'open-document'])
 const { t } = useI18n()
@@ -18,7 +25,14 @@ const { t } = useI18n()
 // Unlinking goes through the link row's own endpoint — one row, one id,
 // whichever end you are looking at it from.
 async function unlink(id) {
+  if (props.readonly) return
+  // The modal is one per board and keeps this subtree alive when the task under
+  // it changes, so by the time the reply lands `props.links` may already be the
+  // other task's list — and publishing the filtered copy back would overwrite it
+  // with a list nobody asked for (#2932). The unlink itself stands either way.
+  const tid = props.taskId
   await docsApi.unlinkTask(id)
+  if (tid !== props.taskId) return
   emit(
     'update:links',
     props.links.filter((l) => l.id !== id),
@@ -44,18 +58,14 @@ async function unlink(id) {
           {{ l.quote || t('task.docs.fragment') }}
         </span>
       </button>
-      <n-popconfirm
-        :positive-button-props="{ type: 'error' }"
-        :positive-text="t('task.docs.unlinkYes')"
-        @positive-click="unlink(l.id)"
-      >
-        <template #trigger>
-          <button class="c-act" :title="t('task.docs.unlink')">
-            <n-icon :component="CloseOutline" />
-          </button>
-        </template>
-        {{ t('task.docs.unlinkConfirm') }}
-      </n-popconfirm>
+      <ArmButton
+        v-if="!readonly"
+        :icon="CloseOutline"
+        :title="t('task.docs.unlink')"
+        :confirm="t('task.arm.unlink')"
+        testid="doc-unlink"
+        @confirm="unlink(l.id)"
+      />
     </div>
     <EmptyState
       v-if="!links.length"

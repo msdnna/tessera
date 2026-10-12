@@ -454,6 +454,9 @@ class ConferenceRoomViewModel(
      */
     fun toggleHand() = socket.raiseHand(!_state.value.room.handUp)
 
+    /** A reaction to the whole call (#3054) — the SFU data channel, nothing stored. */
+    fun react(emoji: String) = ConferenceEngine.sendReaction(emoji)
+
     fun forceMute(userId: String, muted: Boolean) = socket.forceMute(userId, muted)
 
     fun askKick(userId: String) = _state.update { it.copy(confirmingKick = userId) }

@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"errors"
-	"fmt"
 	"io"
 	"mime/multipart"
 	"net/http"
@@ -48,6 +47,18 @@ var inlineSafeExts = func() map[string]bool {
 	return m
 }()
 
+// inlineSafeTypes is the same allowlist keyed by content type, for bytes that
+// arrive with a declared type instead of a filename — what the GitLab proxies
+// get back from the instance. Same source of truth as inlineSafeExts, so the
+// two public serve paths and the two proxy paths can never drift apart.
+var inlineSafeTypes = func() map[string]bool {
+	m := make(map[string]bool, len(mediaExts))
+	for ct := range mediaExts {
+		m[ct] = true
+	}
+	return m
+}()
+
 // mediaNameRe guards the public serve route against path traversal.
 var mediaNameRe = regexp.MustCompile(`^[a-zA-Z0-9_-]+\.[a-z0-9]+$`)
 
@@ -78,8 +89,12 @@ func (h *API) UploadMedia(c *gin.Context) {
 		return
 	}
 
+	// 0750, not 0755: everything under uploadDir is read back through a handler
+	// of this process, so nothing outside it needs the world bits. The one
+	// exception is the recordings subtree, which egress writes into as another
+	// uid — see recordingDirMode.
 	dir := filepath.Join(h.uploadDir, "media")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return
 	}
@@ -161,9 +176,9 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	}
 
 	// Store under <uploadDir>/<taskID>/<uuid><ext> so paths never collide and
-	// removing a task's files is a single directory.
-	dir := filepath.Join(h.uploadDir, id.String())
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	// removing a task's files is a single directory (purgeTaskUploads).
+	dir := h.taskUploadDir(id)
+	if err := os.MkdirAll(dir, 0o750); err != nil {
 		fail(c, err)
 		return
 	}
@@ -194,6 +209,32 @@ func (h *API) UploadAttachment(c *gin.Context) {
 	c.JSON(http.StatusCreated, att)
 }
 
+// taskUploadDir is where one task's attachments live. A sibling of the named
+// subdirectories under uploadDir (media/, documents/, conf/, rec/) and never
+// confusable with them: the name is a task uuid.
+func (h *API) taskUploadDir(taskID uuid.UUID) string {
+	return filepath.Join(h.uploadDir, taskID.String())
+}
+
+// purgeTaskUploads clears the attachment directories of tasks that have just
+// been deleted.
+//
+// A plain RemoveAll per id, unlike purgeDocAssets: storage_path is written in
+// exactly one place (UploadAttachment, under a fresh uuid), no row is ever
+// copied to another task, and the ids handed in are the ones the delete really
+// took — so nothing outside the directory can be pointing into it. What makes
+// the sweep necessary is that the task_attachments rows are the only record the
+// files exist at all, and the delete has just taken them.
+//
+// Best-effort by design: the rows are gone either way, and a delete that
+// answered 500 because a file was already missing would be worse than a
+// directory left behind.
+func (h *API) purgeTaskUploads(ids []uuid.UUID) {
+	for _, id := range ids {
+		_ = os.RemoveAll(h.taskUploadDir(id))
+	}
+}
+
 // DownloadAttachment streams an attachment's stored file to the client.
 func (h *API) DownloadAttachment(c *gin.Context) {
 	id, ok := parseID(c, "id")
@@ -215,7 +256,7 @@ func (h *API) DownloadAttachment(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "файл недоступен"})
 		return
 	}
-	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=%q", att.Filename))
+	c.Header("Content-Disposition", contentDisposition(att.Filename))
 	// Attachments are arbitrary user files; without nosniff a browser may still
 	// sniff one into HTML and render it on our origin.
 	c.Header("X-Content-Type-Options", "nosniff")
@@ -236,7 +277,8 @@ func (h *API) DeleteAttachment(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if _, _, ok := h.loadTask(c, att.TaskID); !ok {
+	_, wsID, ok := h.loadTask(c, att.TaskID)
+	if !ok {
 		return
 	}
 	if err := h.q.DeleteAttachment(c, id); err != nil {
@@ -244,6 +286,17 @@ func (h *API) DeleteAttachment(c *gin.Context) {
 		return
 	}
 	_ = os.Remove(att.StoragePath) // best-effort; the row is already gone
+	// The counterpart of the "attachment" event above, and the reason it has to
+	// exist: this route is the only one where a member destroys someone else's
+	// contribution outright — a comment may be deleted by its author alone
+	// (DeleteComment answers 403 otherwise), while any member of the workspace
+	// may drop any attachment, bytes included. Without this line the history kept
+	// claiming "attached the file X" about a file the Files tab no longer lists,
+	// and nothing anywhere recorded who took it or when. The name is stored on
+	// the event for the same reason as the tag on tagged/untagged: the row it
+	// came from is already gone, so an id would dangle.
+	h.logEvent(c, att.TaskID, "attachment_removed", map[string]any{"filename": att.Filename})
+	h.broadcast(wsID, "task.updated", gin.H{"id": att.TaskID})
 	c.Status(http.StatusNoContent)
 }
 
@@ -270,6 +323,9 @@ func saveUploaded(fh *multipart.FileHeader, dst string) error {
 		return err
 	}
 	defer func() { _ = src.Close() }()
+	// #nosec G304 -- every caller builds dst as uploadDir/<uuid><ext>, and ext is
+	// either sniffed from our own whitelist or filepath.Ext, which stops at the
+	// last separator — nothing from the client can escape the directory
 	out, err := os.Create(dst)
 	if err != nil {
 		return err

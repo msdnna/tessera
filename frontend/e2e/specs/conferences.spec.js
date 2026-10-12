@@ -1,5 +1,5 @@
 import { test, expect, signIn } from '../fixtures.js'
-import { newCredentials, register } from '../api.js'
+import { api, newCredentials, register } from '../api.js'
 
 // Conferences, end to end (#2864, subtask #2876).
 //
@@ -42,12 +42,14 @@ async function openConferences(page, workspaceId) {
 // as a scheduler — so there is no list row to click here.
 async function schedule(page, title) {
   await page.getByTestId('conference-schedule').click()
-  // The testid sits on the naive wrapper, not on the control it renders.
-  await page.getByTestId('conference-title').locator('input').fill(title)
+  // A popover form since #2969: the testid sits on the input itself.
+  await page.getByTestId('conference-title').fill(title)
   await page.getByTestId('conference-submit').click()
 
   await page.waitForURL(/\/conferences\/[0-9a-f-]{36}$/)
-  await expect(page.getByTestId('conference-room')).toBeVisible()
+  // The lobby (v2, #3107): the meeting's card with «Подключиться»; the room
+  // itself appears once you are in it.
+  await expect(page.getByTestId('conference-join')).toBeVisible()
   return new URL(page.url()).pathname.split('/').pop()
 }
 
@@ -62,7 +64,7 @@ test('конференция: планирование, вход, ростер �
   const row = page.getByTestId('conference-row').filter({ hasText: title })
   await expect(row).toHaveCount(1)
   await row.click()
-  await expect(page.getByTestId('conference-room')).toBeVisible()
+  await expect(page.getByTestId('conference-lobby')).toBeVisible()
 
   // Before joining the room is a stated non-participation, not a broken call.
   await expect(page.getByTestId('conference-participants')).toHaveCount(0)
@@ -248,4 +250,59 @@ test('конференция: медиа через фейковые устро�
 
   await page.getByTestId('conference-leave').click()
   await expect(page.getByTestId('conference-join')).toBeVisible()
+})
+
+// «Мгновенная» (v2, #3107): one press creates an untimed call and takes you
+// straight into it — the seat on the server is the proof.
+test('конференция: мгновенная встреча создаётся и сразу заводит в звонок', async ({
+  page,
+  backend,
+  seed,
+}) => {
+  await openConferences(page, seed.workspaceId)
+  await page.getByTestId('conference-instant').click()
+  await page.waitForURL(/\/conferences\/[0-9a-f-]{36}$/)
+  await expect(page.getByTestId('conference-leave')).toBeVisible()
+
+  const id = new URL(page.url()).pathname.split('/').pop()
+  const participants = await backend.get(`/conferences/${id}/participants`)
+  expect((participants || []).filter((p) => p.joined_at && !p.left_at)).toHaveLength(1)
+
+  await page.getByTestId('conference-leave').click()
+  await expect(page.getByTestId('conference-join')).toBeVisible()
+})
+
+// «Начало» is the v2 date field (#3034): its calendar opens ABOVE the popover
+// form (it used to be NDatePicker's panel, drawn under the form), and a day + a
+// time chip reach the server as one instant.
+test('конференция: начало через v2-календарь поверх формы', async ({ page, seed }) => {
+  await openConferences(page, seed.workspaceId)
+  await page.getByTestId('conference-schedule').click()
+  await page.getByTestId('conference-title').fill(`E2E начало ${seed.runId}`)
+  await page.getByTestId('conference-at').click()
+  const cal = page.getByTestId('conference-at-cal')
+  await expect(cal).toBeVisible()
+  // On top: the point at the middle of day 17 belongs to the calendar, not the form.
+  const d17 = cal.locator('button', { hasText: /^17$/ })
+  const onTop = await d17.evaluate((b) => {
+    const r = b.getBoundingClientRect()
+    return b.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2))
+  })
+  expect(onTop).toBe(true)
+  await d17.click()
+  await page.locator('.df-chip[data-time="18:00"]').click()
+  if (process.env.F3034_SHOT) await page.screenshot({ path: process.env.F3034_SHOT })
+  await page.getByTestId('conference-at-done').click()
+  await expect(cal).toHaveCount(0)
+  // Picking inside the calendar did not close the form it belongs to.
+  await expect(page.getByTestId('conference-title')).toBeVisible()
+  await page.getByTestId('conference-submit').click()
+  await page.waitForURL(/\/conferences\/[0-9a-f-]{36}$/)
+  const id = new URL(page.url()).pathname.split('/').pop()
+  const { conference: conf } = await api.get(`/conferences/${id}`, seed.token)
+  const at = await page.evaluate((iso) => {
+    const d = new Date(iso)
+    return [d.getDate(), d.getHours(), d.getMinutes()]
+  }, conf.scheduled_at)
+  expect(at).toEqual([17, 18, 0])
 })

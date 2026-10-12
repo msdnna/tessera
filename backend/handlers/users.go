@@ -4,13 +4,14 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 	"github.com/jackc/pgx/v5"
 
-	"tessera/internal/auth"
 	"tessera/internal/db"
 	"tessera/middleware"
 )
@@ -34,6 +35,14 @@ type userDTO struct {
 	Company       string    `json:"company"`
 	JobTitle      string    `json:"job_title"`
 	AvatarURL     string    `json:"avatar_url,omitempty"`
+	// Whether the account has a password at all. A GitLab-provisioned account is
+	// created with an empty hash (bcrypt of "" never matches), so ChangeMyPassword
+	// can only ever answer it "current password is incorrect" — the settings form
+	// is unwinnable and the refusal reads like a typo. `provider` can't stand in
+	// for this: ResetPassword doesn't check the provider, so such an account can
+	// set a password from a recovery link and then needs the form like anyone
+	// else. Only the hash knows (#2932).
+	HasPassword bool `json:"has_password"`
 	// When the account was created. The web client uses it to decide whether to
 	// show the "What's New" changelog: only accounts that predate the running
 	// build (i.e. actually updated into it) see it, not brand-new sign-ups (#2749).
@@ -76,6 +85,7 @@ func buildUserDTO(c *gin.Context, q *db.Queries, u db.User) userDTO {
 		ID: u.ID, Email: u.Email, Name: u.Name, IsAdmin: u.IsAdmin, EmailVerified: u.EmailVerified,
 		Provider: u.Provider, LastName: u.LastName, FirstName: u.FirstName, MiddleName: u.MiddleName,
 		Bio: u.Bio, Company: u.Company, JobTitle: u.JobTitle, CreatedAt: u.CreatedAt,
+		HasPassword: u.PasswordHash != "",
 	}
 	if has, err := q.UserHasAvatar(c, u.ID); err == nil && has {
 		dto.AvatarURL = "/api/users/" + u.ID.String() + "/avatar"
@@ -126,38 +136,6 @@ func (h *API) UpdateMyProfile(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, buildUserDTO(c, h.q, u))
-}
-
-// ChangeMyPassword changes the caller's password after verifying the current one.
-func (h *API) ChangeMyPassword(c *gin.Context) {
-	uid := middleware.CurrentUser(c)
-	var req struct {
-		CurrentPassword string `json:"current_password" binding:"required"`
-		NewPassword     string `json:"new_password" binding:"required,min=8"`
-	}
-	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	u, err := h.q.GetUserByID(c, uid)
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	if !auth.CheckPassword(u.PasswordHash, req.CurrentPassword) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "current password is incorrect"})
-		return
-	}
-	hash, err := auth.HashPassword(req.NewPassword)
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	if err := h.q.UpdateUserPassword(c, db.UpdateUserPasswordParams{ID: uid, PasswordHash: hash}); err != nil {
-		fail(c, err)
-		return
-	}
-	c.Status(http.StatusNoContent)
 }
 
 // UpdateMyPreferences upserts the caller's localizing + personalizing settings.
@@ -241,8 +219,16 @@ func (h *API) DeleteMyAvatar(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// SetUserActive activates/deactivates an account (global admin only). A
-// deactivated user can't log in. You can't change your own active state.
+// SetUserActive activates/deactivates an account (global admin only). You can't
+// change your own active state.
+//
+// Deactivation is an offboarding lever, so it has to end the access the account
+// already holds, not merely bar the door it no longer uses: the refresh chain is
+// revoked outright and the live sockets are cut. The credential paths re-check
+// the flag on their own (Refresh, and the PAT lookup joins on it), which is what
+// makes the account stay out; this only stops it from lingering for the rest of
+// a refresh token's month. Nothing here is destructive — PATs and memberships
+// survive, so reactivation gives the account back whole.
 func (h *API) SetUserActive(c *gin.Context) {
 	caller, ok := h.requireGlobalAdmin(c)
 	if !ok {
@@ -267,31 +253,101 @@ func (h *API) SetUserActive(c *gin.Context) {
 		fail(c, err)
 		return
 	}
+	if !req.Active {
+		soft(c, "RevokeAllUserTokens", h.q.RevokeAllUserTokens(c, id))
+		h.revokeUserSockets(id, "account deactivated")
+	}
 	c.Status(http.StatusNoContent)
+}
+
+// avatarETag is the validator for one stored avatar: its last write, which is
+// what a re-upload and a delete-then-upload both move.
+func avatarETag(updatedAt time.Time) string {
+	return `"` + strconv.FormatInt(updatedAt.UnixNano(), 36) + `"`
+}
+
+// etagMatches reports whether an If-None-Match header covers etag. The header is
+// a comma-separated list and may carry the weak marker, so a plain == against it
+// would miss the ordinary case of a browser echoing back several cached copies.
+func etagMatches(header, etag string) bool {
+	for _, candidate := range strings.Split(header, ",") {
+		candidate = strings.TrimSpace(candidate)
+		if candidate == "*" {
+			return true
+		}
+		if strings.TrimPrefix(candidate, "W/") == etag {
+			return true
+		}
+	}
+	return false
 }
 
 // GetUserAvatar serves a user's avatar blob. Unauthenticated (served straight
 // into <img>, like /uploads) — avatars are low-sensitivity and keyed by UUID.
+//
+// Cached against a validator rather than for a lifetime, unlike attachments and
+// document assets: those are addressed by a per-upload UUID, so new content
+// arrives under a new URL and `immutable` is honest. This URL is the user's id
+// and outlives every picture behind it — and the clients build it themselves
+// (UserAvatar.vue) so there is nowhere to stamp a version. A lifetime here means
+// the sidebar, the cards and the comments keep painting the previous avatar for
+// its length, a reload included, while the Settings preview (which busts its own
+// URL) already shows the new one; a deleted avatar keeps being painted after the
+// server has started answering 404. So: no-cache — store it, but ask first.
 func (h *API) GetUserAvatar(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
 		return
 	}
-	av, err := h.q.GetUserAvatar(c, id)
+	// Version first, blob second: after the first load the browser revalidates on
+	// every page, and answering "unchanged" must not cost a blob read per member.
+	ver, err := h.q.GetUserAvatarVersion(c, id)
 	if errors.Is(err, pgx.ErrNoRows) {
-		// No uploaded avatar → fall back to the synced GitLab avatar (a same-origin
-		// signed proxy URL); redirect so <img> loads it transparently.
-		if gl, gerr := h.q.GetGitlabAvatarForUser(c, id); gerr == nil && gl != "" {
-			c.Redirect(http.StatusFound, gl)
-			return
-		}
-		c.Status(http.StatusNotFound)
+		h.avatarFallback(c, id)
 		return
 	}
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.Header("Cache-Control", "private, max-age=300")
+	etag := avatarETag(ver)
+	c.Header("ETag", etag)
+	c.Header("Cache-Control", "private, no-cache")
+	// Public, same-origin, and serving bytes a user uploaded — the three
+	// properties that put the same pair on /uploads, the document assets and both
+	// GitLab proxies (streamProxied). The upload gate is the first line and the
+	// load-bearing one (UploadMyAvatar sniffs and stores the verdict, accepting
+	// only png/jpeg/gif/webp), but it is the stored type that is trusted here, and
+	// a gate should not be the only thing between an upload and the origin holding
+	// the session. Both are inert for the real images this route exists to serve.
+	c.Header("X-Content-Type-Options", "nosniff")
+	c.Header("Content-Security-Policy", "default-src 'none'; sandbox")
+	if etagMatches(c.GetHeader("If-None-Match"), etag) {
+		c.Status(http.StatusNotModified)
+		return
+	}
+	av, err := h.q.GetUserAvatar(c, id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Deleted between the two reads — answer as if it had never been there,
+		// validator included (gin drops a header set to "").
+		c.Header("ETag", "")
+		h.avatarFallback(c, id)
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
 	c.Data(http.StatusOK, av.ContentType, av.Bytes)
+}
+
+// avatarFallback answers for a user with no uploaded avatar: the synced GitLab
+// one (a same-origin signed proxy URL) if the roster has it, else 404.
+func (h *API) avatarFallback(c *gin.Context, id uuid.UUID) {
+	if gl, gerr := h.q.GetGitlabAvatarForUser(c, id); gerr == nil && gl != "" {
+		// Redirect so <img> loads it transparently.
+		c.Redirect(http.StatusFound, gl)
+		return
+	}
+	c.Status(http.StatusNotFound)
 }

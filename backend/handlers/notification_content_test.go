@@ -3,6 +3,9 @@ package handlers
 import (
 	"encoding/json"
 	"testing"
+	"time"
+
+	"github.com/google/uuid"
 
 	"tessera/internal/db"
 )
@@ -21,8 +24,17 @@ func TestNotifyMsgLegacyText(t *testing.T) {
 		{"assigned/long title", msgAssigned("Иван", &num, "Очень длинное название задачи"), "Иван назначил вам задачу #42"},
 		{"assigned/no number", msgAssigned("Иван", nil, ""), "Иван назначил вам задачу #?"},
 		{"updated", msgUpdated("Иван", &num, []string{"title", "due"}), "Иван изменил(а) задачу #42: название, срок"},
-		{"moved", msgMoved("Иван", &num, "Готово"), "Иван переместил(а) задачу #42 → «Готово»"},
+		{"moved", msgMoved("Иван", &num, "Готово", ptr("done")), "Иван переместил(а) задачу #42 → «Готово»"},
 		{"archived", msgArchived("Иван", &num, "Полить цветы"), "Иван архивировал(а) задачу #42 «Полить цветы»"},
+		{"unassigned", msgUnassigned("Иван", &num, "Полить цветы"), "Иван снял(а) вас с задачи #42 «Полить цветы»"},
+		{"completed", msgCompleted("Иван", &num, "Полить цветы"), "Иван выполнил(а) задачу #42 «Полить цветы»"},
+		{"reopened", msgReopened("Иван", &num, "Полить цветы"), "Иван вернул(а) в работу задачу #42 «Полить цветы»"},
+		// The task is gone, so its title is said whatever its length.
+		{
+			"deleted/long title",
+			msgDeleted("Иван", &num, " Очень длинное название задачи ", uuid.Nil),
+			"Иван удалил(а) задачу #42 «Очень длинное название задачи»",
+		},
 		{"comment", msgComment("Иван", &num, "Готово"), "Иван прокомментировал #42 «Готово»"},
 		{"thread reply", msgThreadReply("Иван", &num, "Готово"), "Иван ответил(а) в обсуждении #42 «Готово»"},
 		{"mention", msgMention("Иван", &num, "Готово"), "Иван упомянул(а) вас в #42 «Готово»"},
@@ -47,6 +59,11 @@ func TestNotifyMsgLegacyText(t *testing.T) {
 		{
 			"sync failed/no reason",
 			msgSyncFailed(syncCounts{label: "GitLab · a/b", took: "5 с", seconds: 5}),
+			"GitLab · a/b: синхронизация не удалась — неизвестная ошибка (за 5 с)",
+		},
+		{
+			"sync failed/blank reason",
+			msgSyncFailed(syncCounts{label: "GitLab · a/b", took: "5 с", seconds: 5, reason: "  "}),
 			"GitLab · a/b: синхронизация не удалась — неизвестная ошибка (за 5 с)",
 		},
 	}
@@ -92,6 +109,60 @@ func TestNotifyMsgPayload(t *testing.T) {
 	if _, ok := p["message"]; ok {
 		t.Fatalf("empty reminder should carry no message, got %v", p["message"])
 	}
+
+	// A failure reason is the integration's own error text — content, so it
+	// travels verbatim.
+	p = decode(t, msgSyncFailed(syncCounts{label: "GitLab · a/b", took: "5 с", seconds: 5, reason: "401 Unauthorized"}))
+	if p["reason"] != "401 Unauthorized" {
+		t.Fatalf("reason = %v, want the integration's own error text", p["reason"])
+	}
+
+	// A failure with nothing to blame carries no reason, exactly as an empty
+	// reminder carries no message. The default is a UI string, and the client
+	// splices `reason` into a sentence of its own language: shipping the Russian
+	// default in the payload puts "неизвестная ошибка" inside "sync failed — …".
+	for _, reason := range []string{"", "   "} {
+		p = decode(t, msgSyncFailed(syncCounts{label: "GitLab · a/b", took: "5 с", seconds: 5, reason: reason}))
+		if _, ok := p["reason"]; ok {
+			t.Fatalf("reasonless failure (%q) should carry no reason, got %v", reason, p["reason"])
+		}
+	}
+
+	// A seeded column carries its name_key next to the stored Russian name
+	// (#2800), so the reader is captioned in their own language — the same deal
+	// as the personal workspace. A column the user named has no key and stays
+	// verbatim, which is what makes the distinction mean anything.
+	p = decode(t, msgMoved("Иван", &num, "Готово", ptr("done")))
+	if p["column"] != "Готово" || p["column_key"] != "done" {
+		t.Fatalf("moved payload = %v, want the stored name and its key", p)
+	}
+	p = decode(t, msgMoved("Иван", &num, "Протестировано", nil))
+	if _, ok := p["column_key"]; ok {
+		t.Fatalf("a user-named column should carry no key, got %v", p["column_key"])
+	}
+}
+
+// A deleted task leaves no row to join, so the payload alone says which task it
+// was: its number, its whole title and its board (#3114). templateData reads the
+// same two facts back for channel templates.
+func TestMsgDeletedCarriesTheTask(t *testing.T) {
+	num := int64(7)
+	board := uuid.New()
+	m := msgDeleted("Алиса", &num, "Очень длинное название задачи", board)
+	p := decode(t, m)
+	if p["event"] != evDeleted || p["actor"] != "Алиса" || p["task_number"] != float64(7) {
+		t.Fatalf("deleted payload = %v", p)
+	}
+	if p["title"] != "Очень длинное название задачи" {
+		t.Fatalf("title = %v, want the whole title even past the inline limit", p["title"])
+	}
+	if p["board_id"] != board.String() {
+		t.Fatalf("board_id = %v, want %s", p["board_id"], board)
+	}
+	title, n := deletedTaskOf(db.Notification{Kind: kindDeleted, Payload: m.json()})
+	if title != "Очень длинное название задачи" || n == nil || *n != 7 {
+		t.Fatalf("deletedTaskOf = %q, %v", title, n)
+	}
 }
 
 // A payload-less message must still store valid JSON — the column is NOT NULL.
@@ -105,8 +176,11 @@ func TestNotifyMsgEmptyJSON(t *testing.T) {
 // other than a task, so the id to open travels in the payload — and every
 // destination (the bell feed, the desktop deep link, the push) reads it there.
 func TestMsgConferenceInvited(t *testing.T) {
-	m := msgConferenceInvited("Алиса", "Летучка", "c-1")
+	m := msgConferenceInvited("Алиса", "Летучка", "c-1", nil)
 	p := decode(t, m)
+	if _, ok := p["scheduled_at"]; ok {
+		t.Fatalf("an ad-hoc call carries scheduled_at %v", p["scheduled_at"])
+	}
 	if p["event"] != evConfInvited {
 		t.Fatalf("event = %v, want %s", p["event"], evConfInvited)
 	}
@@ -116,11 +190,21 @@ func TestMsgConferenceInvited(t *testing.T) {
 	if p["title"] != "Летучка" {
 		t.Fatalf("title = %v, want the conference title", p["title"])
 	}
+	// The whole title rides under `name` whatever its length (#3051).
+	long := decode(t, msgConferenceInvited("Алиса", "Синк по синхронизации GitLab", "c-1", nil))
+	if long["name"] != "Синк по синхронизации GitLab" || long["title"] != nil {
+		t.Fatalf("long title: name = %v, title = %v", long["name"], long["title"])
+	}
 	if _, ok := p["task_number"]; ok {
 		t.Fatalf("an invitation is about no task, got task_number %v", p["task_number"])
 	}
 	if m.text != "Алиса приглашает вас в конференцию «Летучка»" {
 		t.Fatalf("legacy text = %q", m.text)
+	}
+	// A planned meeting says when (#3051), in UTC — the client words it.
+	at := time.Date(2026, 10, 21, 15, 0, 0, 0, time.FixedZone("MSK", 3*3600))
+	if got := decode(t, msgConferenceInvited("Алиса", "Летучка", "c-1", &at))["scheduled_at"]; got != "2026-10-21T12:00:00Z" {
+		t.Fatalf("scheduled_at = %v", got)
 	}
 }
 
@@ -128,7 +212,7 @@ func TestMsgConferenceInvited(t *testing.T) {
 // notification keeps landing on the app root; only the invitation deep-links,
 // because it is the one that goes stale.
 func TestNotifyLinkDeepLinksAConference(t *testing.T) {
-	invite := db.Notification{Payload: msgConferenceInvited("Алиса", "Летучка", "c-1").json()}
+	invite := db.Notification{Payload: msgConferenceInvited("Алиса", "Летучка", "c-1", nil).json()}
 	if got := notifyLink("https://app/", invite); got != "https://app/conferences/c-1" {
 		t.Fatalf("conference link = %q", got)
 	}

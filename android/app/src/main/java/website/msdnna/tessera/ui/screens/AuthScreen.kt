@@ -81,6 +81,7 @@ import coil.compose.AsyncImage
 import coil.request.ImageRequest
 import kotlinx.coroutines.launch
 import website.msdnna.tessera.R
+import website.msdnna.tessera.data.AppContainer
 import website.msdnna.tessera.data.api.RetrofitClient
 import website.msdnna.tessera.data.repository.ProfileRepository
 import website.msdnna.tessera.ui.TestTags
@@ -100,8 +101,10 @@ import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.AuthViewModel
 import website.msdnna.tessera.util.DEFAULT_LANGUAGE
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.newOAuthNonce
 import website.msdnna.tessera.util.nextLanguage
 import website.msdnna.tessera.util.normalizeLanguage
+import website.msdnna.tessera.util.passwordError
 
 /** The fixed brand purple of the launch splash — the auth screen shares it. */
 private val BrandPurple = Color(0xFF7C6CFF)
@@ -143,12 +146,6 @@ fun AuthScreen(
         }
     }
 
-    fun launchGitlabOAuth() {
-        val url = RetrofitClient.apiBaseUrl(serverUrl) + "auth/gitlab/authorize?platform=android"
-        runCatching { CustomTabsIntent.Builder().build().launchUrl(ctx, Uri.parse(url)) }
-            .onFailure { vm.setError(R.string.auth_browser_failed) }
-    }
-
     // Logo height ~28% of screen width (~1.5× smaller than before). MtLogo is the
     // tall "t" mark now (width = height * 69.224/99.008), so this stays comfortably
     // narrow on the login screen.
@@ -162,6 +159,21 @@ fun AuthScreen(
     var forgotSent by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val profileRepo = remember { ProfileRepository() }
+
+    // Opens the system browser (Custom Tab) at the authorize endpoint, carrying a nonce
+    // that ties the returning `tessera://` deep link to this login — see [newOAuthNonce].
+    // The nonce is persisted *before* the browser opens: from that moment the handoff can
+    // arrive at any time, including into a freshly launched process.
+    fun launchGitlabOAuth() {
+        scope.launch {
+            val nonce = newOAuthNonce()
+            AppContainer.prefs.setOAuthNonce(nonce)
+            val url = RetrofitClient.apiBaseUrl(serverUrl) +
+                "auth/gitlab/authorize?platform=android&app_state=" + nonce
+            runCatching { CustomTabsIntent.Builder().build().launchUrl(ctx, Uri.parse(url)) }
+                .onFailure { vm.setError(R.string.auth_browser_failed) }
+        }
+    }
     var showServer by rememberSaveable { mutableStateOf(false) }
     var serverDraft by remember(serverUrl) { mutableStateOf(serverUrl) }
 
@@ -299,6 +311,22 @@ fun AuthScreen(
                 keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             )
 
+            // Правило пароля применимо только к РЕГИСТРАЦИИ: при входе пароль уже
+            // существует, и мерить его сегодняшним правилом значило бы запереть
+            // владельца старого короткого пароля (#2932). Пустое поле молчит —
+            // подсказка появляется, когда есть что подсказывать.
+            val passwordProblem = if (register) passwordError(password) else null
+            if (passwordProblem != null && password.isNotEmpty()) {
+                Spacer(Modifier.height(8.dp))
+                Text(
+                    passwordProblem.resolve(),
+                    color = Color(0xFFFFD9D2),
+                    fontSize = 13.sp,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+            }
+
             state.error?.let { err ->
                 Spacer(Modifier.height(12.dp))
                 Text(
@@ -315,7 +343,11 @@ fun AuthScreen(
                 text = stringResource(if (register) R.string.auth_submit_register else R.string.auth_submit_login),
                 loading = state.loading,
                 onClick = {
-                    if (register) vm.register(email, name, password) else vm.login(email, password)
+                    when {
+                        !register -> vm.login(email, password)
+                        passwordProblem != null -> vm.setError(passwordProblem)
+                        else -> vm.register(email, name, password)
+                    }
                 },
             )
 

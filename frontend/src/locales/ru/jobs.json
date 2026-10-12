@@ -4,14 +4,15 @@
   "empty": "Нет фоновых заданий",
   "select": "Выберите задание",
   "backToList": "К списку заданий",
-  "journal": "журнал",
   "started": "Запущено",
   "cancelling": "Отменяется…",
   "run": "Запустить сейчас",
   "cancel": "Остановить",
-  "nextRunPrefix": "· след. запуск {when}",
   "name": {
-    "gitlab_sync": "Синхронизация GitLab · {arg}"
+    "gitlab_sync": "Синхронизация GitLab · {arg}",
+    "export_csv": "Экспорт доски в CSV · {arg}",
+    "export_json": "Экспорт доски в JSON · {arg}",
+    "import": "Импорт задач · {arg}"
   },
   "worker": {
     "gitlab_sync_cron": "Автосинхронизация GitLab",
@@ -19,7 +20,9 @@
     "notify_delivery": "Доставка уведомлений",
     "notify_scanner": "Сканирование сроков и напоминаний",
     "recurrence": "Повторяющиеся задачи",
-    "conference_recordings": "Записи конференций"
+    "conference_recordings": "Записи конференций",
+    "trash_purge": "Уборка удалённого",
+    "gitlab_webhook_cron": "Синхронизация GitLab по вебхуку"
   },
   "op": {
     "sync_scan": "проверка интеграций к синхронизации",
@@ -28,18 +31,24 @@
     "due_scan": "проверка сроков и напоминаний",
     "recurrence": "продвижение повторяющихся задач",
     "recording_sweep": "проверка записей конференций и уборка по сроку",
+    "trash_purge": "окончательное удаление досок и колонок после срока отмены, уборка старых адресов проектов, истории заданий (30 дней) и файлов экспорта (7 дней)",
     "sync_full": "полная синхронизация",
-    "sync_incremental": "инкрементальная синхронизация"
+    "sync_incremental": "инкрементальная синхронизация",
+    "webhook_scan": "проверка событий вебхука GitLab"
   },
   "status": {
     "running": "выполняется",
     "pending": "в очереди",
     "done": "готово",
-    "failed": "ошибка"
+    "failed": "ошибка",
+    "cancelled": "остановлено"
   },
   "kind": {
     "worker": "worker",
-    "sync": "синхронизация"
+    "sync": "синхронизация",
+    "run": "запуск вручную",
+    "export": "экспорт",
+    "import": "импорт"
   },
   "mode": {
     "incremental": "инкрементальная",
@@ -47,7 +56,8 @@
   },
   "trigger": {
     "manual": "вручную",
-    "auto": "по расписанию"
+    "auto": "по расписанию",
+    "webhook": "по вебхуку"
   },
   "next": {
     "soon": "вот-вот",
@@ -65,6 +75,60 @@
     "finishedAt": "Завершено",
     "duration": "Длительность",
     "createdUpdated": "Создано / обновлено",
-    "error": "Ошибка"
-  }
+    "error": "Ошибка",
+    "startedBy": "Запустил(а)",
+    "attempt": "Попытка",
+    "queue": "Очередь",
+    "file": "Файл"
+  },
+  "crumb": "Администрирование",
+  "nav": {
+    "all": "Все",
+    "running": "Идут",
+    "pending": "В очереди",
+    "failed": "С ошибкой",
+    "done": "Завершены",
+    "type": "Тип"
+  },
+  "summary": "идут: {running} · в очереди: {pending}",
+  "search": "Найти задание",
+  "noMatch": "Ничего не нашлось",
+  "openKey": "открыть окно",
+  "nextRun": "следующий {when}",
+  "log": "Лог",
+  "follow": "Следить",
+  "copy": "Копировать",
+  "type": {
+    "gitlab": "GitLab",
+    "import_export": "Импорт и экспорт",
+    "notify": "Уведомления",
+    "maintenance": "Обслуживание"
+  },
+  "step": {
+    "connect": "Подключение к GitLab",
+    "fetch": "Загрузка задач",
+    "mirror": "Задачи и комментарии",
+    "links": "Связи и merge request'ы",
+    "run": "Проход",
+    "collect": "Сбор задач",
+    "write": "Запись файла",
+    "prepare": "Подготовка",
+    "create": "Создание задач",
+    "refresh": "Обновление доски"
+  },
+  "attemptOf": "{n} из {max}",
+  "queuePos": "№ {n}",
+  "retryIn": "повтор {when}",
+  "progress": "{done} из {total} · {pct}%",
+  "progressCount": "{done} из {total}",
+  "eta": "≈ {when} осталось",
+  "etaMin": "{m} мин",
+  "etaSec": "{s} с",
+  "history": "История хранится 30 дней",
+  "logMeta": "{lines} строк · {errors} ошибок",
+  "logEmpty": "Лог пуст",
+  "logTail": "в истории — последние {n} строк",
+  "copied": "Лог скопирован",
+  "download": "Скачать",
+  "rows": "задач: {n}"
 }

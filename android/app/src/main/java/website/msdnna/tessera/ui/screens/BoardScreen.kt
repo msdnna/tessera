@@ -71,6 +71,7 @@ import website.msdnna.tessera.ui.components.TTextField
 import website.msdnna.tessera.ui.components.clickableNoRipple
 import website.msdnna.tessera.ui.components.softShadow
 import website.msdnna.tessera.ui.resolve
+import website.msdnna.tessera.ui.theme.LocalDateFormat
 import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusSm
 import website.msdnna.tessera.ui.theme.Tessera
@@ -80,6 +81,7 @@ import website.msdnna.tessera.ui.viewmodels.BoardActivity
 import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewMode
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
+import website.msdnna.tessera.ui.viewmodels.TrashUndo
 import website.msdnna.tessera.ui.viewmodels.WorkspaceViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TourKeys
@@ -120,6 +122,13 @@ fun BoardScreen(
     val conflictsState by conflictsVm.state.collectAsStateWithLifecycle()
     // Live board-activity toasts (separate from the bell), fed by realtime events.
     val activity by vm.activity.collectAsStateWithLifecycle()
+    // The undo of the last delete (#3004): the task is in the board's trash.
+    val trashUndo by vm.trashUndo.collectAsStateWithLifecycle()
+
+    // Календарь пользователя — вниз, в состояние: фильтр «Срок» и подписи карточек
+    // обязаны считать дни одним и тем же префом (см. BoardUiState.dateFormat).
+    val dateFormat = LocalDateFormat.current
+    LaunchedEffect(dateFormat) { vm.setDateFormat(dateFormat) }
 
     LaunchedEffect(board.id, workspaceId) { vm.load(board.id, workspaceId) }
 
@@ -272,6 +281,11 @@ fun BoardScreen(
             breadcrumb = breadcrumb,
             estimation = state.estimation,
             commands = state.commandRows,
+            // The archive is a scope to look at, not to work in — the board already
+            // refuses drag, «+ задача» and the card's own pills there, and the modal
+            // behind a tap has to say the same thing (#2932, web `:readonly`).
+            readonly = state.archivedMode,
+            onDeleted = { taskId, number, title -> vm.offerTrashUndo(taskId, number, title) },
             // Leaving for a document closes the modal: the documents section is a
             // top-level destination, and a modal left open over it would come
             // back on top of the reader when the section is left again.
@@ -298,6 +312,54 @@ fun BoardScreen(
         onOpen = { openTaskId = it },
         onDismiss = vm::dismissActivity,
     )
+    trashUndo?.let { u ->
+        TrashUndoToast(undo = u, onUndo = vm::undoTrash, onClose = vm::dismissTrashUndo)
+    }
+}
+
+/**
+ * «Задача #N в корзине · Вернуть» (#3004, web undo toast parity): the delete
+ * happened at once, the task waits in the board's trash, and the toast brings it
+ * back with its subtasks. Bottom-centre, like the web's bottom lane.
+ */
+@Composable
+private fun TrashUndoToast(undo: TrashUndo, onUndo: () -> Unit, onClose: () -> Unit) {
+    val c = Tessera.colors
+    val shape = RoundedCornerShape(RadiusLg)
+    Box(Modifier.fillMaxSize().padding(12.dp), contentAlignment = Alignment.BottomCenter) {
+        Row(
+            Modifier.widthIn(max = 360.dp).softShadow(shape, elevation = 6.dp).clip(shape)
+                .background(c.surface).border(1.dp, c.border, shape)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .testTag(TestTags.TRASH_UNDO),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IonIcon(Ion.TRASH, size = 16.dp, tint = c.text2)
+            Spacer(Modifier.width(8.dp))
+            Text(
+                if (undo.number != null) {
+                    stringResource(R.string.task_trash_deleted, undo.number)
+                } else {
+                    stringResource(R.string.task_trash_deleted_untitled, undo.title)
+                },
+                color = c.text1, fontSize = 13.sp, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f, fill = false),
+            )
+            Spacer(Modifier.width(10.dp))
+            Box(
+                Modifier.clip(RoundedCornerShape(RadiusSm)).background(accentGradient(c.primary))
+                    .clickableNoRipple(onClick = onUndo).padding(horizontal = 10.dp, vertical = 5.dp)
+                    .testTag(TestTags.TRASH_UNDO_BUTTON),
+            ) {
+                Text(stringResource(R.string.task_trash_undo), color = c.onPrimary, fontSize = 12.sp)
+            }
+            Spacer(Modifier.width(6.dp))
+            IonIcon(
+                Ion.CLOSE, size = 15.dp, tint = c.text3,
+                modifier = Modifier.clip(CircleShape).clickableNoRipple(onClick = onClose),
+            )
+        }
+    }
 }
 
 /**

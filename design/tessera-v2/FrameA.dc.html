@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div ref="{{ rootRef }}" style="position:relative;width:100%;height:100%;border-radius:14px;overflow:hidden;box-shadow:0 4px 24px rgba(0,0,0,.16)">
+<sc-if value="{{ ph_dark }}" hint-placeholder-val="{{ true }}"><div style="position:absolute;inset:0;background:#18181d"></div></sc-if>
+<sc-if value="{{ ph_light }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;background:#f8f8fa"></div></sc-if>
+<sc-if value="{{ phCat }}" hint-placeholder-val="{{ false }}"><div style="height:3800px"></div></sc-if>
+<sc-if value="{{ on_dark }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TesseraProvider" mode="dark" accent="{{ accent }}" hint-size="100%,100%"><div style="position:relative;width:100%;height:100%;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#ececf1;background:#18181d;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#18181d;--v-rail:#0b0b0e;--v-sidebar:#101014;--v-topbar:#18181d;--v-board:#18181d;--v-col:#1d1d23;--v-card:#27272e;--v-card-hover:#2c2c34;--v-pop:#2e2e36;--v-hover:#222228;--v-hover-side:#1a1a1f;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 16%, #101014), color-mix(in srgb, var(--t-primary) 26%, #101014));--v-input:#212127;--v-ctl:#212127;--v-pill:#33333b;--v-sub:#202026;--v-foot:#17171c;--v-drop:color-mix(in srgb, var(--t-primary) 16%, #1d1d23);--v-wash:11%;--v-tint:15%;--v-cap-a:12%;--v-cap-b:20%;--v-sh-card:0 1px 2px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.16);--v-sh-hover:0 2px 4px rgba(0,0,0,.36), 0 8px 20px rgba(0,0,0,.24);--v-sh-pop:0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3);--v-sh-drag:0 18px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35);--v-sh-drop:inset 0 1px 3px rgba(0,0,0,.35);--v-sh-panel:none;--v-shell-pad:0;--v-shell-gap:0px;--v-panel-r:0px;--v-sidebar-w:232px;--v-top-h:52px;--v-top-pad:0 16px;--v-sub-pad:6px 16px 10px;--v-cols-pad:2px 16px 16px;--v-r-ctl:8px;--v-r-pill:999px;--v-r-card:14px;--v-r-col:18px;--t-bg:#18181d;--t-surface:#27272e;--t-surface-alt:#1d1d23;--t-hover:#222228;--t-input-bg:#212127;--t-border:#33333b;--t-text1:#ececf1;--t-text2:#b5b5c0;--t-text3:#8b8b97;--t-placeholder:#63636e;--v-kbd:#3a3a43;--v-scrim:rgba(6,6,9,.62);--v-bar-d:block;--v-glow-d:none;--v-lead-c:none;--v-colA-d:none;--v-colC-d:block;--v-capB-d:none;--v-col-pad:8px;--v-head-h:30px;--v-head-pad:0 0 0 6px;--v-head-mb:0px;--v-add-bg:var(--v-col);--v-card-pl-add:5px">
+<sc-if value="{{ c_none }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0px;top:0px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_palette }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-366px;top:-40px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_pop }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-40px;top:-160px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_railLow }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0px;top:-150px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_colHead }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-560px;top:-20px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_colToast }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-510px;top:-460px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_fabCorner }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-732px;top:-380px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_panel }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-732px;top:0px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_subbar }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-288px;top:-40px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_subbarR }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-732px;top:-40px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalog }}" hint-placeholder-val="{{ false }}"><dc-import name="CatalogA" hint-size="1440px,3800px"></dc-import></sc-if>
+<sc-if value="{{ isFrag }}" hint-placeholder-val="{{ false }}"><dc-import name="FragA" hint-size="700px,600px"></dc-import></sc-if>
+<sc-if value="{{ isCatalogB }}" hint-placeholder-val="{{ false }}"><dc-import name="CatalogB" hint-size="1440px,2800px"></dc-import></sc-if>
+<sc-if value="{{ isAuth }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:900px"><dc-import name="AuthPage" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ isAuthSheet }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:1180px"><dc-import name="AuthSheet" hint-size="1440px,1180px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogE }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:900px"><dc-import name="CatalogE" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogF }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:1640px"><dc-import name="CatalogF" hint-size="1440px,1640px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogD }}" hint-placeholder-val="{{ false }}"><dc-import name="CatalogD" hint-size="1440px,2000px"></dc-import></sc-if>
+<sc-if value="{{ isMobD }}" hint-placeholder-val="{{ false }}"><dc-import name="MobileD" mode="{{ mmode }}" hint-size="390px,844px"></dc-import></sc-if>
+<sc-if value="{{ isCatalogC }}" hint-placeholder-val="{{ false }}"><dc-import name="CatalogC" hint-size="1440px,2400px"></dc-import></sc-if>
+<sc-if value="{{ isMStage }}" hint-placeholder-val="{{ false }}"><dc-import name="MobileStage" hint-size="390px,844px"></dc-import></sc-if>
+<sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}"><dc-import name="MobileB" mode="{{ mmode }}" hint-size="390px,844px"></dc-import></sc-if>
+<sc-if value="{{ isMG }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:390px;height:844px"><dc-import name="MobileG" screen="{{ mscreen }}" zones="{{ mzones }}" hint-size="390px,844px"></dc-import><sc-if value="{{ hasTour }}" hint-placeholder-val="{{ false }}"><dc-import name="TourLayer" step="{{ tour }}" style="position:absolute;left:0;top:0;width:390px;height:844px;z-index:70" hint-size="390px,844px"></dc-import></sc-if><sc-if value="{{ hasToasts }}" hint-placeholder-val="{{ false }}"><dc-import name="ToastLayer" v="{{ toasts }}" style="position:absolute;left:0;top:0;width:390px;height:844px;z-index:60" hint-size="390px,844px"></dc-import></sc-if><sc-if value="{{ hasPP }}" hint-placeholder-val="{{ false }}"><dc-import name="PropLayer" v="{{ pp }}" style="position:absolute;left:0;top:0;width:390px;height:844px;z-index:65" hint-size="390px,844px"></dc-import></sc-if></div></sc-if>
+<sc-if value="{{ isCatalogH }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:1940px"><dc-import name="CatalogH" hint-size="1440px,1940px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogG }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1344px;height:1500px"><dc-import name="CatalogG" hint-size="1344px,1500px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogI }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:2440px"><dc-import name="CatalogI" hint-size="1440px,2440px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatJ }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:100%;height:100%"><dc-import name="CatalogJ" part="{{ jpart }}" hint-size="100%,100%"></dc-import></div></sc-if><sc-if value="{{ isCatalogIacc }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:708px;height:300px"><dc-import name="CatalogI" part="acc" hint-size="708px,300px"></dc-import></div></sc-if>
+</div></x-import></sc-if>
+<sc-if value="{{ on_light }}" hint-placeholder-val="{{ false }}"><x-import component-from-global-scope="Tessera.TesseraProvider" mode="light" accent="{{ accent }}" hint-size="100%,100%"><div style="position:relative;width:100%;height:100%;font-family:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;color:#1c1c22;background:#f8f8fa;--v-font:-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;--v-backdrop:#f8f8fa;--v-rail:#e2e2e8;--v-sidebar:#ededf1;--v-topbar:#f8f8fa;--v-board:#f8f8fa;--v-col:#f1f1f4;--v-card:#ffffff;--v-card-hover:#ffffff;--v-pop:#ffffff;--v-hover:#ebebef;--v-hover-side:#e3e3e8;--v-active:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 11%, #ededf1), color-mix(in srgb, var(--t-primary) 18%, #ededf1));--v-input:#ededf1;--v-ctl:#ededf1;--v-pill:#f1f1f5;--v-sub:#f5f5f8;--v-foot:#e5e5ea;--v-drop:color-mix(in srgb, var(--t-primary) 12%, #f1f1f4);--v-wash:8%;--v-tint:11%;--v-cap-a:9%;--v-cap-b:15%;--v-sh-card:0 1px 2px rgba(20,20,40,.06), 0 1px 4px rgba(20,20,40,.04);--v-sh-hover:0 2px 6px rgba(20,20,40,.08), 0 8px 20px rgba(20,20,40,.07);--v-sh-pop:0 12px 32px rgba(20,20,40,.14), 0 2px 6px rgba(20,20,40,.06);--v-sh-drag:0 18px 40px rgba(20,20,40,.18), 0 4px 12px rgba(20,20,40,.08);--v-sh-drop:inset 0 1px 3px rgba(20,20,40,.08);--v-sh-panel:none;--v-shell-pad:0;--v-shell-gap:0px;--v-panel-r:0px;--v-sidebar-w:232px;--v-top-h:52px;--v-top-pad:0 16px;--v-sub-pad:6px 16px 10px;--v-cols-pad:2px 16px 16px;--v-r-ctl:8px;--v-r-pill:999px;--v-r-card:14px;--v-r-col:18px;--t-bg:#f8f8fa;--t-surface:#ffffff;--t-surface-alt:#f1f1f4;--t-hover:#ebebef;--t-input-bg:#ededf1;--t-border:#f1f1f5;--t-text1:#1c1c22;--t-text2:#4a4a55;--t-text3:#767682;--t-placeholder:#a9a9b3;--v-kbd:#e4e4ea;--v-scrim:rgba(24,24,40,.26);--v-bar-d:block;--v-glow-d:none;--v-lead-c:none;--v-colA-d:none;--v-colC-d:block;--v-capB-d:none;--v-col-pad:8px;--v-head-h:30px;--v-head-pad:0 0 0 6px;--v-head-mb:0px;--v-add-bg:var(--v-col);--v-card-pl-add:5px">
+<sc-if value="{{ c_none }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0px;top:0px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_palette }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-366px;top:-40px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_pop }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-40px;top:-160px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_railLow }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:0px;top:-150px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_colHead }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-560px;top:-20px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_colToast }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-510px;top:-460px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_fabCorner }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-732px;top:-380px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_panel }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-732px;top:0px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_subbar }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-288px;top:-40px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ c_subbarR }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-732px;top:-40px;width:1440px;height:900px"><dc-import name="ShellA" scene="{{ scene }}" pstate="{{ pstate }}" tour="{{ tour }}" cl="{{ cl }}" toasts="{{ toasts }}" pp="{{ pp }}" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalog }}" hint-placeholder-val="{{ false }}"><dc-import name="CatalogA" hint-size="1440px,3800px"></dc-import></sc-if>
+<sc-if value="{{ isFrag }}" hint-placeholder-val="{{ false }}"><dc-import name="FragA" hint-size="700px,600px"></dc-import></sc-if>
+<sc-if value="{{ isCatalogB }}" hint-placeholder-val="{{ false }}"><dc-import name="CatalogB" hint-size="1440px,2800px"></dc-import></sc-if>
+<sc-if value="{{ isAuth }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:900px"><dc-import name="AuthPage" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ isAuthSheet }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:1180px"><dc-import name="AuthSheet" hint-size="1440px,1180px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogE }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:900px"><dc-import name="CatalogE" hint-size="1440px,900px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogF }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:1640px"><dc-import name="CatalogF" hint-size="1440px,1640px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogD }}" hint-placeholder-val="{{ false }}"><dc-import name="CatalogD" hint-size="1440px,2000px"></dc-import></sc-if>
+<sc-if value="{{ isMobD }}" hint-placeholder-val="{{ false }}"><dc-import name="MobileD" mode="{{ mmode }}" hint-size="390px,844px"></dc-import></sc-if>
+<sc-if value="{{ isCatalogC }}" hint-placeholder-val="{{ false }}"><dc-import name="CatalogC" hint-size="1440px,2400px"></dc-import></sc-if>
+<sc-if value="{{ isMStage }}" hint-placeholder-val="{{ false }}"><dc-import name="MobileStage" hint-size="390px,844px"></dc-import></sc-if>
+<sc-if value="{{ isMobile }}" hint-placeholder-val="{{ false }}"><dc-import name="MobileB" mode="{{ mmode }}" hint-size="390px,844px"></dc-import></sc-if>
+<sc-if value="{{ isMG }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:390px;height:844px"><dc-import name="MobileG" screen="{{ mscreen }}" zones="{{ mzones }}" hint-size="390px,844px"></dc-import><sc-if value="{{ hasTour }}" hint-placeholder-val="{{ false }}"><dc-import name="TourLayer" step="{{ tour }}" style="position:absolute;left:0;top:0;width:390px;height:844px;z-index:70" hint-size="390px,844px"></dc-import></sc-if><sc-if value="{{ hasToasts }}" hint-placeholder-val="{{ false }}"><dc-import name="ToastLayer" v="{{ toasts }}" style="position:absolute;left:0;top:0;width:390px;height:844px;z-index:60" hint-size="390px,844px"></dc-import></sc-if><sc-if value="{{ hasPP }}" hint-placeholder-val="{{ false }}"><dc-import name="PropLayer" v="{{ pp }}" style="position:absolute;left:0;top:0;width:390px;height:844px;z-index:65" hint-size="390px,844px"></dc-import></sc-if></div></sc-if>
+<sc-if value="{{ isCatalogH }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:1940px"><dc-import name="CatalogH" hint-size="1440px,1940px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogG }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1344px;height:1500px"><dc-import name="CatalogG" hint-size="1344px,1500px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatalogI }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:1440px;height:2440px"><dc-import name="CatalogI" hint-size="1440px,2440px"></dc-import></div></sc-if>
+<sc-if value="{{ isCatJ }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:100%;height:100%"><dc-import name="CatalogJ" part="{{ jpart }}" hint-size="100%,100%"></dc-import></div></sc-if><sc-if value="{{ isCatalogIacc }}" hint-placeholder-val="{{ false }}"><div style="position:relative;width:708px;height:300px"><dc-import name="CatalogI" part="acc" hint-size="708px,300px"></dc-import></div></sc-if>
+</div></x-import></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1440,&quot;height&quot;:900},&quot;mode&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;dark&quot;,&quot;light&quot;],&quot;default&quot;:&quot;dark&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;what&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;shell&quot;,&quot;catalog&quot;,&quot;frag&quot;],&quot;default&quot;:&quot;shell&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;scene&quot;:{&quot;editor&quot;:&quot;text&quot;,&quot;default&quot;:&quot;create&quot;,&quot;tsType&quot;:&quot;string&quot;},&quot;accent&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;purple&quot;,&quot;blue&quot;,&quot;teal&quot;,&quot;green&quot;,&quot;orange&quot;,&quot;red&quot;,&quot;pink&quot;],&quot;default&quot;:&quot;purple&quot;,&quot;tsType&quot;:&quot;string&quot;}}">
+const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const act = (b, a, c) => `linear-gradient(to top right, color-mix(in srgb, var(--t-primary) ${a}%, ${b}), color-mix(in srgb, var(--t-primary) ${c}%, ${b}))`;
+const T = {
+  dark: { bk: '#18181d', rail: '#0b0b0e', side: '#101014', col: '#1d1d23', card: '#27272e', ch: '#2c2c34', pop: '#2e2e36', hov: '#222228', hs: '#1a1a1f', act: act('#101014', 16, 26), inp: '#212127', pill: '#33333b', sub: '#202026', foot: '#17171c', drop: 'color-mix(in srgb, var(--t-primary) 16%, #1d1d23)', wash: '11%', tint: '15%', capA: '12%', capB: '20%', kbd: '#3a3a43', scrim: 'rgba(6,6,9,.62)', t1: '#ececf1', t2: '#b5b5c0', t3: '#8b8b97', ph: '#63636e',
+    sh: ['0 1px 2px rgba(0,0,0,.32), 0 2px 8px rgba(0,0,0,.16)', '0 2px 4px rgba(0,0,0,.36), 0 8px 20px rgba(0,0,0,.24)', '0 12px 36px rgba(0,0,0,.5), 0 2px 8px rgba(0,0,0,.3)', '0 18px 44px rgba(0,0,0,.55), 0 4px 12px rgba(0,0,0,.35)', 'inset 0 1px 3px rgba(0,0,0,.35)'] },
+  light: { bk: '#f8f8fa', rail: '#e2e2e8', side: '#ededf1', col: '#f1f1f4', card: '#ffffff', ch: '#ffffff', pop: '#ffffff', hov: '#ebebef', hs: '#e3e3e8', act: act('#ededf1', 11, 18), inp: '#ededf1', pill: '#f1f1f5', sub: '#f5f5f8', foot: '#e5e5ea', drop: 'color-mix(in srgb, var(--t-primary) 12%, #f1f1f4)', wash: '8%', tint: '11%', capA: '9%', capB: '15%', kbd: '#e4e4ea', scrim: 'rgba(24,24,40,.26)', t1: '#1c1c22', t2: '#4a4a55', t3: '#767682', ph: '#a9a9b3',
+    sh: ['0 1px 2px rgba(20,20,40,.06), 0 1px 4px rgba(20,20,40,.04)', '0 2px 6px rgba(20,20,40,.08), 0 8px 20px rgba(20,20,40,.07)', '0 12px 32px rgba(20,20,40,.14), 0 2px 6px rgba(20,20,40,.06)', '0 18px 40px rgba(20,20,40,.18), 0 4px 12px rgba(20,20,40,.08)', 'inset 0 1px 3px rgba(20,20,40,.08)'] },
+};
+const theme = (m) => {
+  const t = T[m];
+  return {
+    position: 'relative', width: '100%', height: '100%', fontFamily: FONT, color: t.t1, background: t.bk, '--v-font': FONT,
+    '--v-backdrop': t.bk, '--v-rail': t.rail, '--v-sidebar': t.side, '--v-topbar': t.bk, '--v-board': t.bk, '--v-col': t.col, '--v-card': t.card, '--v-card-hover': t.ch, '--v-pop': t.pop,
+    '--v-hover': t.hov, '--v-hover-side': t.hs, '--v-active': t.act, '--v-input': t.inp, '--v-ctl': t.inp, '--v-pill': t.pill, '--v-sub': t.sub, '--v-foot': t.foot, '--v-drop': t.drop,
+    '--v-wash': t.wash, '--v-tint': t.tint, '--v-cap-a': t.capA, '--v-cap-b': t.capB,
+    '--v-sh-card': t.sh[0], '--v-sh-hover': t.sh[1], '--v-sh-pop': t.sh[2], '--v-sh-drag': t.sh[3], '--v-sh-drop': t.sh[4], '--v-sh-panel': 'none',
+    '--v-shell-pad': '0', '--v-shell-gap': '0px', '--v-panel-r': '0px', '--v-sidebar-w': '232px', '--v-top-h': '52px', '--v-top-pad': '0 16px', '--v-sub-pad': '6px 16px 10px', '--v-cols-pad': '2px 16px 16px',
+    '--v-r-ctl': '8px', '--v-r-pill': '999px', '--v-r-card': '14px', '--v-r-col': '18px',
+    '--t-bg': t.bk, '--t-surface': t.card, '--t-surface-alt': t.col, '--t-hover': t.hov, '--t-input-bg': t.inp, '--t-border': t.pill,
+    '--t-text1': t.t1, '--t-text2': t.t2, '--t-text3': t.t3, '--t-placeholder': t.ph, '--v-kbd': t.kbd, '--v-scrim': t.scrim,
+    '--v-bar-d': 'block', '--v-glow-d': 'none', '--v-lead-c': 'none', '--v-colA-d': 'none', '--v-colC-d': 'block', '--v-capB-d': 'none', '--v-col-pad': '8px', '--v-head-h': '30px', '--v-head-pad': '0 0 0 6px', '--v-head-mb': '0px', '--v-add-bg': 'var(--v-col)', '--v-card-pl-add': '5px',
+  };
+};
+class Component extends DCLogic {
+  state = { on: false };
+  rootRef = React.createRef();
+  componentDidMount() {
+    const Q = (window.__frameAQ2 = window.__frameAQ2 || { list: [], busy: false });
+    const go = () => {
+      Q.list.push(() => { if (!this._dead) this.setState({ on: true }); });
+      const pump = () => {
+        if (Q.busy && Date.now() - (Q.t || 0) < 1500) return;
+        if (!Q.list.length) { Q.busy = false; return; }
+        Q.busy = true; Q.t = Date.now();
+        const fn = Q.list.shift();
+        try { fn(); } catch (e) { console.error(e); }
+        setTimeout(() => { Q.busy = false; pump(); }, 200);
+      };
+      pump();
+    };
+    const pump0 = () => { const Q = window.__frameAQ2; if (Q && Q.list.length && (!Q.busy || Date.now() - (Q.t || 0) > 1500)) { Q.busy = true; Q.t = Date.now(); const fn = Q.list.shift(); try { fn(); } catch (e) { console.error(e); } setTimeout(() => { Q.busy = false; }, 200); } };
+    const check = () => {
+      if (this._done || this._dead) return;
+      const el = this.rootRef.current;
+      if (!el || !el.isConnected) return;
+      const r = el.getBoundingClientRect();
+      if (!r.height) return;
+      const vh = window.innerHeight || document.documentElement.clientHeight || 900;
+      if (r.top < vh + 400 && r.bottom > -400) { this._done = true; go(); }
+    };
+    this._check = check;
+    window.addEventListener('scroll', check, true);
+    window.addEventListener('resize', check);
+    this._iv = setInterval(() => { check(); pump0(); }, 400);
+    setTimeout(check, 30);
+  }
+  componentWillUnmount() { this._dead = true; clearInterval(this._iv); window.removeEventListener('scroll', this._check, true); window.removeEventListener('resize', this._check); }
+  renderVals() {
+    const mode = this.props.mode || 'dark';
+    const what = this.props.what || 'shell';
+    const crop = this.props.crop || 'none';
+    const on = this.state.on;
+    const out = {
+      rootRef: this.rootRef, accent: this.props.accent || 'purple',
+      on_dark: on && mode === 'dark', on_light: on && mode === 'light',
+      ph_dark: !on && mode === 'dark', ph_light: !on && mode === 'light', phCat: !on && (what === 'catalog' || what === 'catalogB' || what === 'catalogC' || what === 'catalogD'),
+      isCatalog: what === 'catalog', isFrag: what === 'frag', isCatalogB: what === 'catalogB', isCatalogC: what === 'catalogC', isCatalogD: what === 'catalogD', isAuth: what === 'auth', isAuthSheet: what === 'authSheet', isCatalogE: what === 'catalogE', isCatalogF: what === 'catalogF', isMG: what === 'mg', isCatalogG: what === 'catalogG', isCatalogH: what === 'catalogH', isCatalogI: what === 'catalogI', isCatalogIacc: what === 'catalogIacc', toasts: this.props.toasts || '', pp: this.props.pp || '', hasPP: !!this.props.pp, isCatJ: what === 'catJ', jpart: this.props.part || 'pp', hasToasts: !!this.props.toasts, mscreen: this.props.screen || 'home', mzones: !!this.props.zones, isMobD: what === 'mobileD', isMStage: what === 'mstage', isMobile: what === 'mobile', mmode: this.props.mmode || 'capture',
+      scene: this.props.scene || 'base', pstate: this.props.pstate || 'normal',
+      tour: this.props.tour || '', cl: this.props.cl || '', hasTour: !!this.props.tour,
+    };
+    ["none","palette","pop","railLow","colHead","colToast","fabCorner","panel","subbar","subbarR"].forEach((k) => { out['c_' + k] = what === 'shell' && crop === k; });
+    return out;
+  }
+}
+</script>
+</body>
+</html>

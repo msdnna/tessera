@@ -5,11 +5,14 @@ import (
 	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
+	"tessera/internal/gitlab"
+	"tessera/internal/netguard"
 )
 
 // oauthConfigView is the admin-facing OAuth config. The client secret is never
@@ -57,9 +60,9 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		return
 	}
 	var req struct {
-		ClientID     string          `json:"client_id"`
-		ClientSecret string          `json:"client_secret"`
-		GlBaseURL    string          `json:"gl_base_url"`
+		ClientID      string          `json:"client_id"`
+		ClientSecret  string          `json:"client_secret"`
+		GlBaseURL     string          `json:"gl_base_url"`
 		Enabled       bool            `json:"enabled"`
 		OrgMap        json.RawMessage `json:"org_map"`
 		ServiceToken  string          `json:"service_token"`
@@ -73,6 +76,18 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	// The same up-front check ConnectGitlab puts on a user's base URL: the server
+	// calls this address with the service token and every OAuth exchange, so a
+	// file:// / userinfo / hostless value is refused here with a clear 400 rather
+	// than surfacing later as a failed sign-in. The guarded dialer stays the
+	// backstop for a name that resolves to a private address.
+	req.GlBaseURL = strings.TrimRight(strings.TrimSpace(req.GlBaseURL), "/")
+	if req.GlBaseURL != "" {
+		if _, err := netguard.ValidateURL(req.GlBaseURL, gitlab.AllowPrivateURLs()); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid GitLab base URL: " + err.Error()})
+			return
+		}
 	}
 
 	// Keep the existing encrypted secret/service-token when none is supplied.
@@ -119,7 +134,7 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 		Provider:        "gitlab",
 		ClientID:        strings.TrimSpace(req.ClientID),
 		ClientSecretEnc: secretEnc,
-		GlBaseUrl:       strings.TrimRight(strings.TrimSpace(req.GlBaseURL), "/"),
+		GlBaseUrl:       req.GlBaseURL,
 		Enabled:         req.Enabled,
 		OrgMap:          orgMap,
 		ServiceTokenEnc: serviceEnc,
@@ -128,6 +143,20 @@ func (h *API) SetOAuthConfig(c *gin.Context) {
 	if err != nil {
 		fail(c, err)
 		return
+	}
+	// A new or removed service token (#3084): record when it runs out and lift the
+	// pauses the old one caused.
+	if s := strings.TrimSpace(req.ServiceToken); s != "" || req.ClearServiceToken {
+		var exp *time.Time
+		if s != "" && p.GlBaseUrl != "" {
+			exp = tokenExpiryDate(c, gitlab.New(p.GlBaseUrl, s))
+		}
+		soft(c, "SetServiceTokenExpiry", h.q.SetServiceTokenExpiry(c, db.SetServiceTokenExpiryParams{
+			Provider: "gitlab", ServiceTokenExpiresAt: exp,
+		}))
+		if s != "" {
+			h.resumeAfterReconnect(c, nil)
+		}
 	}
 	om := p.OrgMap
 	if len(om) == 0 {

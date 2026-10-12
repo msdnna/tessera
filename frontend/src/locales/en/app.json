@@ -13,24 +13,18 @@
       "apk": "APK"
     }
   },
-  "update": {
-    "title": "An update is available",
-    "text": "A new version of Tessera has been downloaded",
-    "reload": "Update",
-    "reloading": "Updating…",
-    "postpone": "Later"
-  },
   "version": {
     "web": "Client",
     "api": "Server",
     "commit": "commit {commit}",
-    "built": "built {date}"
+    "built": "built {date}",
+    "release": "released {date}"
   },
   "connection": {
     "loading": "Loading",
     "offlineTitle": "No connection to the server",
-    "offlineSub": "Check your internet connection and try again.",
-    "retry": "Try again"
+    "offlineSub": "The server is not answering. The screen stays as it is — this closes as soon as the server answers.",
+    "retry": "Retry now"
   },
   "whatsNew": {
     "title": "What's new",
@@ -38,7 +32,39 @@
     "gotIt": "Got it",
     "historyTitle": "Changelog",
     "historySub": "All Tessera updates",
-    "close": "Close"
+    "close": "Close",
+    "v2": {
+      "pill": "Tessera {v}",
+      "versionPill": "version {v}",
+      "title": "The new Tessera interface",
+      "sub": "The same tasks and boards — fewer dialogs and more done from the keyboard. What changed most:",
+      "items": {
+        "inbox": {
+          "title": "«Inbox» instead of notes and reminders",
+          "sub": "One feed, and one-line capture from anywhere"
+        },
+        "stage": {
+          "title": "The stage, right on the board",
+          "sub": "A selector in the sub-bar and a strip with the sprint’s goals"
+        },
+        "view": {
+          "title": "Board view and saved views",
+          "sub": "A panel on the right: cards, fields, personal and shared views"
+        },
+        "project": {
+          "title": "The «Project» window",
+          "sub": "Tags, stages and estimation in one place"
+        },
+        "palette": {
+          "title": "Everything from the keyboard",
+          "sub": "Search, commands and task actions in one palette"
+        }
+      },
+      "note": "Mini-tour: 6 steps over the live interface, about a minute",
+      "later": "Later",
+      "showMe": "Show what changed",
+      "productPill": "Tessera {v}"
+    }
   },
   "device": {
     "desktop": "Desktop app ({os})",

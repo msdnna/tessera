@@ -86,6 +86,11 @@ describe('humanizeError', () => {
     expect(humanizeError('invalid credentials')).toBe('Неверный email или пароль')
     expect(humanizeError('FORBIDDEN')).toBe('Недостаточно прав')
     expect(humanizeError('  not found  ')).toBe('Не найдено')
+    // "Run now" on a worker whose lock is taken answers 409 with this sentinel —
+    // without a mapping the operator gets the bare English line.
+    expect(humanizeError('job is already running')).toBe(
+      'Задача уже выполняется — дождитесь её завершения',
+    )
   })
 
   it('collapses gin/validator errors by failed tag', () => {
@@ -100,6 +105,80 @@ describe('humanizeError', () => {
   it('recognises network-ish messages', () => {
     expect(humanizeError('Network Error')).toContain('Нет связи с сервером')
     expect(humanizeError('connect ECONNREFUSED')).toContain('Нет связи с сервером')
+  })
+
+  // The one refusal on this catalogue's list an ordinary user reaches by
+  // ordinary means: a typo in the current-password field (#2932). It lands in
+  // SettingsView's `pwError` — printed inline under the form, not as a toast
+  // that scrolls away — so the bare English line sat in the Russian UI.
+  it('maps the wrong current password', () => {
+    expect(humanizeError('current password is incorrect')).toBe('Текущий пароль неверен')
+  })
+
+  // The membership dialog's "no account yet → send an invitation instead"
+  // fallback used to branch on this very string surviving untranslated. It
+  // reads `err.raw` now, so the sentence is free to be a sentence.
+  it('maps the unknown-email refusal the invite fallback branches on', () => {
+    expect(humanizeError('no user with that email')).toBe(
+      'Пользователя с таким email нет — можно отправить приглашение',
+    )
+  })
+
+  // The four membership guards plus the rank they leave behind (#2932). The
+  // dialog mirrors all four and greys the row out, so these are what a stale tab
+  // hears — and a demoted admin hears "requires admin or owner" on every click
+  // afterwards, which is the moment a bare English line is least welcome.
+  it('maps the workspace membership refusals', () => {
+    expect(humanizeError("cannot change the workspace owner's role")).toBe(
+      'Роль владельца пространства менять нельзя',
+    )
+    expect(humanizeError('cannot remove the workspace owner')).toBe(
+      'Владельца пространства нельзя удалить',
+    )
+    expect(humanizeError('cannot change your own role')).toBe(
+      'Свою роль изменить нельзя — попросите другого администратора',
+    )
+    expect(humanizeError('cannot remove yourself from the workspace')).toBe(
+      'Себя нельзя удалить из пространства — попросите другого администратора',
+    )
+    expect(humanizeError('requires admin or owner')).toBe(
+      'Нужны права администратора или владельца пространства',
+    )
+    expect(humanizeError('requires admin')).toBe('Нужны права администратора')
+  })
+
+  // Both ways a body can be refused for its size (#2932). The transport's line
+  // is a flat sentinel; the validator's carries its own ceiling, so it is the
+  // one refusal in the catalogue that has to be read rather than looked up —
+  // and the number has to come back as a size, not as seven digits of bytes.
+  it('maps both size refusals, naming the document ceiling in the reader units', () => {
+    expect(humanizeError('request body too large')).toBe(
+      'Слишком большой запрос — сократите текст или вложение',
+    )
+    expect(humanizeError('content exceeds 4194304 bytes')).toBe(
+      'Документ больше 4 МБ — разделите его на несколько страниц',
+    )
+  })
+
+  // The in-call chat's aggregate refusal, shaped like the document one for the
+  // same reason: the ceiling is a config number, so the sentence carries it and
+  // the reader gets a size rather than eight digits of bytes (#2932).
+  it('names the chat batch ceiling in reader units', () => {
+    expect(humanizeError('attachments exceed 26214400 bytes')).toBe(
+      'Вложения весят больше 25 МБ — отправьте их несколькими сообщениями',
+    )
+  })
+
+  // The pattern above must not swallow neighbouring sentences: a message that
+  // merely starts the same way is not a size refusal, and losing its text would
+  // replace a real reason with a wrong one.
+  it('leaves a look-alike sentence alone', () => {
+    expect(humanizeError('content exceeds the allowed nesting')).toBe(
+      'content exceeds the allowed nesting',
+    )
+    expect(humanizeError('attachments exceed the allowed count')).toBe(
+      'attachments exceed the allowed count',
+    )
   })
 
   it('passes an unknown short message through unchanged', () => {

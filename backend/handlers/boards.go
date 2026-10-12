@@ -1,12 +1,16 @@
 package handlers
 
 import (
+	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/i18n"
+	"tessera/middleware"
 )
 
 // ── Boards ─────────────────────────────────────────────────
@@ -18,6 +22,9 @@ import (
 type boardScopeView struct {
 	db.Board
 	WorkspaceID uuid.UUID `json:"workspace_id"`
+	// ProjectArchived: the board's project is in the archive (0086) — the client
+	// opens the board read-only, the server refuses writes with 409.
+	ProjectArchived bool `json:"project_archived"`
 }
 
 // CreateBoard adds a board to a project.
@@ -37,12 +44,40 @@ func (h *API) CreateBoard(c *gin.Context) {
 	if !h.requireMember(c, p.WorkspaceID) {
 		return
 	}
+	if p.ArchivedAt != nil {
+		c.JSON(http.StatusConflict, gin.H{"error": errProjectArchived, "archived": true})
+		return
+	}
 	var req struct {
 		Name string `json:"name" binding:"required"`
+		// The view a new board opens in (#3017) — the inline row's Tab switches
+		// Канбан / Список. Absent = kanban, as before.
+		DefaultLayout string `json:"default_layout"`
+		// A board template (#3047): sprint | bugs | roadmap. Absent = the four
+		// default columns, as before.
+		Template string `json:"template"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
+	}
+	tpl, ok := boardTemplateFor(req.Template)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown board template"})
+		return
+	}
+	// An explicit layout wins; otherwise the template's own.
+	if req.DefaultLayout == "" {
+		req.DefaultLayout = tpl.layout
+	}
+	layout, ok := boardLayout(req.DefaultLayout)
+	if !ok {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "unknown board layout"})
+		return
+	}
+	lang := i18n.Default
+	if len(tpl.tags) > 0 {
+		lang = h.userLang(c, middleware.CurrentUser(c))
 	}
 	maxPos, err := h.q.MaxBoardPosition(c, projectID)
 	if err != nil {
@@ -53,48 +88,46 @@ func (h *API) CreateBoard(c *gin.Context) {
 	// column) can't hold a task — a partial create leaves an unusable board.
 	slug := h.uniqueBoardSlug(c, projectID, req.Name)
 	var b db.Board
+	var tags []db.Tag
 	if err := h.inTx(c, func(q *db.Queries) error {
 		var err error
 		b, err = q.CreateBoard(c, db.CreateBoardParams{
 			ProjectID: projectID, Name: req.Name, Slug: slug,
-			Position: positionBetween(&maxPos, nil),
+			Position: positionBetween(&maxPos, nil), DefaultLayout: layout,
 		})
 		if err != nil {
 			return err
 		}
-		// Seed the board with a default set of status columns, remembering the
-		// last one so it can become the board's "done" column.
-		var lastColID *uuid.UUID
-		for i, dc := range defaultColumns {
-			pos := float64(i+1) * positionGap
-			col, err := q.CreateColumn(c, db.CreateColumnParams{
-				BoardID: b.ID, Name: dc.name, NameKey: ptr(dc.nameKey),
-				Color: dc.color, Position: pos,
-			})
-			if err != nil {
-				return err
-			}
-			id := col.ID
-			lastColID = &id
+		// Seed the board's status columns (the default four or the template's);
+		// the rightmost one ("Готово") closes tasks by default.
+		if b, err = seedBoardColumns(c, q, b, tpl); err != nil {
+			return err
 		}
-		// The rightmost seeded column ("Готово") closes tasks by default.
-		if lastColID != nil {
-			updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{
-				ID: b.ID, DoneColumnID: lastColID,
-			})
-			if err != nil {
-				return err
-			}
-			b = updated
-		}
-		return nil
+		tags, err = seedTemplateTags(c, q, p, tpl, lang)
+		return err
 	}); err != nil {
 		fail(c, err)
 		return
 	}
 
-	h.broadcast(p.WorkspaceID, "board.created", b)
+	for _, tag := range tags {
+		h.broadcastAs(c, p.WorkspaceID, "tag.created", tag)
+	}
+
+	h.broadcastAs(c, p.WorkspaceID, "board.created", b)
 	c.JSON(http.StatusCreated, b)
+}
+
+// boardLayout validates a board view name (#3017): the layouts the web client
+// draws. "" means the default — kanban.
+func boardLayout(s string) (string, bool) {
+	switch s {
+	case "":
+		return "board", true
+	case "board", "list", "timeline", "gantt", "calendar", "matrix":
+		return s, true
+	}
+	return "", false
 }
 
 // doneColumnName is the default name for the task-completing column (used only
@@ -108,9 +141,10 @@ const doneColumnName = "Готово"
 // clients, GitLab rules, DB lookups). Renaming a column clears its key — see
 // UpdateColumn.
 var defaultColumns = []struct{ name, nameKey, color string }{
-	{"К работе", "todo", "#9aa0aa"},
+	// v2 lane palette (#2951): teal · blue · orange · green.
+	{"К работе", "todo", "#0eb0a9"},
 	{"В процессе", "in_progress", "#2f80ed"},
-	{"На рассмотрении", "review", "#7c5cff"},
+	{"На рассмотрении", "review", "#f0a020"},
 	{doneColumnName, "done", "#18a058"},
 }
 
@@ -121,6 +155,51 @@ func defaultColumnKey(name string) string {
 	for _, dc := range defaultColumns {
 		if dc.name == name {
 			return dc.nameKey
+		}
+	}
+	return ""
+}
+
+// seededColumnCaptions is what each client writes on a seeded column, per
+// language: the twin of frontend/src/locales/<lang>/board.json
+// (column.defaultName) and android/…/res/values*/strings.xml (default_column_*).
+// Adding a language to i18n.Supported means adding its arm here —
+// TestSeededColumnCaptionsCoverSupportedLanguages iterates that list.
+//
+// This is not the server localising its own output (i18n's package doc is clear
+// that clients do that): it is the reverse direction. A user typing `/move Done`
+// is echoing the caption their own screen shows them, and only the server can
+// resolve a quick action, so the server has to recognise the words the client
+// put on the card. The Russian arm duplicates defaultColumns on purpose — the
+// two are edited in different places, and the test above pins them together.
+var seededColumnCaptions = map[string]map[string]string{
+	"ru": {
+		"todo": "К работе", "in_progress": "В процессе", "review": "На рассмотрении", "done": doneColumnName,
+		// Board templates (#3047, board_templates.go).
+		"backlog": "Бэклог спринта", "new": "Новые", "confirmed": "Подтверждены", "verify": "Проверка",
+		"closed": "Закрыты", "ideas": "Идеи", "planned": "Запланировано", "shipped": "Выпущено",
+	},
+	"en": {
+		"todo": "To do", "in_progress": "In progress", "review": "In review", "done": "Done",
+		"backlog": "Sprint backlog", "new": "New", "confirmed": "Confirmed", "verify": "Verifying",
+		"closed": "Closed", "ideas": "Ideas", "planned": "Planned", "shipped": "Shipped",
+	},
+}
+
+// seededColumnKey maps a caption a client may have shown the user back to the
+// seeded column's key, in any supported language, or "" for a caption that is
+// not one of the four. Case- and space-insensitive: it matches text a human
+// retyped, not a stored value.
+func seededColumnKey(caption string) string {
+	caption = strings.TrimSpace(caption)
+	if caption == "" {
+		return ""
+	}
+	for _, lang := range i18n.Supported {
+		for key, want := range seededColumnCaptions[lang] {
+			if strings.EqualFold(want, caption) {
+				return key
+			}
 		}
 	}
 	return ""
@@ -157,10 +236,19 @@ func (h *API) ListBoards(c *gin.Context) {
 	c.JSON(http.StatusOK, boards)
 }
 
+// boardResolveView is a resolved board plus its project's current address. The
+// address in the request may be a former one (#3012); the client rewrites its
+// URL to this one.
+type boardResolveView struct {
+	boardScopeView
+	ProjectSlug string `json:"project_slug"`
+}
+
 // ResolveBoardBySlug resolves a /project/<projectSlug>/board/<boardSlug> pair to
-// its board (board slugs are unique only within a project).
+// its board (board slugs are unique only within a project). The project part
+// may be an address the project left less than 30 days ago.
 func (h *API) ResolveBoardBySlug(c *gin.Context) {
-	proj, err := h.q.GetProjectBySlug(c, c.Query("project"))
+	proj, _, err := h.projectBySlug(c, c.Query("project"))
 	if notFound(c, err) {
 		return
 	}
@@ -179,36 +267,64 @@ func (h *API) ResolveBoardBySlug(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID})
+	c.JSON(http.StatusOK, boardResolveView{
+		boardScopeView: boardScopeView{Board: b, WorkspaceID: proj.WorkspaceID, ProjectArchived: proj.ArchivedAt != nil},
+		ProjectSlug:    proj.Slug,
+	})
 }
 
-// GetBoard returns a single board by UUID or human-readable slug.
-func (h *API) GetBoard(c *gin.Context) {
-	// Accept either a UUID or a human-readable slug (/board/<slug> links).
+// resolveBoardParam resolves a board route's :id segment — a UUID or a
+// human-readable slug (/board/<slug> deep links) — and authorizes the caller.
+// Writes the error response itself; ok=false means the caller must return.
+//
+// The slug branch searches only workspaces the caller belongs to: board slugs
+// are unique per project, not globally (0025), so a bare slug matches several
+// boards at once and an unscoped lookup regularly answered with a stranger's
+// board — a 403 on the caller's own link, or the wrong board of a workspace they
+// happen to share. `?workspace=` is the client's hint about which one it means.
+func (h *API) resolveBoardParam(c *gin.Context) (db.Board, uuid.UUID, bool) {
 	param := c.Param("id")
 	var b db.Board
 	var err error
 	if id, perr := uuid.Parse(param); perr == nil {
 		b, err = h.q.GetBoard(c, id)
 	} else {
-		b, err = h.q.GetBoardBySlug(c, param)
+		var preferred *uuid.UUID
+		if hint, perr := uuid.Parse(c.Query("workspace")); perr == nil {
+			preferred = &hint
+		}
+		b, err = h.q.GetBoardBySlugForUser(c, db.GetBoardBySlugForUserParams{
+			UserID: middleware.CurrentUser(c), Slug: param, PreferredWorkspace: preferred,
+		})
 	}
 	if notFound(c, err) {
-		return
+		return db.Board{}, uuid.Nil, false
 	}
 	if err != nil {
 		fail(c, err)
-		return
+		return db.Board{}, uuid.Nil, false
 	}
 	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
 	if err != nil {
 		fail(c, err)
-		return
+		return db.Board{}, uuid.Nil, false
 	}
+	// Redundant for the slug branch (the query joins the membership) but not for
+	// a UUID, and it is the one place that turns a lost membership into a 403.
 	if !h.requireMember(c, wsID) {
+		return db.Board{}, uuid.Nil, false
+	}
+	return b, wsID, true
+}
+
+// GetBoard returns a single board by UUID or human-readable slug.
+func (h *API) GetBoard(c *gin.Context) {
+	b, wsID, ok := h.resolveBoardParam(c)
+	if !ok {
 		return
 	}
-	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID})
+	archived, _ := h.q.ProjectArchivedForBoard(c, b.ID)
+	c.JSON(http.StatusOK, boardScopeView{Board: b, WorkspaceID: wsID, ProjectArchived: archived})
 }
 
 // UpdateBoard renames a board.
@@ -225,7 +341,7 @@ func (h *API) UpdateBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	b, err := h.q.GetBoard(c, id)
@@ -238,6 +354,8 @@ func (h *API) UpdateBoard(c *gin.Context) {
 		Icon     *string `json:"icon"`
 		Color    *string `json:"color"`
 		IconMode *string `json:"icon_mode"`
+		// Absent keeps the board's view for newcomers (#3017).
+		DefaultLayout *string `json:"default_layout"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -255,8 +373,18 @@ func (h *API) UpdateBoard(c *gin.Context) {
 	if req.IconMode != nil {
 		iconMode = normIconMode(*req.IconMode)
 	}
+	layout := b.DefaultLayout
+	if req.DefaultLayout != nil {
+		l, ok := boardLayout(*req.DefaultLayout)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown board layout"})
+			return
+		}
+		layout = l
+	}
 	updated, err := h.q.UpdateBoard(c, db.UpdateBoardParams{
 		ID: id, Name: req.Name, Position: b.Position, Icon: icon, Color: color, IconMode: iconMode,
+		DefaultLayout: layout,
 	})
 	if err != nil {
 		fail(c, err)
@@ -266,7 +394,10 @@ func (h *API) UpdateBoard(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-// DeleteBoard removes a board and its columns/tasks.
+// DeleteBoard soft-deletes a board (0078): it disappears for every reader at
+// once, and RestoreBoard can bring it back until the trash worker purges it
+// (trashRetention). The v2 client offers that undo in a toast. Nothing else is
+// touched here — columns and cards stay as they are, so a restore is exact.
 func (h *API) DeleteBoard(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -280,10 +411,12 @@ func (h *API) DeleteBoard(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
-	if err := h.q.DeleteBoard(c, id); err != nil {
+	if _, err := h.q.SoftDeleteBoard(c, id); notFound(c, err) {
+		return
+	} else if err != nil {
 		fail(c, err)
 		return
 	}
@@ -291,8 +424,39 @@ func (h *API) DeleteBoard(c *gin.Context) {
 	c.Status(http.StatusNoContent)
 }
 
-// SetDoneColumn configures which column auto-completes tasks (or clears it,
-// reverting to the rightmost-column fallback, when column_id is null).
+// RestoreBoard undoes DeleteBoard while the board is still in the trash. The
+// board comes back as it was; clients learn about it through board.created, the
+// event they already handle for a new board (the Android client included).
+func (h *API) RestoreBoard(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForDeletedBoard(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if !h.requireMember(c, wsID) {
+		return
+	}
+	b, err := h.q.RestoreBoard(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	h.broadcastAs(c, wsID, "board.created", b)
+	c.JSON(http.StatusOK, b)
+}
+
+// SetDoneColumn configures which column auto-completes tasks (or, when column_id
+// is null, leaves the board without one at all — see doneColumnID, #2588).
 func (h *API) SetDoneColumn(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -306,7 +470,7 @@ func (h *API) SetDoneColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, id) {
 		return
 	}
 	var req struct {
@@ -349,7 +513,7 @@ func (h *API) CreateColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireProjectWritable(c, boardID) {
 		return
 	}
 	var req struct {
@@ -415,7 +579,7 @@ func (h *API) UpdateColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -457,7 +621,7 @@ func (h *API) MoveColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
 	col, err := h.q.GetColumn(c, id)
@@ -473,12 +637,27 @@ func (h *API) MoveColumn(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	prev, next, ok := h.neighborColumnPositions(c, req.BeforeID, req.AfterID)
+	if rejectSameNeighbour(c, req.BeforeID, req.AfterID) {
+		return
+	}
+	prev, next, ok := h.neighborColumnPositions(c, col.BoardID, req.BeforeID, req.AfterID)
+	if !ok {
+		return
+	}
+	pos, ok := h.positionForReorder(c, prev, next,
+		func() error {
+			return h.q.RebalanceColumnPositions(c, db.RebalanceColumnPositionsParams{
+				BoardID: col.BoardID, Gap: positionGap,
+			})
+		},
+		func() (*float64, *float64, bool) {
+			return h.neighborColumnPositions(c, col.BoardID, req.BeforeID, req.AfterID)
+		})
 	if !ok {
 		return
 	}
 	updated, err := h.q.UpdateColumn(c, db.UpdateColumnParams{
-		ID: id, Name: col.Name, Color: col.Color, Position: positionBetween(prev, next),
+		ID: id, Name: col.Name, Color: col.Color, Position: pos,
 	})
 	if err != nil {
 		fail(c, err)
@@ -488,7 +667,23 @@ func (h *API) MoveColumn(c *gin.Context) {
 	c.JSON(http.StatusOK, updated)
 }
 
-// DeleteColumn removes a column and its tasks.
+// columnMoveGap spaces the cards a column delete appends to its target — the
+// same ladder step a fresh column's cards get.
+const columnMoveGap = 1024.0
+
+// DeleteColumn soft-deletes a column (0078). Its cards no longer go with it:
+// they move to another column of the board, keeping their order, and
+// RestoreColumn can put everything back while the column is in the trash.
+//
+// The target is the board's first remaining column — except when the deleted
+// column was the completing one. Then the board's done flag moves to the
+// rightmost remaining column (an unannounced NULL would stop the board closing
+// anything, see #2588 and the repair in migration 0046), and the cards follow
+// it there: they are finished work, and dropping a hundred completed cards into
+// «К работе» would undo them in bulk. completed_at is left as it was either way,
+// and nothing is pushed to GitLab — this is housekeeping of the board, not a
+// move anyone made on a card. The last column of a board can't be deleted:
+// there would be nowhere to put its cards.
 func (h *API) DeleteColumn(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -502,24 +697,173 @@ func (h *API) DeleteColumn(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if !h.requireMember(c, wsID) {
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
 		return
 	}
-	if err := h.q.DeleteColumn(c, id); err != nil {
+	col, err := h.q.GetColumn(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "column.deleted", gin.H{"id": id})
+	var (
+		target    db.BoardColumn
+		moved     int64
+		repointed *db.Board
+	)
+	errLastColumn := errors.New("the last column of a board can't be deleted")
+	if err := h.inTx(c, func(q *db.Queries) error {
+		board, err := q.GetBoard(c, col.BoardID)
+		if err != nil {
+			return err
+		}
+		cols, err := q.ListColumns(c, col.BoardID)
+		if err != nil {
+			return err
+		}
+		rest := make([]db.BoardColumn, 0, len(cols))
+		for _, cc := range cols {
+			if cc.ID != id {
+				rest = append(rest, cc)
+			}
+		}
+		if len(rest) == 0 {
+			return errLastColumn
+		}
+		wasDone := board.DoneColumnID != nil && *board.DoneColumnID == id
+		target = rest[0]
+		if wasDone {
+			target = rest[len(rest)-1]
+		}
+		base, err := q.MaxTaskPositionInColumn(c, target.ID)
+		if err != nil {
+			return err
+		}
+		if _, err = q.RecordColumnMoves(c, db.RecordColumnMovesParams{MovedTo: target.ID, ColumnID: id}); err != nil {
+			return err
+		}
+		if moved, err = q.MoveColumnTasks(c, db.MoveColumnTasksParams{
+			Target: target.ID, Base: base, Gap: columnMoveGap, Source: id,
+		}); err != nil {
+			return err
+		}
+		subs, err := q.MoveColumnSubtasks(c, db.MoveColumnSubtasksParams{Target: target.ID, Source: id})
+		if err != nil {
+			return err
+		}
+		moved += subs
+		if _, err = q.SoftDeleteColumn(c, db.SoftDeleteColumnParams{WasDone: wasDone, ID: id}); err != nil {
+			return err
+		}
+		if !wasDone {
+			return nil
+		}
+		updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{ID: col.BoardID, DoneColumnID: &target.ID})
+		if err != nil {
+			return err
+		}
+		repointed = &updated
+		return nil
+	}); err != nil {
+		if errors.Is(err, errLastColumn) {
+			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			return
+		}
+		if notFound(c, err) {
+			return
+		}
+		fail(c, err)
+		return
+	}
+	h.broadcast(wsID, "column.deleted", gin.H{
+		"id": id, "board_id": col.BoardID, "moved_to": target.ID, "moved": moved,
+	})
+	if repointed != nil {
+		h.broadcast(wsID, "board.updated", *repointed)
+	}
 	c.Status(http.StatusNoContent)
+}
+
+// RestoreColumn undoes DeleteColumn: the column returns to its place, the cards
+// the delete moved go back to where they stood — those still in the column the
+// delete put them in; a card someone has moved since stays where they put it —
+// and a column deleted as the completing one gets the done flag back.
+func (h *API) RestoreColumn(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	wsID, err := h.q.WorkspaceIDForDeletedColumn(c, id)
+	if notFound(c, err) {
+		return
+	}
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	if !h.requireMember(c, wsID) || !h.requireColumnWritable(c, id) {
+		return
+	}
+	var (
+		col       db.BoardColumn
+		repointed *db.Board
+	)
+	if err := h.inTx(c, func(q *db.Queries) error {
+		before, err := q.GetColumnAny(c, id)
+		if err != nil {
+			return err
+		}
+		if col, err = q.RestoreColumn(c, id); err != nil {
+			return err
+		}
+		if _, err = q.RestoreColumnTasks(c, id); err != nil {
+			return err
+		}
+		if err = q.ClearColumnMoves(c, id); err != nil {
+			return err
+		}
+		if !before.DeletedWasDone {
+			return nil
+		}
+		updated, err := q.SetBoardDoneColumn(c, db.SetBoardDoneColumnParams{ID: col.BoardID, DoneColumnID: &col.ID})
+		if err != nil {
+			return err
+		}
+		repointed = &updated
+		return nil
+	}); err != nil {
+		if notFound(c, err) {
+			return
+		}
+		fail(c, err)
+		return
+	}
+	h.broadcast(wsID, "column.restored", gin.H{"id": col.ID, "board_id": col.BoardID, "column": col})
+	if repointed != nil {
+		h.broadcast(wsID, "board.updated", *repointed)
+	}
+	c.JSON(http.StatusOK, col)
 }
 
 // neighborColumnPositions resolves the positions of the before/after columns.
 // Returns (nil, nil) bounds when an id is absent; writes 400 and returns ok=false
-// if a referenced column can't be loaded.
-func (h *API) neighborColumnPositions(c *gin.Context, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
+// if a referenced column can't be loaded or doesn't stand on [boardID].
+//
+// The board check is the point, not a formality: every board numbers its columns
+// on its OWN float8 ladder, so a neighbour from another board contributes a
+// position that means nothing here — the moved column would land at an arbitrary
+// end of its own row. A neighbour id is client-supplied and can go stale (a drag
+// deliberately freezes the board, so a colleague's edits arrive only after the
+// drop), and `GetColumn` takes a bare id: without this, the id also answers
+// "does this column exist?" for workspaces the caller isn't a member of. Same
+// 400 either way, so the reply tells the two cases apart no better than the
+// honest one did (#2932).
+func (h *API) neighborColumnPositions(c *gin.Context, boardID uuid.UUID, beforeID, afterID *uuid.UUID) (prev, next *float64, ok bool) {
 	if beforeID != nil {
 		col, err := h.q.GetColumn(c, *beforeID)
-		if err != nil {
+		if err != nil || col.BoardID != boardID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid before_id"})
 			return nil, nil, false
 		}
@@ -527,7 +871,7 @@ func (h *API) neighborColumnPositions(c *gin.Context, beforeID, afterID *uuid.UU
 	}
 	if afterID != nil {
 		col, err := h.q.GetColumn(c, *afterID)
-		if err != nil {
+		if err != nil || col.BoardID != boardID {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "invalid after_id"})
 			return nil, nil, false
 		}

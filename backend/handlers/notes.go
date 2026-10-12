@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
@@ -10,50 +12,141 @@ import (
 	"tessera/middleware"
 )
 
-// CreateNote adds a note to a workspace.
+// Note visibility (0081, #3037). A private note is its author's alone: no other
+// member reads it in a list, a search, a task's section or a socket event, and
+// asking for it by id answers 404 rather than 403, so its existence does not
+// leak either. Notes made before 0081 were shared with the workspace and stay so.
+const (
+	noteShared  = "workspace"
+	notePrivate = "private"
+)
+
+func validNoteVisibility(v string) bool { return v == noteShared || v == notePrivate }
+
+// readTriStateID reads a nullable id that a PATCH may leave out: absent (nil
+// raw) keeps the current value, `null` clears it, a string sets it.
+func readTriStateID(raw json.RawMessage, cur *uuid.UUID) (*uuid.UUID, bool, error) {
+	if raw == nil {
+		return cur, false, nil
+	}
+	if bytes.Equal(bytes.TrimSpace(raw), []byte("null")) {
+		return nil, true, nil
+	}
+	var id uuid.UUID
+	if err := json.Unmarshal(raw, &id); err != nil {
+		return nil, false, err
+	}
+	return &id, true, nil
+}
+
+// broadcastNote sends a note event to the people allowed to read the note: the
+// whole workspace for a shared one, the author alone for a private one.
+func (h *API) broadcastNote(n db.Note, eventType string, payload any) {
+	if n.Visibility == notePrivate {
+		if n.AuthorID != nil {
+			h.broadcastToUser(n.WorkspaceID, *n.AuthorID, eventType, payload)
+		}
+		return
+	}
+	h.broadcast(n.WorkspaceID, eventType, payload)
+}
+
+// CreateNote adds a note to a workspace. `visibility` defaults to shared — the
+// behaviour every client had before 0081; the v2 capture asks for private.
 func (h *API) CreateNote(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok || !h.requireMember(c, wsID) {
 		return
 	}
 	var req struct {
-		Title     string     `json:"title" binding:"required"`
-		Body      string     `json:"body"`
-		ProjectID *uuid.UUID `json:"project_id"`
+		Title      string      `json:"title" binding:"required"`
+		Body       string      `json:"body"`
+		ProjectID  *uuid.UUID  `json:"project_id"`
+		TaskID     *uuid.UUID  `json:"task_id"`
+		Visibility *string     `json:"visibility"`
+		Tags       []string    `json:"tags"`
+		Mentions   []uuid.UUID `json:"mentions"`
+		// ClientID (#3042): the id the client gave a capture queued offline.
+		ClientID *uuid.UUID `json:"client_id"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+	if req.ClientID != nil {
+		// A resend of a capture that already landed: answer with it, no twin.
+		if prev, err := h.q.GetNote(c, *req.ClientID); err == nil {
+			if prev.AuthorID == nil || *prev.AuthorID != middleware.CurrentUser(c) || prev.WorkspaceID != wsID {
+				c.JSON(http.StatusConflict, gin.H{"error": "client_id taken"})
+				return
+			}
+			c.JSON(http.StatusOK, prev)
+			return
+		}
+	}
+	visibility := noteShared
+	if req.Visibility != nil {
+		if !validNoteVisibility(*req.Visibility) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown visibility"})
+			return
+		}
+		visibility = *req.Visibility
+	}
+	// The project arrives in the body, so the route's requireMember vouches for
+	// the workspace and nothing vouches for the project. Unchecked, the note is
+	// one DELETE away from being gone: notes.project_id is ON DELETE CASCADE.
+	if req.ProjectID != nil && !h.projectInWorkspace(c, *req.ProjectID, wsID) {
+		return
+	}
+	if req.TaskID != nil && !h.taskInWorkspace(c, *req.TaskID, wsID) {
+		return
+	}
+	tags, ok := normalizeRecordTags(c, req.Tags)
+	if !ok {
+		return
+	}
+	mentions, ok := h.recordMentions(c, &wsID, req.Mentions)
+	if !ok {
+		return
+	}
 	uid := middleware.CurrentUser(c)
 	note, err := h.q.CreateNote(c, db.CreateNoteParams{
+		ClientID:    req.ClientID,
 		WorkspaceID: wsID,
 		ProjectID:   req.ProjectID,
 		AuthorID:    &uid,
 		Title:       req.Title,
 		Body:        req.Body,
 		Slug:        h.uniqueNoteSlug(c, wsID, req.Title),
+		TaskID:      req.TaskID,
+		Visibility:  visibility,
+		Tags:        h.canonRecordTags(c, h.noteProjectID(c, req.TaskID, req.ProjectID), tags),
+		Mentions:    mentions,
 	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	h.broadcast(wsID, "note.created", note)
+	h.broadcastNote(note, "note.created", note)
+	h.notifyNoteMentions(c, note, nil)
 	c.JSON(http.StatusCreated, note)
 }
 
-// ListNotes lists a workspace's notes (most recently updated first).
+// ListNotes lists the workspace's notes the caller may read (most recently
+// updated first): the shared ones and the caller's own private ones.
 func (h *API) ListNotes(c *gin.Context) {
 	wsID, ok := parseID(c, "id")
 	if !ok || !h.requireMember(c, wsID) {
 		return
 	}
-	notes, err := h.q.ListNotes(c, wsID)
+	notes, err := h.q.ListNotes(c, db.ListNotesParams{
+		WorkspaceID: wsID, Viewer: middleware.CurrentUser(c),
+	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, notes)
+	c.JSON(http.StatusOK, orEmpty(notes))
 }
 
 // GetNote returns a single note.
@@ -65,26 +158,85 @@ func (h *API) GetNote(c *gin.Context) {
 	c.JSON(http.StatusOK, note)
 }
 
-// UpdateNote edits a note's title/body.
+// UpdateNote edits a note. title/body are replaced as before (every client
+// sends both); task_id and visibility are optional — absent keeps the current
+// value, task_id null unlinks. Only the author may change who sees the note.
 func (h *API) UpdateNote(c *gin.Context) {
 	note, ok := h.loadNote(c)
 	if !ok {
 		return
 	}
 	var req struct {
-		Title string `json:"title" binding:"required"`
-		Body  string `json:"body"`
+		Title      string          `json:"title" binding:"required"`
+		Body       string          `json:"body"`
+		TaskID     json.RawMessage `json:"task_id"`
+		Visibility *string         `json:"visibility"`
+		// Absent (or null) keeps the current tags / mentions: the older
+		// clients (Android) send title and body only.
+		Tags     *[]string    `json:"tags"`
+		Mentions *[]uuid.UUID `json:"mentions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
-	updated, err := h.q.UpdateNote(c, db.UpdateNoteParams{ID: note.ID, Title: req.Title, Body: req.Body})
+	taskID, taskSet, err := readTriStateID(req.TaskID, note.TaskID)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid task_id"})
+		return
+	}
+	if taskSet && taskID != nil && !h.taskInWorkspace(c, *taskID, note.WorkspaceID) {
+		return
+	}
+	visibility := note.Visibility
+	if req.Visibility != nil && *req.Visibility != note.Visibility {
+		if !validNoteVisibility(*req.Visibility) {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "unknown visibility"})
+			return
+		}
+		if note.AuthorID == nil || *note.AuthorID != middleware.CurrentUser(c) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "only the author changes who sees a note"})
+			return
+		}
+		visibility = *req.Visibility
+	}
+	tags := note.Tags
+	if req.Tags != nil {
+		if tags, ok = normalizeRecordTags(c, *req.Tags); !ok {
+			return
+		}
+	}
+	mentions := note.Mentions
+	if req.Mentions != nil {
+		if mentions, ok = h.recordMentions(c, &note.WorkspaceID, *req.Mentions); !ok {
+			return
+		}
+	}
+	if mentions == nil {
+		mentions = []uuid.UUID{}
+	}
+	// Re-read against the project every time: a note tied to another task may
+	// now live in a project that spells (or has) the tag differently.
+	tags = h.canonRecordTags(c, h.noteProjectID(c, taskID, note.ProjectID), tags)
+	updated, err := h.q.UpdateNote(c, db.UpdateNoteParams{
+		ID: note.ID, Title: req.Title, Body: req.Body, TaskID: taskID, Visibility: visibility,
+		Tags: tags, Mentions: mentions,
+	})
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	h.broadcast(note.WorkspaceID, "note.updated", updated)
+	// Going private takes the note away from everyone else: they get a delete,
+	// and the author (who received that delete too) the updated note after it.
+	if note.Visibility == noteShared && updated.Visibility == notePrivate {
+		h.broadcast(note.WorkspaceID, "note.deleted", gin.H{"id": note.ID})
+	}
+	h.broadcastNote(updated, "note.updated", updated)
+	var before []uuid.UUID
+	if note.Visibility == noteShared {
+		before = note.Mentions
+	}
+	h.notifyNoteMentions(c, updated, before)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -98,11 +250,41 @@ func (h *API) DeleteNote(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	h.broadcast(note.WorkspaceID, "note.deleted", gin.H{"id": note.ID})
+	h.broadcastNote(note, "note.deleted", gin.H{"id": note.ID})
 	c.Status(http.StatusNoContent)
 }
 
-// loadNote fetches a note (path param :id) and authorizes via its workspace.
+// ListTaskNotes lists the notes tied to a task that the caller may read (the
+// «Напоминания и заметки» section of the task modal, #2998). Only notes of the
+// task's own workspace: a task that moved away keeps its old notes' task_id,
+// and those notes stay with the workspace they were written in.
+func (h *API) ListTaskNotes(c *gin.Context) {
+	id, ok := parseID(c, "id")
+	if !ok {
+		return
+	}
+	t, wsID, ok := h.loadTask(c, id)
+	if !ok {
+		return
+	}
+	notes, err := h.q.ListTaskNotes(c, db.ListTaskNotesParams{
+		TaskID: &t.ID, Viewer: middleware.CurrentUser(c),
+	})
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	out := make([]db.Note, 0, len(notes))
+	for _, n := range notes {
+		if n.WorkspaceID == wsID {
+			out = append(out, n)
+		}
+	}
+	c.JSON(http.StatusOK, out)
+}
+
+// loadNote fetches a note (path param :id) and authorizes via its workspace. A
+// private note of somebody else is a 404 — the same answer as no note at all.
 func (h *API) loadNote(c *gin.Context) (db.Note, bool) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -117,6 +299,11 @@ func (h *API) loadNote(c *gin.Context) (db.Note, bool) {
 		return db.Note{}, false
 	}
 	if !h.requireMember(c, note.WorkspaceID) {
+		return db.Note{}, false
+	}
+	if note.Visibility == notePrivate &&
+		(note.AuthorID == nil || *note.AuthorID != middleware.CurrentUser(c)) {
+		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return db.Note{}, false
 	}
 	return note, true

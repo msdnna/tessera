@@ -73,12 +73,41 @@ describe('tour autostart', () => {
     expect(t.active).toBe(false)
   })
 
-  it('is silent on mobile and writes no ack there', () => {
+  // v2 (#3000): the phone has a tour of its own — a bottom sheet over the
+  // bottom navigation — instead of nothing. Starting it writes nothing.
+  it("opens the phone's «Основы» on mobile and writes no ack there", () => {
     const t = useTourStore()
-    expect(t.autoStart({ acked: new Set(), mobile: true })).toBe(false)
-    expect(t.active).toBe(false)
-    // The account keeps its right to the guide on a desktop: nothing was written.
+    expect(t.autoStart({ acked: new Set(), mobile: true })).toBe(true)
+    expect(t.chapter).toBe('mobile')
     expect(apiMock.acknowledgements.ack).not.toHaveBeenCalled()
+  })
+
+  it('opens «Знакомство» for an account invited into a space with projects', () => {
+    const t = useTourStore()
+    expect(t.autoStart({ acked: new Set(), invited: true })).toBe(true)
+    expect(t.chapter).toBe('welcome')
+  })
+
+  it('offers «Знакомство» once, then «Основы»', () => {
+    const t = useTourStore()
+    t.autoStart({ acked: new Set([TOUR_PREFIX + 'ch:welcome']), invited: true })
+    expect(t.chapter).toBe('basics')
+  })
+
+  it("is not put off by checklist results done on the user's own", () => {
+    const t = useTourStore()
+    expect(t.autoStart({ acked: new Set([TOUR_PREFIX + 'item:basics.project:self']) })).toBe(true)
+  })
+
+  it('resumes a chapter where a reload left it, but not across devices', () => {
+    localStorage.setItem(TOUR_STEP_KEY, 'basics:dnd-card')
+    const t = useTourStore()
+    t.autoStart({ acked: new Set() })
+    expect(t.current.id).toBe('dnd-card')
+    t.stop()
+    localStorage.setItem(TOUR_STEP_KEY, 'basics:dnd-card')
+    t.autoStart({ acked: new Set(), mobile: true })
+    expect(t.chapter).toBe('mobile')
   })
 
   it('accepts the acks as a plain array too', () => {
@@ -106,6 +135,8 @@ describe('tour autostart', () => {
     const t = useTourStore()
     expect(t.startGuide()).toBe(true)
     expect(t.current.id).toBe(GET_STARTED[0].id)
+    expect(t.startGuide({ mobile: true })).toBe(true)
+    expect(t.chapter).toBe('mobile')
   })
 })
 

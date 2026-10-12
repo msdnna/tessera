@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"math"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,6 +13,7 @@ import (
 	"github.com/google/uuid"
 
 	"tessera/internal/db"
+	"tessera/internal/jobs"
 )
 
 // journalRetention caps how many runs we keep per integration; older runs (and
@@ -70,6 +72,9 @@ type syncJournal struct {
 	deleted       int
 	status        string // overall run status; "ok" unless an action fails or the run aborts
 	errText       string // run-level error (a fetch/board failure that aborted the pull)
+	// live is the run's entry in the jobs registry, when it has one: every action
+	// also becomes a line of the jobs window's live log (#3067).
+	live *jobs.Handle
 }
 
 func (h *API) newJournal(integrationID uuid.UUID, kind, trigger string, actorID *uuid.UUID) *syncJournal {
@@ -137,6 +142,19 @@ func (j *syncJournal) add(a journalAction) {
 		j.status = "partial"
 	}
 	j.actions = append(j.actions, a)
+	if j.live != nil {
+		level, text := jobs.LevelInfo, a.Summary
+		if a.Status == "fail" {
+			level = jobs.LevelError
+			if a.Err != "" {
+				text += ": " + a.Err
+			}
+		}
+		if a.GlIid != nil {
+			text = "#" + strconv.FormatInt(*a.GlIid, 10) + " " + text
+		}
+		j.live.Log(level, text)
+	}
 }
 
 // abort records a run-level failure (e.g. the GitLab fetch failed before any
@@ -201,6 +219,8 @@ func (h *API) flushJournal(ctx context.Context, j *syncJournal) {
 			log.Printf("gitlab journal: create action failed: %v", cerr)
 		}
 	}
+	// #nosec G115 -- per-run counters over one sync of one GitLab project; they
+	// count rows we just wrote in this process, so int32 cannot overflow.
 	if ferr := h.q.FinishGitlabSyncRun(ctx, db.FinishGitlabSyncRunParams{
 		ID: runID, Status: j.status, CreatedCount: int32(j.created), UpdatedCount: int32(j.updated),
 		DeletedCount: int32(j.deleted), ActionCount: int32(len(j.actions)), Error: j.errText,
@@ -239,7 +259,7 @@ func (h *API) ListGitlabSyncRuns(c *gin.Context) {
 	limit := int32(50)
 	if v := c.Query("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= journalRetention {
-			limit = int32(n)
+			limit = int32(n) // #nosec G109 G115 -- guarded above: 0 < n <= journalRetention
 		}
 	}
 	runs, err := h.q.ListGitlabSyncRunsByWorkspace(c, db.ListGitlabSyncRunsByWorkspaceParams{WorkspaceID: wsID, Limit: limit})
@@ -285,14 +305,16 @@ func (h *API) ListGitlabSyncActions(c *gin.Context) {
 	limit := int32(journalPageSize)
 	if v := c.Query("limit"); v != "" {
 		if n, err := strconv.Atoi(v); err == nil && n > 0 && n <= journalPageMax {
-			limit = int32(n)
+			limit = int32(n) // #nosec G109 G115 -- guarded above: 0 < n <= journalPageMax
 		}
 	}
 	// seq is 0-based, so -1 is "before the first row" (includes seq 0).
 	afterSeq := int32(-1)
 	if v := c.Query("after_seq"); v != "" {
-		if n, err := strconv.Atoi(v); err == nil {
-			afterSeq = int32(n)
+		// seq is a DB int32; anything outside that range can only be a bogus
+		// cursor, so keep the default rather than wrapping around.
+		if n, err := strconv.Atoi(v); err == nil && n >= -1 && n <= math.MaxInt32 {
+			afterSeq = int32(n) // #nosec G109 -- guarded above: -1 <= n <= MaxInt32
 		}
 	}
 	rows, err := h.q.ListGitlabSyncActionsPage(c, db.ListGitlabSyncActionsPageParams{
@@ -305,7 +327,7 @@ func (h *API) ListGitlabSyncActions(c *gin.Context) {
 	if rows == nil {
 		rows = []db.ListGitlabSyncActionsPageRow{}
 	}
-	hasMore := int32(len(rows)) == limit
+	hasMore := int32(len(rows)) == limit // #nosec G115 -- len(rows) <= limit, itself an int32
 	var nextAfterSeq *int32
 	if hasMore {
 		s := rows[len(rows)-1].Seq

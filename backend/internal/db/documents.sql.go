@@ -12,8 +12,80 @@ import (
 	"github.com/google/uuid"
 )
 
+const clearDocumentConferencesAcrossWorkspaces = `-- name: ClearDocumentConferencesAcrossWorkspaces :execrows
+UPDATE documents d
+SET conference_id = NULL
+WHERE d.conference_id IS NOT NULL
+  AND d.project_id = $1::uuid
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT c.workspace_id FROM conferences c WHERE c.id = d.conference_id)
+`
+
+func (q *Queries) ClearDocumentConferencesAcrossWorkspaces(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, clearDocumentConferencesAcrossWorkspaces, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const clearDocumentMilestonesAcrossWorkspaces = `-- name: ClearDocumentMilestonesAcrossWorkspaces :execrows
+UPDATE documents d
+SET milestone_id = NULL
+WHERE d.milestone_id IS NOT NULL
+  AND (
+        d.project_id = $1::uuid
+     OR d.milestone_id IN (SELECT m.id FROM milestones m WHERE m.project_id = $1::uuid)
+      )
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT p.workspace_id FROM milestones m JOIN projects p ON p.id = m.project_id
+       WHERE m.id = d.milestone_id)
+`
+
+// ClearDocumentMilestonesAcrossWorkspaces and ClearDocumentConferencesAcrossWorkspaces
+// unpin what a project transfer carried across the boundary: the project's
+// documents travel, its stages travel, a meeting never does. A pin left
+// straddling it would hand the arriving team a stage or a meeting title of a
+// workspace they cannot see (and the stage page would list a stranger's document).
+func (q *Queries) ClearDocumentMilestonesAcrossWorkspaces(ctx context.Context, projectID uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, clearDocumentMilestonesAcrossWorkspaces, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const countDocumentAssetRefs = `-- name: CountDocumentAssetRefs :one
+SELECT (
+    (SELECT count(*) FROM documents WHERE content::text LIKE $1::text)
+  + (SELECT count(*) FROM document_templates WHERE content::text LIKE $1::text)
+  + (SELECT count(*) FROM document_versions WHERE content::text LIKE $1::text)
+)::bigint
+`
+
+// CountDocumentAssetRefs counts the bodies that still embed images belonging to
+// one document — the guard in front of deleting its directory.
+//
+// A document's images are stored under its own id and referenced only by the src
+// attributes inside a body, with no row of their own. Usually that owner is the
+// only body pointing there, but not always: saving a document as a template
+// copies its content verbatim (signed URLs included), and so does creating a
+// document from that template, so one directory can back a whole family. The
+// needle is therefore matched against all three places a body can live, with no
+// workspace filter — a transferred project carries its documents across the
+// boundary while the URLs keep naming the original document.
+//
+// Called after the delete, so the document's own row and its versions (cascade)
+// are already gone and need no exclusion.
+func (q *Queries) CountDocumentAssetRefs(ctx context.Context, needle string) (int64, error) {
+	row := q.db.QueryRow(ctx, countDocumentAssetRefs, needle)
+	var column_1 int64
+	err := row.Scan(&column_1)
+	return column_1, err
+}
+
 const countDocumentChildren = `-- name: CountDocumentChildren :one
-SELECT count(*) FROM documents WHERE parent_id = $1
+SELECT count(*) FROM documents WHERE parent_id = $1 AND deleted_at IS NULL
 `
 
 func (q *Queries) CountDocumentChildren(ctx context.Context, parentID *uuid.UUID) (int64, error) {
@@ -24,22 +96,24 @@ func (q *Queries) CountDocumentChildren(ctx context.Context, parentID *uuid.UUID
 }
 
 const createDocument = `-- name: CreateDocument :one
-INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+INSERT INTO documents (workspace_id, project_id, parent_id, author_id, title, slug, icon, position, content, preview, milestone_id, conference_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
 `
 
 type CreateDocumentParams struct {
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	ProjectID   *uuid.UUID `json:"project_id"`
-	ParentID    *uuid.UUID `json:"parent_id"`
-	AuthorID    *uuid.UUID `json:"author_id"`
-	Title       string     `json:"title"`
-	Slug        string     `json:"slug"`
-	Icon        string     `json:"icon"`
-	Position    float64    `json:"position"`
-	Content     []byte     `json:"content"`
-	Preview     string     `json:"preview"`
+	WorkspaceID  uuid.UUID  `json:"workspace_id"`
+	ProjectID    *uuid.UUID `json:"project_id"`
+	ParentID     *uuid.UUID `json:"parent_id"`
+	AuthorID     *uuid.UUID `json:"author_id"`
+	Title        string     `json:"title"`
+	Slug         string     `json:"slug"`
+	Icon         string     `json:"icon"`
+	Position     float64    `json:"position"`
+	Content      []byte     `json:"content"`
+	Preview      string     `json:"preview"`
+	MilestoneID  *uuid.UUID `json:"milestone_id"`
+	ConferenceID *uuid.UUID `json:"conference_id"`
 }
 
 // CreateDocument takes content and preview rather than leaving both at their
@@ -48,6 +122,9 @@ type CreateDocumentParams struct {
 // keeps the new document's history honest: a document that starts as a template
 // has no "empty" state anyone could roll back to, and the version journal (D6)
 // would otherwise record one.
+//
+// milestone_id and conference_id (#3044, #3046) are taken at birth so that
+// «Повестка встречи» from the gallery is created already pinned to its meeting.
 func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) (Document, error) {
 	row := q.db.QueryRow(ctx, createDocument,
 		arg.WorkspaceID,
@@ -60,6 +137,8 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		arg.Position,
 		arg.Content,
 		arg.Preview,
+		arg.MilestoneID,
+		arg.ConferenceID,
 	)
 	var i Document
 	err := row.Scan(
@@ -76,31 +155,94 @@ func (q *Queries) CreateDocument(ctx context.Context, arg CreateDocumentParams) 
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
 
-const deleteDocumentSubtree = `-- name: DeleteDocumentSubtree :exec
+const deleteDocumentSubtree = `-- name: DeleteDocumentSubtree :many
 WITH RECURSIVE down AS (
     SELECT a.id FROM documents a WHERE a.id = $1
-    UNION ALL
+    UNION
     SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id
 )
-DELETE FROM documents WHERE documents.id IN (SELECT id FROM down)
+DELETE FROM documents WHERE documents.id IN (SELECT id FROM down) RETURNING documents.id
 `
 
 // DeleteDocumentSubtree removes a document together with everything nested
 // below it. One statement, so the parent_id RESTRICT never sees an intermediate
-// state with a dangling child.
-func (q *Queries) DeleteDocumentSubtree(ctx context.Context, id uuid.UUID) error {
-	_, err := q.db.Exec(ctx, deleteDocumentSubtree, id)
-	return err
+// state with a dangling child. UNION for the cycle safety described above — a
+// delete that never returns is the worst place to meet a ring.
+// Returns the ids it actually removed, which is what the image sweep needs: the
+// files under documents/<id>/ are named by nothing but the bodies this statement
+// just erased, and the Go-side walk cannot stand in for the list (it is filtered
+// by workspace, while this recursion is not — see
+// DetachDocumentParentsAcrossWorkspaces below).
+func (q *Queries) DeleteDocumentSubtree(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, deleteDocumentSubtree, id)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const detachDocumentParentsAcrossWorkspaces = `-- name: DetachDocumentParentsAcrossWorkspaces :execrows
+UPDATE documents d
+SET parent_id = NULL
+WHERE d.parent_id IS NOT NULL
+  AND (
+        d.project_id = $1
+     OR (SELECT p.project_id FROM documents p WHERE p.id = d.parent_id) = $1
+      )
+  AND d.workspace_id IS DISTINCT FROM
+      (SELECT p.workspace_id FROM documents p WHERE p.id = d.parent_id)
+`
+
+// DetachDocumentParentsAcrossWorkspaces clears parent_id on every nesting
+// touching the given project whose two ends now sit in different workspaces —
+// the state a project transfer leaves behind, since a document's nesting and
+// its project are independent columns and only one of the pair travels.
+// parentInWorkspace refuses such a pair outright ("parent belongs to another
+// workspace"), so it can only appear when the boundary moves under an existing
+// nesting, and nothing downstream expects it: CountDocumentChildren and
+// DeleteDocumentSubtree walk parent_id with no workspace filter (an undeletable
+// parent with an invisible child, and a ?recursive=true that deletes another
+// workspace's documents), while ListDocuments is per workspace and the tree is
+// assembled from parent_id client-side, so a child whose parent is not in the
+// list renders nowhere at all. Detaching surfaces it at the root of the
+// workspace that now owns it, which is where a document with no parent belongs.
+//
+// updated_at is deliberately left alone: it is the optimistic-concurrency token
+// UpdateDocumentContent checks, and bumping it for a change that never touched
+// the body would answer 409 to the next save of whoever has the document open.
+// Returns the number of nestings detached.
+func (q *Queries) DetachDocumentParentsAcrossWorkspaces(ctx context.Context, projectID *uuid.UUID) (int64, error) {
+	result, err := q.db.Exec(ctx, detachDocumentParentsAcrossWorkspaces, projectID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
 }
 
 const documentAncestorIDs = `-- name: DocumentAncestorIDs :many
 WITH RECURSIVE up AS (
     SELECT a.id, a.parent_id FROM documents a WHERE a.id = $1
-    UNION ALL
+    UNION
     SELECT d.id, d.parent_id FROM documents d JOIN up ON d.id = up.parent_id
 )
 SELECT id FROM up
@@ -112,6 +254,11 @@ SELECT id FROM up
 // table. The membership test is done in Go: sqlc's analyzer cannot resolve a
 // recursive CTE referenced from inside a subquery, so EXISTS(...) here does not
 // generate.
+//
+// UNION, not UNION ALL, and for the same reason as the task and project-group
+// walks: the guard keeps the tree acyclic, but a ring that slips in anyway (two
+// concurrent re-parents racing the check, an import, a manual fix) makes UNION ALL
+// recurse forever, while UNION drops the repeat and stops (#2932).
 func (q *Queries) DocumentAncestorIDs(ctx context.Context, id uuid.UUID) ([]uuid.UUID, error) {
 	rows, err := q.db.Query(ctx, documentAncestorIDs, id)
 	if err != nil {
@@ -130,6 +277,113 @@ func (q *Queries) DocumentAncestorIDs(ctx context.Context, id uuid.UUID) ([]uuid
 		return nil, err
 	}
 	return items, nil
+}
+
+const documentIDsInProject = `-- name: DocumentIDsInProject :many
+SELECT id FROM documents WHERE project_id = $1
+`
+
+// DocumentIDsInProject names the documents a project transfer is about to carry
+// into another workspace, so their live rooms can be dropped the way a workspace
+// delete drops the ones its cascade takes (DocumentIDsInWorkspace).
+//
+// Read inside the transfer's transaction: project_id does not move, so the list
+// is the same before and after the re-stamp, but reading it there is what makes
+// it the list the transfer actually took.
+func (q *Queries) DocumentIDsInProject(ctx context.Context, projectID *uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, documentIDsInProject, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const documentIDsInWorkspace = `-- name: DocumentIDsInWorkspace :many
+SELECT id FROM documents WHERE workspace_id = $1
+`
+
+// DocumentIDsInWorkspace names the documents a workspace delete is about to take
+// by cascade (documents.workspace_id is ON DELETE CASCADE), so their image
+// directories can be swept the way DeleteDocument sweeps its own (purgeDocAssets).
+//
+// Read before the delete and in the same transaction, for the reason
+// TaskIDsInWorkspace is: DELETE ... RETURNING answers for the rows of the table it
+// names, never for the ones the foreign keys take afterwards — and a document's
+// images are named by nothing but the body that is leaving with it.
+func (q *Queries) DocumentIDsInWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, documentIDsInWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const documentMilestoneRef = `-- name: DocumentMilestoneRef :one
+SELECT m.id, m.title, m.slug, m.state, m.start_date, m.due_date, m.closed_at,
+       p.id AS project_id, p.name AS project_name, p.slug AS project_slug,
+       p.workspace_id
+FROM milestones m
+JOIN projects p ON p.id = m.project_id
+WHERE m.id = $1
+`
+
+type DocumentMilestoneRefRow struct {
+	ID          uuid.UUID  `json:"id"`
+	Title       string     `json:"title"`
+	Slug        string     `json:"slug"`
+	State       string     `json:"state"`
+	StartDate   *time.Time `json:"start_date"`
+	DueDate     *time.Time `json:"due_date"`
+	ClosedAt    *time.Time `json:"closed_at"`
+	ProjectID   uuid.UUID  `json:"project_id"`
+	ProjectName string     `json:"project_name"`
+	ProjectSlug string     `json:"project_slug"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+}
+
+// DocumentMilestoneRef is what the head's stage chip draws and links to: the
+// stage, its state, and the project its page lives under.
+func (q *Queries) DocumentMilestoneRef(ctx context.Context, id uuid.UUID) (DocumentMilestoneRefRow, error) {
+	row := q.db.QueryRow(ctx, documentMilestoneRef, id)
+	var i DocumentMilestoneRefRow
+	err := row.Scan(
+		&i.ID,
+		&i.Title,
+		&i.Slug,
+		&i.State,
+		&i.StartDate,
+		&i.DueDate,
+		&i.ClosedAt,
+		&i.ProjectID,
+		&i.ProjectName,
+		&i.ProjectSlug,
+		&i.WorkspaceID,
+	)
+	return i, err
 }
 
 const documentSlugExists = `-- name: DocumentSlugExists :one
@@ -179,9 +433,12 @@ func (q *Queries) DocumentsMissingSlug(ctx context.Context) ([]DocumentsMissingS
 }
 
 const getDocument = `-- name: GetDocument :one
-SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview FROM documents WHERE id = $1
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id FROM documents WHERE id = $1 AND deleted_at IS NULL
 `
 
+// GetDocument answers for live documents only: one in the trash (0086) is gone
+// for every reader — its comments, versions, approvals and live room included.
+// GetDocumentAny is for the trash's own restore and purge.
 func (q *Queries) GetDocument(ctx context.Context, id uuid.UUID) (Document, error) {
 	row := q.db.QueryRow(ctx, getDocument, id)
 	var i Document
@@ -199,12 +456,45 @@ func (q *Queries) GetDocument(ctx context.Context, id uuid.UUID) (Document, erro
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
+	)
+	return i, err
+}
+
+const getDocumentAny = `-- name: GetDocumentAny :one
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id FROM documents WHERE id = $1
+`
+
+func (q *Queries) GetDocumentAny(ctx context.Context, id uuid.UUID) (Document, error) {
+	row := q.db.QueryRow(ctx, getDocumentAny, id)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ParentID,
+		&i.ProjectID,
+		&i.AuthorID,
+		&i.Title,
+		&i.Slug,
+		&i.Icon,
+		&i.Content,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
 
 const getDocumentBySlug = `-- name: GetDocumentBySlug :one
-SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview FROM documents WHERE workspace_id = $1 AND slug = $2
+SELECT id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id FROM documents WHERE workspace_id = $1 AND slug = $2 AND deleted_at IS NULL
 `
 
 type GetDocumentBySlugParams struct {
@@ -229,14 +519,89 @@ func (q *Queries) GetDocumentBySlug(ctx context.Context, arg GetDocumentBySlugPa
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
+}
+
+const listDeletedDocuments = `-- name: ListDeletedDocuments :many
+SELECT d.id, d.workspace_id, d.project_id, d.parent_id, d.author_id, d.title, d.slug, d.icon,
+       d.preview, d.position, d.created_at, d.updated_at, d.deleted_at,
+       COALESCE(u.name, '')::text AS deleted_by_name,
+       (SELECT count(*) FROM documents s WHERE s.parent_id = d.id AND s.deleted_at = d.deleted_at)::bigint AS child_count
+FROM documents d
+LEFT JOIN users u ON u.id = d.deleted_by
+WHERE d.workspace_id = $1
+  AND d.deleted_at IS NOT NULL
+  AND NOT EXISTS (SELECT 1 FROM documents p WHERE p.id = d.parent_id AND p.deleted_at = d.deleted_at)
+ORDER BY d.deleted_at DESC, d.title
+`
+
+type ListDeletedDocumentsRow struct {
+	ID            uuid.UUID  `json:"id"`
+	WorkspaceID   uuid.UUID  `json:"workspace_id"`
+	ProjectID     *uuid.UUID `json:"project_id"`
+	ParentID      *uuid.UUID `json:"parent_id"`
+	AuthorID      *uuid.UUID `json:"author_id"`
+	Title         string     `json:"title"`
+	Slug          string     `json:"slug"`
+	Icon          string     `json:"icon"`
+	Preview       string     `json:"preview"`
+	Position      float64    `json:"position"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DeletedAt     *time.Time `json:"deleted_at"`
+	DeletedByName string     `json:"deleted_by_name"`
+	ChildCount    int64      `json:"child_count"`
+}
+
+// ListDeletedDocuments is the documents' «Корзина» (0086): every document that
+// went there as an entry of its own — a root deleted with its subtree, or a
+// nested one deleted alone. Documents that went with their root (same stamp)
+// come back with it and are not listed. Newest first.
+func (q *Queries) ListDeletedDocuments(ctx context.Context, workspaceID uuid.UUID) ([]ListDeletedDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, listDeletedDocuments, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListDeletedDocumentsRow
+	for rows.Next() {
+		var i ListDeletedDocumentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.WorkspaceID,
+			&i.ProjectID,
+			&i.ParentID,
+			&i.AuthorID,
+			&i.Title,
+			&i.Slug,
+			&i.Icon,
+			&i.Preview,
+			&i.Position,
+			&i.CreatedAt,
+			&i.UpdatedAt,
+			&i.DeletedAt,
+			&i.DeletedByName,
+			&i.ChildCount,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const listDocuments = `-- name: ListDocuments :many
 SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
-WHERE workspace_id = $1
+WHERE workspace_id = $1 AND deleted_at IS NULL
 ORDER BY position, created_at
 `
 
@@ -296,7 +661,7 @@ func (q *Queries) ListDocuments(ctx context.Context, workspaceID uuid.UUID) ([]L
 const listDocumentsByProject = `-- name: ListDocumentsByProject :many
 SELECT id, workspace_id, project_id, parent_id, author_id, title, slug, icon, preview, position, created_at, updated_at
 FROM documents
-WHERE workspace_id = $1 AND project_id = $2
+WHERE workspace_id = $1 AND project_id = $2 AND deleted_at IS NULL
 ORDER BY position, created_at
 `
 
@@ -353,6 +718,170 @@ func (q *Queries) ListDocumentsByProject(ctx context.Context, arg ListDocumentsB
 	return items, nil
 }
 
+const listMilestoneDocuments = `-- name: ListMilestoneDocuments :many
+SELECT id, title, slug, icon, preview, updated_at
+FROM documents
+WHERE milestone_id = $1 AND workspace_id = $2 AND deleted_at IS NULL
+ORDER BY updated_at DESC
+LIMIT 50
+`
+
+type ListMilestoneDocumentsParams struct {
+	MilestoneID *uuid.UUID `json:"milestone_id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+}
+
+type ListMilestoneDocumentsRow struct {
+	ID        uuid.UUID `json:"id"`
+	Title     string    `json:"title"`
+	Slug      string    `json:"slug"`
+	Icon      string    `json:"icon"`
+	Preview   string    `json:"preview"`
+	UpdatedAt time.Time `json:"updated_at"`
+}
+
+// ListMilestoneDocuments — the documents of a stage, for its page (#3044). The
+// workspace filter is a backstop: the pin is checked at the door and severed on a
+// transfer, and a list naming another team's document is the leak both exist for.
+func (q *Queries) ListMilestoneDocuments(ctx context.Context, arg ListMilestoneDocumentsParams) ([]ListMilestoneDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, listMilestoneDocuments, arg.MilestoneID, arg.WorkspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListMilestoneDocumentsRow
+	for rows.Next() {
+		var i ListMilestoneDocumentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.Title,
+			&i.Slug,
+			&i.Icon,
+			&i.Preview,
+			&i.UpdatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listWorkspaceConferenceDocuments = `-- name: ListWorkspaceConferenceDocuments :many
+SELECT d.id, d.conference_id, d.title, d.slug, d.icon, d.created_at
+FROM documents d
+JOIN conferences c ON c.id = d.conference_id
+WHERE d.workspace_id = $1 AND c.workspace_id = $1 AND d.deleted_at IS NULL
+ORDER BY d.created_at
+`
+
+type ListWorkspaceConferenceDocumentsRow struct {
+	ID           uuid.UUID  `json:"id"`
+	ConferenceID *uuid.UUID `json:"conference_id"`
+	Title        string     `json:"title"`
+	Slug         string     `json:"slug"`
+	Icon         string     `json:"icon"`
+	CreatedAt    time.Time  `json:"created_at"`
+}
+
+// ListWorkspaceConferenceDocuments — every document pinned to a meeting of the
+// workspace, in one read for the meetings list (an agenda chip per row) rather
+// than a request per row.
+func (q *Queries) ListWorkspaceConferenceDocuments(ctx context.Context, workspaceID uuid.UUID) ([]ListWorkspaceConferenceDocumentsRow, error) {
+	rows, err := q.db.Query(ctx, listWorkspaceConferenceDocuments, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListWorkspaceConferenceDocumentsRow
+	for rows.Next() {
+		var i ListWorkspaceConferenceDocumentsRow
+		if err := rows.Scan(
+			&i.ID,
+			&i.ConferenceID,
+			&i.Title,
+			&i.Slug,
+			&i.Icon,
+			&i.CreatedAt,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const projectDocumentSlugs = `-- name: ProjectDocumentSlugs :many
+SELECT id, slug FROM documents WHERE project_id = $1 ORDER BY created_at
+`
+
+type ProjectDocumentSlugsRow struct {
+	ID   uuid.UUID `json:"id"`
+	Slug string    `json:"slug"`
+}
+
+// ProjectDocumentSlugs lists the addresses a project's documents occupy. A
+// document's slug is unique per workspace, so a transfer has to know them to
+// free the ones the target workspace already uses.
+func (q *Queries) ProjectDocumentSlugs(ctx context.Context, projectID *uuid.UUID) ([]ProjectDocumentSlugsRow, error) {
+	rows, err := q.db.Query(ctx, projectDocumentSlugs, projectID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ProjectDocumentSlugsRow
+	for rows.Next() {
+		var i ProjectDocumentSlugsRow
+		if err := rows.Scan(&i.ID, &i.Slug); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const purgeDeletedDocuments = `-- name: PurgeDeletedDocuments :many
+WITH RECURSIVE down AS (
+    SELECT a.id FROM documents a WHERE a.deleted_at IS NOT NULL AND a.deleted_at < $1::timestamptz
+    UNION
+    SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id
+)
+DELETE FROM documents WHERE documents.id IN (SELECT id FROM down) RETURNING documents.id
+`
+
+// PurgeDeletedDocuments removes for good the documents that stayed in the trash
+// past the cutoff, with everything nested below them — one statement, so the
+// parent_id RESTRICT is checked against the end state (DeleteDocumentSubtree).
+// Returns the ids for the image sweep.
+func (q *Queries) PurgeDeletedDocuments(ctx context.Context, cutoff time.Time) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, purgeDeletedDocuments, cutoff)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const reassignProjectDocumentsWorkspace = `-- name: ReassignProjectDocumentsWorkspace :exec
 UPDATE documents SET workspace_id = $2 WHERE project_id = $1
 `
@@ -372,11 +901,90 @@ func (q *Queries) ReassignProjectDocumentsWorkspace(ctx context.Context, arg Rea
 	return err
 }
 
+const restoreDocumentSubtree = `-- name: RestoreDocumentSubtree :many
+WITH RECURSIVE down AS (
+    SELECT a.id, a.deleted_at, a.deleted_at AS root_deleted_at
+    FROM documents a WHERE a.id = $1 AND a.deleted_at IS NOT NULL
+    UNION
+    SELECT d.id, d.deleted_at, down.root_deleted_at
+    FROM documents d JOIN down ON d.parent_id = down.id
+), taken AS (
+    SELECT down.id FROM down WHERE down.deleted_at = down.root_deleted_at
+)
+UPDATE documents SET deleted_at = NULL, deleted_by = NULL,
+    parent_id = CASE WHEN documents.id = $1 AND $2::boolean THEN NULL ELSE documents.parent_id END
+WHERE documents.id IN (SELECT taken.id FROM taken)
+RETURNING documents.id
+`
+
+type RestoreDocumentSubtreeParams struct {
+	ID     uuid.UUID `json:"id"`
+	Detach bool      `json:"detach"`
+}
+
+// RestoreDocumentSubtree takes a document out of the trash with what went in
+// with it. A root whose parent is still in the trash comes back at the top
+// level (detach): under a parent nobody can see it would sit nowhere in the tree.
+// updated_at is left alone — it is the content's optimistic-concurrency token.
+func (q *Queries) RestoreDocumentSubtree(ctx context.Context, arg RestoreDocumentSubtreeParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, restoreDocumentSubtree, arg.ID, arg.Detach)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const setDocumentConference = `-- name: SetDocumentConference :one
+UPDATE documents SET conference_id = $2 WHERE id = $1 RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
+`
+
+type SetDocumentConferenceParams struct {
+	ID           uuid.UUID  `json:"id"`
+	ConferenceID *uuid.UUID `json:"conference_id"`
+}
+
+func (q *Queries) SetDocumentConference(ctx context.Context, arg SetDocumentConferenceParams) (Document, error) {
+	row := q.db.QueryRow(ctx, setDocumentConference, arg.ID, arg.ConferenceID)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ParentID,
+		&i.ProjectID,
+		&i.AuthorID,
+		&i.Title,
+		&i.Slug,
+		&i.Icon,
+		&i.Content,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
+	)
+	return i, err
+}
+
 const setDocumentContent = `-- name: SetDocumentContent :one
 UPDATE documents
 SET content = $2, preview = $3, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
 `
 
 type SetDocumentContentParams struct {
@@ -408,6 +1016,48 @@ func (q *Queries) SetDocumentContent(ctx context.Context, arg SetDocumentContent
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
+	)
+	return i, err
+}
+
+const setDocumentMilestone = `-- name: SetDocumentMilestone :one
+UPDATE documents SET milestone_id = $2 WHERE id = $1 RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
+`
+
+type SetDocumentMilestoneParams struct {
+	ID          uuid.UUID  `json:"id"`
+	MilestoneID *uuid.UUID `json:"milestone_id"`
+}
+
+// SetDocumentMilestone / SetDocumentConference pin a document to a stage (#3044)
+// or to a meeting (#3046). Neither touches updated_at: it is the
+// optimistic-concurrency token UpdateDocumentContent checks, and a chip in the
+// head changing must not answer 409 to the next save of whoever is typing.
+func (q *Queries) SetDocumentMilestone(ctx context.Context, arg SetDocumentMilestoneParams) (Document, error) {
+	row := q.db.QueryRow(ctx, setDocumentMilestone, arg.ID, arg.MilestoneID)
+	var i Document
+	err := row.Scan(
+		&i.ID,
+		&i.WorkspaceID,
+		&i.ParentID,
+		&i.ProjectID,
+		&i.AuthorID,
+		&i.Title,
+		&i.Slug,
+		&i.Icon,
+		&i.Content,
+		&i.Position,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
@@ -426,11 +1076,51 @@ func (q *Queries) SetDocumentSlug(ctx context.Context, arg SetDocumentSlugParams
 	return err
 }
 
+const softDeleteDocumentSubtree = `-- name: SoftDeleteDocumentSubtree :many
+WITH RECURSIVE down AS (
+    SELECT a.id FROM documents a WHERE a.id = $2 AND a.deleted_at IS NULL
+    UNION
+    SELECT d.id FROM documents d JOIN down ON d.parent_id = down.id WHERE d.deleted_at IS NULL
+)
+UPDATE documents SET deleted_at = now(), deleted_by = $1::uuid
+WHERE id IN (SELECT id FROM down)
+RETURNING id
+`
+
+type SoftDeleteDocumentSubtreeParams struct {
+	DeletedBy *uuid.UUID `json:"deleted_by"`
+	ID        uuid.UUID  `json:"id"`
+}
+
+// SoftDeleteDocumentSubtree puts a document and every live document nested
+// below it in the trash with one stamp — the RestoreTask trick: the restore
+// gives back exactly what went in together. Returns the ids taken (their live
+// rooms are dropped).
+func (q *Queries) SoftDeleteDocumentSubtree(ctx context.Context, arg SoftDeleteDocumentSubtreeParams) ([]uuid.UUID, error) {
+	rows, err := q.db.Query(ctx, softDeleteDocumentSubtree, arg.DeletedBy, arg.ID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []uuid.UUID
+	for rows.Next() {
+		var id uuid.UUID
+		if err := rows.Scan(&id); err != nil {
+			return nil, err
+		}
+		items = append(items, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
 const updateDocumentContent = `-- name: UpdateDocumentContent :one
 UPDATE documents
 SET content = $2, preview = $3, updated_at = now()
 WHERE id = $1 AND updated_at = $4
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
 `
 
 type UpdateDocumentContentParams struct {
@@ -467,6 +1157,10 @@ func (q *Queries) UpdateDocumentContent(ctx context.Context, arg UpdateDocumentC
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }
@@ -475,7 +1169,7 @@ const updateDocumentMeta = `-- name: UpdateDocumentMeta :one
 UPDATE documents
 SET title = $2, icon = $3, parent_id = $4, project_id = $5, position = $6, updated_at = now()
 WHERE id = $1
-RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview
+RETURNING id, workspace_id, parent_id, project_id, author_id, title, slug, icon, content, position, created_at, updated_at, preview, deleted_at, deleted_by, milestone_id, conference_id
 `
 
 type UpdateDocumentMetaParams struct {
@@ -511,6 +1205,10 @@ func (q *Queries) UpdateDocumentMeta(ctx context.Context, arg UpdateDocumentMeta
 		&i.CreatedAt,
 		&i.UpdatedAt,
 		&i.Preview,
+		&i.DeletedAt,
+		&i.DeletedBy,
+		&i.MilestoneID,
+		&i.ConferenceID,
 	)
 	return i, err
 }

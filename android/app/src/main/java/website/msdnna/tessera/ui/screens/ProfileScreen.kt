@@ -51,6 +51,7 @@ import website.msdnna.tessera.data.api.TlsTrust
 import website.msdnna.tessera.data.model.Preferences
 import website.msdnna.tessera.data.model.ProfileUpdate
 import website.msdnna.tessera.data.repository.ProfileRepository
+import website.msdnna.tessera.ui.UiText
 import website.msdnna.tessera.ui.components.InsecureTlsRow
 import website.msdnna.tessera.ui.components.IonIcon
 import website.msdnna.tessera.ui.components.TButton
@@ -67,13 +68,20 @@ import website.msdnna.tessera.ui.theme.RadiusLg
 import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
+import website.msdnna.tessera.util.AvatarPickError
 import website.msdnna.tessera.util.DateFormatPrefs
 import website.msdnna.tessera.util.DatePresets
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.avatarBustUrl
+import website.msdnna.tessera.util.avatarInitials
+import website.msdnna.tessera.util.avatarPickError
 import website.msdnna.tessera.util.countryOptions
+import website.msdnna.tessera.util.errorMessage
+import website.msdnna.tessera.util.isPasswordValid
 import website.msdnna.tessera.util.longDate
 import website.msdnna.tessera.util.normalizeDatePreset
 import website.msdnna.tessera.util.normalizeTimeFormat
+import website.msdnna.tessera.util.passwordError
 import website.msdnna.tessera.util.timezoneOptions
 
 /** Option labels are resolved in composition, so a language switch relabels the
@@ -154,7 +162,7 @@ fun ProfileScreen() {
         Text(stringResource(R.string.settings_title), color = c.text1, fontSize = 22.sp, fontWeight = FontWeight.Bold)
 
         ProfileCard(user, repo, scope, ctx)
-        PasswordCard(repo, scope)
+        PasswordCard(user, repo, scope)
         AppearanceCard(p, repo, scope)
         LocalizationCard(p, repo, scope)
         ConnectionCard(prefs, scope)
@@ -208,7 +216,7 @@ private fun ProfileCard(
     var jobTitle by remember(user?.id) { mutableStateOf(user?.jobTitle ?: "") }
     var bio by remember(user?.id) { mutableStateOf(user?.bio ?: "") }
     var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<UiText?>(null) }
     var avatarBust by remember { mutableStateOf(0L) }
     var verifySent by remember { mutableStateOf(false) }
 
@@ -219,9 +227,22 @@ private fun ProfileCard(
             runCatching {
                 val bytes = ctx.contentResolver.openInputStream(uri)?.use { it.readBytes() } ?: return@launch
                 val mime = ctx.contentResolver.getType(uri)
+                // Сказать то же, что скажет сервер, но до того, как на это потрачена
+                // загрузка: снимок с камеры тяжелее 2 МиБ — обычное дело, а по
+                // мобильной сети он уезжает целиком, чтобы вернуться отказом.
+                val bad = avatarPickError(bytes.size.toLong(), mime)
+                if (bad != null) {
+                    error = UiText.Res(
+                        when (bad) {
+                            AvatarPickError.TooLarge -> R.string.settings_avatar_too_large
+                            AvatarPickError.BadType -> R.string.settings_avatar_bad_type
+                        },
+                    )
+                    return@launch
+                }
                 repo.uploadAvatar(bytes, "avatar", mime)
                 avatarBust = System.currentTimeMillis()
-            }.onFailure { error = it.message }
+            }.onFailure { error = errorMessage(it) }
         }
     }
 
@@ -244,7 +265,7 @@ private fun ProfileCard(
                     )
                     if (!user?.avatarUrl.isNullOrBlank()) {
                         TButton(stringResource(R.string.settings_avatar_remove), onClick = {
-                            scope.launch { runCatching { repo.deleteAvatar() }.onFailure { error = it.message } }
+                            scope.launch { runCatching { repo.deleteAvatar() }.onFailure { error = errorMessage(it) } }
                         }, kind = TButtonKind.Ghost)
                     }
                     Text(stringResource(R.string.settings_avatar_hint), color = c.text3, fontSize = 11.sp)
@@ -291,7 +312,7 @@ private fun ProfileCard(
                         error = null
                         runCatching {
                             repo.updateProfile(ProfileUpdate(name, last, first, middle, bio, company, jobTitle))
-                        }.onFailure { error = it.message }
+                        }.onFailure { error = errorMessage(it) }
                         saving = false
                     }
                 },
@@ -303,33 +324,41 @@ private fun ProfileCard(
 @Composable
 private fun AvatarPreview(user: website.msdnna.tessera.data.model.User?, bust: Long) {
     val c = Tessera.colors
-    val url = user?.avatarUrl?.takeIf { it.isNotBlank() }?.let { "${RetrofitClient.serverRoot}$it?t=$bust" }
+    val url = avatarBustUrl(RetrofitClient.serverRoot, user?.avatarUrl, bust)
     Box(Modifier.size(72.dp).clip(CircleShape).background(accentGradient(c.primary)), contentAlignment = Alignment.Center) {
         if (url != null) {
             AsyncImage(model = url, contentDescription = null, modifier = Modifier.size(72.dp).clip(CircleShape))
         } else {
-            Text(initials(user?.name ?: user?.email ?: "?"), color = c.onPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
+            Text(avatarInitials(user?.name ?: user?.email ?: "?"), color = c.onPrimary, fontSize = 24.sp, fontWeight = FontWeight.SemiBold)
         }
     }
 }
 
-private fun initials(name: String): String {
-    val s = name.trim()
-    if (s.isEmpty()) return "?"
-    val w = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
-    return (if (w.size >= 2) "${w[0].first()}${w[1].first()}" else s.take(2)).uppercase()
-}
-
 @Composable
-private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.CoroutineScope) {
+private fun PasswordCard(
+    user: website.msdnna.tessera.data.model.User?,
+    repo: ProfileRepository,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
     val c = Tessera.colors
+    // Пароля нет — форму показывать нечего: сервер сверяет текущий через bcrypt
+    // по пустому хешу и может ответить только отказом. Вместо неё — тот же путь,
+    // которым пароль восстанавливают с экрана входа (#2932).
+    if (user != null && !user.hasPassword) {
+        SetPasswordCard(user.email, repo, scope)
+        return
+    }
     var current by remember { mutableStateOf("") }
     var next by remember { mutableStateOf("") }
     var confirm by remember { mutableStateOf("") }
     var saving by remember { mutableStateOf(false) }
-    var error by remember { mutableStateOf<String?>(null) }
+    var error by remember { mutableStateOf<UiText?>(null) }
     var done by remember { mutableStateOf(false) }
-    val valid = current.isNotBlank() && next.length >= 8 && next == confirm
+    // `next.length >= 8` не совпадало с сервером ни на одном конце правила (#2932):
+    // минимум там считается рунами, а потолок в 72 БАЙТА — предел bcrypt — здесь не
+    // знали вовсе, и русская парольная фраза уезжала за отказом.
+    val nextProblem = if (next.isEmpty()) null else passwordError(next)
+    val valid = current.isNotBlank() && isPasswordValid(next) && next == confirm
 
     TCard {
         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -341,6 +370,7 @@ private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.Coro
             )
             TTextField(current, { current = it }, label = stringResource(R.string.settings_password_current), isPassword = true)
             TTextField(next, { next = it }, label = stringResource(R.string.settings_password_new), isPassword = true)
+            TFormError(nextProblem)
             TTextField(confirm, { confirm = it }, label = stringResource(R.string.settings_password_repeat), isPassword = true)
             TFormError(error)
             if (done) Text(stringResource(R.string.settings_password_changed), color = c.primary, fontSize = 13.sp)
@@ -360,11 +390,60 @@ private fun PasswordCard(repo: ProfileRepository, scope: kotlinx.coroutines.Coro
                                 confirm = ""
                                 done = true
                             }
-                            .onFailure { error = it.message }
+                            .onFailure { error = errorMessage(it) }
                         saving = false
                     }
                 },
             )
+        }
+    }
+}
+
+/**
+ * Карточка «Безопасность» для аккаунта без пароля: объяснение и кнопка, которая
+ * просит у сервера одноразовую ссылку на собственный адрес аккаунта. Ответ
+ * /auth/forgot-password намеренно одинаков для существующего и несуществующего
+ * адреса, поэтому и подпись после отправки говорит «если аккаунт существует».
+ */
+@Composable
+private fun SetPasswordCard(
+    email: String,
+    repo: ProfileRepository,
+    scope: kotlinx.coroutines.CoroutineScope,
+) {
+    val c = Tessera.colors
+    var sending by remember { mutableStateOf(false) }
+    var sent by remember { mutableStateOf(false) }
+    var error by remember { mutableStateOf<UiText?>(null) }
+
+    TCard {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(
+                stringResource(R.string.settings_security_title),
+                color = c.text1,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+            )
+            Text(stringResource(R.string.settings_password_none, email), color = c.text3, fontSize = 13.sp)
+            TFormError(error)
+            if (sent) {
+                Text(stringResource(R.string.settings_password_link_sent, email), color = c.primary, fontSize = 13.sp)
+            } else {
+                TButton(
+                    stringResource(R.string.settings_password_link_send),
+                    loading = sending,
+                    onClick = {
+                        scope.launch {
+                            sending = true
+                            error = null
+                            runCatching { repo.forgotPassword(email) }
+                                .onSuccess { sent = true }
+                                .onFailure { error = errorMessage(it) }
+                            sending = false
+                        }
+                    },
+                )
+            }
         }
     }
 }

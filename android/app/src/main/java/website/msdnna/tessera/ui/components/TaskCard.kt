@@ -78,6 +78,8 @@ import website.msdnna.tessera.ui.viewmodels.BoardUiState
 import website.msdnna.tessera.ui.viewmodels.BoardViewModel
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.TourKeys
+import website.msdnna.tessera.util.UserTextOrder
+import website.msdnna.tessera.util.avatarInitials
 import website.msdnna.tessera.util.buildMentionItems
 import website.msdnna.tessera.util.buildTagGroups
 import website.msdnna.tessera.util.columnCaption
@@ -445,7 +447,6 @@ private fun CardMenu(
     val c = Tessera.colors
     var menu by remember { mutableStateOf(false) }
     var confirmArchive by remember { mutableStateOf(false) }
-    var confirmDelete by remember { mutableStateOf(false) }
     Box {
         IonIconButton(Ion.ELLIPSIS_V, onClick = { menu = true }, boxSize = 24.dp, iconSize = 16.dp, tint = c.text3)
         TDropdown(expanded = menu, onDismiss = { menu = false }) {
@@ -476,9 +477,10 @@ private fun CardMenu(
                 menu = false
                 confirmArchive = true
             })
+            // Into the board's trash at once; the undo is in the toast (#3004).
             TMenuItem(stringResource(R.string.common_delete), icon = Ion.TRASH, danger = true, onClick = {
                 menu = false
-                confirmDelete = true
+                vm.delete(task.id)
             })
         }
         TConfirmPopover(
@@ -491,16 +493,6 @@ private fun CardMenu(
                 vm.archive(task.id)
             },
             onDismiss = { confirmArchive = false },
-        )
-        TConfirmPopover(
-            expanded = confirmDelete,
-            message = stringResource(R.string.task_card_delete_confirm, task.title),
-            confirmText = stringResource(R.string.common_delete),
-            onConfirm = {
-                confirmDelete = false
-                vm.delete(task.id)
-            },
-            onDismiss = { confirmDelete = false },
         )
     }
 }
@@ -547,10 +539,30 @@ private fun ArchiveCardMenu(task: Task, vm: BoardViewModel, onOpen: (Task) -> Un
 }
 
 /**
+ * Что делать с набранным текстом: имя для отправки, либо `null` — отменить.
+ *
+ * Отменяем не только на пустой строке, но и когда текст совпал с исходным: редактор
+ * коммитит по потере фокуса, так что «открыл и тапнул мимо» — самый частый его исход,
+ * и он не должен превращаться в запрос. Для колонки это не просто лишний PATCH:
+ * у засеянной колонки редактор открывается ПОДПИСЬЮ, собранной из ресурсов по
+ * `name_key` (BoardViews.columnCaption, #2800), а сервер хранит рядом собственное
+ * русское имя. У читателя с нерусским интерфейсом такой холостой коммит присылает
+ * подпись как новое имя — оно не равно хранимому, и UpdateColumn (boards.sql
+ * `name_key = CASE WHEN name = $2 THEN name_key ELSE NULL END`) снимает `name_key`
+ * НАВСЕГДА: колонка остаётся переведённой для всех, включая коллег, чей язык она
+ * только что потеряла, и вернуть ключ из интерфейса нечем (#2932). Веб от этого
+ * закрыт таким же сравнением в ColumnHeader.commitRename.
+ */
+internal fun inlineTitleResult(initial: String, text: String): String? {
+    val t = text.trim()
+    return if (t.isEmpty() || t == initial.trim()) null else t
+}
+
+/**
  * A borderless single-line title editor reused by cards and column headers:
  * auto-focuses, commits on Enter or focus-loss (after first focus), cancels on
- * blank. [fontSize]/[fontWeight] let the caller match the static title it stands
- * in for.
+ * blank or on an unchanged title ([inlineTitleResult]). [fontSize]/[fontWeight]
+ * let the caller match the static title it stands in for.
  */
 @Composable
 fun InlineTitleEditor(
@@ -569,8 +581,8 @@ fun InlineTitleEditor(
     fun finish() {
         if (done) return
         done = true
-        val t = text.trim()
-        if (t.isEmpty()) onCancel() else onCommit(t)
+        val t = inlineTitleResult(initial, text)
+        if (t == null) onCancel() else onCommit(t)
     }
     LaunchedEffect(Unit) { focus.requestFocus() }
     BasicTextField(
@@ -778,8 +790,11 @@ private fun MilestonePill(task: Task, state: BoardUiState, stacked: Boolean = fa
 private fun EstimatePill(task: Task, state: BoardUiState, stacked: Boolean = false) {
     val c = Tessera.colors
     val own = task.estimate
+    // visibleSubtasksOf, а не сырой state.subtasks: свёртка считается по тем детям, что
+    // карточка и рисует, поэтому под фильтром она сужается вместе с ними (паритет с
+    // вебом, sortedSubtasksByParent) и сходится с «Σ» в шапке дорожки.
     val rollup = website.msdnna.tessera.util.Estimation.sum(
-        state.subtasks.filter { it.parentId == task.id }.map { it.estimate },
+        state.visibleSubtasksOf(task.id).map { it.estimate },
     )
     val value = own ?: rollup
     val text = website.msdnna.tessera.util.Estimation.format(LocalResources.current, value, state.estimation)
@@ -987,9 +1002,11 @@ private fun TagsPill(task: Task, state: BoardUiState, vm: BoardViewModel, stacke
 private fun DuePill(task: Task, state: BoardUiState, vm: BoardViewModel, stacked: Boolean = false) {
     val c = Tessera.colors
     var picker by remember { mutableStateOf(false) }
-    val due = dueShort(LocalResources.current, task.dueDate, LocalDateFormat.current)
-    // Overdue (past due, not done) → red tint, like the web.
-    val overdue = !task.isCompleted && isOverdue(task.dueDate)
+    val fmt = LocalDateFormat.current
+    val due = dueShort(LocalResources.current, task.dueDate, fmt)
+    // Overdue (past due, not done) → red tint, like the web. Тот же [fmt], что у
+    // подписи: иначе пилюля читалась бы «Сегодня» и краснела как просроченная.
+    val overdue = !task.isCompleted && isOverdue(task.dueDate, fmt)
     val overdueColor = Color(0xFFE0533D)
     val tint = when {
         overdue -> overdueColor
@@ -1101,7 +1118,7 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel, s
             } else {
                 val byId = state.members.associateBy { it.userId }
                 val out = LinkedHashMap<String, website.msdnna.tessera.data.model.Member>()
-                (task.assigneeIds + recent + state.members.sortedBy { it.name.lowercase() }.map { it.userId })
+                (task.assigneeIds + recent + state.members.sortedWith(compareBy(UserTextOrder) { it.name }).map { it.userId })
                     .forEach { id -> byId[id]?.let { out.putIfAbsent(id, it) } }
                 out.values.toList().take(maxOf(10, task.assigneeIds.size))
             }
@@ -1119,7 +1136,7 @@ private fun AssigneesPill(task: Task, state: BoardUiState, vm: BoardViewModel, s
                     verticalAlignment = Alignment.CenterVertically,
                 ) {
                     Box(Modifier.size(22.dp).clip(CircleShape).background(accentGradient(c.primary)), contentAlignment = Alignment.Center) {
-                        Text(initials(m.name), color = c.onPrimary, fontSize = 10.sp)
+                        Text(avatarInitials(m.name), color = c.onPrimary, fontSize = 10.sp)
                     }
                     Spacer(Modifier.width(8.dp))
                     Text(m.name, color = c.text1, fontSize = 14.sp, modifier = Modifier.weight(1f))
@@ -1259,23 +1276,6 @@ private fun Pill(onClick: () -> Unit, set: Boolean = false, content: @Composable
     ) { content() }
 }
 
-/**
- * Avatar initials: two words → first letter of each ("Василий Соколов" → ВС);
- * a dot handle → each part ("a.fokin" → AF); a single word → its first two
- * letters ("msdnna" → MS). Mirrors the web `utils/initials`.
- */
-private fun initials(name: String): String {
-    val s = name.trim()
-    if (s.isEmpty()) return "?"
-    if (s.contains('.')) {
-        val parts = s.split('.').map { it.trim() }.filter { it.isNotEmpty() }
-        if (parts.size >= 2) return "${parts[0].first()}${parts[1].first()}".uppercase()
-    }
-    val words = s.split(Regex("\\s+")).filter { it.isNotEmpty() }
-    if (words.size >= 2) return "${words[0].first()}${words[1].first()}".uppercase()
-    return s.take(2).uppercase()
-}
-
 /** A card avatar circle (24dp ring + inner gradient/grey disc). Shows the user's
  *  uploaded avatar when [userId] (Tessera) or [avatarUrl] (GitLab) is given,
  *  falling back to initials. [muted] greys the fallback for the read-only author
@@ -1298,7 +1298,7 @@ private fun CardAvatar(name: String, muted: Boolean, userId: String? = null, ava
             // through when it fails to load (e.g. a GitLab avatar the phone
             // can't reach) instead of leaving an empty circle.
             Text(
-                initials(name),
+                avatarInitials(name),
                 color = if (muted) Color.White else c.onPrimary,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.SemiBold,

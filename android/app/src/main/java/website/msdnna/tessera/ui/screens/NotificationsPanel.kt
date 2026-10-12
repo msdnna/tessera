@@ -41,6 +41,7 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.theme.accentGradient
 import website.msdnna.tessera.ui.viewmodels.NotificationUiState
+import website.msdnna.tessera.util.notificationText
 import website.msdnna.tessera.util.whenLabel
 
 /**
@@ -134,7 +135,9 @@ private fun NotificationItem(item: Notification, onClick: () -> Unit) {
         }
         Column(Modifier.weight(1f)) {
             Text(
-                item.text,
+                // Фраза собирается из фактов события на языке профиля; серверное
+                // `text` — фолбэк внутри notificationText, а не то, что показывается.
+                notificationText(LocalResources.current, item),
                 color = c.text1,
                 fontSize = 13.sp,
                 fontWeight = if (item.isUnread) FontWeight.SemiBold else FontWeight.Normal,

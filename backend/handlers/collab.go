@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -59,8 +60,10 @@ func (h *API) notify(c *gin.Context, userID, wsID uuid.UUID, taskID *uuid.UUID, 
 	h.deliverNotification(c, userID, wsID, taskID, &a, kind, msg)
 }
 
-// notifyTaskParticipants notifies a task's assignees and creator (minus the
-// actor) — used when something happens that watchers should hear about.
+// notifyTaskParticipants notifies a task's subscribers (minus the actor) —
+// used when something happens that watchers should hear about. Subscribers are
+// the author, the assignees and the commenters unless they unsubscribed, plus
+// whoever subscribed explicitly (#2963, ListTaskSubscribers).
 func (h *API) notifyTaskParticipants(c *gin.Context, t db.Task, wsID uuid.UUID, kind string, msg notifyMsg) {
 	h.notifyTaskParticipantsExcept(c, t, wsID, kind, msg, nil)
 }
@@ -68,20 +71,29 @@ func (h *API) notifyTaskParticipants(c *gin.Context, t db.Task, wsID uuid.UUID, 
 // notifyTaskParticipantsExcept is notifyTaskParticipants with a set of user ids
 // to skip (e.g. users already reached by a more specific mention notification).
 func (h *API) notifyTaskParticipantsExcept(c *gin.Context, t db.Task, wsID uuid.UUID, kind string, msg notifyMsg, skip map[uuid.UUID]bool) {
-	seen := map[uuid.UUID]bool{}
-	for id := range skip {
-		seen[id] = true
+	subs, err := h.q.ListTaskSubscribers(c, db.ListTaskSubscribersParams{TaskID: t.ID, WorkspaceID: wsID})
+	if err != nil {
+		return
 	}
-	if assignees, err := h.q.ListTaskAssignees(c, t.ID); err == nil {
-		for _, a := range assignees {
-			if !seen[a.ID] {
-				seen[a.ID] = true
-				h.notify(c, a.ID, wsID, &t.ID, kind, msg)
-			}
+	for _, u := range subs {
+		if !skip[u.ID] {
+			h.notify(c, u.ID, wsID, &t.ID, kind, msg)
 		}
 	}
-	if t.CreatedBy != nil && !seen[*t.CreatedBy] {
-		h.notify(c, *t.CreatedBy, wsID, &t.ID, kind, msg)
+}
+
+// notifyDeleted tells the participants of a deleted task (and of the subtasks
+// that went with it) that it is gone. participants is read before the delete
+// (TaskSubtreeParticipants): one row per person, about the task nearest the root
+// they took part in. The notification carries no task_id — the row would cascade
+// away with the task — so number, title and board ride in the payload.
+func (h *API) notifyDeleted(c *gin.Context, wsID uuid.UUID, participants []db.TaskSubtreeParticipantsRow) {
+	if len(participants) == 0 {
+		return
+	}
+	actor := h.actorName(c)
+	for _, p := range participants {
+		h.notify(c, p.UserID, wsID, nil, kindDeleted, msgDeleted(actor, p.Number, p.Title, p.BoardID))
 	}
 }
 
@@ -240,7 +252,7 @@ func (h *API) CreateComment(c *gin.Context) {
 		return
 	}
 	h.logEvent(c, id, "comment", map[string]any{"comment_id": cm.ID})
-	h.broadcast(wsID, "task.commented", gin.H{"task_id": id})
+	h.broadcastAs(c, wsID, "task.commented", gin.H{"task_id": id})
 	// Mirror the comment to a linked GitLab issue as a note (opt-in per integration).
 	wb := map[string]any{"comment_id": cm.ID.String(), "body": body}
 	if parentID != nil {
@@ -366,6 +378,17 @@ func (h *API) notifyMentions(c *gin.Context, t db.Task, wsID uuid.UUID, ids []uu
 }
 
 // UpdateComment edits a comment's body.
+//
+// `mentions` carries the people this edit ADDED — not everyone the new text
+// mentions. Both are needed and only the client can tell them apart: an
+// @-handle becomes a chip by being rendered against the roster, which is where
+// `mentionIdsIn` lives on either client, while the server holds the old body as
+// plain text and has no way to say which of its handles already drew one. Left
+// to the whole set, every typo fix would notify the same people again.
+//
+// Sending them at all is the point: the edit composer offers the same @-popup
+// the main one does, so "@Иван, посмотри" added by an edit draws a resolved chip
+// — and the chip the reader sees IS the promise that the person was told.
 func (h *API) UpdateComment(c *gin.Context) {
 	id, ok := parseID(c, "id")
 	if !ok {
@@ -379,7 +402,8 @@ func (h *API) UpdateComment(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if _, _, ok := h.loadTask(c, cm.TaskID); !ok {
+	t, wsID, ok := h.loadTask(c, cm.TaskID)
+	if !ok {
 		return
 	}
 	if cm.AuthorID == nil || *cm.AuthorID != middleware.CurrentUser(c) {
@@ -387,7 +411,8 @@ func (h *API) UpdateComment(c *gin.Context) {
 		return
 	}
 	var req struct {
-		Body string `json:"body" binding:"required"`
+		Body     string      `json:"body" binding:"required"`
+		Mentions []uuid.UUID `json:"mentions"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -405,6 +430,10 @@ func (h *API) UpdateComment(c *gin.Context) {
 		h.enqueueWriteback(c, cm.TaskID, middleware.CurrentUser(c), gitlab.TrigComment,
 			map[string]any{"op": "edit", "comment_id": id.String(), "gl_note_id": *cm.GlNoteID, "body": req.Body})
 	}
+	// Only the mention notice goes out, never the generic "commented" one: an edit
+	// is not a new comment, and the task's participants were already told about
+	// this one when it was written.
+	h.notifyMentions(c, t, wsID, req.Mentions, req.Body)
 	c.JSON(http.StatusOK, updated)
 }
 
@@ -495,8 +524,7 @@ func (h *API) AddRelation(c *gin.Context) {
 	}
 	num := req.Number
 	target, err := h.q.GetTaskByNumber(c, db.GetTaskByNumberParams{WorkspaceID: wsID, Number: &num})
-	if notFound(c, err) {
-		c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("задача #%d не найдена", req.Number)})
+	if notFoundMsg(c, err, "задача #%d не найдена", req.Number) {
 		return
 	}
 	if err != nil {
@@ -514,27 +542,8 @@ func (h *API) AddRelation(c *gin.Context) {
 // Gantt view fetches the whole graph at once (the per-task /relations endpoint
 // would need one round-trip per bar). Accepts a board UUID or slug like GetBoard.
 func (h *API) BoardDependencies(c *gin.Context) {
-	param := c.Param("id")
-	var b db.Board
-	var err error
-	if id, perr := uuid.Parse(param); perr == nil {
-		b, err = h.q.GetBoard(c, id)
-	} else {
-		b, err = h.q.GetBoardBySlug(c, param)
-	}
-	if notFound(c, err) {
-		return
-	}
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	wsID, err := h.q.WorkspaceIDForBoard(c, b.ID)
-	if err != nil {
-		fail(c, err)
-		return
-	}
-	if !h.requireMember(c, wsID) {
+	b, _, ok := h.resolveBoardParam(c)
+	if !ok {
 		return
 	}
 	rows, err := h.q.ListBoardDependencies(c, b.ID)
@@ -543,6 +552,30 @@ func (h *API) BoardDependencies(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, orEmpty(rows))
+}
+
+// relationKinds is the closed set of relation kinds the product speaks. The
+// schema comment (0006_collab), both clients' label maps (`task.relations.kind.*`
+// on web, relKindLabel on Android) and the GitLab mapping (gitlab.RelationKind)
+// all name these four and nothing else — and both clients print an unknown kind
+// verbatim, so a fifth one reaches the «Связи» tab as a bare English token.
+// Worse, the uniqueness key and the ListTaskRelations dedup are both
+// (pair, kind): a near-miss kind sits alongside the real one as a second row
+// for the same pair, which the ✕ (DeleteRelationBothWays, also per kind) does
+// not take with it.
+var relationKinds = map[string]bool{
+	"relates": true, "blocks": true, "blocked_by": true, "duplicates": true,
+}
+
+// relationKindForCmd maps a quick-action key to the relation kind it means. Only
+// «/relate» differs from its kind — the command reads as a verb, the kind as a
+// state — and passing the key straight through is exactly how 'relate' got
+// written where 'relates' was meant.
+func relationKindForCmd(key string) string {
+	if key == "relate" {
+		return "relates"
+	}
+	return key
 }
 
 // inverseRelationKind flips a directed relation kind for the referenced task's
@@ -572,12 +605,37 @@ func (h *API) DeleteRelation(c *gin.Context) {
 		fail(c, err)
 		return
 	}
-	if _, _, ok := h.loadTask(c, rel.TaskID); !ok {
+	t, wsID, ok := h.loadTask(c, rel.TaskID)
+	if !ok {
 		return
 	}
-	if err := h.q.DeleteTaskRelation(c, id); err != nil {
+	// Read the other end before the row goes: the relation id is all the caller
+	// sends, and the event has to name both endpoints.
+	target, terr := h.q.GetTask(c, rel.RelatedTaskID)
+	// Drop this link from both ends, not just the clicked row. Both tasks show it
+	// (ListTaskRelations reads either direction), so leaving the mirrored row —
+	// written by the GitLab projection, or by whoever linked the same pair from
+	// their end — would put the relation straight back on both tabs. Only this
+	// kind goes: another relation between the same two tasks is its own row.
+	if _, err := h.q.DeleteRelationBothWays(c, db.DeleteRelationBothWaysParams{
+		TaskID: rel.TaskID, RelatedTaskID: rel.RelatedTaskID,
+		Kind: rel.Kind, InverseKind: inverseRelationKind(rel.Kind),
+	}); err != nil {
 		fail(c, err)
 		return
+	}
+	// This used to broadcast nothing at all, so an edge deleted here stayed drawn
+	// on every other client's Gantt until a full reload — the delete is the one
+	// relation change that leaves no trace on either task row.
+	//
+	// The journal entries are the same omission read from the other end: linking
+	// writes one on each task, and this route — the ✕ in the «Связи» tab, on both
+	// clients — wrote none, so a link added and then dropped stayed in both
+	// histories as an arrival with no departure. Both need the other task's
+	// number, so both wait on the read above succeeding.
+	if terr == nil {
+		h.logRelationRemoved(c, t, target)
+		h.broadcastRelation(wsID, t, target, rel.Kind)
 	}
 	c.Status(http.StatusNoContent)
 }
@@ -594,14 +652,104 @@ func (h *API) ListNotifications(c *gin.Context) {
 	c.JSON(http.StatusOK, orEmpty(items))
 }
 
-// UnreadNotificationCount returns the current user's unread notification count.
-func (h *API) UnreadNotificationCount(c *gin.Context) {
-	n, err := h.q.CountUnreadNotifications(c, middleware.CurrentUser(c))
+// The page of all notifications (#3049) is read in pages of this size by
+// default, and never more than the cap at once.
+const (
+	notificationPageDefault = 30
+	notificationPageMax     = 100
+)
+
+// notificationFilters are the filters the feed offers; anything else is "all".
+var notificationFilters = map[string]bool{
+	"all": true, "unread": true, "mentions": true, "assigned": true, "gitlab": true,
+}
+
+// notificationCursor is the keyset position after a row: its created_at in
+// microseconds (Postgres keeps exactly that precision) and its id, the tie-break
+// for two rows written in the same microsecond — a fan-out to the same user
+// can do that.
+func notificationCursor(at time.Time, id uuid.UUID) string {
+	return strconv.FormatInt(at.UnixMicro(), 10) + "_" + id.String()
+}
+
+func parseNotificationCursor(s string) (time.Time, uuid.UUID, bool) {
+	us, idStr, ok := strings.Cut(s, "_")
+	if !ok {
+		return time.Time{}, uuid.Nil, false
+	}
+	micro, err := strconv.ParseInt(us, 10, 64)
+	if err != nil {
+		return time.Time{}, uuid.Nil, false
+	}
+	id, err := uuid.Parse(idStr)
+	if err != nil {
+		return time.Time{}, uuid.Nil, false
+	}
+	return time.UnixMicro(micro), id, true
+}
+
+// ListNotificationsPage is the page «Все уведомления» (#3049):
+// `GET /notifications/page?filter=&cursor=&limit=` answers
+// `{items, next_cursor}`. next_cursor is null on the last page. The filter is
+// applied here, not by the client, so a page of mentions is a page of mentions
+// however many assignments came in between.
+//
+// The bare `GET /notifications` stays as it was — the newest 50, as an array —
+// because the Android client and the bell read it that way.
+func (h *API) ListNotificationsPage(c *gin.Context) {
+	filter := c.DefaultQuery("filter", "all")
+	if !notificationFilters[filter] {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неизвестный фильтр: " + filter})
+		return
+	}
+	limit := notificationPageDefault
+	if s := c.Query("limit"); s != "" {
+		n, err := strconv.Atoi(s)
+		if err != nil || n < 1 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "limit — целое число больше нуля"})
+			return
+		}
+		limit = min(n, notificationPageMax)
+	}
+	params := db.ListNotificationsPageParams{
+		UserID: middleware.CurrentUser(c), Filter: filter, Lim: int32(limit + 1),
+	}
+	if s := c.Query("cursor"); s != "" {
+		at, id, ok := parseNotificationCursor(s)
+		if !ok {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "неверный курсор"})
+			return
+		}
+		params.BeforeAt, params.BeforeID = &at, &id
+	}
+	rows, err := h.q.ListNotificationsPage(c, params)
 	if err != nil {
 		fail(c, err)
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"count": n})
+	// One row past the page says whether there is a next one, without a count.
+	var next *string
+	if len(rows) > limit {
+		rows = rows[:limit]
+		last := rows[limit-1]
+		cur := notificationCursor(last.CreatedAt, last.ID)
+		next = &cur
+	}
+	c.JSON(http.StatusOK, gin.H{"items": orEmpty(rows), "next_cursor": next})
+}
+
+// UnreadNotificationCount returns the current user's unread notification count,
+// and (#3049) the same count per filter of the feed, for the counters on its
+// tabs — `count` keeps its meaning for the clients that read only it.
+func (h *API) UnreadNotificationCount(c *gin.Context) {
+	n, err := h.q.CountUnreadNotificationsByGroup(c, middleware.CurrentUser(c))
+	if err != nil {
+		fail(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"count": n.Total, "by_group": gin.H{
+		"mentions": n.Mentions, "assigned": n.Assigned, "gitlab": n.Gitlab,
+	}})
 }
 
 // MarkNotificationRead marks a single notification read.

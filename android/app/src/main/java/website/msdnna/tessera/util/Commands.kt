@@ -1,5 +1,7 @@
 package website.msdnna.tessera.util
 
+import android.content.res.Resources
+import website.msdnna.tessera.R
 import website.msdnna.tessera.data.model.CommandDef
 import website.msdnna.tessera.data.model.WorkspaceCommand
 
@@ -37,6 +39,25 @@ fun canonCommandKey(raw: String?): String =
 
 fun isValidCommandKey(key: String?): Boolean = KEY_RE.matches(canonCommandKey(key))
 
+/**
+ * Every key the backend treats as built-in: the registry keys AND their aliases.
+ * `quickact.byKey` maps both, and `IsBuiltin` — what the dictionary PUT checks —
+ * looks the key up in that same map. Collecting only `key` lets a custom "/done"
+ * (alias of /close) or "/status" (alias of /move) past the editor's inline
+ * validation and into a 400 that rejects the WHOLE dictionary, with an error
+ * that cannot name the offending row. Mirrors web `builtinCommandKeys`.
+ */
+fun builtinCommandKeys(items: List<CommandDef>): Set<String> {
+    val out = LinkedHashSet<String>()
+    for (cmd in items) {
+        for (raw in listOf(cmd.key) + cmd.aliases.orEmpty()) {
+            val key = canonCommandKey(raw)
+            if (key.isNotEmpty()) out.add(key)
+        }
+    }
+    return out
+}
+
 /** An open `/`-query: [start] is the index of the slash, [query] what follows it. */
 data class SlashQuery(val start: Int, val query: String)
 
@@ -44,7 +65,12 @@ data class SlashQuery(val start: Int, val query: String)
 // after any whitespace would pop the menu on `cd /home`, `src/utils` and `24/7` —
 // all common in task text. This mirrors the backend, which only treats a line
 // whose first non-space character is `/` as a command.
-private val SLASH_RE = Regex("(?:^|\n)/([a-z0-9_-]*)$")
+//
+// `\z`, not `$`: java's `$` also matches *before* a trailing newline, so a query
+// the user has already finished with Enter would stay open — and `start`, measured
+// back from the end of the text, would land on the newline instead of the slash.
+// JS has no such rule, which is why the web regex can end in `$`.
+private val SLASH_RE = Regex("(?:^|\n)/([a-z0-9_-]*)\\z")
 
 /** Finds an open `/`-query in the text up to the caret, or null. */
 fun detectSlashQuery(upto: String?): SlashQuery? {
@@ -71,6 +97,73 @@ fun commandItems(builtin: List<CommandDef>, custom: List<WorkspaceCommand>): Lis
     } + custom.map {
         CommandItem(key = it.key, description = it.description, example = "/${it.key}", builtin = false)
     }
+
+/**
+ * Описание встроенной команды → строковый ресурс (#2932).
+ *
+ * Реестр быстрых действий живёт на бэкенде (`internal/quickact/registry.go`), и
+ * `Description` там захардкожен по-русски: API отдаёт его клиентам как есть, так что
+ * на английском интерфейсе попап читался целиком по-русски. Сам парсер при этом
+ * двуязычен (`args.go` понимает и «высокий», и `high`) — отстала ровно витрина.
+ *
+ * Мапа явная, а не через `getIdentifier`: имя, собранное в рантайме, R8 не видит и
+ * вычищает строку из релизной сборки. Полноту сторожит `i18n/CommandLabelsTest`.
+ */
+val BUILTIN_COMMAND_DESCRIPTIONS: Map<String, Int> = mapOf(
+    "assign" to R.string.cmd_assign_desc,
+    "unassign" to R.string.cmd_unassign_desc,
+    "due" to R.string.cmd_due_desc,
+    "remove_due" to R.string.cmd_remove_due_desc,
+    "start" to R.string.cmd_start_desc,
+    "remove_start" to R.string.cmd_remove_start_desc,
+    "estimate" to R.string.cmd_estimate_desc,
+    "remove_estimate" to R.string.cmd_remove_estimate_desc,
+    "spend" to R.string.cmd_spend_desc,
+    "priority" to R.string.cmd_priority_desc,
+    "title" to R.string.cmd_title_desc,
+    "tag" to R.string.cmd_tag_desc,
+    "untag" to R.string.cmd_untag_desc,
+    "milestone" to R.string.cmd_milestone_desc,
+    "remove_milestone" to R.string.cmd_remove_milestone_desc,
+    "move" to R.string.cmd_move_desc,
+    "close" to R.string.cmd_close_desc,
+    "reopen" to R.string.cmd_reopen_desc,
+    "archive" to R.string.cmd_archive_desc,
+    "relate" to R.string.cmd_relate_desc,
+    "blocks" to R.string.cmd_blocks_desc,
+    "blocked_by" to R.string.cmd_blocked_by_desc,
+    "duplicates" to R.string.cmd_duplicates_desc,
+    "unlink" to R.string.cmd_unlink_desc,
+    "subtask" to R.string.cmd_subtask_desc,
+    "parent" to R.string.cmd_parent_desc,
+    "unparent" to R.string.cmd_unparent_desc,
+)
+
+/**
+ * Переводит описания встроенных команд на язык интерфейса, оставляя серверный текст
+ * там, где своего перевода нет: новая команда реестра всё равно что-то покажет, а
+ * словарная команда воркспейса — текст её автора, его переводить нечем и незачем.
+ *
+ * Делать это надо ДО [matchCommands], иначе поиск по попапу остаётся русским на
+ * английском интерфейсе: фильтр смотрит в то же поле `description`.
+ */
+fun localizedCommands(items: List<CommandItem>, resources: Resources): List<CommandItem> =
+    items.map { item ->
+        if (!item.builtin) {
+            item
+        } else {
+            item.copy(description = builtinCommandDescription(resources, item.key, item.description))
+        }
+    }
+
+/**
+ * Описание встроенной команды на языке интерфейса, с серверным текстом как
+ * фолбэком. Отдельная функция нужна справочному списку встроенных команд в
+ * редакторе словаря: там строки — это [CommandDef] прямо из реестра, а не уже
+ * собранные [CommandItem] попапа, и без этого список оставался русским.
+ */
+fun builtinCommandDescription(resources: Resources, key: String, fallback: String): String =
+    BUILTIN_COMMAND_DESCRIPTIONS[key]?.let(resources::getString) ?: fallback
 
 /**
  * Filters rows for a query, matching key, aliases and description (so «срок»

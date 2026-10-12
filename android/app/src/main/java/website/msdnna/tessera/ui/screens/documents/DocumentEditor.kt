@@ -99,13 +99,12 @@ fun DocumentEditor(
         )
     }
 
-    /** Leaving writes first: the debounce may still be holding the last words. */
-    fun close() {
-        controller.save()
-        onClose()
-    }
-
-    BackHandler { close() }
+    // Leaving is the screen's call, not this surface's. Writing first is not
+    // enough on its own — the save is only *asked for* here, and the WebView
+    // that would have carried it out is destroyed the frame `editing` turns
+    // false. So Back reports the intent and the screen holds it at DocExitGate
+    // until the page says the text landed.
+    BackHandler { onClose() }
 
     Column(
         Modifier.fillMaxSize().background(c.surface).imePadding().testTag(TestTags.DOCUMENT_EDITOR),

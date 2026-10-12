@@ -6,6 +6,25 @@ RETURNING *;
 -- name: GetRefreshToken :one
 SELECT * FROM refresh_tokens WHERE token_hash = $1;
 
+-- MediaSessionLive answers "is the session this media cookie names still
+-- running, on an account that is still switched on?" — the one lookup
+-- middleware.MediaAuth makes per inline image (#2932).
+--
+-- Both halves in one round trip because both are the same question asked of the
+-- same credential, and the route pays for it once per image. The session half is
+-- what a password change, a logout and a rotation all already act on; the
+-- `active` half is the per-account check this absorbs (it used to be a standalone
+-- IsUserActive lookup), kept because deactivation leaves the refresh rows alone
+-- on purpose — it is a pause, and the cookie has to come back with the account.
+--
+-- user_id is matched as well as id so a token signed for one account can never
+-- borrow another's session id, however it came by one.
+-- name: MediaSessionLive :one
+SELECT (u.active AND rt.revoked_at IS NULL AND rt.expires_at > now())::boolean AS live
+FROM refresh_tokens rt
+JOIN users u ON u.id = rt.user_id
+WHERE rt.id = $1 AND rt.user_id = $2;
+
 -- Rotation revoke: the token stays inside the handler's grace window (see
 -- refreshGrace in handlers/auth.go), so a client whose new pair was lost to a
 -- dropped connection can retry with the old one.

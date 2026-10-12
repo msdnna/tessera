@@ -50,6 +50,8 @@ import website.msdnna.tessera.ui.theme.RadiusMd
 import website.msdnna.tessera.ui.theme.Tessera
 import website.msdnna.tessera.ui.viewmodels.NotesViewModel
 import website.msdnna.tessera.util.Ion
+import website.msdnna.tessera.util.recordMentionNames
+import website.msdnna.tessera.util.recordTagLine
 
 /**
  * Notes module (web `NotesView`), mobile master/detail: a note list, with the
@@ -103,7 +105,11 @@ fun NotesScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(state.list, key = { it.id }) { note ->
-                        NoteListItem(note, onClick = { vm.select(note) })
+                        NoteListItem(
+                            note,
+                            mentions = recordMentionNames(note.mentions, state.members),
+                            onClick = { vm.select(note) },
+                        )
                     }
                     item { Spacer(Modifier.height(16.dp)) }
                 }
@@ -122,7 +128,7 @@ fun NotesScreen(
 }
 
 @Composable
-private fun NoteListItem(note: Note, onClick: () -> Unit) {
+private fun NoteListItem(note: Note, mentions: List<String>, onClick: () -> Unit) {
     val c = Tessera.colors
     Column(
         Modifier.fillMaxWidth().clip(RoundedCornerShape(RadiusMd)).background(c.cardSurface)
@@ -140,6 +146,29 @@ private fun NoteListItem(note: Note, onClick: () -> Unit) {
         if (snippet.isNotBlank()) {
             Spacer(Modifier.height(3.dp))
             Text(snippet, color = c.text3, fontSize = 12.sp, maxLines = 1)
+        }
+        RecordLabelsRow(recordTagLine(note.tags), mentions)
+    }
+}
+
+/** A record's tags and mentions under its title (#3040): «#a #b  @Анна». */
+@Composable
+internal fun RecordLabelsRow(tagLine: String, mentions: List<String>) {
+    if (tagLine.isBlank() && mentions.isEmpty()) return
+    val c = Tessera.colors
+    Spacer(Modifier.height(4.dp))
+    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        if (tagLine.isNotBlank()) {
+            Text(tagLine, color = c.text2, fontSize = 12.sp, maxLines = 1, modifier = Modifier.weight(1f, fill = false))
+        }
+        if (mentions.isNotEmpty()) {
+            Text(
+                mentions.joinToString(" ") { "@$it" },
+                color = c.primary,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+            )
         }
     }
 }

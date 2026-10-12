@@ -13,9 +13,10 @@ import (
 
 const createGitlabMilestoneLink = `-- name: CreateGitlabMilestoneLink :exec
 INSERT INTO gitlab_milestone_links (
-    milestone_id, integration_id, gl_global_id, gl_iid, gl_numeric_id, gl_web_url, gl_state, title_hash
+    milestone_id, integration_id, gl_global_id, gl_iid, gl_numeric_id, gl_web_url, gl_state, title_hash,
+    gl_snapshot
 )
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 `
 
 type CreateGitlabMilestoneLinkParams struct {
@@ -27,6 +28,7 @@ type CreateGitlabMilestoneLinkParams struct {
 	GlWebUrl      string    `json:"gl_web_url"`
 	GlState       string    `json:"gl_state"`
 	TitleHash     string    `json:"title_hash"`
+	GlSnapshot    []byte    `json:"gl_snapshot"`
 }
 
 func (q *Queries) CreateGitlabMilestoneLink(ctx context.Context, arg CreateGitlabMilestoneLinkParams) error {
@@ -39,12 +41,13 @@ func (q *Queries) CreateGitlabMilestoneLink(ctx context.Context, arg CreateGitla
 		arg.GlWebUrl,
 		arg.GlState,
 		arg.TitleHash,
+		arg.GlSnapshot,
 	)
 	return err
 }
 
 const getGitlabMilestoneLink = `-- name: GetGitlabMilestoneLink :one
-SELECT milestone_id, integration_id, gl_global_id, gl_iid, gl_numeric_id, gl_web_url, gl_state, title_hash, last_synced_at FROM gitlab_milestone_links WHERE milestone_id = $1
+SELECT milestone_id, integration_id, gl_global_id, gl_iid, gl_numeric_id, gl_web_url, gl_state, title_hash, last_synced_at, gl_snapshot, push_error, push_fields, push_actor_id, conflict FROM gitlab_milestone_links WHERE milestone_id = $1
 `
 
 func (q *Queries) GetGitlabMilestoneLink(ctx context.Context, milestoneID uuid.UUID) (GitlabMilestoneLink, error) {
@@ -60,13 +63,18 @@ func (q *Queries) GetGitlabMilestoneLink(ctx context.Context, milestoneID uuid.U
 		&i.GlState,
 		&i.TitleHash,
 		&i.LastSyncedAt,
+		&i.GlSnapshot,
+		&i.PushError,
+		&i.PushFields,
+		&i.PushActorID,
+		&i.Conflict,
 	)
 	return i, err
 }
 
 const getGitlabMilestoneLinkByGID = `-- name: GetGitlabMilestoneLinkByGID :one
 
-SELECT milestone_id, integration_id, gl_global_id, gl_iid, gl_numeric_id, gl_web_url, gl_state, title_hash, last_synced_at FROM gitlab_milestone_links WHERE integration_id = $1 AND gl_global_id = $2
+SELECT milestone_id, integration_id, gl_global_id, gl_iid, gl_numeric_id, gl_web_url, gl_state, title_hash, last_synced_at, gl_snapshot, push_error, push_fields, push_actor_id, conflict FROM gitlab_milestone_links WHERE integration_id = $1 AND gl_global_id = $2
 `
 
 type GetGitlabMilestoneLinkByGIDParams struct {
@@ -75,8 +83,10 @@ type GetGitlabMilestoneLinkByGIDParams struct {
 }
 
 // GitLab milestone links (B/M1): map a native milestone to a GitLab project
-// milestone. Presence of a row makes the milestone GitLab-sourced (read-only in
-// Tessera). Loosely coupled — its own table, separate from `milestones`.
+// milestone. Presence of a row makes the milestone GitLab-sourced. Since #3010 it
+// can be edited in Tessera too (written back when the binding allows writing),
+// with gl_snapshot as the three-way baseline. Loosely coupled — its own table,
+// separate from `milestones`.
 func (q *Queries) GetGitlabMilestoneLinkByGID(ctx context.Context, arg GetGitlabMilestoneLinkByGIDParams) (GitlabMilestoneLink, error) {
 	row := q.db.QueryRow(ctx, getGitlabMilestoneLinkByGID, arg.IntegrationID, arg.GlGlobalID)
 	var i GitlabMilestoneLink
@@ -90,8 +100,109 @@ func (q *Queries) GetGitlabMilestoneLinkByGID(ctx context.Context, arg GetGitlab
 		&i.GlState,
 		&i.TitleHash,
 		&i.LastSyncedAt,
+		&i.GlSnapshot,
+		&i.PushError,
+		&i.PushFields,
+		&i.PushActorID,
+		&i.Conflict,
 	)
 	return i, err
+}
+
+const listOpenMilestoneConflictsByWorkspace = `-- name: ListOpenMilestoneConflictsByWorkspace :many
+SELECT l.milestone_id, l.conflict, l.gl_iid, l.gl_web_url,
+       m.title AS milestone_title, m.slug AS milestone_slug,
+       p.id AS project_id, p.slug AS project_slug
+FROM gitlab_milestone_links l
+JOIN milestones m ON m.id = l.milestone_id
+JOIN projects p ON p.id = m.project_id
+WHERE p.workspace_id = $1 AND l.conflict <> '{}'::jsonb
+ORDER BY m.title
+`
+
+type ListOpenMilestoneConflictsByWorkspaceRow struct {
+	MilestoneID    uuid.UUID `json:"milestone_id"`
+	Conflict       []byte    `json:"conflict"`
+	GlIid          *int64    `json:"gl_iid"`
+	GlWebUrl       string    `json:"gl_web_url"`
+	MilestoneTitle string    `json:"milestone_title"`
+	MilestoneSlug  string    `json:"milestone_slug"`
+	ProjectID      uuid.UUID `json:"project_id"`
+	ProjectSlug    string    `json:"project_slug"`
+}
+
+// ListOpenMilestoneConflictsByWorkspace feeds the conflicts window: every stage
+// of the workspace with a parked conflict, with what the window shows of it.
+func (q *Queries) ListOpenMilestoneConflictsByWorkspace(ctx context.Context, workspaceID uuid.UUID) ([]ListOpenMilestoneConflictsByWorkspaceRow, error) {
+	rows, err := q.db.Query(ctx, listOpenMilestoneConflictsByWorkspace, workspaceID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []ListOpenMilestoneConflictsByWorkspaceRow
+	for rows.Next() {
+		var i ListOpenMilestoneConflictsByWorkspaceRow
+		if err := rows.Scan(
+			&i.MilestoneID,
+			&i.Conflict,
+			&i.GlIid,
+			&i.GlWebUrl,
+			&i.MilestoneTitle,
+			&i.MilestoneSlug,
+			&i.ProjectID,
+			&i.ProjectSlug,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const listPendingGitlabMilestonePushes = `-- name: ListPendingGitlabMilestonePushes :many
+SELECT milestone_id, integration_id, gl_global_id, gl_iid, gl_numeric_id, gl_web_url, gl_state, title_hash, last_synced_at, gl_snapshot, push_error, push_fields, push_actor_id, conflict FROM gitlab_milestone_links
+WHERE integration_id = $1 AND push_error <> ''
+ORDER BY last_synced_at
+`
+
+// ListPendingGitlabMilestonePushes names the binding's stages whose last write
+// failed — the sync retries them after its pull.
+func (q *Queries) ListPendingGitlabMilestonePushes(ctx context.Context, integrationID uuid.UUID) ([]GitlabMilestoneLink, error) {
+	rows, err := q.db.Query(ctx, listPendingGitlabMilestonePushes, integrationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GitlabMilestoneLink
+	for rows.Next() {
+		var i GitlabMilestoneLink
+		if err := rows.Scan(
+			&i.MilestoneID,
+			&i.IntegrationID,
+			&i.GlGlobalID,
+			&i.GlIid,
+			&i.GlNumericID,
+			&i.GlWebUrl,
+			&i.GlState,
+			&i.TitleHash,
+			&i.LastSyncedAt,
+			&i.GlSnapshot,
+			&i.PushError,
+			&i.PushFields,
+			&i.PushActorID,
+			&i.Conflict,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
 }
 
 const markGitlabMilestoneOverridden = `-- name: MarkGitlabMilestoneOverridden :exec
@@ -102,6 +213,66 @@ UPDATE gitlab_links SET milestone_overridden = true WHERE task_id = $1
 // milestone, so the pull won't overwrite it (mirrors due/start/estimate overrides).
 func (q *Queries) MarkGitlabMilestoneOverridden(ctx context.Context, taskID uuid.UUID) error {
 	_, err := q.db.Exec(ctx, markGitlabMilestoneOverridden, taskID)
+	return err
+}
+
+const setGitlabMilestoneConflict = `-- name: SetGitlabMilestoneConflict :exec
+UPDATE gitlab_milestone_links SET conflict = $2 WHERE milestone_id = $1
+`
+
+type SetGitlabMilestoneConflictParams struct {
+	MilestoneID uuid.UUID `json:"milestone_id"`
+	Conflict    []byte    `json:"conflict"`
+}
+
+// SetGitlabMilestoneConflict parks (or, with '{}', clears) the fields changed on
+// both sides since the baseline.
+func (q *Queries) SetGitlabMilestoneConflict(ctx context.Context, arg SetGitlabMilestoneConflictParams) error {
+	_, err := q.db.Exec(ctx, setGitlabMilestoneConflict, arg.MilestoneID, arg.Conflict)
+	return err
+}
+
+const setGitlabMilestonePushResult = `-- name: SetGitlabMilestonePushResult :exec
+UPDATE gitlab_milestone_links
+SET push_error = $2, push_fields = $3, push_actor_id = $4
+WHERE milestone_id = $1
+`
+
+type SetGitlabMilestonePushResultParams struct {
+	MilestoneID uuid.UUID  `json:"milestone_id"`
+	PushError   string     `json:"push_error"`
+	PushFields  []string   `json:"push_fields"`
+	PushActorID *uuid.UUID `json:"push_actor_id"`
+}
+
+// SetGitlabMilestonePushResult records how the last write to GitLab went: an
+// empty error clears the «not synced» mark, a non-empty one sets it with the
+// fields that did not make it and the user to retry as.
+func (q *Queries) SetGitlabMilestonePushResult(ctx context.Context, arg SetGitlabMilestonePushResultParams) error {
+	_, err := q.db.Exec(ctx, setGitlabMilestonePushResult,
+		arg.MilestoneID,
+		arg.PushError,
+		arg.PushFields,
+		arg.PushActorID,
+	)
+	return err
+}
+
+const setGitlabMilestoneSnapshot = `-- name: SetGitlabMilestoneSnapshot :exec
+
+UPDATE gitlab_milestone_links SET gl_snapshot = $2, last_synced_at = now() WHERE milestone_id = $1
+`
+
+type SetGitlabMilestoneSnapshotParams struct {
+	MilestoneID uuid.UUID `json:"milestone_id"`
+	GlSnapshot  []byte    `json:"gl_snapshot"`
+}
+
+// ── write-back and conflicts (#3010) ─────────────────────────────
+// SetGitlabMilestoneSnapshot moves the three-way baseline: what GitLab holds
+// after a successful push or pull.
+func (q *Queries) SetGitlabMilestoneSnapshot(ctx context.Context, arg SetGitlabMilestoneSnapshotParams) error {
+	_, err := q.db.Exec(ctx, setGitlabMilestoneSnapshot, arg.MilestoneID, arg.GlSnapshot)
 	return err
 }
 

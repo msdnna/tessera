@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet><script src="./ds-base.js"></script></helmet>
+<div style="position:relative;isolation:isolate;display:flex;flex-direction:column;padding:9px 10px;border-radius:12px;font-family:var(--v-font);color:var(--t-text1);cursor:pointer" style-hover="background:var(--v-hover-side)">
+<sc-if value="{{ bgSel }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 14%, var(--v-sidebar)), color-mix(in srgb, var(--t-primary) 22%, var(--v-sidebar)))"></div></sc-if>
+<sc-if value="{{ bgHov }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;background:var(--v-hover-side)"></div></sc-if>
+<sc-if value="{{ bgOpen }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;background:var(--v-card);box-shadow:var(--v-sh-card)"></div></sc-if>
+<sc-if value="{{ bgErr }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;inset:0;z-index:-1;border-radius:inherit;background:linear-gradient(to top right, color-mix(in srgb, #e0533d 10%, var(--v-sidebar)), color-mix(in srgb, #e0533d 18%, var(--v-sidebar)))"></div></sc-if>
+<sc-if value="{{ load }}" hint-placeholder-val="{{ false }}"><div style="display:flex;gap:10px;align-items:flex-start"><span style="width:28px;height:28px;flex:0 0 28px;border-radius:9px;background:var(--v-pill)"></span><div style="flex:1;display:flex;flex-direction:column;gap:7px;padding-top:3px"><span style="width:72%;height:10px;border-radius:5px;background:var(--v-pill)"></span><span style="width:46%;height:8px;border-radius:4px;background:color-mix(in srgb, var(--v-pill) 70%, transparent)"></span></div><span style="width:34px;height:10px;margin-top:3px;border-radius:5px;background:var(--v-pill)"></span></div></sc-if>
+<sc-if value="{{ notLoad }}" hint-placeholder-val="{{ true }}">
+<div style="display:flex;gap:10px;align-items:flex-start">
+<sc-if value="{{ kNote }}" hint-placeholder-val="{{ true }}"><span style="width:28px;height:28px;flex:0 0 28px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--v-pill);color:var(--t-text2)"><x-import component-from-global-scope="Tessera.Icon" name="DocumentTextOutline" size="15" hint-size="15px,15px"></x-import></span></sc-if>
+<sc-if value="{{ kUp }}" hint-placeholder-val="{{ false }}"><span style="width:28px;height:28px;flex:0 0 28px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:linear-gradient(to top right, color-mix(in srgb, var(--t-primary) 16%, var(--v-sidebar)), color-mix(in srgb, var(--t-primary) 28%, var(--v-sidebar)))"><x-import component-from-global-scope="Tessera.Icon" name="AlarmOutline" size="15" color="var(--t-primary)" hint-size="15px,15px"></x-import></span></sc-if>
+<sc-if value="{{ kFired }}" hint-placeholder-val="{{ false }}"><span style="width:28px;height:28px;flex:0 0 28px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:linear-gradient(to top right, color-mix(in srgb, #f0a020 86%, #000), #f0a020 50%, color-mix(in srgb, #f0a020 86%, #fff));box-shadow:0 3px 10px rgba(240,160,32,.3)"><x-import component-from-global-scope="Tessera.Icon" name="AlarmOutline" size="15" color="#fff" hint-size="15px,15px"></x-import></span></sc-if>
+<sc-if value="{{ kDone }}" hint-placeholder-val="{{ false }}"><span style="width:28px;height:28px;flex:0 0 28px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:linear-gradient(to top right, color-mix(in srgb, #18a058 14%, var(--v-sidebar)), color-mix(in srgb, #18a058 24%, var(--v-sidebar)))"><x-import component-from-global-scope="Tessera.Icon" name="CheckmarkOutline" size="15" color="#18a058" hint-size="15px,15px"></x-import></span></sc-if>
+<sc-if value="{{ kSnooze }}" hint-placeholder-val="{{ false }}"><span style="width:28px;height:28px;flex:0 0 28px;border-radius:9px;display:flex;align-items:center;justify-content:center;background:var(--v-pill);color:var(--t-text3)"><x-import component-from-global-scope="Tessera.Icon" name="MoonOutline" size="15" hint-size="15px,15px"></x-import></span></sc-if>
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;gap:3px;padding-top:1px">
+<sc-if value="{{ tLive }}" hint-placeholder-val="{{ true }}"><span style="font-size:13.5px;line-height:18px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.title }}</span></sc-if>
+<sc-if value="{{ tDone }}" hint-placeholder-val="{{ false }}"><span style="font-size:13.5px;line-height:18px;font-weight:500;color:var(--t-text3);text-decoration:line-through;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.title }}</span></sc-if>
+<sc-if value="{{ showBody }}" hint-placeholder-val="{{ false }}"><span style="font-size:12.5px;line-height:17px;color:var(--t-text3);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">{{ it.body }}</span></sc-if>
+<sc-if value="{{ meta }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;margin-top:3px;min-width:0">
+<sc-if value="{{ it.task }}" hint-placeholder-val="{{ false }}"><span style="min-width:0;max-width:100%;height:22px;display:inline-flex;align-items:center;gap:5px;padding:0 8px 0 6px;box-sizing:border-box;border-radius:999px;background:var(--v-pill);font-size:12px;white-space:nowrap">
+<sc-if value="{{ tsTodo }}" hint-placeholder-val="{{ false }}"><span style="display:flex;color:#0eb0a9"><x-import component-from-global-scope="Tessera.TesseraIcon" name="status-todo" size="12" hint-size="12px,12px"></x-import></span></sc-if>
+<sc-if value="{{ tsDoing }}" hint-placeholder-val="{{ true }}"><span style="display:flex;color:#2f80ed"><x-import component-from-global-scope="Tessera.TesseraIcon" name="status-progress" size="12" hint-size="12px,12px"></x-import></span></sc-if>
+<sc-if value="{{ tsReview }}" hint-placeholder-val="{{ false }}"><span style="display:flex;color:#f0a020"><x-import component-from-global-scope="Tessera.TesseraIcon" name="status-review" size="12" hint-size="12px,12px"></x-import></span></sc-if>
+<span style="color:var(--t-text3);font-variant-numeric:tabular-nums">#{{ it.task.n }}</span><span style="min-width:0;overflow:hidden;text-overflow:ellipsis;color:var(--t-text2)">{{ it.task.title }}</span></span></sc-if>
+<sc-if value="{{ it.snoozedFrom }}" hint-placeholder-val="{{ false }}"><span style="flex:0 0 auto;height:22px;display:inline-flex;align-items:center;gap:4px;padding:0 8px;border-radius:999px;background:var(--v-pill);font-size:12px;color:var(--t-text3);white-space:nowrap">с {{ it.snoozedFrom }}</span></sc-if>
+</div></sc-if>
+</div>
+<div style="flex:0 0 auto;display:flex;flex-direction:column;align-items:flex-end;gap:2px;padding-top:1px">
+<sc-if value="{{ timeFired }}" hint-placeholder-val="{{ false }}"><span style="font-size:12.5px;line-height:18px;font-weight:650;color:#f0a020;font-variant-numeric:tabular-nums">{{ it.time }}</span></sc-if>
+<sc-if value="{{ timeUp }}" hint-placeholder-val="{{ false }}"><span style="font-size:12.5px;line-height:18px;font-weight:600;font-variant-numeric:tabular-nums" class="accent-grad-text">{{ it.time }}</span></sc-if>
+<sc-if value="{{ timeMuted }}" hint-placeholder-val="{{ true }}"><span style="font-size:12.5px;line-height:18px;color:var(--t-text3);font-variant-numeric:tabular-nums">{{ it.time }}</span></sc-if>
+<sc-if value="{{ it.rel }}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;color:var(--t-text3);white-space:nowrap">{{ it.rel }}</span></sc-if>
+</div>
+</div>
+<sc-if value="{{ kbdBar }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-wrap:wrap;gap:6px 12px;padding:9px 0 1px 38px;font-size:11.5px;color:var(--t-text2)">
+<sc-for list="{{ acts }}" as="a" hint-placeholder-count="6"><span style="display:flex;align-items:center;gap:5px;white-space:nowrap"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">{{ a.k }}</span>{{ a.l }}</span></sc-for>
+</div></sc-if>
+<sc-if value="{{ bgOpen }}" hint-placeholder-val="{{ false }}"><div style="display:flex;flex-direction:column;gap:8px;padding:10px 0 2px 38px">
+<div style="display:flex;align-items:center;gap:2px;padding:3px;border-radius:9px;background:var(--v-input)"><span style="height:24px;display:flex;align-items:center;padding:0 9px;border-radius:7px;background:var(--v-card);box-shadow:var(--v-sh-card);font-size:12px;font-weight:600">Написать</span><span style="height:24px;display:flex;align-items:center;padding:0 9px;font-size:12px;color:var(--t-text2)">Просмотр</span><span style="flex:1"></span><span style="display:flex;gap:2px;color:var(--t-text3)"><span style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:800">B</span><span style="width:24px;height:24px;display:flex;align-items:center;justify-content:center;font-size:12.5px;font-style:italic;font-weight:600">I</span><span style="width:24px;height:24px;display:flex;align-items:center;justify-content:center"><x-import component-from-global-scope="Tessera.Icon" name="ListOutline" size="14" hint-size="14px,14px"></x-import></span><span style="width:24px;height:24px;display:flex;align-items:center;justify-content:center"><x-import component-from-global-scope="Tessera.Icon" name="CheckboxOutline" size="14" hint-size="14px,14px"></x-import></span><span style="width:24px;height:24px;display:flex;align-items:center;justify-content:center"><x-import component-from-global-scope="Tessera.Icon" name="AtOutline" size="14" hint-size="14px,14px"></x-import></span></span></div>
+<div style="padding:8px 10px;border-radius:9px;background:var(--v-input);box-shadow:0 0 0 2px var(--t-primary);font-size:13px;line-height:20px;color:var(--t-text1)"><div>Пустая доска → предложить шаблоны:</div><div style="color:var(--t-text2)">- [ ] спринт · баг-трекер · контент-план</div><div style="color:var(--t-text2)">- [ ] спросить <span class="accent-grad-text" style="font-weight:600">@Анна</span> про иллюстрации<span style="display:inline-block;width:1.5px;height:15px;margin-left:1px;vertical-align:-2px;background:var(--t-text1)"></span></div></div>
+<div style="display:flex;align-items:center;gap:6px;font-size:11.5px;color:var(--t-text3)"><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">Esc</span>свернуть, сохранено<span style="flex:1"></span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">T</span>в задачу<span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">⇧D</span>в документ</div>
+</div></sc-if>
+<sc-if value="{{ bgErr }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:6px;padding:8px 0 1px 38px;font-size:12px;color:var(--t-text1)"><span style="display:flex;color:#e0533d"><x-import component-from-global-scope="Tessera.Icon" name="AlertCircleOutline" size="14" hint-size="14px,14px"></x-import></span>Не удалось отметить выполненным<span style="flex:1"></span><span style="display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;padding:0 5px;box-sizing:border-box;border-radius:5px;background:var(--v-kbd);color:var(--t-text2);font-size:11px;font-weight:600;box-shadow:0 1px 1px rgba(0,0,0,.22)">↵</span><span style="color:var(--t-text2)">повторить</span></div></sc-if>
+</sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:380,&quot;height&quot;:120}}">
+class Component extends DCLogic {
+  renderVals() {
+    const it = this.props.it || { kind: 'note', title: '', st: 'note' };
+    const st = it.st || (it.kind === 'note' ? 'note' : 'up');
+    const v = it.view || 'normal';
+    const task = it.task || null;
+    const ts = task ? task.st || 'doing' : null;
+    const touch = !!this.props.touch;
+    const acts = it.kind === 'note'
+      ? [{ k: '↵', l: 'открыть' }, { k: 'T', l: 'в задачу' }, { k: '⇧D', l: 'в документ' }, { k: 'L', l: 'к задаче' }, { k: '⌫', l: 'удалить' }]
+      : [{ k: '↵', l: 'открыть' }, { k: 'E', l: 'выполнить' }, { k: 'H', l: 'отложить' }, { k: 'T', l: 'в задачу' }, { k: 'L', l: 'к задаче' }, { k: '⌫', l: '' }];
+    return {
+      it,
+      load: v === 'loading', notLoad: v !== 'loading',
+      bgSel: v === 'sel', bgHov: v === 'hover', bgOpen: v === 'open', bgErr: v === 'error',
+      kbdBar: v === 'sel' && !touch, acts,
+      kNote: st === 'note', kUp: st === 'up', kFired: st === 'fired', kDone: st === 'done', kSnooze: st === 'snoozed',
+      tLive: st !== 'done', tDone: st === 'done',
+      showBody: !!it.body && v !== 'open',
+      meta: !!task || !!it.snoozedFrom,
+      tsTodo: ts === 'todo', tsDoing: ts === 'doing', tsReview: ts === 'review',
+      timeFired: st === 'fired', timeUp: st === 'up', timeMuted: st !== 'fired' && st !== 'up',
+    };
+  }
+}
+</script>
+</body>
+</html>

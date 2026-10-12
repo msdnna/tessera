@@ -38,6 +38,23 @@ linuxdeploy`), даже с `APPIMAGE_EXTRACT_AND_RUN=1`. `.deb` там соби�
 Собирайте AppImage (цель Linux-самообновления) на нативном Linux-хосте или CI-раннере.
 `build-desktop-release.sh` терпит провал шага AppImage и всё равно публикует `.deb`.
 
+**Совместимость по glibc (важно для релиза).** glibc обратно-, но НЕ прямо-совместим:
+бинарь, собранный на этом хосте (WSL Ubuntu 24.04 / glibc 2.39), тянет символы
+`GLIBC_2.3{7,8,9}`, которых нет на более старых системах, и падает с ошибкой glibc —
+например на **Astra Linux SE 1.8** (Debian 12 / glibc 2.36). Поэтому релизные Linux-бандлы
+собираем в контейнере на **Ubuntu 22.04** (glibc 2.35 + webkit2gtk-4.1 — самая старая база,
+на которой ещё собирается Tauri v2):
+
+```
+make desktop-release-linux      # = DESKTOP_LINUX_DOCKER=1 ./tools/build-desktop-release.sh
+```
+
+Результат запускается на любом glibc ≥ 2.35 (Astra SE 1.8, Debian 12, Ubuntu 22.04+,
+RHEL/Alma 9, Fedora). Целевой системе всё равно нужен установленный `libwebkit2gtk-4.1-0`
+(AppImage его не бандлит — это системная библиотека, как и в зависимостях `.deb`).
+Обычный `make desktop-release` собирает на хосте (быстрее, но бинарь только под glibc
+хоста) — годится для локальной проверки, не для раздачи.
+
 ### Windows (собирается нативно на Windows — не из WSL)
 
 Кросс-компиляция из Linux непрактична, И нативный Windows-тулчейн (cargo/MSVC/NSIS)
@@ -58,7 +75,9 @@ linuxdeploy`), даже с `APPIMAGE_EXTRACT_AND_RUN=1`. `.deb` там соби�
    Позже синхронизировать `git -C C:\src\tessera pull`.
 
 Каждая сборка (фронтенд собирается в WSL, на Windows — только Rust+NSIS):
-1. В WSL: `corepack yarn --cwd frontend build`.
+1. В WSL: `corepack yarn --cwd frontend build:desktop` (именно `build:desktop`, не
+   `build` — он отключает PWA service worker, который иначе замораживает старую
+   оболочку в webview десктопа между обновлениями).
 2. Зеркалировать собранный фронтенд в Windows-checkout (frontend\dist в gitignore,
    поэтому `git pull` его не привезёт):
    ```

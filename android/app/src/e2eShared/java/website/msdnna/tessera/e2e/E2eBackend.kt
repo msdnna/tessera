@@ -2,6 +2,7 @@ package website.msdnna.tessera.e2e
 
 import android.os.Build
 import com.google.gson.Gson
+import com.google.gson.JsonObject
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 import okhttp3.MediaType.Companion.toMediaType
@@ -34,6 +35,7 @@ import website.msdnna.tessera.data.model.NameRequest
 import website.msdnna.tessera.data.model.Note
 import website.msdnna.tessera.data.model.NotificationChannel
 import website.msdnna.tessera.data.model.NotificationRoute
+import website.msdnna.tessera.data.model.Patch
 import website.msdnna.tessera.data.model.Project
 import website.msdnna.tessera.data.model.ProjectGroup
 import website.msdnna.tessera.data.model.RegisterDeviceRequest
@@ -47,9 +49,10 @@ import website.msdnna.tessera.data.model.Tag
 import website.msdnna.tessera.data.model.Task
 import website.msdnna.tessera.data.model.TaskDetail
 import website.msdnna.tessera.data.model.TaskEvent
-import website.msdnna.tessera.data.model.UpdateTaskRequest
 import website.msdnna.tessera.data.model.User
 import website.msdnna.tessera.data.model.Workspace
+import website.msdnna.tessera.data.model.taskPatch
+import website.msdnna.tessera.data.model.toWireJson
 
 /**
  * The live backend the e2e tier runs against — a throwaway server on :8092
@@ -314,34 +317,17 @@ object E2eBackend {
         }
     }
 
-    /** Renames a task from the outside. The endpoint is a full replace (title is
-     *  mandatory), so the rest of the task is carried over from its current state
-     *  rather than silently reset to defaults. */
-    fun renameTask(fixture: Fixture, taskId: String, title: String): Task {
-        val current = task(fixture, taskId)
-        return patch(
-            "tasks/$taskId",
-            UpdateTaskRequest(
-                title = title,
-                description = current.description,
-                priority = current.priority,
-                dueDate = current.dueDate,
-                startDate = current.startDate,
-                estimate = current.estimate,
-                completed = current.isCompleted,
-                recurrence = current.recurrence,
-            ),
-            fixture.account.accessToken,
-        )
-    }
+    /** Renames a task from the outside. The endpoint is a partial edit, so the
+     *  title travels alone and everything else stays as the server has it. */
+    fun renameTask(fixture: Fixture, taskId: String, title: String): Task =
+        patchTask(fixture, taskId, taskPatch(title = Patch.Set(title)))
 
     /**
      * Puts dates and a priority on an existing task — what the calendar, the
      * timeline and the Eisenhower matrix lay their cards out by.
      *
-     * Same full-replace endpoint as [renameTask], so the current state is read
-     * back first and only the asked-for fields are overwritten; a `null` here
-     * means «leave as it is», not «clear it».
+     * The endpoint is a partial edit, so only the arguments actually passed reach
+     * it: a `null` here still means «leave as it is», not «clear it».
      */
     fun scheduleTask(
         fixture: Fixture,
@@ -349,22 +335,25 @@ object E2eBackend {
         dueDate: String? = null,
         startDate: String? = null,
         priority: Int? = null,
-    ): Task {
-        val current = task(fixture, taskId)
-        return patch(
-            "tasks/$taskId",
-            UpdateTaskRequest(
-                title = current.title,
-                description = current.description,
-                priority = priority ?: current.priority,
-                dueDate = dueDate ?: current.dueDate,
-                startDate = startDate ?: current.startDate,
-                estimate = current.estimate,
-                completed = current.isCompleted,
-                recurrence = current.recurrence,
-            ),
-            fixture.account.accessToken,
-        )
+    ): Task = patchTask(
+        fixture,
+        taskId,
+        taskPatch(
+            priority = priority?.let { Patch.Set(it) } ?: Patch.Keep,
+            dueDate = dueDate?.let { Patch.Set(it) } ?: Patch.Keep,
+            startDate = startDate?.let { Patch.Set(it) } ?: Patch.Keep,
+        ),
+    )
+
+    /** PATCH /tasks/:id with a body built by [taskPatch] — see there for why the
+     *  JSON is serialised by hand (a `null` has to survive as a key). */
+    private fun patchTask(fixture: Fixture, taskId: String, body: JsonObject): Task {
+        val req = Request.Builder()
+            .url(apiUrl + "tasks/$taskId")
+            .patch(body.toWireJson().toRequestBody(json))
+            .header("Authorization", "Bearer ${fixture.account.accessToken}")
+            .build()
+        return execute(req, "tasks/$taskId")
     }
 
     // ── reading state back ─────────────────────────────────────────────────

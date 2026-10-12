@@ -1,5 +1,7 @@
 package website.msdnna.tessera.util
 
+import java.text.NumberFormat
+import java.util.Locale
 import website.msdnna.tessera.data.model.ConferenceMessage
 
 /*
@@ -22,6 +24,17 @@ const val CONF_CHAT_MAX_FILES = 5
 /** The server's per-file cap, checked here so a 30 MB video fails instantly. */
 const val CONF_CHAT_MAX_BYTES = 25L * 1024 * 1024
 
+/**
+ * The server's `MaxChatTotalBytes` — the cap on one message's files *together*.
+ *
+ * The fourth rule, and the one nobody had: [CONF_CHAT_MAX_FILES] bounds how many
+ * files travel, never how much. Five 20 MB videos passed every check on every
+ * client and the request was then refused server-side — and before the route had
+ * a body budget of its own, refused by the transport with "request body too
+ * large", which names nothing the user picked (#2932).
+ */
+const val CONF_CHAT_MAX_TOTAL_BYTES = 25L * 1024 * 1024
+
 /** The server's `maxChatBody`, in *runes* — see [confChatBodyLength]. */
 const val CONF_CHAT_MAX_BODY = 4000
 
@@ -35,7 +48,7 @@ data class ConfPendingFile(
 )
 
 /** Why a picked file did not make it onto the message. */
-enum class ConfPickRefusal { NONE, TOO_BIG, TOO_MANY }
+enum class ConfPickRefusal { NONE, TOO_BIG, TOO_BIG_TOTAL, TOO_MANY }
 
 /**
  * The composer's attachments after a pick, and the one refusal worth telling
@@ -62,6 +75,7 @@ data class ConfPickResult(
  */
 fun confChatAccept(pending: List<ConfPendingFile>, picked: List<ConfPendingFile>): ConfPickResult {
     val out = pending.toMutableList()
+    var total = pending.sumOf { it.size }
     var refusal = ConfPickRefusal.NONE
     var name = ""
     for (file in picked) {
@@ -75,10 +89,18 @@ fun confChatAccept(pending: List<ConfPendingFile>, picked: List<ConfPendingFile>
         }
         // An oversized file is skipped, not fatal — the rest of the pick is
         // still perfectly sendable, and the refusal below says what was lost.
-        if (file.size <= CONF_CHAT_MAX_BYTES) {
+        // The batch check is skipped the same way rather than breaking, because
+        // a smaller file behind a rejected one can still fit.
+        val over = when {
+            file.size > CONF_CHAT_MAX_BYTES -> ConfPickRefusal.TOO_BIG
+            total + file.size > CONF_CHAT_MAX_TOTAL_BYTES -> ConfPickRefusal.TOO_BIG_TOTAL
+            else -> ConfPickRefusal.NONE
+        }
+        if (over == ConfPickRefusal.NONE) {
             out += file
+            total += file.size
         } else if (refusal == ConfPickRefusal.NONE) {
-            refusal = ConfPickRefusal.TOO_BIG
+            refusal = over
             name = file.name
         }
     }
@@ -174,6 +196,36 @@ fun confChatPrepend(older: List<ConferenceMessage>, current: List<ConferenceMess
 }
 
 /**
+ * Moves the unread anchor off a line that is no longer in the log.
+ *
+ * The anchor is an id, and an id only means something while its row is on
+ * screen. A message can leave: its author retracts it, or a host moderates it
+ * away, and every other phone learns about that by the next page simply not
+ * carrying it. Left alone, the anchor then resolves to nothing, «unknown anchor»
+ * means «everything is unread», and one deleted line puts a badge reading the
+ * whole conversation on a rail the reader had already caught up with.
+ *
+ * The position is still known, though, because [previous] still holds it: the
+ * newest surviving line above the vanished one was read too, so that is where
+ * the anchor lands. Nothing above it survived — the page replaced the list
+ * wholesale, which is what a tunnel and fifty-one new messages look like — and
+ * the empty anchor is then the truth: none of what is on screen was shown.
+ */
+fun confChatReanchor(previous: List<ConferenceMessage>, merged: List<ConferenceMessage>, lastSeenId: String): String {
+    if (lastSeenId.isBlank()) return lastSeenId
+    val ids = merged.mapTo(HashSet()) { it.id }
+    if (lastSeenId in ids) return lastSeenId
+    val was = previous.indexOfLast { it.id == lastSeenId }
+    // An anchor that was never in the list we are replacing says nothing about
+    // where the reader stopped; guessing from it would be worse than keeping it.
+    if (was < 0) return lastSeenId
+    for (i in was - 1 downTo 0) {
+        if (previous[i].id in ids) return previous[i].id
+    }
+    return ""
+}
+
+/**
  * How many lines have arrived that this phone has not shown.
  *
  * Counted off ids rather than off nudges (which is what the web does): the room
@@ -198,17 +250,34 @@ enum class ConfSizeUnit { BYTES, KB, MB }
 
 data class ConfFileSize(val amount: String, val unit: ConfSizeUnit)
 
-/** Formats a byte count the way the task attachments do. */
-fun confFileSize(bytes: Long): ConfFileSize = when {
-    bytes >= 1L shl 20 -> ConfFileSize(
-        String.format(java.util.Locale.US, "%.1f", bytes / (1L shl 20).toDouble()),
-        ConfSizeUnit.MB,
-    )
-
-    bytes >= 1L shl 10 -> ConfFileSize(
-        String.format(java.util.Locale.US, "%.0f", bytes / (1L shl 10).toDouble()),
-        ConfSizeUnit.KB,
-    )
-
-    else -> ConfFileSize(bytes.coerceAtLeast(0).toString(), ConfSizeUnit.BYTES)
+/**
+ * Formats a byte count the way every other file size in the product is formatted:
+ * web `utils/docPdf.formatFileSize` (which `ConferenceChat.vue` imports for this
+ * very rail) and its phone twin [docFileSize] both scale by 1024, keep one
+ * fraction digit for anything above bytes, and hand the number to the reader's
+ * own [NumberFormat].
+ *
+ * Both halves are locale business, and only one of them used to be. The unit came
+ * out of the string catalogue while the number came out of `Locale.US`, so the
+ * same attachment read «1.4 МБ» in a call and «1,4 МБ» in a document — inside one
+ * Russian interface. The separator is not ambiguous the way a hard-coded one
+ * would be: it is written in the language it is read in, which is the argument
+ * [docFileSize] already makes.
+ */
+fun confFileSize(bytes: Long, locale: Locale = Locale.getDefault()): ConfFileSize {
+    val unit = when {
+        bytes >= 1L shl 20 -> ConfSizeUnit.MB
+        bytes >= 1L shl 10 -> ConfSizeUnit.KB
+        else -> ConfSizeUnit.BYTES
+    }
+    val value = when (unit) {
+        ConfSizeUnit.MB -> bytes / (1L shl 20).toDouble()
+        ConfSizeUnit.KB -> bytes / (1L shl 10).toDouble()
+        ConfSizeUnit.BYTES -> bytes.coerceAtLeast(0).toDouble()
+    }
+    val format = NumberFormat.getInstance(locale).apply {
+        maximumFractionDigits = if (unit == ConfSizeUnit.BYTES) 0 else 1
+        minimumFractionDigits = 0
+    }
+    return ConfFileSize(format.format(value), unit)
 }

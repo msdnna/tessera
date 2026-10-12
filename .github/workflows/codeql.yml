@@ -1,0 +1,89 @@
+name: CodeQL
+
+# The SAST half of #2936. A workflow of its own rather than a job in ci.yml:
+# CodeQL builds the code a second time and takes minutes, and its findings land
+# in the repository's Security tab rather than in a check's log — a different
+# audience and a different cadence from the pull-request gate.
+#
+# Free for public repositories, which this one is. Languages here are the two
+# from #2936; android (java-kotlin) and desktop (rust — third-party pack) are
+# #2938's call.
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main, develop]
+  # Weekly, so newly published queries reach an unchanged tree: most of what
+  # CodeQL learns after a merge comes from rule updates, not from new code.
+  schedule:
+    - cron: '27 4 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: codeql-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      # Writing the results into the Security tab is the whole point.
+      security-events: write
+      contents: read
+      actions: read
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - language: go
+            build-mode: manual
+          - language: javascript-typescript
+            build-mode: none
+    steps:
+      - uses: actions/checkout@v4
+
+      # Go is analysed from a real build, so the toolchain has to match the one
+      # go.mod pins — the same setup-go dance as ci.yml (go-version-file reads
+      # only the `go` directive and would install the wrong patch release).
+      - name: Resolve Go version from go.mod toolchain directive
+        if: ${{ matrix.language == 'go' }}
+        id: gover
+        run: |
+          ver=$(awk '/^toolchain go/ {sub(/^go/,"",$2); print $2; exit}' backend/go.mod)
+          [ -z "$ver" ] && ver=$(awk '/^go / {print $2; exit}' backend/go.mod)
+          echo "version=$ver" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/setup-go@v5
+        if: ${{ matrix.language == 'go' }}
+        with:
+          go-version: ${{ steps.gover.outputs.version }}
+          cache-dependency-path: backend/go.sum
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@v4
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: ${{ matrix.build-mode }}
+          # security-extended adds the lower-precision security queries on top of
+          # the default set. Worth the extra noise on a codebase seeing its first
+          # SAST pass — the point of this round is to find out what is there.
+          queries: security-extended
+          # paths-ignore for code that never ships (tests, e2e, design mock-ups);
+          # the file says why product code must never be listed there.
+          config-file: ./.github/codeql/codeql-config.yml
+
+      # autobuild would find backend/ and stop there; the repo holds two Go
+      # modules and both should be analysed.
+      - name: Build Go modules
+        if: ${{ matrix.language == 'go' }}
+        run: |
+          set -euo pipefail
+          (cd backend && go build ./...)
+          (cd mcp && go build ./...)
+
+      - name: Analyze
+        uses: github/codeql-action/analyze@v4
+        with:
+          category: /language:${{ matrix.language }}

@@ -48,11 +48,14 @@ var fodtNodeRendering = map[string]struct {
 	"codeBlock":      {docNode{Type: "codeBlock", Content: []docNode{txt("x < y")}}, `<text:p text:style-name="Preformatted_20_Text">x &lt; y</text:p>`},
 	"horizontalRule": {docNode{Type: "horizontalRule"}, `<text:p text:style-name="Horizontal_20_Line"/>`},
 	"hardBreak":      {docNode{Type: "hardBreak"}, "<text:line-break/>"},
-	"image":          {docNode{Type: "image", Attrs: map[string]any{"src": "https://x/y.png", "alt": "к"}}, `<draw:image xlink:href="https://x/y.png"`},
-	"table":          {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell"}}}}}, `<table:table table:name="Table1"`},
-	"tableRow":       {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell"}}}}}, "<table:table-row>"},
-	"tableHeader":    {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableHeader", Content: []docNode{txt("H")}}}}}}, `<text:p text:style-name="Table_20_Heading">H</text:p>`},
-	"tableCell":      {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell", Attrs: map[string]any{"colspan": float64(2)}}}}}}, `table:number-columns-spanned="2"`},
+	// An image the export does not hold the bytes of renders as a link, not as a
+	// draw:image the converter's LibreOffice would fetch — see
+	// TestRenderDocFODTDoesNotLetTheConverterFetchRemoteImages.
+	"image":       {docNode{Type: "image", Attrs: map[string]any{"src": "https://x/y.png", "alt": "к"}}, `<text:a xlink:type="simple" xlink:href="https://x/y.png" text:style-name="Internet_20_Link">Изображение: к</text:a>`},
+	"table":       {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell"}}}}}, `<table:table table:name="Table1"`},
+	"tableRow":    {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell"}}}}}, "<table:table-row>"},
+	"tableHeader": {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableHeader", Content: []docNode{txt("H")}}}}}}, `<text:p text:style-name="Table_20_Heading">H</text:p>`},
+	"tableCell":   {docNode{Type: "table", Content: []docNode{{Type: "tableRow", Content: []docNode{{Type: "tableCell", Attrs: map[string]any{"colspan": float64(2)}}}}}}, `table:number-columns-spanned="2"`},
 	// Unlike the HTML route, the geometry really does travel — that is the point
 	// of this renderer. See TestRenderDocFODTSectionsGetOwnPageLayout.
 	"sectionBreak": {
@@ -383,6 +386,39 @@ func TestRenderDocFODTColumnWidths(t *testing.T) {
 	}
 }
 
+// TestRenderDocFODTDoesNotLetTheConverterFetchRemoteImages guards the export
+// half of #2932.
+//
+// This .fodt is not read by the member's browser — it is posted to the sidecar,
+// where LibreOffice opens it. A draw:image with xlink:actuate="onLoad" is
+// therefore a request the *server* makes, to whatever address the src names, on
+// every export of a document anyone can put a URL into; the converter reaches
+// the whole compose network and the public internet alike. The picture may not
+// come along, but the fetch must not happen.
+func TestRenderDocFODTDoesNotLetTheConverterFetchRemoteImages(t *testing.T) {
+	for _, src := range []string{
+		"http://169.254.169.254/latest/meta-data/",
+		"https://evil.example/beacon.png",
+		"//evil.example/beacon.png",
+		"/api/documents/asset?doc=1&n=x.png&sig=forged",
+	} {
+		out := renderDocFODT("", docNode{Type: "doc", Content: []docNode{
+			{Type: "image", Attrs: map[string]any{"src": src, "alt": "схема"}},
+		}}, nil)
+		if strings.Contains(out, "draw:image") {
+			t.Errorf("src %q became a draw:image the converter will fetch\n%s", src, out)
+		}
+		if strings.Contains(out, `xlink:actuate="onLoad"`) {
+			t.Errorf("src %q is still loaded on open\n%s", src, out)
+		}
+		// Not silently dropped either: the reader has to be able to see that
+		// something was here, and where it pointed.
+		if !strings.Contains(out, "Изображение: схема") {
+			t.Errorf("src %q left no stand-in in the export\n%s", src, out)
+		}
+	}
+}
+
 // A data: URI is not something LibreOffice's ODF import fetches: left in
 // xlink:href the picture arrives as an empty box, so the bytes have to become
 // the frame's own.
@@ -408,9 +444,13 @@ func TestRenderDocFODTEmbedsInlinedImageBytes(t *testing.T) {
 	}
 }
 
+// The src is an inlined asset rather than a URL because only a picture whose
+// bytes travel gets a frame at all — a remote one is a link, and a link has no
+// size (TestRenderDocFODTDoesNotLetTheConverterFetchRemoteImages).
 func TestRenderDocFODTUsesExplicitImageSize(t *testing.T) {
 	out := fodt(docNode{Type: "image", Attrs: map[string]any{
-		"src": "https://x/y.png", "width": float64(192), "height": float64(96),
+		"src":   "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==",
+		"width": float64(192), "height": float64(96),
 	}})
 	if !strings.Contains(out, `svg:width="5.1cm" svg:height="2.5cm"`) {
 		t.Errorf("explicit width/height not converted\n%s", out)

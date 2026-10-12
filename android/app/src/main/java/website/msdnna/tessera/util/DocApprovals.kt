@@ -102,6 +102,28 @@ fun documentApprovalState(approvals: List<DocumentApproval>): DocumentApproval? 
 fun canRaiseApproval(approvals: List<DocumentApproval>): Boolean =
     approvals.none { it.status == DocumentApprovalStatus.PENDING }
 
+/** Workspace roles the backend accepts as a manager (`requireManager`). */
+val APPROVAL_MANAGER_WS_ROLES = setOf("owner", "admin")
+
+/**
+ * Whether the caller may withdraw a route.
+ *
+ * `CancelDocumentApproval` opens this to whoever raised the route and to
+ * workspace managers only — a route someone else is halfway through signing is
+ * not something a passer-by should be able to void. Offering the button to every
+ * member made the commonest case (an approver reading the route they were asked
+ * to sign) a 403.
+ *
+ * [workspaceRole] is my role in the workspace, blank while the roster is still
+ * loading — the button is then hidden for an admin who did not raise the route,
+ * which is the safe way round, exactly as in [canModerateConference].
+ */
+fun canCancelApproval(approval: DocumentApproval?, meId: String?, workspaceRole: String): Boolean {
+    if (approval == null || approval.status != DocumentApprovalStatus.PENDING) return false
+    if (workspaceRole in APPROVAL_MANAGER_WS_ROLES) return true
+    return !meId.isNullOrBlank() && approval.createdBy == meId
+}
+
 /**
  * Task links pinned to a block, counted per block.
  *

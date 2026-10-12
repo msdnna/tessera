@@ -13,6 +13,14 @@ SELECT * FROM workspaces WHERE id = $1;
 -- name: NextWorkspaceTaskNumber :one
 UPDATE workspaces SET task_counter = task_counter + 1 WHERE id = $1 RETURNING task_counter;
 
+-- ReserveWorkspaceTaskNumbers claims a whole block of numbers at once and returns
+-- the last one in it, so a project arriving from another workspace can be
+-- renumbered without racing the ordinary one-at-a-time allocation above. The
+-- claim is the same single UPDATE … RETURNING, so a concurrent task creation
+-- either sees the counter before the block or after it — never inside.
+-- name: ReserveWorkspaceTaskNumbers :one
+UPDATE workspaces SET task_counter = task_counter + @count::bigint WHERE id = @id RETURNING task_counter;
+
 -- name: ListWorkspacesForUser :many
 SELECT w.*, m.role AS my_role
 FROM workspaces w
@@ -42,13 +50,28 @@ SET estimation = $2, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
+-- SetWorkspaceAppearance stores the rail tile's colour and icon (#2955). Its
+-- own endpoint, like the estimation config, so a rename never clobbers them.
+-- name: SetWorkspaceAppearance :one
+UPDATE workspaces
+SET color = $2, icon = $3, icon_mode = $4, updated_at = now()
+WHERE id = $1
+RETURNING *;
+
 -- name: DeleteWorkspace :exec
 DELETE FROM workspaces WHERE id = $1;
 
 -- name: CreateMembership :one
+-- Upsert, so re-adding a member is how a manager changes their role — except for
+-- the owner, whose role the handlers treat as immutable (UpdateMemberRole and
+-- RemoveMember both answer 403 on it). That rule has to hold at the write too:
+-- the other callers here are the invitation-accept paths, where the role comes
+-- from an invitation a mere admin composed, and nothing upstream asks whether the
+-- address belongs to the workspace owner.
 INSERT INTO memberships (workspace_id, user_id, role)
 VALUES ($1, $2, $3)
-ON CONFLICT (workspace_id, user_id) DO UPDATE SET role = EXCLUDED.role
+ON CONFLICT (workspace_id, user_id) DO UPDATE
+SET role = CASE WHEN memberships.role = 'owner' THEN memberships.role ELSE EXCLUDED.role END
 RETURNING *;
 
 -- name: GetMembershipRole :one
@@ -63,7 +86,9 @@ SELECT * FROM memberships WHERE workspace_id = $1 AND user_id = $2;
 -- comment is pushed to GitLab). Scalar subquery rather than a LEFT JOIN:
 -- oauth_identities is unique by (provider, provider_user_id), not by user_id, so
 -- a user linked to two GitLab instances would otherwise be listed twice.
-SELECT m.user_id, m.role, u.email, u.name,
+-- last_seen_at / last_active_at (#3073): when the person was last in the app
+-- and when they last changed something in this workspace.
+SELECT m.user_id, m.role, u.email, u.name, u.last_seen_at, m.last_active_at,
   COALESCE((
     SELECT oi.provider_username FROM oauth_identities oi
     WHERE oi.user_id = u.id AND oi.provider = 'gitlab'

@@ -160,9 +160,16 @@ describe('useConfTransport — joining', () => {
   })
 
   it('surfaces the sentence our own API refused with', async () => {
-    api.token.mockRejectedValue({
-      response: { status: 403, data: { error: 'removed from this conference' } },
-    })
+    // The shape the api client actually rejects with: an Error carrying the
+    // humanized `message` plus `status`/`raw`, and no axios `response` at all
+    // (pinned in st-api.spec.js). The fixture used to be axios-shaped, which is
+    // how a `e.response.status` read survived review here (#2932).
+    api.token.mockRejectedValue(
+      Object.assign(new Error('removed from this conference'), {
+        status: 403,
+        raw: 'removed from this conference',
+      }),
+    )
     const t = transport()
     await t.join('c1')
 

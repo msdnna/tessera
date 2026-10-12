@@ -48,6 +48,13 @@ function mountModal() {
 // n-modal teleports its body to <body>, so the rendered text is read there
 // rather than off the wrapper.
 const bodyText = () => document.body.textContent
+// v2 (#2975): the window shows one section at a time — the write-back headings
+// and the schedule live in «Обратная запись».
+async function toWriteback() {
+  document.querySelector('[data-testid="gitlab-tab-writeback"]').click()
+  await nextTick()
+  await nextTick()
+}
 
 describe('GitLab modal follows a language switch', () => {
   beforeEach(() => setActivePinia(createPinia()))
@@ -62,11 +69,11 @@ describe('GitLab modal follows a language switch', () => {
     await nextTick()
     await nextTick()
     expect(bodyText()).toContain('Аккаунт')
+    await toWriteback()
     expect(bodyText()).toContain('Обратная запись в GitLab')
 
     await setI18nLocale('en')
     await nextTick()
-    expect(bodyText()).toContain('Account')
     expect(bodyText()).toContain('Write-back to GitLab')
     expect(bodyText()).not.toContain('Обратная запись в GitLab')
     wrapper.unmount()
@@ -78,6 +85,7 @@ describe('GitLab modal follows a language switch', () => {
     const wrapper = mountModal()
     await nextTick()
     await nextTick()
+    await toWriteback()
     // Auto-sync interval: selected value 0 → "Вручную (выкл.)" is on screen.
     expect(bodyText()).toContain('Вручную (выкл.)')
 

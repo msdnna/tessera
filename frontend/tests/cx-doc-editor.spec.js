@@ -27,6 +27,7 @@ const DOC_FILES = [
   'src/components/documents/DocLinks.vue',
   'src/components/documents/DocTemplates.vue',
   'src/components/documents/DocToc.vue',
+  'src/components/documents/DocTree.vue',
   'src/views/DocumentsView.vue',
 ]
 
@@ -35,12 +36,17 @@ function styleBlock(source) {
   return blocks.join('\n')
 }
 
+// The v2 surface levels (--t-col, --t-pop, --t-sh-*…) are published by
+// styles/tokens.js themeVars(), which both the theme store and the design
+// system call — so that file is a source of defined names too.
 function definedTokens() {
   const css = readFileSync(resolve(root, 'src/styles/main.css'), 'utf8')
   const store = readFileSync(resolve(root, 'src/stores/theme.js'), 'utf8')
+  const palette = readFileSync(resolve(root, 'src/styles/tokens.js'), 'utf8')
   return new Set([
     ...[...css.matchAll(/(--t-[a-z0-9-]+)\s*:/g)].map((m) => m[1]),
     ...[...store.matchAll(/'(--t-[a-z0-9-]+)'/g)].map((m) => m[1]),
+    ...[...palette.matchAll(/'(--t-[a-z0-9-]+)'/g)].map((m) => m[1]),
   ])
 }
 
@@ -117,10 +123,10 @@ describe('document sheet', () => {
     expect(css).toMatch(
       /\.doc-content :deep\(\.ProseMirror\)\s*{[^}]*max-width:\s*var\(--doc-sheet-w,\s*\d+px\)/,
     )
-    expect(css).toMatch(
-      /\.doc-content :deep\(\.ProseMirror\)\s*{[^}]*background:\s*var\(--t-surface\)/,
-    )
-    expect(css).toMatch(/\.doc-content\s*{[^}]*background:\s*var\(--t-surface-alt\)/)
+    // v2 (#3106): the sheet is a --t-col surface standing on the canvas itself —
+    // the surface ladder (canvas < col) draws its edge, no frame and no outline.
+    expect(css).toMatch(/\.doc-content :deep\(\.ProseMirror\)\s*{[^}]*background:\s*var\(--t-col\)/)
+    expect(css).not.toMatch(/\.doc-content :deep\(\.ProseMirror\)\s*{[^}]*border:/)
   })
 
   // The handle used to sit at `left: 0` of the surface; once the sheet is

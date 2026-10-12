@@ -1,0 +1,403 @@
+package main
+
+import (
+	"fmt"
+	"net/http"
+	"strings"
+	"testing"
+)
+
+// The dry run under the comment editor («Будет применено: …») and the real run
+// must agree. They diverged on the two commands that take a *list* of arguments:
+// `/assign` and `/tag` apply what they can resolve and name the rest as skipped,
+// while the preview refused the whole command as soon as one entry was unknown.
+// So `/assign @known @typo` was shown as a failure and then went on to assign
+// @known — the hint said the opposite of what happened.
+
+// previewCommands runs the dry run and returns its per-command outcomes.
+func previewCommands(t *testing.T, c *client, taskID, body string) []map[string]any {
+	t.Helper()
+	m := c.expect(t, c.post("/tasks/"+taskID+"/commands/preview",
+		map[string]any{"body": body}), http.StatusOK)
+	raw, _ := m["commands"].([]any)
+	out := make([]map[string]any, 0, len(raw))
+	for _, item := range raw {
+		oc, _ := item.(map[string]any)
+		out = append(out, oc)
+	}
+	return out
+}
+
+// outcomeText reports whether an outcome carries an error, plus its text.
+func outcomeText(oc map[string]any) (string, string) {
+	summary, _ := oc["summary"].(string)
+	errText, _ := oc["error"].(string)
+	return summary, errText
+}
+
+// TestPreviewMatchesApplyOnPartialAssign is the headline case: one known login,
+// one typo. The preview must promise the partial success the run delivers.
+func TestPreviewMatchesApplyOnPartialAssign(t *testing.T) {
+	t.Parallel()
+	owner := signup(t)
+	s := mkStack(t, owner)
+	member := signup(t)
+	owner.expect(t, owner.post("/workspaces/"+s.WS+"/members",
+		map[string]any{"email": member.Email, "role": "member"}), http.StatusCreated)
+	known, _, _ := strings.Cut(member.Email, "@")
+
+	task := mkTask(t, owner, s.Board, s.col(t, 0), "Превью против применения")
+	taskID := task["id"].(string)
+	body := "/assign @" + known + " @такого-нет"
+
+	cmds := previewCommands(t, owner, taskID, body)
+	if len(cmds) != 1 {
+		t.Fatalf("preview returned %d commands, want 1", len(cmds))
+	}
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused a partially resolvable /assign: %q — the run applies it", previewErr)
+	}
+	if !strings.Contains(previewSummary, known) {
+		t.Fatalf("preview summary = %q, want the resolvable login %q in it", previewSummary, known)
+	}
+	if !strings.Contains(previewSummary, "такого-нет") {
+		t.Fatalf("preview summary = %q, want the unresolvable login named as skipped", previewSummary)
+	}
+
+	r := owner.post("/tasks/"+taskID+"/comments", map[string]any{"body": body})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	applied, failed := commandSummary(t, r)
+	if len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied — preview promised it", applied, failed)
+	}
+
+	assignees := owner.get("/tasks/" + taskID).mapBody(t)["assignees"]
+	list, _ := assignees.([]any)
+	if len(list) != 1 {
+		t.Fatalf("task has %d assignees, want 1", len(list))
+	}
+}
+
+// TestPreviewMatchesApplyOnPartialTag is the same divergence on the other
+// list-taking command.
+func TestPreviewMatchesApplyOnPartialTag(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	c.expect(t, c.post("/projects/"+s.Project+"/tags",
+		map[string]any{"name": "backend", "color": "#7c5cff"}), http.StatusCreated)
+
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Теги в превью")
+	taskID := task["id"].(string)
+	body := "/tag backend, такого-тега-нет"
+
+	cmds := previewCommands(t, c, taskID, body)
+	if len(cmds) != 1 {
+		t.Fatalf("preview returned %d commands, want 1", len(cmds))
+	}
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused a partially resolvable /tag: %q — the run applies it", previewErr)
+	}
+	if !strings.Contains(previewSummary, "backend") || !strings.Contains(previewSummary, "такого-тега-нет") {
+		t.Fatalf("preview summary = %q, want both the applied and the skipped tag", previewSummary)
+	}
+
+	r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	if applied, failed := commandSummary(t, r); len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied", applied, failed)
+	}
+}
+
+// TestPreviewStillRefusesWhenNothingResolves is the negative control: the
+// preview must keep failing when *no* entry resolves, exactly as the run does.
+func TestPreviewStillRefusesWhenNothingResolves(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Ничего не нашлось")
+	taskID := task["id"].(string)
+
+	for _, body := range []string{"/assign @нет-такого @и-такого", "/tag нет-тега, и-этого-нет"} {
+		cmds := previewCommands(t, c, taskID, body)
+		if len(cmds) != 1 {
+			t.Fatalf("preview of %q returned %d commands, want 1", body, len(cmds))
+		}
+		if _, previewErr := outcomeText(cmds[0]); previewErr == "" {
+			t.Fatalf("preview of %q reported no error, want one — nothing resolves", body)
+		}
+		r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body})
+		if r.Status != http.StatusBadRequest {
+			t.Fatalf("run of %q: status %d, want 400\n%s", body, r.Status, r.Body)
+		}
+	}
+}
+
+// TestPreviewResolvesSeededColumnCaption is the same divergence on /move.
+//
+// A seeded column is stored under its Russian name and captioned by each client
+// from name_key, so an English reader's board says "Done" where the row says
+// «Готово». The run learned to resolve the caption (#2800, matchColumn), the dry
+// run kept comparing the typed text to the stored name only — and answered «нет
+// колонки «Done» на этой доске» in red about the column the task then moved into.
+func TestPreviewResolvesSeededColumnCaption(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Английская подпись колонки")
+	taskID := task["id"].(string)
+	body := "/move Done"
+
+	cmds := previewCommands(t, c, taskID, body)
+	if len(cmds) != 1 {
+		t.Fatalf("preview returned %d commands, want 1", len(cmds))
+	}
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused /move by caption: %q — the run performs it", previewErr)
+	}
+	if !strings.Contains(previewSummary, "Готово") {
+		t.Fatalf("preview summary = %q, want the stored column name in it", previewSummary)
+	}
+
+	r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	if applied, failed := commandSummary(t, r); len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied — preview promised it", applied, failed)
+	}
+
+	done := s.Columns[len(s.Columns)-1]["id"].(string)
+	if got := c.get("/tasks/" + taskID).mapBody(t)["column_id"]; got != done {
+		t.Fatalf("task sits in column %v, want the done column %s", got, done)
+	}
+}
+
+// TestPreviewMatchesApplyOnPartialRelation is the same divergence on the third
+// family of list-taking commands — the relations.
+//
+// qaRelation links every #N it resolves and names the rest as skipped, exactly
+// like /assign and /tag. The dry run refused the whole command at the first
+// unknown number, so «/relate #<real> #999999» was painted red and then went on
+// to create the link to the real one.
+func TestPreviewMatchesApplyOnPartialRelation(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	col := s.col(t, 0)
+	task := mkTask(t, c, s.Board, col, "Связи в превью")
+	taskID := task["id"].(string)
+	other := mkTask(t, c, s.Board, col, "Цель связи")
+	otherNum := int(taskNumber(t, c, other["id"].(string)))
+	body := fmt.Sprintf("/relate #%d #999999", otherNum)
+
+	cmds := previewCommands(t, c, taskID, body)
+	if len(cmds) != 1 {
+		t.Fatalf("preview returned %d commands, want 1", len(cmds))
+	}
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused a partially resolvable /relate: %q — the run applies it", previewErr)
+	}
+	if !strings.Contains(previewSummary, fmt.Sprintf("#%d", otherNum)) {
+		t.Fatalf("preview summary = %q, want the resolvable reference in it", previewSummary)
+	}
+	if !strings.Contains(previewSummary, "999999") {
+		t.Fatalf("preview summary = %q, want the unresolvable reference named as skipped", previewSummary)
+	}
+
+	r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	if applied, failed := commandSummary(t, r); len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied — preview promised it", applied, failed)
+	}
+}
+
+// TestPreviewRelationStillRefusesWhenNothingResolves is the negative control for
+// the relations: no reference resolves, so both halves must refuse.
+func TestPreviewRelationStillRefusesWhenNothingResolves(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Связей не нашлось")
+	taskID := task["id"].(string)
+	body := "/relate #999998 #999999"
+
+	cmds := previewCommands(t, c, taskID, body)
+	_, previewErr := outcomeText(cmds[0])
+	if previewErr == "" {
+		t.Fatalf("preview reported no error, want one — no reference resolves")
+	}
+	if !strings.Contains(previewErr, "999998") || !strings.Contains(previewErr, "999999") {
+		t.Fatalf("preview error = %q, want both unresolved references named", previewErr)
+	}
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body}); r.Status != http.StatusBadRequest {
+		t.Fatalf("run: status %d, want 400\n%s", r.Status, r.Body)
+	}
+}
+
+// TestPreviewParentIgnoresExtraReferences guards the command that only *looks*
+// like a list: qaParent re-parents under the first reference and ignores the
+// rest, while the dry run checked every one of them and reported a number the
+// run never reads.
+func TestPreviewParentIgnoresExtraReferences(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	col := s.col(t, 0)
+	task := mkTask(t, c, s.Board, col, "Родитель в превью")
+	taskID := task["id"].(string)
+	parent := mkTask(t, c, s.Board, col, "Будущий родитель")
+	parentNum := int(taskNumber(t, c, parent["id"].(string)))
+	body := fmt.Sprintf("/parent #%d #999999", parentNum)
+
+	cmds := previewCommands(t, c, taskID, body)
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused /parent over an unread extra reference: %q", previewErr)
+	}
+	if !strings.Contains(previewSummary, fmt.Sprintf("#%d", parentNum)) {
+		t.Fatalf("preview summary = %q, want the parent reference in it", previewSummary)
+	}
+	if strings.Contains(previewSummary, "999999") {
+		t.Fatalf("preview summary = %q, must not promise anything about the ignored reference", previewSummary)
+	}
+
+	r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	if applied, failed := commandSummary(t, r); len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied", applied, failed)
+	}
+	if got := c.get("/tasks/" + taskID).mapBody(t)["parent_id"]; got != parent["id"] {
+		t.Fatalf("task parent = %v, want %v", got, parent["id"])
+	}
+}
+
+// TestPreviewNamesEveryUnresolvedEntry guards the error text itself: the run
+// lists all the misses, and the preview used to stop at the first one.
+func TestPreviewNamesEveryUnresolvedEntry(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Все промахи")
+	taskID := task["id"].(string)
+
+	cmds := previewCommands(t, c, taskID, "/assign @первый-нет @второй-нет")
+	_, previewErr := outcomeText(cmds[0])
+	if !strings.Contains(previewErr, "первый-нет") || !strings.Contains(previewErr, "второй-нет") {
+		t.Fatalf("preview error = %q, want both unresolved logins named", previewErr)
+	}
+}
+
+// TestPreviewRefusesMoveIntoCurrentColumn reads the same divergence the other way
+// round: the dry run promising something the run then refuses.
+//
+// qaMove answers «задача уже в «X»» for a task already standing there, and the
+// preview — which resolved the column with its own loop and never looked at where
+// the task was — drew a green «перенести в «X»» in front of it.
+func TestPreviewRefusesMoveIntoCurrentColumn(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	colName := s.Columns[0]["name"].(string)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Уже в этой колонке")
+	taskID := task["id"].(string)
+	body := "/move " + colName
+
+	cmds := previewCommands(t, c, taskID, body)
+	if len(cmds) != 1 {
+		t.Fatalf("preview returned %d commands, want 1", len(cmds))
+	}
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr == "" {
+		t.Fatalf("preview promised %q for a task already in that column — the run refuses it", previewSummary)
+	}
+	if !strings.Contains(previewErr, colName) {
+		t.Fatalf("preview error = %q, want the column named", previewErr)
+	}
+
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": body}); r.Status != http.StatusBadRequest {
+		t.Fatalf("run: status %d, want 400\n%s", r.Status, r.Body)
+	}
+}
+
+// TestPreviewCloseFollowsTheTasksColumn is both directions of the same check on
+// /close: green while the task is still open, refused once it sits in the done
+// column — which is where qaMove's «задача уже в «Готово»» comes from.
+func TestPreviewCloseFollowsTheTasksColumn(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Закрыть дважды")
+	taskID := task["id"].(string)
+
+	cmds := previewCommands(t, c, taskID, "/close")
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr != "" {
+		t.Fatalf("preview refused /close on an open task: %q — the run performs it", previewErr)
+	}
+	if !strings.Contains(previewSummary, "Готово") {
+		t.Fatalf("preview summary = %q, want the done column named", previewSummary)
+	}
+
+	r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": "/close"})
+	if r.Status != http.StatusOK {
+		t.Fatalf("status %d, want 200\n%s", r.Status, r.Body)
+	}
+	if applied, failed := commandSummary(t, r); len(applied) != 1 || len(failed) != 0 {
+		t.Fatalf("run applied=%v failed=%v, want the command applied", applied, failed)
+	}
+
+	// The task now sits in the done column, and the run refuses a second /close.
+	cmds = previewCommands(t, c, taskID, "/close")
+	previewSummary, previewErr = outcomeText(cmds[0])
+	if previewErr == "" {
+		t.Fatalf("preview promised %q for an already-closed task — the run refuses it", previewSummary)
+	}
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": "/close"}); r.Status != http.StatusBadRequest {
+		t.Fatalf("second run: status %d, want 400\n%s", r.Status, r.Body)
+	}
+}
+
+// TestPreviewRefusesUnassignWithNobodyAssigned covers the argument-less
+// shorthand: qaAssign refuses «/unassign» on a task with nobody to clear, and the
+// preview answered «снять всех исполнителей» without reading the list.
+func TestPreviewRefusesUnassignWithNobodyAssigned(t *testing.T) {
+	t.Parallel()
+	c := signup(t)
+	s := mkStack(t, c)
+	task := mkTask(t, c, s.Board, s.col(t, 0), "Снимать некого")
+	taskID := task["id"].(string)
+
+	cmds := previewCommands(t, c, taskID, "/unassign")
+	previewSummary, previewErr := outcomeText(cmds[0])
+	if previewErr == "" {
+		t.Fatalf("preview promised %q for a task with no assignees — the run refuses it", previewSummary)
+	}
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": "/unassign"}); r.Status != http.StatusBadRequest {
+		t.Fatalf("run: status %d, want 400\n%s", r.Status, r.Body)
+	}
+
+	// With somebody assigned the shorthand is promised and performed, so the new
+	// refusal is about the task's state and not about the command.
+	c.expect(t, c.post("/tasks/"+taskID+"/assignees",
+		map[string]any{"user_id": c.UserID}), http.StatusNoContent)
+	cmds = previewCommands(t, c, taskID, "/unassign")
+	if _, previewErr = outcomeText(cmds[0]); previewErr != "" {
+		t.Fatalf("preview refused /unassign on a task with an assignee: %q", previewErr)
+	}
+	if r := c.post("/tasks/"+taskID+"/comments", map[string]any{"body": "/unassign"}); r.Status != http.StatusOK {
+		t.Fatalf("run: status %d, want 200\n%s", r.Status, r.Body)
+	}
+}

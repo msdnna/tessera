@@ -1,4 +1,4 @@
-import { reactive, onMounted, onBeforeUnmount } from 'vue'
+import { reactive, onMounted, onBeforeUnmount, watch } from 'vue'
 
 // Card-list virtualization (IntersectionObserver windowing).
 //
@@ -12,7 +12,9 @@ import { reactive, onMounted, onBeforeUnmount } from 'vue'
 // Measuring before collapsing keeps placeholder height exact → no jump.
 //
 // `frozen` (the board's drag flag) suspends visibility swaps so SortableJS sees a
-// stable DOM for the duration of a drag.
+// stable DOM for the duration of a drag — but the entries that arrive meanwhile are
+// BANKED, not dropped: an IntersectionObserver reports state *changes*, so nothing
+// re-delivers them once the drag is over. See `pending`.
 export const VCARD_EST = 190 // placeholder px until a card has been measured
 
 // Keyed by "columnKey::taskId", NOT taskId alone: under tag grouping one task can
@@ -29,6 +31,9 @@ export function useCardViewport({
 } = {}) {
   const vis = reactive({}) // card key → in/near viewport (undefined = not yet known)
   const cardH = reactive({}) // card key → last measured px (from the rendered card)
+  // Card key → visibility observed while `frozen` was up, applied the moment it
+  // drops. Plain Map on purpose: this is a backlog, not render state.
+  const pending = new Map()
   let io = null // toggles visibility by real viewport position
   let ro = null // measures rendered cards (settles after content layout)
 
@@ -46,15 +51,35 @@ export function useCardViewport({
   function reset() {
     for (const k of Object.keys(vis)) delete vis[k]
     for (const k of Object.keys(cardH)) delete cardH[k]
+    pending.clear()
   }
+
+  // Unfreezing replays what the drag muted. Without it a card that came into view
+  // DURING the gesture stayed a blank placeholder while sitting in the viewport:
+  // the observer had already recorded it as intersecting, so it had no change left
+  // to report, and only scrolling the card out and back in brought it round. The
+  // board reaches that state by itself — the column strip auto-scrolls a neighbour
+  // into view while a card is in the air (useBoardDragScroll.stepColumn) and the
+  // horizontal rootMargin is 0, so an off-screen column's cards are genuinely
+  // non-intersecting — and so does SortableJS's own vertical auto-scroll inside a
+  // long column. Same shape as the board's `flushMissed` for realtime events.
+  watch(
+    () => !!frozen?.value,
+    (isFrozen) => {
+      if (isFrozen || !pending.size) return
+      for (const [id, seen] of pending) vis[id] = seen
+      pending.clear()
+    },
+  )
 
   onMounted(() => {
     io = new IntersectionObserver(
       (entries) => {
-        if (frozen?.value) return
         for (const en of entries) {
           const id = en.target.dataset.cardId
-          if (id) vis[id] = en.isIntersecting
+          if (!id) continue
+          if (frozen?.value) pending.set(id, en.isIntersecting)
+          else vis[id] = en.isIntersecting
         }
       },
       { rootMargin },

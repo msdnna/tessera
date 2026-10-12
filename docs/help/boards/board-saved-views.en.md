@@ -1,64 +1,64 @@
 ---
-title: Saved views
+title: Board views
 category: Boards
 order: 24
-keywords: views, save, load, preset, autosave, overwrite, delete
-updated: 2026-08-28
+keywords: saved views, save, update, reset, changed, default, star, shared, personal, rename, order, delete
+updated: 2026-10-08
 ---
 
-The combination of grouping, sorts, filters and card settings you've assembled is a **view**. It can be named and saved, so you come back to it in a single click instead of collecting the chips all over again.
+A combination of view, grouping, sorting, filters and card settings you have put together is a **saved view**. You can name and save it to come back to it in one click instead of assembling the chips again.
 
-![The list of a board's saved views](../assets/board-views-light.png)
+![The saved view chip on the board bar and its menu](../assets/board-views-light.png)
 
-Two buttons on the board bar: the **folder** loads a view, the **disk** saves the current one.
+Saved views live in the first section of the [Board view](/help/board-customize) panel (`⇧V`). A loaded view shows a **chip** on the board bar, right after the view switch; with no view loaded there is no chip.
 
-## What gets saved
+## What is saved
 
-A view remembers the whole of what you see:
+A saved view remembers how you look at the board:
 
-- the visualization (board, list, calendar, timeline, Gantt, matrix);
-- the grouping, and the tag prefix if the grouping is by prefix;
-- every sort level — with its order and direction;
-- every filter, **including the text in the search box**, and the subtask expansion;
-- which columns are collapsed and whether empty ones auto-collapse;
-- card size, field stacking, showing empty fields and the visibility of each field;
-- the state of autosave.
+- the view — kanban, list, timeline, Gantt, calendar or matrix; applying the saved view switches to it;
+- the grouping and the tag prefix;
+- every sort level with its order and direction;
+- every filter, and whether subtasks are expanded;
+- which columns are collapsed and whether empty ones collapse automatically;
+- the card size, “Stacked”, “Show empty” and the visibility of each field;
+- the matrix thresholds;
+- the list's column widths, the calendar mode (month or week), the scale and the switches of the timeline and the Gantt.
 
-What is *not* saved is the **scope** — a milestone or the archive: that is where you are right now, not how you are looking. The search query, on the other hand, goes into the view together with the filters, so clear the box before saving unless you want it back every time.
+Not saved are **the text in the search field** (that is your query of the moment), **the milestone** and **the archive** — that is where you are, not how you look.
 
-## Views belong to a visualization
+## Mine and shared
 
-The list in the folder shows only the views of the **current visualization**. A view saved on the Kanban won't appear in the list on the Gantt — and the other way round.
+The section shows one list in two parts:
 
-Hence the most common complaint: “my views are gone”. Almost always it means you're standing on a different visualization. Switch back with the view button in the header and the list returns.
+- **Mine** — your personal views. Only you see them, on all your devices.
+- **Shared on the board** — every member of the board sees them. The space owner and admins create and change them; everybody else sees a lock next to a shared view, and instead of “Update” they are offered “Save as mine” — a personal copy under the same name.
 
-## Saving and overwriting
+A row's place in the list is its key: with the panel open and in the chip's menu, `1`–`9` apply a view by its place, `0` means “No saved view”.
 
-The disk opens a name field. Type a name and press Enter or “Save” — a message reads “View “…” saved”.
+## Save current as…
 
-To **overwrite** an existing one, don't retype the name: under the field there's an “Overwrite:” row with buttons for the names you already have. Clicking a name puts it in the field, and “Save” overwrites it. Saving under a name you already own always overwrites rather than creating a second view with the same name.
+At the bottom of the list is the **Save current as…** row (`⌘⇧S` from anywhere on the board). It turns into a field in place: type a name and press Enter. The owner and admins see a **Mine / Shared** toggle next to the field. A name has to be unique within its list: two personal “Sprint” views are not allowed, a personal one and a shared one are.
 
-## Loading, switching, deleting
+## “Changed”, “Update” and “Reset”
 
-The folder shows the list; clicking a name applies the view immediately, and the name is highlighted as current and moves into the button's tooltip — “View: <name>”.
+As soon as the board differs from the loaded view — you changed the grouping, dropped a filter, switched the card size — an orange dot appears on the chip and on the sliders button, and on top of the section a note says what exactly changed, with two buttons:
 
-The bin next to a name deletes it after a confirmation. Deleting the one currently loaded doesn't change the board — it just stops counting as being inside a named view.
+- **Update** (`⌘S`) — write the current state into the view;
+- **Reset** (`⌘⌫`) — bring the board back to what the view stores.
 
-When there are no saved views for this visualization, the list reads “No saved views”.
+The view never changes by itself: changes go into it only on “Update”. To keep them separately, press `⌘⇧S` — you get a new view and the old one stays as it was.
 
-## Autosave
+## Default
 
-The **Autosave** switch lives in the [customize panel](/help/board-customize). While it's on and a named view is loaded, every change on the bar is written into that view by itself.
+The **star** on a row makes the view open by default. On a personal view it means “by default for me”, on a shared one “for everybody on the board” (set by the owner or an admin). Your own star wins over the shared one.
 
-The switch is disabled until a view is loaded: autosave needs something to write to. Load a view with the folder first, then turn autosave on.
+The default view applies when you open the board in a new browser session. Within a session the board remembers where you left off: moving between boards and reloading the page keep your current settings.
 
-Mind the flip side: with autosave on, a filter you removed by accident is saved too. If a view is your “working baseline” that you return to after experiments, autosave is better left off.
+## The row menu
 
-## Views are personal and travel with you
+Each row has a “⋯” menu: **Rename** (`F2` or a double click — the name is edited right in the row), **Update from current**, the **Open by default** star, **Make shared** / **Make personal** (for the owner and admins), **Move up** / **Move down** (`⌥↑` / `⌥↓`) and **Delete** (`⌫`). Deleting happens at once, and a toast with an undo appears at the bottom of the screen — `⌘Z` or the toast's button puts the view back where it was.
 
-Views are stored **on the server and separately per user**. Both of these follow from that:
+## No saved view
 
-- Your views are **available on all of your devices** — in the browser and in the app alike, under the same account.
-- Your views are **invisible to everyone else**. Two people on one board can each have their own “My tasks this week” without getting in each other's way. A view can't be shared with a colleague — agree on the set of filters in words.
-
-Apart from that stands the **unnamed** current state of the bar: the one you simply clicked together and never saved. It is remembered per board and per visualization, but **on this device only** — no server record stands behind it. If a set of conditions has to survive a change of device, save it as a view.
+**No saved view** in the chip's menu (`0`) drops the view: the board stays as it is, it just no longer counts as being in a named view. That unnamed state is remembered for every board and every view kind, but **only on this device**. If a set of conditions has to survive a change of device, save it as a view.

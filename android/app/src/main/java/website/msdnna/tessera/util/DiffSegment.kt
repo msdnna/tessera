@@ -17,10 +17,16 @@ fun diffSegments(base: String?, cur: String?): List<DiffSegment> {
     var p = 0
     val maxPrefix = minOf(b.length, c.length)
     while (p < maxPrefix && b[p] == c[p]) p++
+    // Обе границы считают UTF-16-единицы, поэтому срез может прийтись на середину
+    // суррогатной пары: соседние эмодзи одного блока (😀 → 😃) делят старшую
+    // половину, и подсветка отдаёт два одиноких суррогата — два ромба с вопросом
+    // вместо эмодзи. Отступаем с пары; лишняя единица подсветки ничего не стоит.
+    if (p > 0 && c[p - 1].isHighSurrogate()) p--
 
     var s = 0
     val maxSuffix = minOf(b.length - p, c.length - p)
     while (s < maxSuffix && b[b.length - 1 - s] == c[c.length - 1 - s]) s++
+    if (s > 0 && c[c.length - s].isLowSurrogate()) s--
 
     val prefix = c.substring(0, p)
     val middle = c.substring(p, c.length - s)

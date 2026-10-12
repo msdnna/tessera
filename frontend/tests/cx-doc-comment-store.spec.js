@@ -61,11 +61,16 @@ describe('useDocComments', () => {
       block_id: 'b1',
       body: 'нужен срок',
       quote: 'Пункт',
+      mentions: [],
     })
     expect(api.comments).toHaveBeenCalledTimes(1)
 
     await c.reply('r1', 'ответ')
-    expect(api.addComment).toHaveBeenLastCalledWith('doc-1', { parent_id: 'r1', body: 'ответ' })
+    expect(api.addComment).toHaveBeenLastCalledWith('doc-1', {
+      parent_id: 'r1',
+      body: 'ответ',
+      mentions: [],
+    })
     expect(api.comments).toHaveBeenCalledTimes(2)
   })
 

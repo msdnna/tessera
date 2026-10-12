@@ -2,8 +2,11 @@
 import { onMounted } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '@/stores/auth'
+import { LogoGitlab } from '@vicons/ionicons5'
 import AuthLayout from '@/components/AuthLayout.vue'
 import LoaderOverlay from '@/components/LoaderOverlay.vue'
+import { invitePath } from '@/utils/inviteRoute'
+import { takePendingInvite } from '@/utils/pendingInvite'
 
 const router = useRouter()
 const authStore = useAuthStore()
@@ -15,6 +18,10 @@ const authStore = useAuthStore()
 // window.location, where injected script could read it. Parse it, establish the
 // session, then clean the URL.
 onMounted(async () => {
+  // Taken up front, before any exit from this page: an SSO sign-in started on
+  // the invite fork left it here, and every route out of here is a route past
+  // it. Held instead of discarded on failure, it would meet the next sign-in.
+  const invite = takePendingInvite()
   const frag = new URLSearchParams((window.location.hash || '').replace(/^#/, ''))
   const access = frag.get('access_token')
   const refresh = frag.get('refresh_token') // web: absent; mobile hand-off only
@@ -26,7 +33,9 @@ onMounted(async () => {
     await authStore.loginWithTokens(access, refresh)
     // Drop the fragment from history so tokens don't linger in the URL.
     window.history.replaceState(null, '', window.location.pathname)
-    router.replace('/')
+    // Back onto the invitation the sign-in was a detour from — the accept page
+    // now has the session it was missing and joins the workspace on its own.
+    router.replace(invite ? invitePath(invite) : '/')
   } catch {
     router.replace({ path: '/login', query: { oauth_error: 'userinfo_failed' } })
   }
@@ -34,7 +43,12 @@ onMounted(async () => {
 </script>
 
 <template>
-  <auth-layout :title="$t('common.auth.oauth.title')">
+  <auth-layout
+    :title="$t('common.auth.oauth.title')"
+    :subtitle="$t('common.auth.oauth.subtitle')"
+    :icon="LogoGitlab"
+    tone="#fc6d26"
+  >
     <div class="oauth-wait">
       <loader-overlay :show="true" contained :messages="[$t('common.auth.oauth.finishing')]" />
     </div>

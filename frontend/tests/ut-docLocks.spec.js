@@ -92,6 +92,49 @@ describe('BlockLocks', () => {
     expect(onBlocked.mock.calls[0][0].name).toBe('Боб')
   })
 
+  // A modifier does not make an erasing key harmless — it makes it hungrier:
+  // Ctrl/Alt+Backspace eats the previous word, Cmd+Backspace the rest of the
+  // line. The guard used to consult only its chord table once any modifier was
+  // down, so every one of these walked straight through the lock.
+  it('swallows word- and line-wise erases inside a locked block', () => {
+    lockBlock(editor, 1)
+    caretIn(editor, 1)
+
+    // Judged by onBlocked, not by the return of `press`: a chord the guard lets
+    // pass can still be claimed by some other plugin's keymap, which would read
+    // as a green.
+    for (const opts of [
+      { ctrlKey: true },
+      { altKey: true },
+      { metaKey: true },
+      { ctrlKey: true, shiftKey: true },
+    ]) {
+      onBlocked.mockClear()
+      expect(press(editor, 'Backspace', opts)).toBe(true)
+      expect(onBlocked).toHaveBeenCalledTimes(1)
+      expect(onBlocked.mock.calls[0][0].name).toBe('Боб')
+    }
+    for (const key of ['Delete', 'Enter']) {
+      onBlocked.mockClear()
+      expect(press(editor, key, { ctrlKey: true })).toBe(true)
+      expect(onBlocked).toHaveBeenCalledTimes(1)
+    }
+  })
+
+  // The other half of the same rule: outside the lock those chords must still
+  // reach the document, and the browser's own Ctrl+Tab must never be eaten.
+  it('leaves modified erases alone outside the lock', () => {
+    lockBlock(editor, 1)
+    caretIn(editor, 0)
+    press(editor, 'Backspace', { ctrlKey: true })
+    press(editor, 'Delete', { metaKey: true })
+    expect(onBlocked).not.toHaveBeenCalled()
+
+    caretIn(editor, 1)
+    expect(press(editor, 'Tab', { ctrlKey: true })).toBe(false)
+    expect(onBlocked).not.toHaveBeenCalled()
+  })
+
   // A lock stops the person from typing in *that* block, not in the document:
   // note that `press` reports whether any plugin handled the key (Enter is
   // claimed by the keymap), so the guard is judged by onBlocked, not by that.
@@ -139,6 +182,58 @@ describe('BlockLocks', () => {
       { emitUpdate: false },
     )
     expect(editor.getText()).toContain('новое')
+  })
+
+  // Relocating a block is an edit to it, and the drag-and-drop half of the same
+  // feature has always said so (handleDrop refuses a drop whose target or
+  // source is held). The keyboard half went around the guard entirely: Alt is
+  // not an editing modifier as far as isEditingKey is concerned, so
+  // Alt+Shift+Arrow never reached it (#2932).
+  it('refuses to relocate a block someone else holds', () => {
+    lockBlock(editor, 1)
+    caretIn(editor, 1)
+    const before = editor.getJSON()
+    expect(editor.commands.moveBlockUp()).toBe(false)
+    expect(editor.getJSON()).toEqual(before)
+    expect(onBlocked).toHaveBeenCalledTimes(1)
+    expect(onBlocked.mock.calls[0][0].name).toBe('Боб')
+  })
+
+  // The block under the caret is free, but the one it swaps with is not: a move
+  // relocates both, so both have to be.
+  it('refuses a move that would displace a locked neighbour', () => {
+    lockBlock(editor, 1)
+    caretIn(editor, 0)
+    expect(editor.commands.moveBlockDown()).toBe(false)
+    expect(editor.getText()).toBe('раз\n\nдва\n\nтри')
+    expect(onBlocked).toHaveBeenCalledTimes(1)
+  })
+
+  // moveBlockTo jumps rather than steps, and every block it passes is pushed by
+  // one, so the whole span is what the lock is checked against.
+  it('refuses a jump across a locked block', () => {
+    lockBlock(editor, 1)
+    expect(editor.commands.moveBlockTo(2, 0)).toBe(false)
+    expect(onBlocked).toHaveBeenCalledTimes(1)
+  })
+
+  it('goes through the shortcut, not only the command', () => {
+    lockBlock(editor, 1)
+    caretIn(editor, 1)
+    const before = editor.getJSON()
+    press(editor, 'ArrowUp', { altKey: true, shiftKey: true })
+    expect(editor.getJSON()).toEqual(before)
+    expect(onBlocked).toHaveBeenCalled()
+  })
+
+  // The guard is about locks, not about moving: blocks clear of every lock keep
+  // working, or the shortcut would be dead the moment anyone opened the page.
+  it('still moves blocks clear of every lock', () => {
+    lockBlock(editor, 0)
+    caretIn(editor, 2)
+    expect(editor.commands.moveBlockUp()).toBe(true)
+    expect(editor.getText()).toBe('раз\n\nтри\n\nдва')
+    expect(onBlocked).not.toHaveBeenCalled()
   })
 
   it('marks nothing when the roster is empty', () => {

@@ -5,6 +5,7 @@ import { NTooltip } from 'naive-ui'
 import { useVersionInfo } from '@/composables/useVersionInfo'
 import { useFormat } from '@/composables/useFormat'
 import { useWhatsNewStore } from '@/stores/whatsNew'
+import { RELEASE, productLabel } from '@/utils/release'
 
 // The running Web/API versions, shown low-contrast in the sidebar footer.
 // A neutral element by the design language — flat, no accent gradient.
@@ -46,10 +47,16 @@ function lines(label, info) {
 // Both computed: the labels come from the catalogue, so the tooltip is
 // re-rendered in the new language after a switch instead of keeping the one it
 // was first built in.
+// The product release first (docs/versioning.md): «Tessera 2.0», then the
+// components it is made of.
+const productLines = computed(() =>
+  RELEASE ? [productLabel(), t('app.version.release', { date: fmtDate(RELEASE.date) })] : null,
+)
 const webLines = computed(() => lines(t('app.version.web'), web))
 const apiLines = computed(() => lines(t('app.version.api'), api.value))
 const rowText = computed(() => {
   const parts = []
+  if (RELEASE) parts.push(productLabel())
   if (web.version) parts.push(`web ${web.version}`)
   if (api.value?.version) parts.push(`api ${api.value.version}`)
   return parts.join(' · ')
@@ -58,7 +65,7 @@ const rowText = computed(() => {
 
 <template>
   <div v-if="mode === 'block'" class="ver-block">
-    <template v-for="(group, gi) in [webLines, apiLines]" :key="gi">
+    <template v-for="(group, gi) in [productLines, webLines, apiLines]" :key="gi">
       <div v-if="group" class="ver-group">
         <div v-for="(l, li) in group" :key="li" :class="li === 0 ? 'ver-head' : 'ver-sub'">
           {{ l }}
@@ -83,7 +90,7 @@ const rowText = computed(() => {
       </div>
     </template>
     <div class="ver-tip">
-      <template v-for="(group, gi) in [webLines, apiLines]" :key="gi">
+      <template v-for="(group, gi) in [productLines, webLines, apiLines]" :key="gi">
         <div v-if="group" class="ver-group">
           <div v-for="(l, li) in group" :key="li" :class="li === 0 ? 'ver-head' : 'ver-sub'">
             {{ l }}

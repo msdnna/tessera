@@ -1,0 +1,430 @@
+/* Shared look of the GitLab window's sections (#2975, mockup GitlabWin). Global
+   on purpose — three section components and the journal draw the same title,
+   setting rows, tables and cards; scoped copies would drift. Every class is
+   prefixed `glw-`. */
+.glw {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  height: 100%;
+  padding: 6px 16px 0 0;
+}
+.lw-mobile .glw {
+  padding-right: 0;
+}
+.glw-title {
+  flex: none;
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 6px 10px;
+  min-height: 36px;
+  margin-bottom: 14px;
+}
+.glw-title h2 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+}
+.glw-title h2 {
+  flex: none;
+}
+.glw-note {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  color: var(--t-text3);
+}
+.glw-title > .kit-btn {
+  flex: none;
+}
+.lw-mobile .glw-title {
+  flex-wrap: wrap;
+}
+.glw-grow {
+  flex: 1;
+}
+.glw-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 2px 2px 20px;
+}
+.glw-h {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 22px 0 10px;
+  font-size: 13.5px;
+  font-weight: 650;
+}
+.glw-h:first-child {
+  margin-top: 4px;
+}
+.glw-h-n {
+  font-weight: 500;
+  color: var(--t-text3);
+}
+.glw-hint {
+  margin: 6px 0 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--t-text3);
+}
+.glw-hint code {
+  padding: 1px 5px;
+  border-radius: 5px;
+  background: var(--t-pill);
+  font-size: 11.5px;
+}
+/* A card on --t-sub, radius 14 — connections, the account, the defaults. */
+.glw-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 64px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--t-sub);
+  box-sizing: border-box;
+}
+.glw-card + .glw-card {
+  margin-top: 8px;
+}
+.glw-card.click {
+  cursor: pointer;
+}
+.glw-card.click:hover {
+  background: color-mix(in srgb, var(--t-hover) 60%, var(--t-sub));
+}
+.glw-card.on {
+  background: color-mix(in srgb, var(--t-primary) 12%, var(--t-sub));
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--t-primary) 55%, transparent);
+}
+.glw-card.err {
+  background: color-mix(in srgb, var(--t-error) 9%, var(--t-sub));
+}
+.glw-card.col {
+  flex-direction: column;
+  align-items: stretch;
+}
+/* The GitLab tile: a 40px square in GitLab's orange gradient. */
+.glw-tile {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 11px;
+  color: #fff;
+  background: linear-gradient(to top right, #e24329, #fc6d26 50%, #fca326);
+}
+.glw-tile.sm {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+}
+.glw-tile.soft {
+  background: color-mix(in srgb, #fc6d26 18%, transparent);
+  color: #fc6d26;
+}
+.glw-tile.accent {
+  background: color-mix(in srgb, var(--t-primary) 16%, transparent);
+  color: var(--t-primary);
+}
+.glw-tile.err {
+  background: color-mix(in srgb, var(--t-error) 16%, transparent);
+  color: var(--t-error);
+}
+.glw-tile.off {
+  background: var(--t-pill);
+  color: var(--t-text3);
+}
+.glw-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.glw-line {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+}
+.glw-path {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13.5px;
+  font-weight: 650;
+  color: var(--t-text1);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.glw-sub {
+  font-size: 12.5px;
+  color: var(--t-text3);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.glw-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 7px;
+  background: var(--t-pill);
+  color: var(--t-text2);
+  font-size: 11.5px;
+  font-weight: 650;
+  white-space: nowrap;
+}
+.glw-pill::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.glw-pill.ok {
+  background: color-mix(in srgb, #2fa86b 16%, transparent);
+  color: #2fa86b;
+}
+.glw-pill.err {
+  background: color-mix(in srgb, var(--t-error) 16%, transparent);
+  color: var(--t-error);
+}
+.glw-pill.plain::before {
+  display: none;
+}
+/* Segmented control: Pull / Pull и push, filters, the conflict policy. */
+.glw-seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--t-r-ctl);
+  background: var(--t-ctl);
+  flex: none;
+}
+.glw-seg > button,
+.glw-seg > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text2);
+  font: inherit;
+  font-size: 12.5px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.glw-seg > button:hover:not(.on):not(:disabled) {
+  color: var(--t-text1);
+}
+.glw-seg > .on {
+  background: var(--t-pop);
+  color: var(--t-text1);
+  font-weight: 650;
+  box-shadow: var(--t-sh-card);
+}
+.glw-seg > .stub,
+.glw-seg > :disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.glw-seg-n {
+  font-size: 11px;
+  color: var(--t-text3);
+}
+/* Setting rows: a label column, the control on the right. */
+.glw-row {
+  display: grid;
+  grid-template-columns: 210px minmax(0, 1fr);
+  gap: 18px;
+  align-items: center;
+  min-height: 44px;
+  padding: 4px 0;
+}
+.glw-lbl {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.glw-lbl-t {
+  font-size: 13px;
+  font-weight: 600;
+}
+.glw-lbl-s {
+  font-size: 12px;
+  color: var(--t-text3);
+  line-height: 1.4;
+}
+.glw-ctl {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-width: 0;
+}
+.glw-ctl > .n-select,
+.glw-ctl > .n-input,
+.glw-ctl > .df-trigger {
+  max-width: 360px;
+}
+/* Table rows (rules, write-back bindings): 40–46px, no lines. */
+.glw-thead {
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  padding: 0 10px 8px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--t-text3);
+}
+.glw-trow {
+  display: grid;
+  align-items: center;
+  gap: 10px;
+  min-height: 44px;
+  padding: 3px 10px;
+  border-radius: 12px;
+  outline: 0;
+}
+.glw-trow:hover,
+.glw-trow.ctx {
+  background: var(--t-hover);
+}
+.glw-trow.open {
+  background: var(--t-active);
+}
+.glw-trow:focus-visible {
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--t-primary) 55%, transparent);
+}
+.glw-trow.off > :not(.glw-keep) {
+  opacity: 0.5;
+}
+.glw-arrow {
+  color: var(--t-text3);
+}
+.glw-more {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--t-text3);
+  cursor: pointer;
+  flex: none;
+}
+.glw-more:hover {
+  background: var(--t-ctl);
+  color: var(--t-text1);
+}
+/* An expanded row's editor — the block on --t-sub with the ring. */
+.glw-edit {
+  margin: 2px 0 8px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  background: var(--t-sub);
+  box-shadow: 0 0 0 2px var(--t-primary);
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 8px 14px;
+  align-items: center;
+  font-size: 12.5px;
+}
+.glw-edit > .glw-edit-l {
+  color: var(--t-text2);
+}
+.glw-edit-full {
+  grid-column: 1 / -1;
+}
+/* The info strip at a section's foot. */
+.glw-info {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 6px 0 4px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--t-sub);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--t-text2);
+}
+.glw-info .n-icon {
+  flex: none;
+  margin-top: 1px;
+  color: var(--t-text3);
+}
+.glw-warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: color-mix(in srgb, #f0a020 12%, transparent);
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--t-text1);
+}
+.glw-warn .n-icon {
+  flex: none;
+  color: #f0a020;
+  margin-top: 1px;
+}
+.glw-stub {
+  opacity: 0.55;
+  cursor: default;
+}
+.glw-mono {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+@media (max-width: 768px) {
+  .glw-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .glw-edit {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+/* Fields on a sunken card: Naive's input well is the same tone as --t-sub in
+   the dark theme and vanished. On the cards and in the row editors the well
+   takes the control level instead (real properties — Naive sets its colour
+   through inline variables, which a stylesheet variable can't beat). */
+.glw-card .n-input:not(.n-input--disabled),
+.glw-edit .n-input:not(.n-input--disabled),
+.glw-card .n-base-selection:not(.n-base-selection--disabled) .n-base-selection-label,
+.glw-edit .n-base-selection:not(.n-base-selection--disabled) .n-base-selection-label {
+  background-color: var(--t-ctl) !important;
+}
+/* Phone: no key caps, cards may wrap their trailing controls. */
+.lw-mobile .glw-title .kbd,
+.lw-mobile .glw-hide-m {
+  display: none;
+}
+.lw-mobile .glw-card {
+  flex-wrap: wrap;
+}

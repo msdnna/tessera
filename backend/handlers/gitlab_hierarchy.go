@@ -1,12 +1,10 @@
 package handlers
 
 import (
-	"errors"
 	"log"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5"
 
 	"tessera/internal/db"
 	"tessera/internal/gitlab"
@@ -50,13 +48,10 @@ func (h *API) changeGitlabTaskGroup(c *gin.Context, group bool) {
 
 	// The binding is resolved by the task's own board, like every other GitLab action
 	// on a task — a workspace can have several integrations.
-	integ, err := h.q.GetGitlabIntegrationByBoard(c, task.BoardID)
-	if errors.Is(err, pgx.ErrNoRows) {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "task is not on a GitLab integration board"})
-		return
-	}
-	if err != nil {
-		fail(c, err)
+	// A linked task resolves to its own link's binding; several projects may mirror
+	// into one board (#3082).
+	integ, ok := h.boardIntegration(c, id, task.BoardID, nil)
+	if !ok {
 		return
 	}
 	link, lerr := h.q.GetGitlabLinkByTask(c, id)

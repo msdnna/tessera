@@ -3,18 +3,18 @@ title: Signing in with GitLab (OAuth)
 category: Administration
 order: 82
 keywords: administration, gitlab, oauth, sign-in, authorization, service token, sudo, org map, integration
-updated: 2026-08-25
+updated: 2026-10-08
 platforms: web
 ---
 
-The **“Sign in with GitLab (OAuth)”** card is the top block of the [Administration](/help/admin-users) screen. It configures two things at once, and their sitting side by side is no accident:
+The **“Sign in with GitLab (OAuth)”** card is the **Integrations** section of the [Administration](/help/admin-users) screen (the column of sections on the left). It configures two things at once, and their sitting side by side is no accident:
 
 - **signing in to Tessera through GitLab** — a “Sign in with GitLab” button on the sign-in screen instead of the email-plus-password pair;
 - **the sync service token** — the credentials the GitLab task integration runs under.
 
 Both parts are filled in once for the whole instance and are available only to the instance administrator.
 
-![The “Sign in with GitLab (OAuth)” card on the administration screen](../assets/admin-oauth-light.png)
+![The “Sign in with GitLab (OAuth)” card in the Integrations section](../assets/admin-oauth-light.png)
 
 ## The OAuth application on the GitLab side
 

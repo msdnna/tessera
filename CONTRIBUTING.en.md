@@ -12,7 +12,7 @@ A monorepo of independently versioned components (each has its own `VERSION`):
 
 | Directory   | Component                                                    |
 |-------------|-------------------------------------------------------------|
-| `backend/`  | Go 1.25 + gin + PostgreSQL 17 (sqlc, pgx/v5, golang-migrate) |
+| `backend/`  | Go 1.26 + gin + PostgreSQL 17 (sqlc, pgx/v5, golang-migrate) |
 | `frontend/` | Vue 3 + Vite + Naive UI + Pinia (Yarn 4 via Corepack)       |
 | `android/`  | Kotlin + Jetpack Compose (online-first)                     |
 | `desktop/`  | Tauri v2 (a Rust shell around the same Vue frontend)        |
@@ -20,7 +20,7 @@ A monorepo of independently versioned components (each has its own `VERSION`):
 
 ## Requirements
 
-- **Go 1.25.x** (in the Makefile — the `GO` variable, `go1.25.9` by default; `go` in CI).
+- **Go 1.26.x** (in the Makefile — the `GO` variable, `go1.26.9` by default; `go` in CI).
 - **Node 22+** and **Corepack** (Yarn 4 — only `corepack yarn ...`, not plain `yarn`).
 - **Docker** + Docker Compose (Postgres for dev/tests).
 - **JDK 21** + Android SDK (compileSdk 37) — for `android/`.
@@ -89,6 +89,19 @@ Repository documentation is **bilingual**, but there's a single canon — **Russ
   token via `go run ./cmd/token`. Details — in [`mcp/README.md`](mcp/README.en.md).
 - **Sentry** — optional self-hosted error tracking (off without a DSN). In dev we
   read errors from logs; with Sentry up — through it (see the `tessera-sentry` skill).
+
+## Code security
+
+Before submitting a change, run the scan for the component you touched:
+`make scan-backend` / `scan-frontend` / `scan-android` / `scan-desktop` /
+`scan-secrets` (install the tools with `make scan-tools`). The scans deliberately
+stay out of `make lint`/`make test` — they reach the network and take minutes.
+
+The gate is a **ratchet**: today's findings are frozen in
+`tools/security-baseline.json` and the list may shrink, never grow. Fixed a
+finding — regenerate the baseline (`make scan-baseline-update`) and commit the
+diff together with the change. Details — [`docs/security-scanning.md`](docs/security-scanning.md)
+(Russian only).
 
 ## Pull requests
 

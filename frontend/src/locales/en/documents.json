@@ -6,7 +6,16 @@
     "customCommand": "custom",
     "fullscreen": {
       "title": "Description",
-      "close": "Close (Esc)"
+      "comment": "Comment",
+      "close": "Close (Esc)",
+      "write": "Write",
+      "split": "Side by side",
+      "preview": "Preview",
+      "fold": "Fold",
+      "foldHint": "fold",
+      "done": "Done",
+      "saved": "Saved · {time}",
+      "syncScroll": "Scrolling in sync"
     },
     "tool": {
       "bold": "Bold",
@@ -28,7 +37,11 @@
       "preview": "Preview",
       "edit": "Edit",
       "send": "Send (Ctrl+Enter)",
-      "sending": "Sending…"
+      "sending": "Sending…",
+      "mention": "Mention",
+      "more": "More",
+      "formatToggle": "Formatting",
+      "attachMenu": "Attach"
     },
     "snippet": {
       "linkText": "text",
@@ -41,7 +54,10 @@
       "image": "Could not upload the image",
       "file": "Could not upload the file",
       "attachments": "Could not load the file list",
-      "pdf": "Could not upload the PDF"
+      "pdf": "Could not upload the PDF",
+      "imageTooLarge": "The image is larger than {limit} — the server will not take it",
+      "imageType": "Only PNG, JPEG, GIF, WebP and BMP are supported",
+      "fileTooLarge": "The file is larger than {limit} — the server will not take it"
     },
     "link": {
       "placeholder": "https://… or a section of the document",
@@ -52,6 +68,67 @@
       "insert": "Insert a block below",
       "comment": "Discuss this block",
       "drag": "Drag the block"
+    },
+    "write": "Write",
+    "previewTab": "Preview",
+    "send": "Send",
+    "discardAsk": "Discard your changes?",
+    "hintTask": "task",
+    "hintPerson": "person",
+    "hintCommand": "command",
+    "discardText": "Your changes will be lost.",
+    "discardKeep": "Keep editing",
+    "discardYes": "Discard changes",
+    "composerHint": {
+      "mention": "{'@'} mention",
+      "command": "/ command",
+      "task": "# task"
+    },
+    "suggest": {
+      "inTask": "In this task",
+      "members": "Members",
+      "insert": "insert",
+      "noPeople": "Nobody — «{q}» stays as text",
+      "noTask": "No such task",
+      "taskHint": "Task number or title",
+      "searching": "Searching…",
+      "noCommand": "No such command — the line stays as text",
+      "role": {
+        "assignee": "assignee",
+        "author": "author",
+        "commenter": "in the thread"
+      },
+      "group": {
+        "fields": "Fields",
+        "status": "Status",
+        "links": "Links",
+        "subtasks": "Subtasks",
+        "custom": "Custom"
+      },
+      "arg": {
+        "user": "{'@'}name",
+        "date": "tomorrow 18:00",
+        "estimate": "3h",
+        "priority": "0–4",
+        "column": "column",
+        "task_ref": "#123",
+        "text": "text",
+        "tag": "tag",
+        "milestone": "stage"
+      },
+      "groups": "Groups",
+      "groupCount": "{n} member | {n} members"
+    },
+    "bubble": {
+      "label": "Selected text",
+      "quote": "Quote in reply",
+      "fragment": "Link to the fragment",
+      "fragmentCopied": "Link to the fragment copied"
+    },
+    "attach": {
+      "image": "Image…",
+      "file": "File from your computer…",
+      "taskFiles": "Task files"
     }
   },
   "doc": {
@@ -75,20 +152,62 @@
       "insert": "Insert",
       "upload": "Upload"
     },
-    "paragraph": { "label": "Text", "hint": "Plain paragraph" },
-    "h1": { "label": "Heading 1", "hint": "Large heading" },
-    "h2": { "label": "Heading 2", "hint": "Medium heading" },
-    "h3": { "label": "Heading 3", "hint": "Small heading" },
-    "blockquote": { "label": "Quote", "hint": "Highlighted block of text" },
-    "bulletList": { "label": "Bulleted list", "hint": "List with bullets" },
-    "orderedList": { "label": "Numbered list", "hint": "List in order" },
-    "taskList": { "label": "Task list", "hint": "Checkboxes" },
-    "table": { "label": "Table 3×3", "hint": "With a header row" },
-    "horizontalRule": { "label": "Divider", "hint": "Horizontal rule" },
-    "sectionBreak": { "label": "Section break", "hint": "Its own orientation from here" },
-    "codeBlock": { "label": "Code block", "hint": "Monospaced block" },
-    "image": { "label": "Image", "hint": "Pick a file" },
-    "pdf": { "label": "PDF", "hint": "Embed a file to read" }
+    "paragraph": {
+      "label": "Text",
+      "hint": "Plain paragraph"
+    },
+    "h1": {
+      "label": "Heading 1",
+      "hint": "Large heading"
+    },
+    "h2": {
+      "label": "Heading 2",
+      "hint": "Medium heading"
+    },
+    "h3": {
+      "label": "Heading 3",
+      "hint": "Small heading"
+    },
+    "blockquote": {
+      "label": "Quote",
+      "hint": "Highlighted block of text"
+    },
+    "bulletList": {
+      "label": "Bulleted list",
+      "hint": "List with bullets"
+    },
+    "orderedList": {
+      "label": "Numbered list",
+      "hint": "List in order"
+    },
+    "taskList": {
+      "label": "Task list",
+      "hint": "Checkboxes"
+    },
+    "table": {
+      "label": "Table 3×3",
+      "hint": "With a header row"
+    },
+    "horizontalRule": {
+      "label": "Divider",
+      "hint": "Horizontal rule"
+    },
+    "sectionBreak": {
+      "label": "Section break",
+      "hint": "Its own orientation from here"
+    },
+    "codeBlock": {
+      "label": "Code block",
+      "hint": "Monospaced block"
+    },
+    "image": {
+      "label": "Image",
+      "hint": "Pick a file"
+    },
+    "pdf": {
+      "label": "PDF",
+      "hint": "Embed a file to read"
+    }
   },
   "toolbar": {
     "more": "More tools",
@@ -169,9 +288,9 @@
     "use": "Create",
     "empty": "Nothing found. Save a document as a template or upload a file ({formats}).",
     "meeting": {
-      "title": "Meeting notes",
-      "description": "Attendees, agenda, decisions and follow-up tasks",
-      "body": "# Meeting notes\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1.\n2.\n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due date\n\n## Follow-up tasks\n\n- [ ]\n"
+      "title": "Meeting agenda",
+      "description": "Attendees, questions, decisions — tied to a meeting",
+      "body": "# Meeting agenda\n\n**Date:**\n**Attendees:**\n\n## Agenda\n\n1.\n2.\n\n## Discussion\n\n## Decisions\n\n- [ ] Decision — owner, due date\n\n## Follow-up tasks\n\n- [ ]\n"
     },
     "spec": {
       "title": "Technical spec",
@@ -182,6 +301,45 @@
       "title": "Retrospective",
       "description": "What went well, what got in the way, what we change",
       "body": "# Retrospective\n\n**Period:**\n\n## What went well\n\n-\n\n## What got in the way\n\n-\n\n## What we change\n\n- [ ] Action — owner\n"
+    },
+    "newTitle": "New document",
+    "into": "in “{target}”",
+    "source": {
+      "all": "All",
+      "mine": "My templates"
+    },
+    "blank": "Blank document",
+    "blankHint": "Start from a clean page",
+    "hintPick": "select",
+    "create": "Create",
+    "removeArmed": "Delete?",
+    "sprintPlan": {
+      "title": "Sprint planning",
+      "description": "Goal, scope, team capacity and risks",
+      "body": "# Sprint planning\n\n**Dates:**\n**Sprint goal:**\n\n## Scope\n\n- [ ]\n\n## Team capacity\n\n{'|'} Member {'|'} Availability {'|'}\n{'|'}---{'|'}---{'|'}\n{'|'}  {'|'}  {'|'}\n\n## Risks and dependencies\n\n-\n"
+    },
+    "postmortem": {
+      "title": "Postmortem",
+      "description": "Timeline, cause, impact, follow-ups",
+      "body": "# Postmortem\n\n**Incident:**\n**When:**\n**Impact:**\n\n## Timeline\n\n-\n\n## Root cause\n\n## What helped, what got in the way\n\n-\n\n## Follow-ups\n\n- [ ] Action — owner, due date\n"
+    },
+    "adr": {
+      "title": "ADR",
+      "description": "Architecture decision: context, options, choice",
+      "body": "# ADR: \n\n**Status:** proposed\n**Date:**\n\n## Context\n\n## Options\n\n1.\n2.\n\n## Decision\n\n## Consequences\n\n-\n"
+    },
+    "category": {
+      "none": "No category",
+      "sprint": "Sprint",
+      "product": "Product",
+      "engineering": "Engineering",
+      "meetings": "Meetings"
+    },
+    "setCategory": "Category",
+    "meetingPick": {
+      "label": "Meeting",
+      "none": "No meeting",
+      "hint": "The agenda will be tied to the meeting"
     }
   },
   "view": {
@@ -199,10 +357,22 @@
     "back": "Back to list",
     "viewerEditing": "{name} — editing",
     "viewerViewing": "{name} — reading",
-    "comments": { "show": "Show the discussion", "hide": "Hide the discussion" },
-    "toc": { "show": "Outline", "hide": "Hide the outline" },
-    "history": { "show": "Version history", "hide": "Hide the history" },
-    "links": { "show": "Links and approval", "hide": "Hide the links" },
+    "comments": {
+      "show": "Show the discussion",
+      "hide": "Hide the discussion"
+    },
+    "toc": {
+      "show": "Outline",
+      "hide": "Hide the outline"
+    },
+    "history": {
+      "show": "Version history",
+      "hide": "Hide the history"
+    },
+    "links": {
+      "show": "Links and approval",
+      "hide": "Hide the links"
+    },
     "saveTemplate": "Save as a template",
     "export": "Export the document",
     "actions": "Actions",
@@ -219,11 +389,6 @@
       "nested": "Nested document",
       "children": "Show nested ({count})",
       "remove": "Delete the document"
-    },
-    "remove": {
-      "title": "Delete the document?",
-      "withChildren": "The document will be deleted together with its nested ones ({count}).",
-      "single": "The document will be deleted."
     },
     "toast": {
       "restoredFromHistory": "The document was restored from history",
@@ -251,7 +416,19 @@
       "exportFailed": "Could not convert the document",
       "exportGeneric": "Could not export the document",
       "save": "Could not save"
-    }
+    },
+    "updatedAt": "edited {time}",
+    "milestone": "Stage"
+  },
+  "tree": {
+    "search": "Find a document",
+    "searchPlaceholder": "Document title",
+    "nothing": "Nothing found",
+    "fold": "Collapse",
+    "unfold": "Expand",
+    "templates": "Templates",
+    "trash": "Trash",
+    "show": "Document tree"
   },
   "comments": {
     "title": "Discussion",
@@ -273,7 +450,9 @@
     "draftDoc": "Comment on the document…",
     "send": "Send",
     "someone": "Member",
-    "error": { "load": "Could not load the comments" }
+    "error": {
+      "load": "Could not load the comments"
+    }
   },
   "history": {
     "title": "History",
@@ -298,7 +477,10 @@
       "moved": "moved"
     },
     "diffImage": "[image]",
-    "error": { "load": "Could not load the history", "version": "Could not load the version" }
+    "error": {
+      "load": "Could not load the history",
+      "version": "Could not load the version"
+    }
   },
   "links": {
     "title": "Links and approval",
@@ -328,9 +510,15 @@
     "raiseDisabled": "The document is already under approval",
     "routeTitlePlaceholder": "What is being approved",
     "approversPlaceholder": "Approvers",
+    "approversTooMany": "A route may ask at most {max} approvers",
     "submit": "Send",
-    "mode": { "sequential": "One by one", "parallel": "All at once" },
-    "error": { "load": "Could not load the links" }
+    "mode": {
+      "sequential": "One by one",
+      "parallel": "All at once"
+    },
+    "error": {
+      "load": "Could not load the links"
+    }
   },
   "approval": {
     "status": {
@@ -339,7 +527,11 @@
       "rejected": "Rejected",
       "cancelled": "Withdrawn"
     },
-    "step": { "pending": "waiting", "approved": "signed", "rejected": "rejected" }
+    "step": {
+      "pending": "waiting",
+      "approved": "signed",
+      "rejected": "rejected"
+    }
   },
   "pdf": {
     "prevPage": "Previous page",
@@ -352,7 +544,12 @@
     "openFailedReason": "Could not open the PDF: {reason}",
     "noSrc": "the block carries no file link",
     "noLink": "The server returned no file link",
-    "unit": { "b": "B", "kb": "KB", "mb": "MB", "gb": "GB" }
+    "unit": {
+      "b": "B",
+      "kb": "KB",
+      "mb": "MB",
+      "gb": "GB"
+    }
   },
   "section": {
     "caption": "From here: {orientation} {size}"
@@ -366,5 +563,37 @@
     "tooLarge": "The file is larger than {limit}",
     "noDocument": "The server returned no document",
     "exportName": "Document"
+  },
+  "trash": {
+    "count": "{n} document · kept for 30 days | {n} documents · kept for 30 days",
+    "keep": "Deleted documents are kept for {days} days",
+    "by": "deleted by {name}",
+    "left": "{n} day left | {n} days left",
+    "restore": "Restore",
+    "purge": "Delete forever",
+    "purgeArmed": "Delete forever?",
+    "emptyTitle": "The trash is empty",
+    "emptyText": "Deleted documents stay here for {days} days and come back with their task links.",
+    "deleted": "Document «{title}» moved to the trash",
+    "restored": "Document «{title}» restored"
+  },
+  "pins": {
+    "pickStage": "Tie to a stage",
+    "openStage": "Open the stage page",
+    "changeStage": "Change the stage",
+    "unpinStage": "Untie from the stage",
+    "noStages": "No open stages in the workspace’s projects",
+    "stageState": {
+      "active": "running",
+      "planned": "planned",
+      "closed": "closed"
+    },
+    "meeting": "Meeting",
+    "pickMeeting": "Tie to a meeting",
+    "pinMeeting": "Tie to a meeting",
+    "openMeeting": "Open the meeting",
+    "changeMeeting": "Change the meeting",
+    "unpinMeeting": "Untie from the meeting",
+    "noMeetings": "No running or planned meetings"
   }
 }

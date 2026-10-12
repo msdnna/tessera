@@ -92,6 +92,50 @@ func TestJoinTokenNeverGrantsAdministration(t *testing.T) {
 	}
 }
 
+// A force-muted participant's token has to carry the narrowing itself: the
+// RoomService override that force-mute installs dies with the participant
+// session, so on a reconnect the token is the only thing left saying no.
+func TestJoinTokenCarriesNarrowedPublishSources(t *testing.T) {
+	tok, err := testClient().JoinToken("user-uuid", "", Grants{
+		Room: "conf_x", CanPublish: true, CanSubscribe: true,
+		CanPublishSources: SourcesWithoutMic(),
+	}, 0)
+	if err != nil {
+		t.Fatalf("JoinToken: %v", err)
+	}
+	video := parseToken(t, tok)["video"].(map[string]any)
+	raw, ok := video["canPublishSources"].([]any)
+	if !ok {
+		t.Fatalf("canPublishSources missing from %v", video)
+	}
+	for _, s := range raw {
+		if s == SourceMicrophone {
+			t.Fatalf("a force-muted token still grants the microphone: %v", raw)
+		}
+	}
+	// The rest of the sources have to survive, or a force-mute would also stop
+	// the person's camera and their screen share.
+	if len(raw) != len(SourcesWithoutMic()) {
+		t.Errorf("canPublishSources = %v, want %v", raw, SourcesWithoutMic())
+	}
+}
+
+// …and the ordinary participant must not carry the key at all. LiveKit reads an
+// absent canPublishSources as "no restriction"; an empty list is a different
+// statement, and the one that would mute everybody.
+func TestOrdinaryJoinTokenLeavesPublishSourcesUnset(t *testing.T) {
+	tok, err := testClient().JoinToken("user-uuid", "", Grants{
+		Room: "conf_x", CanPublish: true, CanSubscribe: true,
+	}, 0)
+	if err != nil {
+		t.Fatalf("JoinToken: %v", err)
+	}
+	video := parseToken(t, tok)["video"].(map[string]any)
+	if v, present := video["canPublishSources"]; present {
+		t.Fatalf("canPublishSources = %v on an unrestricted token, want absent", v)
+	}
+}
+
 func TestJoinTokenExpiresQuickly(t *testing.T) {
 	c := testClient()
 	now := time.Date(2026, 9, 3, 1, 0, 0, 0, time.UTC)

@@ -49,6 +49,9 @@ export const useBoardViewStore = defineStore('boardView', () => {
   // Canonical tag prefixes governed by non-"tag" GitLab rules (status/priority/…),
   // hidden from tag pickers.
   const metaTagPrefixes = ref(new Set())
+  // What the property pickers count (#3118), published by KanbanBoard from the
+  // tasks it holds: { boardId, counts: column id → tasks, load: user id → open }.
+  const taskStats = ref({ boardId: null, counts: {}, load: {} })
 
   const tagsList = computed(() => Object.values(tagsMap))
   const membersList = computed(() => Object.values(membersMap))
@@ -67,6 +70,10 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const gitlabCanCreate = ref(false)
   const gitlabFetchTemplates = ref(false)
   const gitlabIntegrationId = ref(null)
+  // Several GitLab projects may mirror into one board (#3082): the bindings an
+  // issue can be created in — [{ id, project_path, name, fetch_templates }]. More
+  // than one → the task modal asks which project.
+  const gitlabCreateTargets = ref([])
   // Same shape for the hierarchy half (#2592): writeback.push_children gates both the
   // "Сделать сгруппированной" button on a parent and the per-subtask push/retry. Kept
   // separate from gitlabCanCreate because an integration can allow one and not the other.
@@ -81,9 +88,59 @@ export const useBoardViewStore = defineStore('boardView', () => {
   const layout = ref('board') // 'board' | 'list' | 'calendar' | 'timeline' | 'gantt' | 'matrix'
   const archiveOpen = ref(false)
   const reloadNonce = ref(0) // header-driven changes ask the board to reload
+  // Header search on a board (v2, #2954): the header field is the board's
+  // title filter (KanbanBoard mirrors it into its own filters.q), and the board
+  // publishes how many tasks the current filter leaves so the header knows when
+  // to fall back to a workspace-wide search (null = no board count yet).
+  const searchQ = ref('')
+  // Who is looking at the open board right now (#3116): the board's sockets as the
+  // server last announced them (board.presence), me included.
+  const present = ref({ boardId: null, userIds: [] })
+  const shownTasks = ref(null)
+  // Its tooltip («показано 5 из 12…») — the count sits next to the board in the
+  // sidebar (v2), not in the sub-toolbar.
+  const shownTitle = ref('')
+  // «Filter by this person» from the palette (#2957): a request the board
+  // applies to its own filters; `n` makes a repeat of the same person fire.
+  const assigneeFilter = ref(null)
+  // «N, then T» (#2956) asks the open board to start its «К работе» quick-add.
+  const quickAdd = ref(0)
+  function requestQuickAdd() {
+    quickAdd.value++
+  }
+  function requestAssigneeFilter(userId) {
+    assigneeFilter.value = { userId, n: (assigneeFilter.value?.n || 0) + 1 }
+  }
+  // The view panel (#2986) is owned by KanbanBoard; the phone's menu lives in the
+  // header, outside the board, so it asks for the panel through a nonce the way
+  // the header actions ask for a reload above.
+  const customizeNonce = ref(0)
+  // The docked view panel is open (desktop): the FAB steps left of it.
+  const panelOpen = ref(false)
+  // Saved views (#2970) belong to KanbanBoard; the phone's board menu lists them
+  // too (the sub-toolbar there has no room for the chip's menu). KanbanBoard
+  // publishes the whole list — one list for all view kinds — and the loaded one
+  // here, and answers the request below. Saving happens in the view panel.
+  const savedViews = ref([]) // [{ id, name, layout }]
+  const currentViewId = ref('') // the loaded view, '' when none
+  // { nonce, op: 'apply' | 'clear', id? }. A nonce and not a bare payload:
+  // loading the same view twice in a row is a legitimate ask (it re-applies a
+  // toolbar the reader has since changed), and an unchanged object wouldn't wake
+  // the watcher.
+  const viewRequest = ref(null)
+  let viewNonce = 0
 
   function bumpReload() {
     reloadNonce.value++
+  }
+  function openCustomize() {
+    customizeNonce.value++
+  }
+  function requestApplyView(id) {
+    viewRequest.value = { nonce: ++viewNonce, op: 'apply', id }
+  }
+  function requestClearView() {
+    viewRequest.value = { nonce: ++viewNonce, op: 'clear' }
   }
   function setContext(b, w, p) {
     boardId.value = b
@@ -110,19 +167,37 @@ export const useBoardViewStore = defineStore('boardView', () => {
     refill(milestonesMap, null)
     refill(prefixNames, null)
     metaTagPrefixes.value = new Set()
+    taskStats.value = { boardId: null, counts: {}, load: {} }
     gitlabCanCreate.value = false
     gitlabFetchTemplates.value = false
     gitlabIntegrationId.value = null
+    gitlabCreateTargets.value = []
     gitlabCanGroup.value = false
     cardSize.value = 'medium'
     stackFields.value = false
     showEmpty.value = true
     refill(fieldVis, defaultFieldVis())
     archiveOpen.value = false
+    panelOpen.value = false
+    searchQ.value = ''
+    shownTasks.value = null
+    shownTitle.value = ''
+    assigneeFilter.value = null
+    savedViews.value = []
+    currentViewId.value = ''
+    viewRequest.value = null
   }
 
   return {
+    present,
     active,
+    searchQ,
+    shownTasks,
+    shownTitle,
+    assigneeFilter,
+    requestAssigneeFilter,
+    quickAdd,
+    requestQuickAdd,
     boardId,
     wsId,
     projectId,
@@ -134,6 +209,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     milestonesMap,
     prefixNames,
     metaTagPrefixes,
+    taskStats,
     tagsList,
     membersList,
     milestonesList,
@@ -141,6 +217,7 @@ export const useBoardViewStore = defineStore('boardView', () => {
     gitlabCanCreate,
     gitlabFetchTemplates,
     gitlabIntegrationId,
+    gitlabCreateTargets,
     gitlabCanGroup,
     cardSize,
     stackFields,
@@ -149,7 +226,15 @@ export const useBoardViewStore = defineStore('boardView', () => {
     layout,
     archiveOpen,
     reloadNonce,
+    customizeNonce,
+    panelOpen,
+    savedViews,
+    currentViewId,
+    viewRequest,
     bumpReload,
+    openCustomize,
+    requestApplyView,
+    requestClearView,
     setContext,
     refill,
     reset,

@@ -1,6 +1,16 @@
+-- ConferenceIDsInWorkspace names the conferences a workspace delete is about to
+-- take by cascade (conferences.workspace_id is ON DELETE CASCADE), so their
+-- recordings and chat uploads can be purged the way DeleteConference purges its
+-- own. Read before the delete and in the same transaction: the recording rows and
+-- the chat attachment rows leave with the conference, and they are the only record
+-- of where the bytes are.
+-- name: ConferenceIDsInWorkspace :many
+SELECT id FROM conferences WHERE workspace_id = $1;
+
 -- name: CreateConference :one
-INSERT INTO conferences (workspace_id, task_id, created_by, title, description, scheduled_at, recording_ttl_days)
-VALUES ($1, $2, $3, $4, $5, $6, $7)
+INSERT INTO conferences (workspace_id, task_id, created_by, title, description, scheduled_at, recording_ttl_days,
+                         duration_minutes, recurrence, timezone, milestone_id)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 RETURNING *;
 
 -- ListConferences returns the workspace's conferences with the two numbers the
@@ -10,15 +20,30 @@ RETURNING *;
 --
 -- Order puts live calls first — you join the meeting that is happening, not the
 -- one planned for Thursday — then the nearest scheduled, then the archive.
+--
+-- The stage (#3053) is joined in with its project's slug — the row links to the
+-- stage page — but only while that project is still in the conference's
+-- workspace: a project transfer clears the link (ClearConferenceMilestonesAcross
+-- Workspaces), and until it has, a stranger's stage title must not show here.
 -- name: ListConferences :many
 SELECT c.*,
        u.name AS created_by_name,
        (SELECT count(*) FROM conference_participants p WHERE p.conference_id = c.id) AS participant_count,
        (SELECT count(*) FROM conference_participants p
-         WHERE p.conference_id = c.id AND p.joined_at IS NOT NULL AND p.left_at IS NULL) AS active_count
+         WHERE p.conference_id = c.id AND p.joined_at IS NOT NULL AND p.left_at IS NULL) AS active_count,
+       -- The reader's own answer to the invitation (#3051): NULL when they are
+       -- not invited at all, so the row has nothing to answer.
+       mine.rsvp AS my_rsvp,
+       m.title AS milestone_title,
+       m.slug AS milestone_slug,
+       mp.slug AS milestone_project_slug
 FROM conferences c
 LEFT JOIN users u ON u.id = c.created_by
-WHERE c.workspace_id = $1
+LEFT JOIN conference_participants mine ON mine.conference_id = c.id AND mine.user_id = sqlc.arg('viewer')::uuid
+LEFT JOIN milestones m ON m.id = c.milestone_id
+    AND EXISTS (SELECT 1 FROM projects xp WHERE xp.id = m.project_id AND xp.workspace_id = c.workspace_id)
+LEFT JOIN projects mp ON mp.id = m.project_id
+WHERE c.workspace_id = sqlc.arg('workspace_id')
   AND (sqlc.narg('status')::text IS NULL OR c.status = sqlc.narg('status')::text)
 ORDER BY (c.status = 'live') DESC,
          c.scheduled_at ASC NULLS LAST,
@@ -26,6 +51,30 @@ ORDER BY (c.status = 'live') DESC,
 
 -- name: GetConference :one
 SELECT * FROM conferences WHERE id = $1;
+
+-- ConferenceRefs is what the call screen shows and acts on beyond the row: the
+-- stage it is tied to (#3053) and the board a task typed into its chat lands on
+-- by default (#3055) — the linked task's board, else the first live board of the
+-- stage's project. Same workspace guard as ListConferences.
+-- name: ConferenceRefs :one
+SELECT m.title AS milestone_title,
+       m.slug AS milestone_slug,
+       mp.slug AS milestone_project_slug,
+       mp.id AS milestone_project_id,
+       tb.id AS task_board_id,
+       sb.id AS stage_board_id
+FROM conferences c
+LEFT JOIN milestones m ON m.id = c.milestone_id
+    AND EXISTS (SELECT 1 FROM projects xp WHERE xp.id = m.project_id AND xp.workspace_id = c.workspace_id)
+LEFT JOIN projects mp ON mp.id = m.project_id
+LEFT JOIN tasks t ON t.id = c.task_id AND t.deleted_at IS NULL
+LEFT JOIN boards tb ON tb.id = t.board_id AND tb.deleted_at IS NULL
+    AND EXISTS (SELECT 1 FROM projects tp WHERE tp.id = tb.project_id AND tp.workspace_id = c.workspace_id)
+LEFT JOIN boards sb ON sb.id = (
+    SELECT b.id FROM boards b
+    WHERE b.project_id = mp.id AND b.deleted_at IS NULL
+    ORDER BY b.position, b.created_at LIMIT 1)
+WHERE c.id = $1;
 
 -- name: ListConferencesByTask :many
 SELECT * FROM conferences WHERE task_id = $1 ORDER BY created_at DESC;
@@ -35,7 +84,8 @@ SELECT * FROM conferences WHERE task_id = $1 ORDER BY created_at DESC;
 -- statements below so a PATCH of the title can never take a call off the air.
 -- name: UpdateConference :one
 UPDATE conferences
-SET title = $2, description = $3, scheduled_at = $4, task_id = $5, recording_ttl_days = $6, updated_at = now()
+SET title = $2, description = $3, scheduled_at = $4, task_id = $5, recording_ttl_days = $6,
+    duration_minutes = $7, recurrence = $8, timezone = $9, milestone_id = $10, updated_at = now()
 WHERE id = $1
 RETURNING *;
 
@@ -91,14 +141,32 @@ SELECT workspace_id FROM conferences WHERE id = $1;
 -- and left_at NULL, and show up in neither the roster nor the invited list. Only
 -- a row that had actually left is reset — someone currently in the room keeps
 -- their joined_at.
+--
+-- The answer to the invitation (#3051): the host answers «yes» by creating the
+-- meeting; anyone else starts at 'pending'. Re-inviting someone who declined or
+-- walked out asks them again — the old answer was about the old invitation.
 -- name: InviteConferenceParticipant :one
-INSERT INTO conference_participants (conference_id, user_id, role)
-VALUES ($1, $2, $3)
+INSERT INTO conference_participants (conference_id, user_id, role, rsvp, rsvp_at)
+VALUES (@conference_id, @user_id, @role,
+        CASE WHEN @role::text = 'host' THEN 'accepted' ELSE 'pending' END,
+        CASE WHEN @role::text = 'host' THEN now() END)
 ON CONFLICT (conference_id, user_id) DO UPDATE
 SET invited_at = now(),
     left_at = NULL,
     joined_at = CASE WHEN conference_participants.left_at IS NOT NULL
-                     THEN NULL ELSE conference_participants.joined_at END
+                     THEN NULL ELSE conference_participants.joined_at END,
+    rsvp = CASE WHEN conference_participants.rsvp = 'declined' OR conference_participants.left_at IS NOT NULL
+                THEN 'pending' ELSE conference_participants.rsvp END,
+    rsvp_at = CASE WHEN conference_participants.rsvp = 'declined' OR conference_participants.left_at IS NOT NULL
+                   THEN NULL ELSE conference_participants.rsvp_at END
+RETURNING *;
+
+-- SetConferenceRsvp records a participant's answer to the invitation (#3051).
+-- Only an existing seat answers: an invitation is what is being answered.
+-- name: SetConferenceRsvp :one
+UPDATE conference_participants
+SET rsvp = @rsvp, rsvp_at = now()
+WHERE conference_id = @conference_id AND user_id = @user_id
 RETURNING *;
 
 -- name: GetConferenceParticipant :one
@@ -115,11 +183,16 @@ ORDER BY p.role, u.name;
 -- open conference: a member of the workspace may walk into a call they were not
 -- explicitly invited to, and the row is created on the spot rather than the
 -- join being refused.
+--
+-- Walking in is an answer too (#3051): whoever joins has accepted.
 -- name: JoinConferenceParticipant :one
-INSERT INTO conference_participants (conference_id, user_id, role, joined_at)
-VALUES ($1, $2, $3, now())
+INSERT INTO conference_participants (conference_id, user_id, role, joined_at, rsvp, rsvp_at)
+VALUES ($1, $2, $3, now(), 'accepted', now())
 ON CONFLICT (conference_id, user_id) DO UPDATE
-SET joined_at = now(), left_at = NULL
+SET joined_at = now(), left_at = NULL,
+    rsvp = 'accepted',
+    rsvp_at = CASE WHEN conference_participants.rsvp = 'accepted'
+                   THEN conference_participants.rsvp_at ELSE now() END
 RETURNING *;
 
 -- name: LeaveConferenceParticipant :one
@@ -140,3 +213,37 @@ DELETE FROM conference_participants WHERE conference_id = $1 AND user_id = $2;
 -- name: CountActiveConferenceParticipants :one
 SELECT count(*) FROM conference_participants
 WHERE conference_id = $1 AND joined_at IS NOT NULL AND left_at IS NULL;
+
+-- ClearConferenceTasksAcrossWorkspaces unpins every conference whose task is in
+-- the given project but whose own workspace is no longer that task's — the state
+-- a project transfer leaves behind. CreateConference refuses a task from another
+-- workspace and names the harm: the link "is what later files the protocol back
+-- into the task, and a cross-workspace link would put it in front of a team that
+-- was never in the call". A conference carries its own workspace_id and belongs
+-- to no project, so it never travels with one; ListConferencesByTask then lists
+-- by task_id alone behind a membership check on the *task's* workspace, handing
+-- the arriving team the title, description and schedule of a call held
+-- elsewhere. Only the link goes — the conference, its chat and its recordings
+-- stay where they were held. Returns the number of conferences unpinned.
+-- name: ClearConferenceTasksAcrossWorkspaces :execrows
+UPDATE conferences c
+SET task_id = NULL, updated_at = now()
+FROM tasks t, boards b, projects p
+WHERE c.task_id = t.id
+  AND b.id = t.board_id
+  AND p.id = b.project_id
+  AND p.id = $1
+  AND c.workspace_id <> p.workspace_id;
+
+-- ClearConferenceMilestonesAcrossWorkspaces is the stage's half of the cleanup
+-- above (#3053): a project transfer takes its stages to the new workspace, and a
+-- conference left behind would keep naming — and linking — a stage its team can
+-- no longer open. Only the link goes. Returns the number of conferences unpinned.
+-- name: ClearConferenceMilestonesAcrossWorkspaces :execrows
+UPDATE conferences c
+SET milestone_id = NULL, updated_at = now()
+FROM milestones m, projects p
+WHERE c.milestone_id = m.id
+  AND p.id = m.project_id
+  AND p.id = $1
+  AND c.workspace_id <> p.workspace_id;

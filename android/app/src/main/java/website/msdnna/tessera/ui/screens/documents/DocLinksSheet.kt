@@ -60,6 +60,7 @@ import website.msdnna.tessera.util.DocStepState
 import website.msdnna.tessera.util.Ion
 import website.msdnna.tessera.util.approvalProgress
 import website.msdnna.tessera.util.approvalStepState
+import website.msdnna.tessera.util.canCancelApproval
 import website.msdnna.tessera.util.canDecideNow
 import website.msdnna.tessera.util.orderedApprovalSteps
 
@@ -97,6 +98,12 @@ fun DocLinksSheet(
     var raising by remember { mutableStateOf(false) }
     var confirmUnlink by remember { mutableStateOf<String?>(null) }
     var confirmCancel by remember { mutableStateOf<String?>(null) }
+    // My role in the workspace, read off the roster the approver picker already
+    // loads. Blank until it arrives, which only ever hides «Отозвать» for a
+    // moment — see canCancelApproval.
+    val myRole = remember(state.members, meId) {
+        state.members.firstOrNull { it.userId == meId }?.role.orEmpty()
+    }
 
     BackHandler(enabled = true) { onDismiss() }
 
@@ -229,6 +236,7 @@ fun DocLinksSheet(
                 DocApprovalCard(
                     approval = approval,
                     meId = meId,
+                    myRole = myRole,
                     busy = state.busy,
                     onDecide = { decision, comment -> onDecide(approval.id, decision, comment) },
                     onCancel = { confirmCancel = approval.id },
@@ -436,6 +444,7 @@ private val PICKER_MAX_HEIGHT = 260.dp
 private fun DocApprovalCard(
     approval: DocumentApproval,
     meId: String?,
+    myRole: String,
     busy: Boolean,
     onDecide: (decision: String, comment: String) -> Unit,
     onCancel: () -> Unit,
@@ -445,6 +454,7 @@ private fun DocApprovalCard(
     var comment by remember { mutableStateOf("") }
     val progress = approvalProgress(approval)
     val mayDecide = canDecideNow(approval, meId)
+    val mayCancel = canCancelApproval(approval, meId, myRole)
 
     Column(
         Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
@@ -547,7 +557,9 @@ private fun DocApprovalCard(
             }
         }
 
-        if (approval.isOpen) {
+        // Withdrawing is the route author's and the managers' — see
+        // canCancelApproval. Everyone else was shown a button that answered 403.
+        if (mayCancel) {
             Spacer(Modifier.height(6.dp))
             TButton(
                 stringResource(R.string.docs_links_cancel_route),

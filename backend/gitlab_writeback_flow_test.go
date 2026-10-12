@@ -212,7 +212,8 @@ func newWritebackStand(t *testing.T, username, projectPath string) wbStand {
 
 	triggerSync(t, c, s.WS, integID)
 	waitSyncRuns(t, c, s.WS, 1)
-	tasks := c.get("/boards/" + s.Board + "/tasks").listBody(t)
+	// A finished run is not yet a visible import under load (#3123).
+	tasks := waitBoardTaskCount(t, c, s.Board, 1)
 	task := taskByIid(t, tasks, 1)
 	return wbStand{c: c, s: s, w: w, integID: integID, taskID: task["id"].(string)}
 }
@@ -429,7 +430,7 @@ func TestGitlabWritebackPushFlow(t *testing.T) {
 
 	// Journal: push run(s) with four ok push-actions in total.
 	pushActions := 0
-	for _, run := range c.get("/workspaces/"+s.WS+"/gitlab/sync-runs").listBody(t) {
+	for _, run := range c.get("/workspaces/" + s.WS + "/gitlab/sync-runs").listBody(t) {
 		if run["kind"] != "push" {
 			continue
 		}
@@ -583,7 +584,7 @@ func TestGitlabWritebackRetry(t *testing.T) {
 	var runID, actionID string
 	deadline := time.Now().Add(5 * time.Second)
 	for time.Now().Before(deadline) && actionID == "" {
-		for _, run := range c.get("/workspaces/"+s.WS+"/gitlab/sync-runs").listBody(t) {
+		for _, run := range c.get("/workspaces/" + s.WS + "/gitlab/sync-runs").listBody(t) {
 			if run["kind"] != "push" {
 				continue
 			}
@@ -641,7 +642,12 @@ func noRedirect(t *testing.T, path string) (int, string) {
 // OAuth endpoints without config, then the admin config round-trip (secret is
 // write-only) and the configured authorize redirect.
 func TestOAuthProvidersAndAdminConfig(t *testing.T) {
-	t.Parallel()
+	// Not parallel: it seeds the instance-wide service token, which every GitLab
+	// sync running beside it would pick up (and, refused with 401, pause on — #3084).
+	t.Cleanup(func() {
+		_, _ = testPool.Exec(context.Background(),
+			`UPDATE oauth_providers SET service_token_enc = '', sudo_writeback = false, gl_base_url = '', enabled = false WHERE provider = 'gitlab'`)
+	})
 	c := signup(t)
 
 	// Unconfigured: providers reports gitlab=false; authorize/callback bounce to

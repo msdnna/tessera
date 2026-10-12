@@ -49,8 +49,11 @@ vi.mock('@/api', () => ({
     tasks: vi.fn(() => Promise.resolve({ data: [] })),
     createTask: vi.fn(),
   },
-  workspaces: { members: vi.fn(() => Promise.resolve({ data: [] })) },
-  projects: { createMilestone: vi.fn() },
+  workspaces: {
+    members: vi.fn(() => Promise.resolve({ data: [] })),
+    tasks: vi.fn(() => Promise.resolve({ data: [] })),
+  },
+  projects: { createMilestone: vi.fn(), boards: vi.fn(() => Promise.resolve({ data: [] })) },
   gitlab: { issueTemplates: vi.fn(() => Promise.resolve({ data: [] })) },
   columns: { update: vi.fn(), remove: vi.fn() },
   users: { updatePrefs: vi.fn() },
@@ -93,7 +96,7 @@ const stubs = {
   ...Object.fromEntries(Object.entries(naive).map(([k, v]) => ['N' + k, v])),
   MarkdownEditor: true,
   RichContent: true,
-  DueEditor: true,
+  DuePicker: true,
   draggable: {
     template: '<div><slot name="item" v-for="e in list" :element="e" :index="0" /></div>',
     props: ['list'],
@@ -131,36 +134,54 @@ describe('TaskModal parent row', () => {
     setParent.mockClear()
   })
 
-  it('shows the parent title before «Открепить» and opens the parent on click', async () => {
+  // Package J (#3118): the row opens the «Родитель» picker — the parent leads
+  // it (a click opens the parent), «Открепить» (⌫) under it.
+  const pick = () => document.querySelector('[data-testid="task-parent-picker-card"]')
+
+  it('shows the parent title and opens the parent from its picker', async () => {
     const TaskModal = (await import('@/components/TaskModal.vue')).default
-    const w = await openModal(TaskModal)
+    const w = await openModal(TaskModal, {})
 
     const chip = w.find('.parent-chip')
     expect(chip.exists()).toBe(true)
     expect(chip.text()).toBe(PARENT.title)
     // Full title in the native tooltip — the visible text is ellipsised by CSS.
     expect(chip.attributes('title')).toBe(PARENT.title)
-    expect(w.find('.parent-row .detach').text()).toBe('Открепить')
 
     await chip.trigger('click')
+    await flush(w)
+    expect(pick()).not.toBe(null)
+    pick().querySelector('[data-testid="prop-parent-current"]').click()
+    await flush(w)
     expect(w.emitted('open')?.[0]).toEqual(['p1'])
     // The title rides along with the sibling-order GET: one request for the parent.
     expect(get.mock.calls.filter((c) => c[0] === 'p1')).toHaveLength(1)
+    w.unmount()
   })
 
   it('still detaches from the parent', async () => {
     const TaskModal = (await import('@/components/TaskModal.vue')).default
-    const w = await openModal(TaskModal)
+    const w = await openModal(TaskModal, {})
 
-    await w.find('.parent-row .detach').trigger('click')
+    await w.find('.parent-chip').trigger('click')
+    await flush(w)
+    pick().querySelector('[data-testid="prop-parent-detach"]').click()
+    await flush(w)
     expect(setParent).toHaveBeenCalledWith('t1', null)
+    w.unmount()
   })
 
-  it('hides «Открепить» on a read-only task but keeps the parent clickable', async () => {
+  it('a read-only task: the picker opens locked, nothing detaches', async () => {
     const TaskModal = (await import('@/components/TaskModal.vue')).default
     const w = await openModal(TaskModal, { readonly: true })
 
-    expect(w.find('.parent-row .detach').exists()).toBe(false)
     expect(w.find('.parent-chip').text()).toBe(PARENT.title)
+    await w.find('[data-testid="task-row-parent"]').trigger('click')
+    await flush(w)
+    expect(document.querySelector('[data-testid="task-parent-picker-readonly"]')).not.toBe(null)
+    pick().querySelector('[data-testid="prop-parent-detach"]')?.click()
+    await flush(w)
+    expect(setParent).not.toHaveBeenCalled()
+    w.unmount()
   })
 })

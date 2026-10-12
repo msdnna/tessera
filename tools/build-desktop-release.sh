@@ -45,21 +45,43 @@ export TAURI_SIGNING_PRIVATE_KEY_PASSWORD
 PUB_DATE="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 BASE_URL="https://tessera.msdnna.website/desktop"
 
-BUNDLE="$SRC_TAURI/target/release/bundle"
+# Desktop frontend variant: build WITHOUT the PWA service worker. In the desktop
+# webview the SW pins a stale app shell in the persistent profile across updates
+# (#2930); beforeBuildCommand runs plain `vite build`, and this flag flips it to the
+# SW-less output. Also forwarded into the container in DESKTOP_LINUX_DOCKER mode.
+export TESSERA_DESKTOP=1
+
+# DESKTOP_LINUX_DOCKER=1 builds the Linux bundles inside an old-glibc (Ubuntu 22.04)
+# container so they run on distros older than this host (WSL Ubuntu 24.04 / glibc
+# 2.39) — e.g. Astra Linux SE 1.8 (glibc 2.36). See tools/desktop-linux-docker.sh.
+: "${DESKTOP_LINUX_DOCKER:=0}"
+if [ "$DESKTOP_LINUX_DOCKER" = 1 ]; then
+  BUNDLE="$SRC_TAURI/target/linux-docker/release/bundle"
+else
+  BUNDLE="$SRC_TAURI/target/release/bundle"
+fi
 mkdir -p "$DIST"
 
-echo "==> Building Tessera desktop $VERSION — .deb (direct download)"
-( cd "$SRC_TAURI" && cargo tauri build --bundles deb )
-# Take the freshly-built .deb (the bundle dir holds only the current version).
+if [ "$DESKTOP_LINUX_DOCKER" = 1 ]; then
+  echo "==> Building Tessera desktop $VERSION — Linux bundles in an old-glibc container"
+  # The container has no Node, so build the frontend (desktop variant) here first;
+  # it reuses the prebuilt dist.
+  ( cd "$ROOT/frontend" && corepack yarn build:desktop )
+  "$SCRIPT_DIR/desktop-linux-docker.sh"
+else
+  echo "==> Building Tessera desktop $VERSION — .deb (direct download)"
+  ( cd "$SRC_TAURI" && cargo tauri build --bundles deb )
+  # The AppImage is the Linux self-update target (Tauri updates AppImages in place),
+  # but it needs a FUSE-capable environment (linuxdeploy) — this fails under some
+  # WSL setups. Attempt it; tolerate failure and just skip the Linux updater entry.
+  echo "==> Building AppImage (Linux self-update target)"
+  ( cd "$SRC_TAURI" && APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=1 cargo tauri build --bundles appimage ) \
+    || echo "WARN: AppImage bundling failed (needs FUSE/linuxdeploy) — no Linux self-update this run"
+fi
+
+# Take the freshly-built bundles (the bundle dir holds only the current version).
 DEB="$(find "$BUNDLE/deb" -maxdepth 1 -name '*.deb' | head -1 || true)"
 [ -n "$DEB" ] && cp "$DEB" "$DIST/"
-
-# The AppImage is the Linux self-update target (Tauri updates AppImages in place),
-# but it needs a FUSE-capable environment (linuxdeploy) — this fails under some
-# WSL setups. Attempt it; tolerate failure and just skip the Linux updater entry.
-echo "==> Building AppImage (Linux self-update target)"
-( cd "$SRC_TAURI" && APPIMAGE_EXTRACT_AND_RUN=1 NO_STRIP=1 cargo tauri build --bundles appimage ) \
-  || echo "WARN: AppImage bundling failed (needs FUSE/linuxdeploy) — no Linux self-update this run"
 APPIMAGE="$(find "$BUNDLE/appimage" -maxdepth 1 -name '*.AppImage' | head -1 || true)"
 [ -n "$APPIMAGE" ] && cp "$APPIMAGE" "${APPIMAGE}.sig" "$DIST/" 2>/dev/null || true
 
@@ -117,7 +139,12 @@ fi
 # to whatever origin serves it (`<serverBase>/desktop/<file>`, same-origin on web)
 # — no hard-coded public domain, mirroring how the Android APK link is built.
 dl_obj() { # $1=format $2=path — prints {"format","file"} when the file exists
+  # `return 0` so a missing file (empty print) doesn't propagate non-zero: under
+  # `set -e`, `WIN_DL="$(dl_obj exe "")"` would otherwise abort the whole script
+  # right before latest.json — which is exactly what a Linux-only run (no Windows
+  # .exe staged) hits.
   [ -n "$2" ] && [ -f "$2" ] && printf '{"format":"%s","file":"%s"}' "$1" "$(basename "$2")"
+  return 0
 }
 join_csv() { # comma-join non-empty args
   local out="" a

@@ -25,6 +25,26 @@ export function canonPrefix(p) {
   return (p || '').trim().toLowerCase()
 }
 
+// Does this tag belong to the namespace the grouping is narrowed to?
+//
+// Compared through `canonPrefix`, like every other answer about a namespace in the
+// app: the backend stores prefix→label rows under the canonical key (handlers/
+// tag_prefixes.go), `buildTagGroups` buckets the filter menu by it, and the pills
+// resolve their friendly scope name through it. Only the lane narrowing («Тег ·
+// Сложность») used to compare raw, as `tag.name.startsWith(prefix)` — so tags a
+// reader (or a GitLab sync) spelled «Сложность::высокая» and «сложность::низкая»
+// were ONE group in the filter menu, under one friendly name, and two different
+// namespaces to the lanes: choosing the prefix drew only the tags of the matching
+// case and swept every other card into «Без тегов», the killer feature's own
+// catch-all. Namespace equality rather than a string prefix also keeps the answer
+// to "is this tag in this namespace" the one `tagNamespace` gives — a raw
+// `startsWith` says yes to anything that merely begins with the same letters
+// (#2932).
+export function tagInPrefix(name, prefix) {
+  if (!prefix) return true
+  return canonPrefix(tagNamespace(name)) === canonPrefix(prefix)
+}
+
 // Display label for a namespace: the configured friendly name, else the trimmed
 // raw prefix (e.g. "S:"), else the "ungrouped" bucket name for prefix-less tags.
 export function prefixLabel(ns, prefixNames = {}) {
@@ -59,6 +79,48 @@ export function tagParts(name, prefixNames = {}) {
     return { scope: '', label: (name || '').trim(), hasScope: false }
   }
   return { scope: prefixNames[canonPrefix(ns)] || scope, label, hasScope: true }
+}
+
+// Caption for a lane (kanban column, timeline/gantt swimlane) that stands for one
+// tag. The raw "scope::value" a tag is stored under is never a caption: the scope
+// is spelled out through its friendly name, and when the grouping is already
+// narrowed to one namespace («Тег · Сложность») the scope sits in the group's own
+// label, so only the value is left.
+//
+// Shared because the two surfaces drifted: the board went through this rule while
+// the chart lanes printed `tag.name` verbatim — in the one place least able to
+// carry it, a 224px sticky column (LEFT_W) whose caption is ellipsised. Under a
+// narrowed prefix every lane there began with the same long namespace and the
+// value that tells them apart was what got cut off.
+export function tagLaneLabel(tag, { tagPrefix = '', prefixNames = {} } = {}) {
+  const parts = tagParts(tag?.name, prefixNames)
+  if (!parts.hasScope) return parts.label
+  return tagPrefix ? parts.label : `${parts.scope}: ${parts.label}`
+}
+
+// The tag a typed name already stands for, or null.
+//
+// The task tag picker puts a free text field under a grid that no typing filters,
+// and a project's tags accumulate — grouped by prefix, scrolled, plus whatever a
+// GitLab sync brought in. So typing the name of a tag that already exists is the
+// ordinary way to reach it, not a mistake: without this lookup that Enter went to
+// the server, came back «тег с таким именем уже есть в проекте» (409 — a 500 before
+// that), and left the task untagged with nothing to do but hunt the grid.
+//
+// Matched case-insensitively, exact spelling preferred. A second tag differing only
+// in case is not a useful thing to create — the two sort apart, group apart and split
+// the board's tag lanes in half (same lesson as `tagInPrefix` above).
+export function matchTagByName(tags, typed) {
+  const want = (typed || '').trim()
+  if (!want) return null
+  const lower = want.toLowerCase()
+  let loose = null
+  for (const t of tags || []) {
+    const name = (t?.name || '').trim()
+    if (name === want) return t
+    if (!loose && name.toLowerCase() === lower) loose = t
+  }
+  return loose
 }
 
 // Canonical prefixes governed by a non-"tag" GitLab label rule (status / priority /

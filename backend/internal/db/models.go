@@ -9,41 +9,64 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
 type Board struct {
-	ID           uuid.UUID  `json:"id"`
-	ProjectID    uuid.UUID  `json:"project_id"`
-	Name         string     `json:"name"`
-	Position     float64    `json:"position"`
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	DoneColumnID *uuid.UUID `json:"done_column_id"`
-	Slug         string     `json:"slug"`
-	Icon         string     `json:"icon"`
-	Color        string     `json:"color"`
-	IconMode     string     `json:"icon_mode"`
+	ID            uuid.UUID  `json:"id"`
+	ProjectID     uuid.UUID  `json:"project_id"`
+	Name          string     `json:"name"`
+	Position      float64    `json:"position"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	DoneColumnID  *uuid.UUID `json:"done_column_id"`
+	Slug          string     `json:"slug"`
+	Icon          string     `json:"icon"`
+	Color         string     `json:"color"`
+	IconMode      string     `json:"icon_mode"`
+	DeletedAt     *time.Time `json:"deleted_at"`
+	DefaultLayout string     `json:"default_layout"`
 }
 
 type BoardColumn struct {
-	ID        uuid.UUID `json:"id"`
+	ID             uuid.UUID  `json:"id"`
+	BoardID        uuid.UUID  `json:"board_id"`
+	Name           string     `json:"name"`
+	Color          string     `json:"color"`
+	Position       float64    `json:"position"`
+	CreatedAt      time.Time  `json:"created_at"`
+	UpdatedAt      time.Time  `json:"updated_at"`
+	NameKey        *string    `json:"name_key"`
+	DeletedAt      *time.Time `json:"deleted_at"`
+	DeletedWasDone bool       `json:"deleted_was_done"`
+}
+
+type BoardFavorite struct {
+	UserID    uuid.UUID `json:"user_id"`
 	BoardID   uuid.UUID `json:"board_id"`
-	Name      string    `json:"name"`
-	Color     string    `json:"color"`
 	Position  float64   `json:"position"`
 	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
-	NameKey   *string   `json:"name_key"`
 }
 
 type BoardView struct {
-	ID        uuid.UUID `json:"id"`
-	BoardID   uuid.UUID `json:"board_id"`
-	UserID    uuid.UUID `json:"user_id"`
-	Name      string    `json:"name"`
-	Config    []byte    `json:"config"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID        uuid.UUID  `json:"id"`
+	BoardID   uuid.UUID  `json:"board_id"`
+	UserID    *uuid.UUID `json:"user_id"`
+	Name      string     `json:"name"`
+	Config    []byte     `json:"config"`
+	CreatedAt time.Time  `json:"created_at"`
+	UpdatedAt time.Time  `json:"updated_at"`
+	Scope     string     `json:"scope"`
+	IsDefault bool       `json:"is_default"`
+	Position  float64    `json:"position"`
+	CreatedBy *uuid.UUID `json:"created_by"`
+}
+
+type ColumnDeletionMove struct {
+	ColumnID     uuid.UUID `json:"column_id"`
+	TaskID       uuid.UUID `json:"task_id"`
+	MovedTo      uuid.UUID `json:"moved_to"`
+	FromPosition float64   `json:"from_position"`
 }
 
 type Conference struct {
@@ -60,6 +83,11 @@ type Conference struct {
 	RecordingTtlDays int32      `json:"recording_ttl_days"`
 	CreatedAt        time.Time  `json:"created_at"`
 	UpdatedAt        time.Time  `json:"updated_at"`
+	SoonNotifiedFor  *time.Time `json:"soon_notified_for"`
+	DurationMinutes  *int32     `json:"duration_minutes"`
+	Recurrence       string     `json:"recurrence"`
+	Timezone         string     `json:"timezone"`
+	MilestoneID      *uuid.UUID `json:"milestone_id"`
 }
 
 type ConferenceMessage struct {
@@ -68,6 +96,8 @@ type ConferenceMessage struct {
 	UserID       *uuid.UUID `json:"user_id"`
 	Body         string     `json:"body"`
 	CreatedAt    time.Time  `json:"created_at"`
+	Kind         string     `json:"kind"`
+	TaskID       *uuid.UUID `json:"task_id"`
 }
 
 type ConferenceMessageAttachment struct {
@@ -89,6 +119,8 @@ type ConferenceParticipant struct {
 	JoinedAt     *time.Time `json:"joined_at"`
 	LeftAt       *time.Time `json:"left_at"`
 	ForceMuted   bool       `json:"force_muted"`
+	Rsvp         string     `json:"rsvp"`
+	RsvpAt       *time.Time `json:"rsvp_at"`
 }
 
 type ConferenceRecording struct {
@@ -109,19 +141,23 @@ type ConferenceRecording struct {
 }
 
 type Document struct {
-	ID          uuid.UUID  `json:"id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	ParentID    *uuid.UUID `json:"parent_id"`
-	ProjectID   *uuid.UUID `json:"project_id"`
-	AuthorID    *uuid.UUID `json:"author_id"`
-	Title       string     `json:"title"`
-	Slug        string     `json:"slug"`
-	Icon        string     `json:"icon"`
-	Content     []byte     `json:"content"`
-	Position    float64    `json:"position"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Preview     string     `json:"preview"`
+	ID           uuid.UUID  `json:"id"`
+	WorkspaceID  uuid.UUID  `json:"workspace_id"`
+	ParentID     *uuid.UUID `json:"parent_id"`
+	ProjectID    *uuid.UUID `json:"project_id"`
+	AuthorID     *uuid.UUID `json:"author_id"`
+	Title        string     `json:"title"`
+	Slug         string     `json:"slug"`
+	Icon         string     `json:"icon"`
+	Content      []byte     `json:"content"`
+	Position     float64    `json:"position"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+	Preview      string     `json:"preview"`
+	DeletedAt    *time.Time `json:"deleted_at"`
+	DeletedBy    *uuid.UUID `json:"deleted_by"`
+	MilestoneID  *uuid.UUID `json:"milestone_id"`
+	ConferenceID *uuid.UUID `json:"conference_id"`
 }
 
 type DocumentApproval struct {
@@ -183,6 +219,7 @@ type DocumentTemplate struct {
 	Preview     string     `json:"preview"`
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
+	Category    string     `json:"category"`
 }
 
 type DocumentVersion struct {
@@ -207,13 +244,17 @@ type DueNotificationState struct {
 }
 
 type GitlabCredential struct {
-	UserID     uuid.UUID `json:"user_id"`
-	BaseUrl    string    `json:"base_url"`
-	TokenEnc   string    `json:"token_enc"`
-	GlUserID   int64     `json:"gl_user_id"`
-	GlUsername string    `json:"gl_username"`
-	CreatedAt  time.Time `json:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at"`
+	UserID          uuid.UUID  `json:"user_id"`
+	BaseUrl         string     `json:"base_url"`
+	TokenEnc        string     `json:"token_enc"`
+	GlUserID        int64      `json:"gl_user_id"`
+	GlUsername      string     `json:"gl_username"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	TokenExpiresAt  *time.Time `json:"token_expires_at"`
+	AuthKind        string     `json:"auth_kind"`
+	RefreshTokenEnc string     `json:"refresh_token_enc"`
+	AccessExpiresAt *time.Time `json:"access_expires_at"`
 }
 
 type GitlabIntegration struct {
@@ -242,6 +283,10 @@ type GitlabIntegration struct {
 	WebhookSecretEnc    string     `json:"webhook_secret_enc"`
 	WebhookEnabled      bool       `json:"webhook_enabled"`
 	LastWebhookAt       *time.Time `json:"last_webhook_at"`
+	MrSyncedAt          *time.Time `json:"mr_synced_at"`
+	ImportLabels        []string   `json:"import_labels"`
+	PausedAt            *time.Time `json:"paused_at"`
+	PauseReason         string     `json:"pause_reason"`
 }
 
 type GitlabIssueLink struct {
@@ -287,15 +332,20 @@ type GitlabLink struct {
 }
 
 type GitlabMilestoneLink struct {
-	MilestoneID   uuid.UUID `json:"milestone_id"`
-	IntegrationID uuid.UUID `json:"integration_id"`
-	GlGlobalID    string    `json:"gl_global_id"`
-	GlIid         *int64    `json:"gl_iid"`
-	GlNumericID   int64     `json:"gl_numeric_id"`
-	GlWebUrl      string    `json:"gl_web_url"`
-	GlState       string    `json:"gl_state"`
-	TitleHash     string    `json:"title_hash"`
-	LastSyncedAt  time.Time `json:"last_synced_at"`
+	MilestoneID   uuid.UUID  `json:"milestone_id"`
+	IntegrationID uuid.UUID  `json:"integration_id"`
+	GlGlobalID    string     `json:"gl_global_id"`
+	GlIid         *int64     `json:"gl_iid"`
+	GlNumericID   int64      `json:"gl_numeric_id"`
+	GlWebUrl      string     `json:"gl_web_url"`
+	GlState       string     `json:"gl_state"`
+	TitleHash     string     `json:"title_hash"`
+	LastSyncedAt  time.Time  `json:"last_synced_at"`
+	GlSnapshot    []byte     `json:"gl_snapshot"`
+	PushError     string     `json:"push_error"`
+	PushFields    []string   `json:"push_fields"`
+	PushActorID   *uuid.UUID `json:"push_actor_id"`
+	Conflict      []byte     `json:"conflict"`
 }
 
 type GitlabProjectMember struct {
@@ -368,12 +418,57 @@ type GitlabWriteback struct {
 	ActorUserID   *uuid.UUID `json:"actor_user_id"`
 }
 
-type Membership struct {
+type JobRun struct {
+	ID            uuid.UUID  `json:"id"`
+	JobKey        string     `json:"job_key"`
+	Kind          string     `json:"kind"`
+	Type          string     `json:"type"`
+	Name          string     `json:"name"`
+	NameKey       string     `json:"name_key"`
+	NameArg       string     `json:"name_arg"`
+	WorkspaceID   *uuid.UUID `json:"workspace_id"`
+	ActorID       *uuid.UUID `json:"actor_id"`
+	Trigger       string     `json:"trigger"`
+	Status        string     `json:"status"`
+	Attempt       int32      `json:"attempt"`
+	MaxAttempts   int32      `json:"max_attempts"`
+	ProgressDone  int32      `json:"progress_done"`
+	ProgressTotal int32      `json:"progress_total"`
+	CreatedCount  int32      `json:"created_count"`
+	UpdatedCount  int32      `json:"updated_count"`
+	Steps         []byte     `json:"steps"`
+	LogTail       []byte     `json:"log_tail"`
+	LogLines      int32      `json:"log_lines"`
+	LogWarns      int32      `json:"log_warns"`
+	LogErrors     int32      `json:"log_errors"`
+	Meta          []byte     `json:"meta"`
+	Error         string     `json:"error"`
+	QueuedAt      time.Time  `json:"queued_at"`
+	StartedAt     *time.Time `json:"started_at"`
+	FinishedAt    *time.Time `json:"finished_at"`
+}
+
+type MemberGroup struct {
 	ID          uuid.UUID `json:"id"`
 	WorkspaceID uuid.UUID `json:"workspace_id"`
-	UserID      uuid.UUID `json:"user_id"`
-	Role        string    `json:"role"`
+	Name        string    `json:"name"`
+	Color       string    `json:"color"`
 	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
+}
+
+type MemberGroupMember struct {
+	GroupID uuid.UUID `json:"group_id"`
+	UserID  uuid.UUID `json:"user_id"`
+}
+
+type Membership struct {
+	ID           uuid.UUID  `json:"id"`
+	WorkspaceID  uuid.UUID  `json:"workspace_id"`
+	UserID       uuid.UUID  `json:"user_id"`
+	Role         string     `json:"role"`
+	CreatedAt    time.Time  `json:"created_at"`
+	LastActiveAt *time.Time `json:"last_active_at"`
 }
 
 type Milestone struct {
@@ -388,24 +483,29 @@ type Milestone struct {
 	CreatedAt   time.Time  `json:"created_at"`
 	UpdatedAt   time.Time  `json:"updated_at"`
 	Slug        string     `json:"slug"`
+	ClosedAt    *time.Time `json:"closed_at"`
 }
 
 type Note struct {
-	ID          uuid.UUID  `json:"id"`
-	WorkspaceID uuid.UUID  `json:"workspace_id"`
-	ProjectID   *uuid.UUID `json:"project_id"`
-	AuthorID    *uuid.UUID `json:"author_id"`
-	Title       string     `json:"title"`
-	Body        string     `json:"body"`
-	CreatedAt   time.Time  `json:"created_at"`
-	UpdatedAt   time.Time  `json:"updated_at"`
-	Slug        string     `json:"slug"`
+	ID          uuid.UUID   `json:"id"`
+	WorkspaceID uuid.UUID   `json:"workspace_id"`
+	ProjectID   *uuid.UUID  `json:"project_id"`
+	AuthorID    *uuid.UUID  `json:"author_id"`
+	Title       string      `json:"title"`
+	Body        string      `json:"body"`
+	CreatedAt   time.Time   `json:"created_at"`
+	UpdatedAt   time.Time   `json:"updated_at"`
+	Slug        string      `json:"slug"`
+	TaskID      *uuid.UUID  `json:"task_id"`
+	Visibility  string      `json:"visibility"`
+	Tags        []string    `json:"tags"`
+	Mentions    []uuid.UUID `json:"mentions"`
 }
 
 type Notification struct {
 	ID          uuid.UUID       `json:"id"`
 	UserID      uuid.UUID       `json:"user_id"`
-	WorkspaceID uuid.UUID       `json:"workspace_id"`
+	WorkspaceID *uuid.UUID      `json:"workspace_id"`
 	TaskID      *uuid.UUID      `json:"task_id"`
 	ActorID     *uuid.UUID      `json:"actor_id"`
 	Kind        string          `json:"kind"`
@@ -443,17 +543,22 @@ type NotificationDelivery struct {
 }
 
 type NotificationPref struct {
-	UserID            uuid.UUID `json:"user_id"`
-	DueEnabled        bool      `json:"due_enabled"`
-	DueLeadMinutes    int32     `json:"due_lead_minutes"`
-	DueRepeatMinutes  int32     `json:"due_repeat_minutes"`
-	ReminderEnabled   bool      `json:"reminder_enabled"`
-	UpdatedAt         time.Time `json:"updated_at"`
-	QuietEnabled      bool      `json:"quiet_enabled"`
-	QuietStartMinutes int32     `json:"quiet_start_minutes"`
-	QuietEndMinutes   int32     `json:"quiet_end_minutes"`
-	QuietTz           string    `json:"quiet_tz"`
-	DigestMinutes     int32     `json:"digest_minutes"`
+	UserID            uuid.UUID  `json:"user_id"`
+	DueEnabled        bool       `json:"due_enabled"`
+	DueLeadMinutes    int32      `json:"due_lead_minutes"`
+	DueRepeatMinutes  int32      `json:"due_repeat_minutes"`
+	ReminderEnabled   bool       `json:"reminder_enabled"`
+	UpdatedAt         time.Time  `json:"updated_at"`
+	QuietEnabled      bool       `json:"quiet_enabled"`
+	QuietStartMinutes int32      `json:"quiet_start_minutes"`
+	QuietEndMinutes   int32      `json:"quiet_end_minutes"`
+	QuietTz           string     `json:"quiet_tz"`
+	DigestMinutes     int32      `json:"digest_minutes"`
+	ToastsEnabled     bool       `json:"toasts_enabled"`
+	Toasts            []byte     `json:"toasts"`
+	QuietToasts       bool       `json:"quiet_toasts"`
+	DndUntil          *time.Time `json:"dnd_until"`
+	QuietAllowUrgent  bool       `json:"quiet_allow_urgent"`
 }
 
 type NotificationRoute struct {
@@ -481,16 +586,17 @@ type OauthIdentity struct {
 }
 
 type OauthProvider struct {
-	Provider        string    `json:"provider"`
-	ClientID        string    `json:"client_id"`
-	ClientSecretEnc string    `json:"client_secret_enc"`
-	GlBaseUrl       string    `json:"gl_base_url"`
-	Enabled         bool      `json:"enabled"`
-	OrgMap          []byte    `json:"org_map"`
-	CreatedAt       time.Time `json:"created_at"`
-	UpdatedAt       time.Time `json:"updated_at"`
-	ServiceTokenEnc string    `json:"service_token_enc"`
-	SudoWriteback   bool      `json:"sudo_writeback"`
+	Provider              string     `json:"provider"`
+	ClientID              string     `json:"client_id"`
+	ClientSecretEnc       string     `json:"client_secret_enc"`
+	GlBaseUrl             string     `json:"gl_base_url"`
+	Enabled               bool       `json:"enabled"`
+	OrgMap                []byte     `json:"org_map"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+	ServiceTokenEnc       string     `json:"service_token_enc"`
+	SudoWriteback         bool       `json:"sudo_writeback"`
+	ServiceTokenExpiresAt *time.Time `json:"service_token_expires_at"`
 }
 
 type PersonalAccessToken struct {
@@ -519,6 +625,7 @@ type Project struct {
 	Estimation  *json.RawMessage `json:"estimation"`
 	IconMode    string           `json:"icon_mode"`
 	TreeMode    string           `json:"tree_mode"`
+	ArchivedAt  *time.Time       `json:"archived_at"`
 }
 
 type ProjectGroup struct {
@@ -534,6 +641,13 @@ type ProjectGroup struct {
 	IconMode    string     `json:"icon_mode"`
 }
 
+type ProjectSlugAlias struct {
+	Slug      string    `json:"slug"`
+	ProjectID uuid.UUID `json:"project_id"`
+	ExpiresAt time.Time `json:"expires_at"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type RefreshToken struct {
 	ID        uuid.UUID  `json:"id"`
 	UserID    uuid.UUID  `json:"user_id"`
@@ -544,14 +658,20 @@ type RefreshToken struct {
 }
 
 type Reminder struct {
-	ID         uuid.UUID  `json:"id"`
-	UserID     uuid.UUID  `json:"user_id"`
-	TaskID     *uuid.UUID `json:"task_id"`
-	RemindAt   time.Time  `json:"remind_at"`
-	Message    string     `json:"message"`
-	Done       bool       `json:"done"`
-	CreatedAt  time.Time  `json:"created_at"`
-	NotifiedAt *time.Time `json:"notified_at"`
+	ID          uuid.UUID   `json:"id"`
+	UserID      uuid.UUID   `json:"user_id"`
+	TaskID      *uuid.UUID  `json:"task_id"`
+	RemindAt    time.Time   `json:"remind_at"`
+	Message     string      `json:"message"`
+	Done        bool        `json:"done"`
+	CreatedAt   time.Time   `json:"created_at"`
+	NotifiedAt  *time.Time  `json:"notified_at"`
+	Body        string      `json:"body"`
+	DoneAt      *time.Time  `json:"done_at"`
+	SnoozedFrom *time.Time  `json:"snoozed_from"`
+	WorkspaceID *uuid.UUID  `json:"workspace_id"`
+	Tags        []string    `json:"tags"`
+	Mentions    []uuid.UUID `json:"mentions"`
 }
 
 type Tag struct {
@@ -561,6 +681,7 @@ type Tag struct {
 	Color       string    `json:"color"`
 	CreatedAt   time.Time `json:"created_at"`
 	ProjectID   uuid.UUID `json:"project_id"`
+	Source      string    `json:"source"`
 }
 
 type TagPrefix struct {
@@ -596,6 +717,8 @@ type Task struct {
 	StartDate          *time.Time       `json:"start_date"`
 	Estimate           *float64         `json:"estimate"`
 	MilestoneID        *uuid.UUID       `json:"milestone_id"`
+	DeletedAt          *time.Time       `json:"deleted_at"`
+	DeletedBy          *uuid.UUID       `json:"deleted_by"`
 }
 
 type TaskAssignee struct {
@@ -613,6 +736,29 @@ type TaskAttachment struct {
 	Size        int64      `json:"size"`
 	StoragePath string     `json:"storage_path"`
 	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type TaskCodeLink struct {
+	TaskID          uuid.UUID  `json:"task_id"`
+	Provider        string     `json:"provider"`
+	SourceID        uuid.UUID  `json:"source_id"`
+	Kind            string     `json:"kind"`
+	Number          int64      `json:"number"`
+	ExternalID      string     `json:"external_id"`
+	Repo            string     `json:"repo"`
+	Url             string     `json:"url"`
+	Title           string     `json:"title"`
+	State           string     `json:"state"`
+	Draft           bool       `json:"draft"`
+	SourceBranch    string     `json:"source_branch"`
+	TargetBranch    string     `json:"target_branch"`
+	CiStatus        string     `json:"ci_status"`
+	CiUrl           string     `json:"ci_url"`
+	CiRunID         int64      `json:"ci_run_id"`
+	Via             string     `json:"via"`
+	RemoteUpdatedAt *time.Time `json:"remote_updated_at"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
 }
 
 type TaskComment struct {
@@ -656,29 +802,61 @@ type TaskRelation struct {
 	Source        string    `json:"source"`
 }
 
+type TaskSubscription struct {
+	TaskID     uuid.UUID `json:"task_id"`
+	UserID     uuid.UUID `json:"user_id"`
+	Subscribed bool      `json:"subscribed"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
 type TaskTag struct {
 	TaskID uuid.UUID `json:"task_id"`
 	TagID  uuid.UUID `json:"tag_id"`
 	Source string    `json:"source"`
 }
 
+type TaskTemplate struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	Name        string     `json:"name"`
+	Title       string     `json:"title"`
+	Description string     `json:"description"`
+	Tags        []string   `json:"tags"`
+	Priority    int32      `json:"priority"`
+	Subtasks    []string   `json:"subtasks"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
+}
+
+type TaskTimeEntry struct {
+	ID        uuid.UUID   `json:"id"`
+	TaskID    uuid.UUID   `json:"task_id"`
+	UserID    *uuid.UUID  `json:"user_id"`
+	Minutes   int32       `json:"minutes"`
+	Note      string      `json:"note"`
+	SpentOn   pgtype.Date `json:"spent_on"`
+	CreatedAt time.Time   `json:"created_at"`
+}
+
 type User struct {
-	ID            uuid.UUID `json:"id"`
-	Email         string    `json:"email"`
-	Name          string    `json:"name"`
-	PasswordHash  string    `json:"password_hash"`
-	IsAdmin       bool      `json:"is_admin"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
-	Provider      string    `json:"provider"`
-	Active        bool      `json:"active"`
-	EmailVerified bool      `json:"email_verified"`
-	LastName      string    `json:"last_name"`
-	FirstName     string    `json:"first_name"`
-	MiddleName    string    `json:"middle_name"`
-	Bio           string    `json:"bio"`
-	Company       string    `json:"company"`
-	JobTitle      string    `json:"job_title"`
+	ID            uuid.UUID  `json:"id"`
+	Email         string     `json:"email"`
+	Name          string     `json:"name"`
+	PasswordHash  string     `json:"password_hash"`
+	IsAdmin       bool       `json:"is_admin"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+	Provider      string     `json:"provider"`
+	Active        bool       `json:"active"`
+	EmailVerified bool       `json:"email_verified"`
+	LastName      string     `json:"last_name"`
+	FirstName     string     `json:"first_name"`
+	MiddleName    string     `json:"middle_name"`
+	Bio           string     `json:"bio"`
+	Company       string     `json:"company"`
+	JobTitle      string     `json:"job_title"`
+	LastSeenAt    *time.Time `json:"last_seen_at"`
 }
 
 type UserAcknowledgement struct {
@@ -716,6 +894,8 @@ type UserToken struct {
 	ExpiresAt time.Time  `json:"expires_at"`
 	UsedAt    *time.Time `json:"used_at"`
 	CreatedAt time.Time  `json:"created_at"`
+	Attempts  int32      `json:"attempts"`
+	Email     *string    `json:"email"`
 }
 
 type Workspace struct {
@@ -727,6 +907,21 @@ type Workspace struct {
 	TaskCounter int64            `json:"task_counter"`
 	Estimation  *json.RawMessage `json:"estimation"`
 	NameKey     *string          `json:"name_key"`
+	Color       string           `json:"color"`
+	Icon        string           `json:"icon"`
+	IconMode    string           `json:"icon_mode"`
+}
+
+type WorkspaceAccessRequest struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	UserID      uuid.UUID  `json:"user_id"`
+	BoardID     *uuid.UUID `json:"board_id"`
+	Message     string     `json:"message"`
+	Status      string     `json:"status"`
+	DecidedBy   *uuid.UUID `json:"decided_by"`
+	DecidedAt   *time.Time `json:"decided_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 type WorkspaceCommand struct {
@@ -748,4 +943,44 @@ type WorkspaceInvitation struct {
 	ExpiresAt   time.Time  `json:"expires_at"`
 	AcceptedAt  *time.Time `json:"accepted_at"`
 	CreatedAt   time.Time  `json:"created_at"`
+	DeclinedAt  *time.Time `json:"declined_at"`
+	SentAt      time.Time  `json:"sent_at"`
+	SendCount   int32      `json:"send_count"`
+}
+
+type WorkspaceInviteLink struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	TokenHash   string     `json:"token_hash"`
+	Role        string     `json:"role"`
+	MaxUses     int32      `json:"max_uses"`
+	Uses        int32      `json:"uses"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	ExpiresAt   time.Time  `json:"expires_at"`
+	RevokedAt   *time.Time `json:"revoked_at"`
+	RevokedBy   *uuid.UUID `json:"revoked_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+}
+
+type WorkspaceInviteLinkUse struct {
+	LinkID uuid.UUID `json:"link_id"`
+	UserID uuid.UUID `json:"user_id"`
+	UsedAt time.Time `json:"used_at"`
+}
+
+type WorkspaceMacro struct {
+	ID          uuid.UUID  `json:"id"`
+	WorkspaceID uuid.UUID  `json:"workspace_id"`
+	OwnerID     *uuid.UUID `json:"owner_id"`
+	Name        string     `json:"name"`
+	Trigger     string     `json:"trigger"`
+	Action      string     `json:"action"`
+	Params      []byte     `json:"params"`
+	Keys        string     `json:"keys"`
+	Category    string     `json:"category"`
+	Enabled     bool       `json:"enabled"`
+	Position    float64    `json:"position"`
+	CreatedBy   *uuid.UUID `json:"created_by"`
+	CreatedAt   time.Time  `json:"created_at"`
+	UpdatedAt   time.Time  `json:"updated_at"`
 }

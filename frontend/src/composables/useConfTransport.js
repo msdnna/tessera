@@ -1,6 +1,15 @@
 import { computed, getCurrentInstance, onBeforeUnmount, ref, shallowRef } from 'vue'
 import { conferences as confApi } from '@/api'
 import { createNoiseFilter, denoiseSupported } from '@/utils/denoise'
+import {
+  REACTION_TOPIC,
+  REACTION_TTL_MS,
+  addReaction,
+  canReact,
+  decodeReaction,
+  encodeReaction,
+  pruneReactions,
+} from '@/utils/confReactions'
 
 // The seam between the conference UI and the SFU (#2864, subtask #2871).
 //
@@ -162,6 +171,12 @@ export function useConfTransport() {
   // blinking to whoever happens to be first in the list. Updated from the SDK's
   // activeSpeakers, which is already sorted loudest-first and includes us.
   const activeSpeakerId = ref('')
+  // Reactions floating over the stage right now (#3054): [{ id, identity, name,
+  // emoji, at, lane }]. Off the SFU's data channel, never stored — see
+  // utils/confReactions.js.
+  const reactions = ref([])
+  let reactionTimer = null
+  let reactionSent = []
 
   // Not a ref: the room is an event emitter we hold, never something we render.
   let room = null
@@ -271,6 +286,57 @@ export function useConfTransport() {
     for (const e of events) room.on(e, sync)
     if (RoomEvent.Disconnected) room.on(RoomEvent.Disconnected, onDisconnected)
     if (RoomEvent.MediaDevicesChanged) room.on(RoomEvent.MediaDevicesChanged, refreshDevices)
+    if (RoomEvent.DataReceived) room.on(RoomEvent.DataReceived, onData)
+  }
+
+  // ── reactions (#3054) ────────────────────────────────────────────────
+  // A bubble each, for REACTION_TTL_MS; one timer prunes the feed while it is
+  // not empty. Our own reactions are shown the moment we send them — the SFU does
+  // not echo data back to its sender.
+  function pushReaction(r) {
+    reactions.value = addReaction(reactions.value, r)
+    if (!reactionTimer)
+      reactionTimer = setInterval(() => {
+        reactions.value = pruneReactions(reactions.value)
+        if (!reactions.value.length) {
+          clearInterval(reactionTimer)
+          reactionTimer = null
+        }
+      }, REACTION_TTL_MS / 4)
+  }
+
+  function onData(payload, participant, _kind, topic) {
+    if (topic && topic !== REACTION_TOPIC) return
+    const emoji = decodeReaction(payload)
+    if (!emoji || !participant) return
+    pushReaction({ identity: participant.identity, name: participant.name, emoji })
+  }
+
+  /**
+   * Send a reaction to everyone in the call. Lossy on purpose (`reliable: false`):
+   * a reaction that arrives late is worse than one that never does. Returns
+   * whether it went — false outside a call or past the burst limit.
+   */
+  async function sendReaction(emoji) {
+    const local = room?.localParticipant
+    const payload = encodeReaction(emoji)
+    if (!local || !payload) return false
+    const now = Date.now()
+    if (!canReact(reactionSent, now)) return false
+    reactionSent = [...reactionSent.filter((at) => now - at < 60000), now]
+    pushReaction({ identity: local.identity, name: local.name, emoji, at: now })
+    try {
+      await local.publishData?.(payload, { reliable: false, topic: REACTION_TOPIC })
+    } catch {
+      // Lost — the bubble on our own screen is all that is left of it.
+    }
+    return true
+  }
+
+  function clearReactions() {
+    clearInterval(reactionTimer)
+    reactionTimer = null
+    reactions.value = []
   }
 
   // A disconnect we did not ask for — the SFU restarted, the call ended, or the
@@ -278,6 +344,7 @@ export function useConfTransport() {
   // screen usable: the join button comes back instead of a dead-end message.
   function onDisconnected() {
     room = null
+    clearReactions()
     peers.value = []
     micOn.value = false
     camOn.value = false
@@ -575,7 +642,7 @@ export function useConfTransport() {
     } catch (e) {
       // A refusal from our own API is the interesting case and already carries a
       // sentence a human wrote (503 not configured, 409 ended, 403 kicked).
-      error.value = e.response?.data?.error || e.message || String(e)
+      error.value = e.message || String(e)
       status.value = ERROR
       try {
         await room?.disconnect()
@@ -588,6 +655,7 @@ export function useConfTransport() {
 
   async function leave() {
     leaving = true
+    clearReactions()
     detachUnload()
     stopMediaLoop()
     const r = room
@@ -816,5 +884,7 @@ export function useConfTransport() {
     togglePeerMute,
     selectDevice,
     unblockAudio,
+    reactions,
+    sendReaction,
   }
 }
